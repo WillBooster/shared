@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
 import { globIgnore, spawnAsync } from '@willbooster/shared-lib-node/src';
@@ -11,6 +10,7 @@ import { findDescendantProjects, findRootAndSelfProjects, findSelfProject } from
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { normalizeBunLockfile } from '../utils/bunLockfile.js';
+import { startVerificationOutput } from '../utils/verificationOutput.js';
 
 import { buildLintCommand, lint, type LintCommandArgv } from './lint.js';
 import { test, type TestCommandArgv, withDefaultTestCascadeEnv } from './test.js';
@@ -40,6 +40,20 @@ interface VerifyStep {
   name: string;
 }
 
+interface VerificationProgress {
+  steps: VerifyStep[];
+  reporter?: ReturnType<typeof startVerificationOutput>;
+}
+
+class VerificationCommandError extends Error {
+  readonly exitCode: number;
+
+  constructor(exitCode: number) {
+    super(`Verification command exited with code ${exitCode}.`);
+    this.exitCode = exitCode;
+  }
+}
+
 export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions> = {
   command: 'verify',
   describe: 'Verify project code',
@@ -52,52 +66,49 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
     }
 
     const steps: VerifyStep[] = [];
-    if (argv.full) {
-      await verifyCodeFully(projects.self, argv, steps);
-    } else {
-      await verifyCode(projects.self, argv, steps);
+    const reporter = argv.dryRun
+      ? undefined
+      : startVerificationOutput(path.join(projects.self.dirPath, '.wb', argv.full ? 'verify-full.log' : 'verify.log'));
+    const progress = { steps, reporter };
+    let exitCode = 0;
+    try {
+      await verifyCode(projects.self, argv, progress);
+      if (argv.full) {
+        await checkSlidevDecks(projects.self, argv, progress);
+        await runStep(progress, { name: 'test' }, () => runProjectTest(projects.self, argv));
+      }
+      reporter?.succeed();
       printVerifySummary(steps, Boolean(argv.dryRun));
+    } catch (error) {
+      if (!(error instanceof VerificationCommandError)) console.error(error);
+      exitCode = error instanceof VerificationCommandError ? error.exitCode : 1;
+      process.exitCode = exitCode;
+    } finally {
+      await reporter?.finish(exitCode);
     }
   },
 };
 
-async function verifyCodeFully(project: Project, argv: VerifyCodeCommandArgv, steps: VerifyStep[]): Promise<void> {
-  const reporter = startVerifyFullReporter(project);
-  try {
-    await verifyCode(project, argv, steps);
-    await checkSlidevDecks(project, argv, steps);
-    await runStep(steps, { name: 'test' }, () => runProjectTest(project, argv));
-    // Printed before the reporter finishes so the summary lands in verify-full.log too.
-    printVerifySummary(steps, Boolean(argv.dryRun));
-    reporter.succeed();
-  } catch (error) {
-    reporter.fail(error);
-    throw error;
-  } finally {
-    reporter.finish();
-  }
-}
-
-async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: VerifyStep[]): Promise<void> {
+async function verifyCode(
+  project: Project,
+  argv: VerifyCodeCommandArgv,
+  progress: VerificationProgress
+): Promise<void> {
   const installCommand = `${project.packageManagerCommand} install`;
   // `allowFailure` so a failed install still reaches the normalization below: bun rewrites the
   // lockfile before running lifecycle scripts, so a script failure would otherwise leave Guard
   // URLs in the working tree. The failure is reported and exits exactly as runPackageCommand would.
-  const installExitCode = await runStep(steps, { detail: installCommand, name: 'install' }, () =>
-    runPackageCommand(installCommand, project, argv, { allowFailure: true })
-  );
-  // The repository may have no `gen-code` script (where the same normalization runs at postinstall),
-  // and `verify` is the command a developer runs before committing.
-  if (!argv.dryRun) {
-    normalizeBunLockfile(project.rootDirPath);
-  }
-  if (installExitCode !== 0) {
-    console.info(chalk.red(chalk.bold(`Failed (exit code ${installExitCode}):`), installCommand));
-    process.exit(installExitCode);
-  }
+  await runStep(progress, { detail: installCommand, name: 'install' }, async () => {
+    const exitCode = await runPackageCommand(installCommand, project, argv, { allowFailure: true });
+    if (!argv.dryRun) normalizeBunLockfile(project.rootDirPath);
+    if (exitCode !== 0) {
+      console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), installCommand));
+      throw new VerificationCommandError(exitCode);
+    }
+  });
   if (project.packageJson.scripts?.['gen-code']) {
     const genCodeCommand = `${project.packageManagerCommand} gen-code`;
-    await runStep(steps, { detail: genCodeCommand, name: 'gen-code' }, () =>
+    await runStep(progress, { detail: genCodeCommand, name: 'gen-code' }, () =>
       runPackageCommand(genCodeCommand, project, argv)
     );
   }
@@ -108,7 +119,7 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
   const stepDetails = await buildStepDetails(argv);
   // `lint --fix --format` prints nothing on success, so without the step summary a passing `verify`
   // looks like it never linted at all — and it silently rewrote the working tree while at it.
-  await runStep(steps, { detail: stepDetails.cleanup, name: 'cleanup' }, () =>
+  await runStep(progress, { detail: stepDetails.cleanup, name: 'cleanup' }, () =>
     runInProcessCommand('cleanup', () =>
       lint({
         ...argv,
@@ -124,7 +135,7 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
   // `dist`). Keep the typecheck command so `verify` stays equivalent to "the repository compiles".
   // The overlap with lint is deliberate: `--type-aware` also powers type-aware lint rules, and
   // dropping only `--type-check` from lint saves ~0.1s, far less than the coverage it would cost.
-  await runStep(steps, { detail: stepDetails.typecheck, name: 'typecheck' }, () =>
+  await runStep(progress, { detail: stepDetails.typecheck, name: 'typecheck' }, () =>
     runInProcessCommand('typecheck', () => typeCheck({ ...argv, _: ['typecheck'] } as unknown as TypeCheckCommandArgv))
   );
 }
@@ -138,7 +149,11 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
  * project's directory therefore always resolves the bin, and Slidev takes the deck's own directory
  * as its user root regardless of the working directory.
  */
-async function checkSlidevDecks(project: Project, argv: VerifyCodeCommandArgv, steps: VerifyStep[]): Promise<void> {
+async function checkSlidevDecks(
+  project: Project,
+  argv: VerifyCodeCommandArgv,
+  progress: VerificationProgress
+): Promise<void> {
   // The very glob wbfy's doesContainSlidevMd runs, so the decks audited here are exactly the ones
   // it installed the checker for: a deck under an ignored directory (a fixture deck, a built copy)
   // gets no checker and must not be audited either.
@@ -147,7 +162,7 @@ async function checkSlidevDecks(project: Project, argv: VerifyCodeCommandArgv, s
     .toSorted((a, b) => a.localeCompare(b));
   if (deckPaths.length === 0) return;
 
-  await runStep(steps, { detail: deckPaths.join(' '), name: 'slidev-check' }, async () => {
+  await runStep(progress, { detail: deckPaths.join(' '), name: 'slidev-check' }, async () => {
     for (const deckPath of deckPaths) {
       // Single quotes (with embedded quotes escaped) keep a deck name containing shell syntax from
       // being expanded by the shell runPackageCommand spawns.
@@ -162,27 +177,25 @@ async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Pr
     ...argv,
     _: ['test'],
     e2e: 'headless',
-    silent: true,
+    silent: false,
   } as unknown as TestCommandArgv);
   const exitCode = await test(testArgv, { exitIfFailed: false });
   if (exitCode === 0) return;
 
   if (!project.packageJson.scripts?.['db-reset']) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), 'test'));
-    process.exit(exitCode);
+    throw new VerificationCommandError(exitCode);
   }
 
   console.info(
     chalk.yellow('Tests failed. This project defines "db-reset", so wb will reset the database once and retry tests.')
   );
-  await runPackageCommand(`${project.packageManagerCommand} db-reset`, findTestProject(project, testArgv), testArgv, {
-    printRawOutput: true,
-  });
+  await runPackageCommand(`${project.packageManagerCommand} db-reset`, findTestProject(project, testArgv), testArgv);
 
   const retryExitCode = await test(testArgv, { exitIfFailed: false });
   if (retryExitCode !== 0) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${retryExitCode}):`), 'test after db-reset retry'));
-    process.exit(retryExitCode);
+    throw new VerificationCommandError(retryExitCode);
   }
   console.info(chalk.green('Tests passed after db-reset retry.'));
 }
@@ -235,15 +248,17 @@ function toDisplayCommand(command: string): string {
   return command.replace(/^(?:BUN|YARN) /u, '');
 }
 
-/** Times a step and records it for the final summary. Steps that fail exit the process instead. */
+/** Times completed steps for the final summary; failed steps propagate their error. */
 async function runStep<T>(
-  steps: VerifyStep[],
+  progress: VerificationProgress,
   step: Omit<VerifyStep, 'durationMs'>,
   run: () => Promise<T>
 ): Promise<T> {
+  progress.reporter?.startStep(step.name);
   const startedAt = Date.now();
   const result = await run();
-  steps.push({ ...step, durationMs: Date.now() - startedAt });
+  progress.steps.push({ ...step, durationMs: Date.now() - startedAt });
+  progress.reporter?.startStep();
   return result;
 }
 
@@ -255,7 +270,7 @@ async function runInProcessCommand(commandName: string, command: () => Promise<n
   const exitCode = (await command()) ?? 0;
   if (exitCode !== 0) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), commandName));
-    process.exit(exitCode);
+    throw new VerificationCommandError(exitCode);
   }
   return exitCode;
 }
@@ -298,7 +313,7 @@ async function runPackageCommand(
   command: string,
   project: Project,
   argv: PackageCommandArgv,
-  options: { allowFailure?: boolean; printRawOutput?: boolean } = {}
+  options: { allowFailure?: boolean } = {}
 ): Promise<number> {
   printCommand(command, project.dirPath);
   if (argv.dryRun) {
@@ -312,120 +327,21 @@ async function runPackageCommand(
     stdio: 'pipe',
     mergeOutAndError: true,
     killOnExit: true,
-    printingStdout: options.printRawOutput,
-    printingStderr: options.printRawOutput,
+    printingStdout: true,
+    printingStderr: true,
     verbose: argv.verbose,
   });
   const exitCode = ret.status ?? 1;
-  if (!options.printRawOutput) {
-    printPackageCommandOutput(command, exitCode, ret.stdout);
-  }
 
   if (exitCode !== 0 && !options.allowFailure) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), command));
-    process.exit(exitCode);
+    throw new VerificationCommandError(exitCode);
   }
   return exitCode;
 }
 
-/**
- * Prints package command output for `wb verify`.
- *
- * `wb verify` is primarily consumed by AI coding agents, so successful noisy
- * commands are summarized while failure output remains available for diagnosis.
- *
- * @param command The executed command.
- * @param exitCode The command exit code.
- * @param output The merged stdout and stderr output from the command.
- */
-function printPackageCommandOutput(command: string, exitCode: number, output: string): void {
-  if (exitCode === 0 && /^(?:bun|yarn) (?:install|gen-code)$/u.test(command)) {
-    console.info(chalk.green('Succeeded.'));
-    return;
-  }
-
-  const trimmedOutput = output.trim();
-  if (trimmedOutput) {
-    process.stdout.write(trimmedOutput);
-    process.stdout.write('\n');
-  }
-}
-
 function printCommand(command: string, cwd: string): void {
   console.info('\n' + chalk.cyan(chalk.bold('Command:'), command) + chalk.gray(` at ${cwd}`));
-}
-
-function startVerifyFullReporter(project: Project): {
-  fail: (error?: unknown) => void;
-  finish: () => void;
-  succeed: () => void;
-} {
-  const startedAt = Date.now();
-  const wbDirPath = path.join(project.dirPath, '.wb');
-  fs.mkdirSync(wbDirPath, { recursive: true });
-
-  const logFilePath = path.join(wbDirPath, 'verify-full.log');
-  const logFile = fs.openSync(logFilePath, 'w');
-  const originalStdoutWrite = process.stdout.write.bind(process.stdout);
-  const originalStderrWrite = process.stderr.write.bind(process.stderr);
-  let succeeded = false;
-  let finished = false;
-
-  process.stdout.write = teeWrite(originalStdoutWrite, logFile) as typeof process.stdout.write;
-  process.stderr.write = teeWrite(originalStderrWrite, logFile) as typeof process.stderr.write;
-  console.info(chalk.cyan(chalk.bold('Full log:'), logFilePath));
-
-  const finish = (): void => {
-    if (finished) return;
-    finished = true;
-
-    process.stdout.write = originalStdoutWrite as typeof process.stdout.write;
-    process.stderr.write = originalStderrWrite as typeof process.stderr.write;
-
-    const elapsedTime = formatElapsedTime(Date.now() - startedAt);
-    const status = succeeded ? 'Succeeded' : 'Failed';
-    const summary = `${status} in ${elapsedTime}. Full log: ${logFilePath}\n`;
-    const coloredSummary = succeeded ? chalk.green(summary) : chalk.red(summary);
-    originalStdoutWrite(coloredSummary);
-    fs.writeSync(logFile, summary);
-    fs.closeSync(logFile);
-  };
-
-  process.once('exit', finish);
-
-  return {
-    fail: (error) => {
-      succeeded = false;
-      if (error) {
-        console.error(error);
-      }
-    },
-    finish: () => {
-      process.removeListener('exit', finish);
-      finish();
-    },
-    succeed: () => {
-      succeeded = true;
-    },
-  };
-}
-
-function teeWrite(originalWrite: typeof process.stdout.write, logFile: number): typeof process.stdout.write {
-  return ((
-    chunk: Uint8Array | string,
-    encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void),
-    callback?: (error?: Error | null) => void
-  ) => {
-    const buffer =
-      typeof chunk === 'string'
-        ? Buffer.from(chunk, typeof encodingOrCallback === 'string' ? encodingOrCallback : 'utf8')
-        : chunk;
-    fs.writeSync(logFile, buffer);
-    // Write to the terminal via the original stream method: a synchronous fs.writeSync on the
-    // stdout/stderr fd throws EAGAIN on CI's non-blocking pipes when large output flushes at once,
-    // while the stream method buffers internally and handles backpressure.
-    return originalWrite(buffer, typeof encodingOrCallback === 'function' ? encodingOrCallback : callback);
-  }) as typeof process.stdout.write;
 }
 
 /** Sub-minute steps keep one decimal so a fast step is not flattened to a misleading `0s`. */

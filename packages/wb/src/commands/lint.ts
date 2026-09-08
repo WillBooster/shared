@@ -12,6 +12,7 @@ import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { printBufferedOutput, shouldPrintBufferedOutput } from '../utils/output.js';
 import { buildShellCommand } from '../utils/shell.js';
 import { reportTestStructureViolations } from '../utils/testStructure.js';
+import { isCapturingVerificationOutput } from '../utils/verificationOutput.js';
 
 const builder = {
   fix: {
@@ -386,6 +387,7 @@ function printSilentLintOutputs(
   results: LintRunResult[],
   argv: Pick<LintCommandArgv, 'printAllOutput' | 'silent'>
 ): void {
+  if (isCapturingVerificationOutput()) return;
   const printableResults =
     argv.silent && !argv.printAllOutput
       ? results.filter((result) => 'output' in result && shouldPrintBufferedOutput(result.exitCode, result.output))

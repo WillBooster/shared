@@ -5,6 +5,7 @@ import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 import type { Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { promisePool } from '../utils/promisePool.js';
+import { isCapturingVerificationOutput } from '../utils/verificationOutput.js';
 
 interface Options {
   ci?: boolean;
@@ -36,6 +37,7 @@ export async function runWithSpawn(
   opts: Options = defaultOptions
 ): Promise<number> {
   const normalizedScript = normalizeScript(script, project);
+  const captureOutput = isCapturingVerificationOutput();
   if (!(argv.silent && opts.omitSilentStart && !argv.dryRun)) {
     printStart(normalizedScript.printable, project, argv.silent ? 'Command' : 'Start');
   }
@@ -48,7 +50,7 @@ export async function runWithSpawn(
   }
 
   const shouldProcessSilentOutput = Boolean(
-    argv.silent && (opts.processSilentOutput ?? opts.printSilentOutputOnFailureOnly)
+    !captureOutput && argv.silent && (opts.processSilentOutput ?? opts.printSilentOutputOnFailureOnly)
   );
   let wroteSilentProgress = false;
   const progressTimer =
@@ -62,13 +64,13 @@ export async function runWithSpawn(
     cwd: project.dirPath,
     env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? (argv.silent ? true : undefined) }),
     shell: true,
-    stdio: argv.silent ? 'pipe' : 'inherit',
+    stdio: captureOutput || argv.silent ? 'pipe' : 'inherit',
     timeout: opts.timeout,
     mergeOutAndError: shouldProcessSilentOutput,
     killOnExit: true,
-    printingStdout: argv.silent && !shouldProcessSilentOutput,
-    printingStderr: argv.silent && !shouldProcessSilentOutput,
-    omitBlankLinesWhilePrinting: argv.silent,
+    printingStdout: captureOutput || (argv.silent && !shouldProcessSilentOutput),
+    printingStderr: captureOutput || (argv.silent && !shouldProcessSilentOutput),
+    omitBlankLinesWhilePrinting: !captureOutput && argv.silent,
     verbose: argv.verbose,
   }).finally(() => {
     if (progressTimer) {
@@ -102,6 +104,7 @@ export function runWithSpawnInParallel(
 ): Promise<number> {
   return promisePool.runAndWaitForReturnValue(async () => {
     const normalizedScript = normalizeScript(script, project);
+    const captureOutput = isCapturingVerificationOutput();
     printStart(normalizedScript.printable, project, 'Start (parallel)', true);
     if (argv.dryRun) {
       printStart(normalizedScript.printable, project, 'Started (log)');
@@ -120,8 +123,8 @@ export function runWithSpawnInParallel(
       timeout: opts.timeout,
       mergeOutAndError: true,
       killOnExit: true,
-      printingStdout: opts.printRawOutput,
-      printingStderr: opts.printRawOutput,
+      printingStdout: captureOutput || opts.printRawOutput,
+      printingStderr: captureOutput || opts.printRawOutput,
       verbose: argv.verbose,
     });
     opts.onSignal?.(ret.signal);
@@ -130,7 +133,7 @@ export function runWithSpawnInParallel(
       printStart(normalizedScript.runnable, project, 'Started (raw)', true);
     }
     const out = ret.stdout.trim();
-    if (out && !opts.printRawOutput) {
+    if (out && !captureOutput && !opts.printRawOutput) {
       process.stdout.write(out);
       process.stdout.write('\n');
     }
@@ -147,6 +150,7 @@ export function runWithSpawnInParallelBuffered(
 ): Promise<BufferedRunResult> {
   return promisePool.runAndWaitForReturnValue(async () => {
     const normalizedScript = normalizeScript(script, project);
+    const captureOutput = isCapturingVerificationOutput();
     if (argv.dryRun) {
       return {
         exitCode: 0,
@@ -162,8 +166,8 @@ export function runWithSpawnInParallelBuffered(
       timeout: opts.timeout,
       mergeOutAndError: true,
       killOnExit: true,
-      printingStdout: opts.printRawOutput,
-      printingStderr: opts.printRawOutput,
+      printingStdout: captureOutput || opts.printRawOutput,
+      printingStderr: captureOutput || opts.printRawOutput,
       verbose: argv.verbose,
     });
     opts.onSignal?.(ret.signal);
