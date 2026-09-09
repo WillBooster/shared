@@ -50,7 +50,8 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
 
 /** Pins the latest release across major versions, keeping the existing value if resolution fails. */
 function pinLatestToolVersion(tool: string, version: unknown, cwd: string): unknown {
-  const resolvedVersion = spawnSyncAndReturnStdout('mise', ['latest', tool], cwd);
+  // Resolve independently of the target's trust state and tool aliases.
+  const resolvedVersion = spawnSyncAndReturnStdout('mise', ['--no-config', 'latest', tool], cwd);
   return semver.valid(resolvedVersion) ? resolvedVersion : (version ?? 'latest');
 }
 

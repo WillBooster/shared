@@ -40,8 +40,8 @@ test('pins the concrete version behind an lts/* mise selector and adds a concret
 });
 
 test('updates Bun and fnox to the latest releases while preserving unrelated settings', async () => {
-  const latestBun = Bun.spawnSync(['mise', 'latest', 'bun']).stdout.toString().trim();
-  const latestFnox = Bun.spawnSync(['mise', 'latest', 'fnox']).stdout.toString().trim();
+  const latestBun = Bun.spawnSync(['mise', '--no-config', 'latest', 'bun']).stdout.toString().trim();
+  const latestFnox = Bun.spawnSync(['mise', '--no-config', 'latest', 'fnox']).stdout.toString().trim();
   const content = await generateFrom({
     'mise.toml':
       '[tools]\nnode = "22.0.0"\nbun = "0.1.0"\nfnox = "0.1.0"\npython = "3.12.0"\n[settings]\nexperimental = true\n',
@@ -52,4 +52,4 @@ test('updates Bun and fnox to the latest releases while preserving unrelated set
     tools: { node: '22.0.0', bun: latestBun, fnox: latestFnox, python: '3.12.0' },
     settings: { experimental: true },
   });
-});
+}, 60_000);

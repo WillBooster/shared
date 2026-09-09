@@ -6,7 +6,7 @@ A repository that deviates from these rules is fixed manually (or by re-running 
 
 ## Repository preconditions
 
-- `mise` is on `PATH`. Developers run `wbfy` with Bun >= 1.4; it aborts when its runtime is older. `wbfy` pins Bun and, when `fnox.toml` exists, fnox to the latest versions resolved by `mise latest`, including major upgrades and replacing existing selectors or structured pins. Bun is added when absent. If resolution fails, the existing value is kept, or `latest` is written when no value exists. Generated and reusable workflows obtain Bun from its `mise.toml` pin.
+- `mise` is on `PATH`. Developers run `wbfy` with Bun >= 1.4; it aborts when its runtime is older. `wbfy` pins Bun and, when `fnox.toml` exists, fnox to the latest versions resolved by `mise --no-config latest` independently of configuration trust and aliases, including major upgrades and replacing existing selectors or structured pins. Bun is added when absent. If resolution fails, the existing value is kept, or `latest` is written when no value exists. Generated and reusable workflows obtain Bun from its `mise.toml` pin.
 - The target directory is a Git repository root, or has a supported manifest such as `package.json`, `poetry.lock`, `uv.lock`, `go.mod`, `pom.xml`, or `pubspec.yaml`. Every accepted root without `package.json` receives a managed one on its first run, including roots accepted through another ecosystem's manifest, because wbfy's tooling and final lockfile verification require Bun dependencies.
 - Monorepos place workspaces under `packages/*` and/or the patterns declared in the root `package.json` `workspaces` array.
 - Every managed file is a regular in-repository file: symlinks and paths resolving outside the repository are refused.
