@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import { afterEach, expect, test } from 'bun:test';
@@ -16,7 +15,8 @@ afterEach(() => {
 });
 
 async function generateFrom(files: Record<string, string>): Promise<string> {
-  const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-mise-'));
+  fs.mkdirSync('.tmp', { recursive: true });
+  const dirPath = fs.mkdtempSync(path.resolve('.tmp', 'wbfy-mise-'));
   try {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
     for (const [fileName, content] of Object.entries(files)) {
@@ -31,10 +31,25 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
   }
 }
 
-test('pins the concrete version behind an lts/* mise selector without adding a Bun pin', async () => {
+test('pins the concrete version behind an lts/* mise selector and adds a concrete Bun pin', async () => {
   const content = await generateFrom({ 'mise.toml': '[tools]\nnode = "lts/*"\n' });
 
   expect(content).not.toContain('lts/*');
   expect(content).toMatch(/node = "\d+\.\d+\.\d+"/u);
-  expect(content).not.toContain('bun');
+  expect(content).toMatch(/bun = "\d+\.\d+\.\d+"/u);
+});
+
+test('updates Bun and fnox to the latest releases while preserving unrelated settings', async () => {
+  const latestBun = Bun.spawnSync(['mise', 'latest', 'bun']).stdout.toString().trim();
+  const latestFnox = Bun.spawnSync(['mise', 'latest', 'fnox']).stdout.toString().trim();
+  const content = await generateFrom({
+    'mise.toml':
+      '[tools]\nnode = "22.0.0"\nbun = "0.1.0"\nfnox = "0.1.0"\npython = "3.12.0"\n[settings]\nexperimental = true\n',
+    'fnox.toml': '',
+  });
+
+  expect(Bun.TOML.parse(content)).toEqual({
+    tools: { node: '22.0.0', bun: latestBun, fnox: latestFnox, python: '3.12.0' },
+    settings: { experimental: true },
+  });
 });
