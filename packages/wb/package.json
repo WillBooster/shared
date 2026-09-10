@@ -47,7 +47,6 @@
     "semver": "7.8.5",
     "smol-toml": "1.8.0",
     "textlint-rule-no-hankaku-kana": "2.0.1",
-    "textlint-rule-no-nfd": "2.0.2",
     "textlint-rule-no-zero-width-spaces": "1.0.1",
     "yargs": "18.1.0"
   },

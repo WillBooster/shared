@@ -8,11 +8,6 @@ declare module 'textlint-rule-no-hankaku-kana' {
   export default rule;
 }
 
-declare module 'textlint-rule-no-nfd' {
-  const rule: import('@textlint/kernel').TextlintKernelRule['rule'];
-  export default rule;
-}
-
 declare module 'textlint-rule-no-zero-width-spaces' {
   const rule: import('@textlint/kernel').TextlintKernelRule['rule'];
   export default rule;

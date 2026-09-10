@@ -160,9 +160,8 @@ the working directory (or `--working-dir`). Page selection within a deck is not 
 `wb verify` does not check Slidev decks. `wb verify --full` checks all discovered
 decks before running tests, without applying fixes.
 
-The bundled textlint rules check half-width kana,
-decomposed Japanese dakuten, invalid control characters, and zero-width spaces
-(U+200B). Numeric inch marks, sentence fragments, omitted final punctuation, long technical terms,
+The bundled textlint rules check half-width kana, invalid control characters,
+and zero-width spaces (U+200B). Numeric inch marks, sentence fragments, omitted final punctuation, long technical terms,
 polite/plain style, sentence length, and cautious wording are allowed. No local
 textlint configuration or extra textlint installation is needed; repository
 `.textlintrc` files do not affect these slide checks.

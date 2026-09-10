@@ -182,7 +182,6 @@
         "semver": "7.8.5",
         "smol-toml": "1.8.0",
         "textlint-rule-no-hankaku-kana": "2.0.1",
-        "textlint-rule-no-nfd": "2.0.2",
         "textlint-rule-no-zero-width-spaces": "1.0.1",
         "yargs": "18.1.0",
       },
@@ -2887,8 +2886,6 @@
 
     "marked-terminal": ["marked-terminal@7.3.0", "", { "dependencies": { "ansi-escapes": "^7.0.0", "ansi-regex": "^6.1.0", "chalk": "^5.4.1", "cli-highlight": "^2.1.11", "cli-table3": "^0.6.5", "node-emoji": "^2.2.0", "supports-hyperlinks": "^3.1.0" }, "peerDependencies": { "marked": ">=1 <16" } }, "sha512-t4rBvPsHc57uE/2nJOLmMbZCQ4tgAccAED3ngXQqW6g+TxA488JzJ+FK3lQkzBQOI1mRV/r/Kq+1ZlJ4D0owQw=="],
 
-    "match-index": ["match-index@1.0.3", "", { "dependencies": { "regexp.prototype.flags": "^1.1.1" } }, "sha512-1XjyBWqCvEFFUDW/MPv0RwbITRD4xQXOvKoPYtLDq8IdZTfdF/cQSo5Yn4qvhfSSZgjgkTFsqJD2wOUG4ovV8Q=="],
-
     "matcher": ["matcher@3.0.0", "", { "dependencies": { "escape-string-regexp": "^4.0.0" } }, "sha512-OkeDaAZ/bQCxeFAozM55PKcKU0yJMPGifLwV4Qgjitu+5MoAfSQN4lsLJeXZ1b8w0x+/Emda6MZgXS1jvsapng=="],
 
     "math-intrinsics": ["math-intrinsics@1.1.0", "", {}, "sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g=="],
@@ -3764,8 +3761,6 @@
     "textlint-rule-helper": ["textlint-rule-helper@2.5.0", "", { "dependencies": { "@textlint/ast-node-types": "^15.2.1", "structured-source": "^4.0.0", "unist-util-visit": "^2.0.3" } }, "sha512-QIbFPtyqLy0g5BJn8mryk9iHzGYicNaFIpLFPiEnb4RXxrEGeQ2W2aARQ9yEXLIAqo+OwK4ndWBAWkbgJEPzTQ=="],
 
     "textlint-rule-no-hankaku-kana": ["textlint-rule-no-hankaku-kana@2.0.1", "", { "dependencies": { "textlint-rule-helper": "^2.3.0", "textlint-tester": "^13.3.1" } }, "sha512-39s94HK6V1xnII1haYiYQnWy1YQAKK7Zj0mcpUMFHHC4M5JdsRnhGs6DQPVEff0gQIFV0iuDNlofXt15kjMtEA=="],
-
-    "textlint-rule-no-nfd": ["textlint-rule-no-nfd@2.0.2", "", { "dependencies": { "match-index": "^1.0.3", "textlint-rule-helper": "^2.3.0" } }, "sha512-lIUvcQ+wqtConpPQU2YwEJl2dRcRyyrxPYZ3V76UwnkVg++XPLIrE5mLDgyNE/UIQ34e/KitJfMLqKWvnkFbNQ=="],
 
     "textlint-rule-no-zero-width-spaces": ["textlint-rule-no-zero-width-spaces@1.0.1", "", {}, "sha512-AkxpzBILGB4YsXddzHx2xqpXmqMv5Yd+PQm4anUV+ADSJuwLP1Jd6yHf/LOtu9j3ps8K3XM9vQrXRK73z0bU3A=="],
 
