@@ -90,6 +90,8 @@ Commands:
                                  @willbooster-private/ @willbooster-private/`)
                                  so the in-image install resolves the rewritten
                                  file: paths.
+  wb slidev-check [files..]      Check selected Slidev decks, or all *.slidev.md
+                                 decks when no files are given
   wb start [args..]              Start app. Use '--' to stop wb option parsing
                                  and forward the remaining arguments to the
                                  underlying app command. Example: wb start --
@@ -134,3 +136,23 @@ the full log path. Truncated output is marked; read the log for earlier details.
 Output is saved as it arrives, before display filtering,
 to `.wb/verify.log` or `.wb/verify-full.log` in the verified project. Each command
 overwrites its previous log; `--dry-run` leaves logs untouched.
+
+## Slidev layout checks
+
+`wb slidev-check` checks rendered Slidev decks without running installation, linting,
+type checking, or tests. Pass one or more files to check only those decks:
+
+```sh
+bun wb slidev-check slides/intro.slidev.md
+bun wb slidev-check slides/intro.slidev.md slides/setup.slidev.md
+bun wb slidev-check slides/intro.slidev.md --fix
+```
+
+With no files, it discovers all `*.slidev.md` files under the current project,
+using the same exclusions as `wb verify --full`. Checks stop on the first failed
+deck and return its exit code. `--fix` applies fixes provided by `slidev-check`;
+`--dry-run` prints the commands without running them. File paths are relative to
+the working directory (or `--working-dir`). Page selection within a deck is not supported.
+
+`wb verify` does not check Slidev decks. `wb verify --full` checks all discovered
+decks before running tests, without applying fixes.
