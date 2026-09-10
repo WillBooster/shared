@@ -91,3 +91,40 @@ it('reports original source locations in imported slides without linting metadat
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+it('allows workspace imports but rejects outside imports before checking their text', async () => {
+  const tmp = path.resolve('.tmp');
+  await fs.mkdir(tmp, { recursive: true });
+  const dir = await fs.mkdtemp(path.join(tmp, 'slidev-import-boundary-'));
+  try {
+    const workspace = path.join(dir, 'workspace');
+    const project = path.join(workspace, 'packages/deck');
+    await fs.mkdir(project, { recursive: true });
+    await fs.writeFile(
+      path.join(workspace, 'package.json'),
+      JSON.stringify({ name: 'slidev-workspace', workspaces: ['packages/*'] })
+    );
+    await fs.writeFile(path.join(project, 'package.json'), JSON.stringify({ name: 'slidev-deck' }));
+    const sharedPath = path.join(workspace, 'shared.md');
+    const outsidePath = path.join(dir, 'outside.md');
+    await fs.writeFile(sharedPath, '- ﾃｽﾄ\n');
+    await fs.writeFile(outsidePath, '- ｿﾄ\n');
+    await fs.writeFile(
+      path.join(project, 'intro.slidev.md'),
+      '---\nsrc: ../../shared.md\n---\n\n---\nsrc: ../../../outside.md\n---\n'
+    );
+    const result = spawnSync('node', [cliPath, 'slidev-check', 'intro.slidev.md'], {
+      cwd: project,
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    expect(result.status, result.stdout + result.stderr).toBe(1);
+    expect(result.stderr).toContain('Imported markdown escapes the project root');
+    expect(result.stderr).toContain(`${sharedPath}:1:3:`);
+    expect(result.stderr).not.toContain(`${outsidePath}:1:`);
+    expect(result.stderr.match(/\(no-hankaku-kana\)/g)).toHaveLength(1);
+    expect(result.stdout).not.toContain('Command:');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

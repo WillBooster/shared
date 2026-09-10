@@ -18,10 +18,10 @@ const rules: TextlintKernelRule[] = [
   { ruleId: 'no-zero-width-spaces', rule: moduleInterop(noZeroWidthSpaces) },
 ];
 
-export async function lintSlidevText(deckPath: string): Promise<number> {
+export async function lintSlidevText(deckPath: string, workspaceRoot: string): Promise<number> {
   console.info(`Textlint: ${deckPath}`);
   const userRoot = path.dirname(deckPath);
-  const data = await load({ roots: [userRoot], userRoot }, deckPath);
+  const data = await load({ roots: [userRoot], userRoot, allowedRoots: [workspaceRoot, userRoot] }, deckPath);
   const kernel = new TextlintKernel();
   let exitCode = 0;
   for (const file of Object.values(data.markdownFiles)) {

@@ -167,8 +167,10 @@ polite/plain style, sentence length, and cautious wording are allowed. No local
 textlint configuration or extra textlint installation is needed; repository
 `.textlintrc` files do not affect these slide checks.
 
-Textlint checks Markdown content in visible slides, including `src:` imports,
-and reports original file paths, lines, columns, and rule names. Slidev frontmatter,
+Textlint checks Markdown content in visible slides, including `src:` imports
+within the workspace root or deck directory, and reports original file paths,
+lines, columns, and rule names. Imports outside those roots fail before their
+contents are read. Slidev frontmatter,
 comments/speaker notes, and code are excluded. Parsing uses the standard Markdown
 textlint plugin; raw HTML blocks, component attributes, and dynamically generated
 text are not checked. Half-width kana and bracket/quote pairing are checked in

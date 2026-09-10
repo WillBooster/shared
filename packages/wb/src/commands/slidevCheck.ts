@@ -59,7 +59,7 @@ export async function checkSlidevDecks(
       console.info(`Textlint: ${deckPath} (dry run)`);
     } else {
       const { lintSlidevText } = await import('../utils/slidevTextlint.js');
-      const textlintExitCode = await lintSlidevText(path.resolve(project.dirPath, deckPath));
+      const textlintExitCode = await lintSlidevText(path.resolve(project.dirPath, deckPath), project.rootDirPath);
       if (textlintExitCode !== 0) return textlintExitCode;
     }
     const quotedDeckPath = `'${deckPath.replaceAll("'", String.raw`'\''`)}'`;
