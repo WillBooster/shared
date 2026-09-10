@@ -41,6 +41,7 @@ test('pins the concrete version behind an lts/* mise selector and adds a concret
 });
 
 test('updates Bun and fnox without downgrading newer pins or changing unrelated settings', async () => {
+  // Require successful live lookups: accepting original pins would let a broken updater pass.
   const latestBun = Bun.spawnSync(['mise', '--no-config', 'latest', 'bun']).stdout.toString().trim();
   const latestFnox = Bun.spawnSync(['mise', '--no-config', 'latest', 'fnox']).stdout.toString().trim();
   const content = await generateFrom({
