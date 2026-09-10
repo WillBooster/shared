@@ -21,7 +21,13 @@ const rules: TextlintKernelRule[] = [
 export async function lintSlidevText(deckPath: string, workspaceRoot: string): Promise<number> {
   console.info(`Textlint: ${deckPath}`);
   const userRoot = path.dirname(deckPath);
-  const data = await load({ roots: [userRoot], userRoot, allowedRoots: [workspaceRoot, userRoot] }, deckPath);
+  let data: Awaited<ReturnType<typeof load>>;
+  try {
+    data = await load({ roots: [userRoot], userRoot, allowedRoots: [workspaceRoot, userRoot] }, deckPath);
+  } catch (error) {
+    console.error(`${deckPath}: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
   const kernel = new TextlintKernel();
   let exitCode = 0;
   for (const file of Object.values(data.markdownFiles)) {

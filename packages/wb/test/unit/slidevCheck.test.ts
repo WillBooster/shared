@@ -128,3 +128,24 @@ it('allows workspace imports but rejects outside imports before checking their t
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+it.each(['missing.slidev.md', '.'])('reports an unreadable entry %s without usage or a stack trace', async (file) => {
+  const tmp = path.resolve('.tmp');
+  await fs.mkdir(tmp, { recursive: true });
+  const dir = await fs.mkdtemp(path.join(tmp, 'slidev-unreadable-'));
+  try {
+    await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'slidev-unreadable' }));
+    const result = spawnSync('node', [cliPath, 'slidev-check', file], {
+      cwd: dir,
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    expect(result.status, result.stdout + result.stderr).toBe(1);
+    expect(result.stderr).toContain(path.resolve(dir, file));
+    expect(result.stderr).not.toContain('wb slidev-check [files..]');
+    expect(result.stderr).not.toMatch(/\n\s+at /);
+    expect(result.stdout).not.toContain('Command:');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
