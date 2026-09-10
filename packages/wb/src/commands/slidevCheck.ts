@@ -32,7 +32,8 @@ export const slidevCheckCommand: CommandModule<unknown, SlidevCheckOptions> = {
       process.exitCode = 1;
       return;
     }
-    const deckPaths = argv.files.length > 0 ? argv.files.map((file) => path.resolve(file)) : findSlidevDecks(project);
+    const files = [...argv.files, ...argv._.slice(1)];
+    const deckPaths = files.length > 0 ? files.map((file) => path.resolve(String(file))) : findSlidevDecks(project);
     if (deckPaths.length === 0) {
       console.info('No Slidev decks found.');
       return;
