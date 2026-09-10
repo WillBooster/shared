@@ -16,6 +16,7 @@ const userAgentInstructionFilePaths = ['.codex/AGENTS.md', '.claude/CLAUDE.md', 
 const userAgentInstructionContent = `- Repos live under \`~/ghq/github.com\`; always clone with \`ghq get -p\`, never \`git clone\`.
 - LLM/AI agent responses may take 1–2 hours; wait patiently, don't assume failure.
 - No AI attribution (e.g., \`Co-Authored-By\` trailers, "Generated with ..." footers) in commits, issues, or PRs unless explicitly requested. This hides nothing: if asked which AI agent did the work, answer truthfully.
+- Outside \`~/ghq/github.com/{WillBooster,WillBoosterLab}/\`, follow the repository's contribution guide (e.g., CONTRIBUTING.md, \`.github/\`) and issue/PR templates, match its commit and code conventions, and honor its rules on AI-assisted contributions.
 `;
 
 /**
