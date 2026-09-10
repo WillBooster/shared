@@ -137,10 +137,11 @@ Output is saved as it arrives, before display filtering,
 to `.wb/verify.log` or `.wb/verify-full.log` in the verified project. Each command
 overwrites its previous log; `--dry-run` leaves logs untouched.
 
-## Slidev layout checks
+## Slidev checks
 
-`wb slidev-check` checks rendered Slidev decks without running installation, linting,
-type checking, or tests. Pass one or more files to check only those decks:
+`wb slidev-check` checks slide text with textlint, then checks rendered Slidev decks.
+It does not run installation, code linting, type checking, or tests.
+Pass one or more files to check only those decks:
 
 ```sh
 bun wb slidev-check slides/intro.slidev.md
@@ -151,8 +152,29 @@ bun wb slidev-check slides/intro.slidev.md --fix
 With no files, it discovers all `*.slidev.md` files under the current project,
 using the same exclusions as `wb verify --full`. Checks stop on the first failed
 deck and return its exit code. `--fix` applies fixes provided by `slidev-check`;
-`--dry-run` prints the commands without running them. File paths are relative to
+textlint only reports problems and never edits text. Text errors stop the check
+before rendering, including with `--fix`. `--dry-run` lists the text checks and
+commands without running them. File paths are relative to
 the working directory (or `--working-dir`). Page selection within a deck is not supported.
 
 `wb verify` does not check Slidev decks. `wb verify --full` checks all discovered
 decks before running tests, without applying fixes.
+
+The bundled textlint rules check half-width kana, invalid control characters,
+and zero-width spaces (U+200B). Numeric inch marks, sentence fragments, omitted final punctuation, long technical terms,
+polite/plain style, sentence length, and cautious wording are allowed. No local
+textlint configuration or extra textlint installation is needed; repository
+`.textlintrc` files do not affect these slide checks.
+
+Textlint checks Markdown content in visible slides, including `src:` imports
+within the workspace root or deck directory, and reports original file paths,
+lines, columns, and rule names. Slidev's parser rejects import paths outside those
+roots before reading them. This check compares paths without resolving symlink
+targets. Slidev frontmatter,
+comments/speaker notes, and code are excluded. Parsing uses the standard Markdown
+textlint plugin; raw HTML blocks and HTML tag attributes are not checked. Slidev-specific
+syntax is not interpreted: Vue expressions and MDC attributes may be checked
+when the Markdown parser treats their source as prose (for example,
+`{{ "ﾃｽﾄ" }}` or `[visible]{title="ﾃｽﾄ"}`). Half-width kana is checked in plain paragraph and list text, but not in headings
+or bold/italic spans or blockquotes. The other rules also inspect headings and
+blockquotes. Markdown coverage is not exhaustive.

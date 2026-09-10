@@ -37,3 +37,164 @@ it.each([0, 1, 2])('checks only selected decks with -- after %i paths', async (s
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+it('reports original source locations in imported slides without linting metadata, code, or notes', async () => {
+  const tmp = path.resolve('.tmp');
+  await fs.mkdir(tmp, { recursive: true });
+  const dir = await fs.mkdtemp(path.join(tmp, 'slidev-textlint-'));
+  try {
+    await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'slidev-textlint-fixture' }));
+    const deck = path.join(dir, 'intro.slidev.md');
+    const imported = path.join(dir, "author's slides.md");
+    await fs.writeFile(deck, "---\ntitle: ﾃｽﾄ\n---\n\n# 導入\n\n---\nsrc: ./author's slides.md\n---\n");
+    const content = [
+      '---',
+      'layout: default',
+      'title: ﾃｽﾄ',
+      '---',
+      '',
+      '# 改善する可能性がある',
+      '',
+      '- 検証のために必要な情報',
+      '- `ﾃｽﾄ`',
+      '',
+      '```ts {1}',
+      'const label = "ﾃｽﾄ";',
+      '```',
+      '',
+      '<!-- ﾃｽﾄ -->',
+      '',
+      '---',
+      '',
+      '# 次の一手',
+      '',
+      '- ﾃｽﾄ',
+      '',
+      '<!--',
+      'ﾃｽﾄ',
+      '-->',
+      '',
+    ].join('\r\n');
+    await fs.writeFile(imported, content);
+    const result = spawnSync('node', [cliPath, 'slidev-check', '--fix', deck], {
+      cwd: dir,
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    expect(result.status, result.stdout + result.stderr).toBe(1);
+    expect(result.stderr).toContain(`${imported}:21:3:`);
+    expect(result.stderr.match(/\(no-hankaku-kana\)/g)).toHaveLength(1);
+    expect(result.stdout).not.toContain('Command:');
+    expect(await fs.readFile(imported, 'utf8')).toBe(content);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+it('allows workspace imports but rejects outside imports before checking their text', async () => {
+  const tmp = path.resolve('.tmp');
+  await fs.mkdir(tmp, { recursive: true });
+  const dir = await fs.mkdtemp(path.join(tmp, 'slidev-import-boundary-'));
+  try {
+    const workspace = path.join(dir, 'workspace');
+    const project = path.join(workspace, 'packages/deck');
+    await fs.mkdir(project, { recursive: true });
+    await fs.writeFile(
+      path.join(workspace, 'package.json'),
+      JSON.stringify({ name: 'slidev-workspace', workspaces: ['packages/*'] })
+    );
+    await fs.writeFile(path.join(project, 'package.json'), JSON.stringify({ name: 'slidev-deck' }));
+    const sharedPath = path.join(workspace, 'shared.md');
+    const outsidePath = path.join(dir, 'outside.md');
+    await fs.writeFile(sharedPath, '- ﾃｽﾄ\n');
+    await fs.writeFile(outsidePath, '- ｿﾄ\n');
+    await fs.writeFile(
+      path.join(project, 'intro.slidev.md'),
+      '---\nsrc: ../../shared.md\n---\n\n---\nsrc: ../../../outside.md\n---\n'
+    );
+    const result = spawnSync('node', [cliPath, 'slidev-check', 'intro.slidev.md'], {
+      cwd: project,
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    expect(result.status, result.stdout + result.stderr).toBe(1);
+    expect(result.stderr).toContain('Imported markdown escapes the project root');
+    expect(result.stderr).toContain(`${sharedPath}:1:3:`);
+    expect(result.stderr).not.toContain(`${outsidePath}:1:`);
+    expect(result.stderr.match(/\(no-hankaku-kana\)/g)).toHaveLength(1);
+    expect(result.stdout).not.toContain('Command:');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+it.each(['missing.slidev.md', '.'])('reports an unreadable entry %s without usage or a stack trace', async (file) => {
+  const tmp = path.resolve('.tmp');
+  await fs.mkdir(tmp, { recursive: true });
+  const dir = await fs.mkdtemp(path.join(tmp, 'slidev-unreadable-'));
+  try {
+    await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'slidev-unreadable' }));
+    const result = spawnSync('node', [cliPath, 'slidev-check', file], {
+      cwd: dir,
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    expect(result.status, result.stdout + result.stderr).toBe(1);
+    expect(result.stderr).toContain(path.resolve(dir, file));
+    expect(result.stderr).not.toContain('wb slidev-check [files..]');
+    expect(result.stderr).not.toMatch(/\n\s+at /);
+    expect(result.stdout).not.toContain('Command:');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+it.each(['# Tail', '- foo --- bar'])(
+  'reports text after the final separator and %s at its original location',
+  async (tailTitle) => {
+    const tmp = path.resolve('.tmp');
+    await fs.mkdir(tmp, { recursive: true });
+    const dir = await fs.mkdtemp(path.join(tmp, 'slidev-tail-'));
+    try {
+      await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'slidev-tail' }));
+      const deck = path.join(dir, 'intro.slidev.md');
+      await fs.writeFile(deck, `---\nlayout: cover\n---\n# Title\n\n---\n${tailTitle}\n- ﾃｽﾄ\n`);
+      const result = spawnSync('node', [cliPath, 'slidev-check', deck], {
+        cwd: dir,
+        encoding: 'utf8',
+        timeout: 30_000,
+      });
+      expect(result.status, result.stdout + result.stderr).toBe(1);
+      expect(result.stderr).toContain(`${deck}:8:3:`);
+      expect(result.stderr.match(/\(no-hankaku-kana\)/g)).toHaveLength(1);
+      expect(result.stdout).not.toContain('Command:');
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  }
+);
+
+it('reports each imported-file error once when the file is imported repeatedly', async () => {
+  const tmp = path.resolve('.tmp');
+  await fs.mkdir(tmp, { recursive: true });
+  const dir = await fs.mkdtemp(path.join(tmp, 'slidev-repeated-error-'));
+  try {
+    await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'slidev-repeated-error' }));
+    const deck = path.join(dir, 'intro.slidev.md');
+    const part = path.join(dir, 'part.md');
+    await fs.writeFile(deck, '---\nsrc: ./part.md\n---\n\n---\nsrc: ./part.md\n---\n');
+    await fs.writeFile(part, '---\nsrc: ./missing.md\n---\n\n---\nsrc: ./another.md\n---\n');
+    const result = spawnSync('node', [cliPath, 'slidev-check', deck], {
+      cwd: dir,
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    expect(result.status, result.stdout + result.stderr).toBe(1);
+    expect(result.stderr.match(/Imported markdown file not found/g)).toHaveLength(2);
+    expect(result.stderr).toContain(`${part}:1:1:`);
+    expect(result.stderr).toContain(`${part}:5:1:`);
+    expect(result.stdout).not.toContain('Command:');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

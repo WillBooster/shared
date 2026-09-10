@@ -32,6 +32,10 @@
     "verify-full": "bun wb verify --full"
   },
   "dependencies": {
+    "@textlint-rule/textlint-rule-no-invalid-control-character": "3.0.0",
+    "@textlint/kernel": "15.8.0",
+    "@textlint/module-interop": "15.8.0",
+    "@textlint/textlint-plugin-markdown": "15.8.0",
     "chalk": "6.0.0",
     "dotenv": "17.4.2",
     "dotenv-expand": "13.0.0",
@@ -42,12 +46,14 @@
     "minimal-promise-pool": "6.0.3",
     "semver": "7.8.5",
     "smol-toml": "1.8.0",
+    "textlint-rule-no-zero-width-spaces": "1.0.1",
     "yargs": "18.1.0"
   },
   "devDependencies": {
     "@babel/core": "8.0.1",
     "@babel/plugin-proposal-decorators": "8.0.2",
     "@rolldown/plugin-babel": "0.2.3",
+    "@slidev/parser": "52.19.1",
     "@tsconfig/bun": "1.0.11",
     "@tsconfig/node-lts": "24.0.1",
     "@tsconfig/node-ts": "23.6.4",
@@ -65,6 +71,7 @@
     "oxlint-tsgolint": "7.0.2001",
     "rolldown": "1.2.6",
     "sort-package-json": "4.0.0",
+    "textlint-rule-no-hankaku-kana": "2.0.1",
     "type-fest": "5.8.0",
     "typescript": "7.0.2",
     "vitest": "4.1.11"

@@ -55,6 +55,14 @@ export async function checkSlidevDecks(
   argv: Pick<SlidevCheckArgv, 'dryRun' | 'verbose'> & { fix?: boolean }
 ): Promise<number> {
   for (const deckPath of deckPaths) {
+    if (argv.dryRun) {
+      console.info(`Textlint: ${deckPath} (dry run)`);
+    } else {
+      // Module caching keeps this lazy for dry runs and empty deck lists without reloading it for each deck.
+      const { lintSlidevText } = await import('../utils/slidevTextlint.js');
+      const textlintExitCode = await lintSlidevText(path.resolve(project.dirPath, deckPath), project.rootDirPath);
+      if (textlintExitCode !== 0) return textlintExitCode;
+    }
     const quotedDeckPath = `'${deckPath.replaceAll("'", String.raw`'\''`)}'`;
     const command = `${project.packageManagerCommand} slidev-check ${argv.fix ? '--fix ' : ''}${quotedDeckPath}`;
     const exitCode = await runPackageCommand(command, project, argv, { allowFailure: true });
