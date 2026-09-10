@@ -38,7 +38,7 @@ export async function lintSlidevText(deckPath: string, workspaceRoot: string): P
     if (checked.has(key)) continue;
     checked.add(key);
     // The parser's contentStart can exceed the slide when a final separator has no following blank line.
-    const contentStart = source.frontmatterStyle === 'frontmatter' ? source.contentStart : source.start;
+    const contentStart = source.contentStart > source.end ? source.start : source.contentStart;
     const text = source.raw
       .split('\n')
       .slice(contentStart - source.start)
