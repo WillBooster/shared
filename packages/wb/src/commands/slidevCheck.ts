@@ -3,24 +3,28 @@ import path from 'node:path';
 import { globIgnore } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import fg from 'fast-glob';
-import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
+import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findSelfProject, type Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { runPackageCommand } from '../utils/packageCommand.js';
 
-const builder = {
+const argumentsBuilder = {
   files: { type: 'string', array: true, default: [] as string[], describe: 'Slidev deck files to check' },
+} as const;
+
+const builder = {
   fix: { type: 'boolean', default: false, describe: 'Apply fixes suggested by slidev-check' },
 } as const;
 
-type SlidevCheckOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
+type SlidevCheckOptions = InferredOptionTypes<typeof argumentsBuilder & typeof builder & typeof sharedOptionsBuilder>;
 type SlidevCheckArgv = ArgumentsCamelCase<SlidevCheckOptions>;
 
 export const slidevCheckCommand: CommandModule<unknown, SlidevCheckOptions> = {
   command: 'slidev-check [files..]',
   describe: 'Check selected Slidev decks, or all *.slidev.md decks when no files are given',
-  builder,
+  builder: (yargs: Argv<unknown>) =>
+    yargs.options(builder).positional('files', argumentsBuilder.files) as Argv<SlidevCheckOptions>,
   async handler(argv) {
     const project = findSelfProject(argv, false);
     if (!project) {
