@@ -176,6 +176,5 @@ textlint plugin; raw HTML blocks and HTML tag attributes are not checked. Slidev
 syntax is not interpreted: Vue expressions and MDC attributes may be checked
 when the Markdown parser treats their source as prose (for example,
 `{{ "ﾃｽﾄ" }}` or `[visible]{title="ﾃｽﾄ"}`). Half-width kana is checked in plain paragraph and list text, but not in headings
-or bold/italic spans. The
-other rules also inspect headings; each rule's exclusions (such as quoted text)
-still apply, so Markdown coverage is not exhaustive.
+or bold/italic spans or blockquotes. The other rules also inspect headings and
+blockquotes. Markdown coverage is not exhaustive.
