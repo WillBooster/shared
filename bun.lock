@@ -167,7 +167,6 @@
         "wb": "bin/index.js",
       },
       "dependencies": {
-        "@slidev/parser": "52.19.1",
         "@textlint-rule/textlint-rule-no-invalid-control-character": "3.0.0",
         "@textlint-rule/textlint-rule-no-unmatched-pair": "2.0.4",
         "@textlint/kernel": "15.8.0",
@@ -192,6 +191,7 @@
         "@babel/core": "8.0.1",
         "@babel/plugin-proposal-decorators": "8.0.2",
         "@rolldown/plugin-babel": "0.2.3",
+        "@slidev/parser": "52.19.1",
         "@tsconfig/bun": "1.0.11",
         "@tsconfig/node-lts": "24.0.1",
         "@tsconfig/node-ts": "23.6.4",

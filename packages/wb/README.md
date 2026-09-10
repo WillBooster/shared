@@ -171,5 +171,7 @@ Textlint checks Markdown content in visible slides, including `src:` imports,
 and reports original file paths, lines, columns, and rule names. Slidev frontmatter,
 comments/speaker notes, and code are excluded. Parsing uses the standard Markdown
 textlint plugin; raw HTML blocks, component attributes, and dynamically generated
-text are not checked. Keep prose in Markdown for coverage. Rule-specific exclusions
-(such as quoted text) also apply.
+text are not checked. Half-width kana and bracket/quote pairing are checked in
+plain paragraph and list text, but not in headings or bold/italic spans. The
+other rules also inspect headings; each rule's exclusions (such as quoted text)
+still apply, so Markdown coverage is not exhaustive.
