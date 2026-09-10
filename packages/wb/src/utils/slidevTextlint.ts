@@ -27,8 +27,9 @@ export async function lintSlidevText(deckPath: string, workspaceRoot: string): P
   const kernel = new TextlintKernel();
   let exitCode = 0;
   for (const file of Object.values(data.markdownFiles)) {
-    for (const error of file.errors ?? []) {
-      console.error(`${file.filepath}:${error.row + 1}:1: ${error.message}`);
+    const diagnostics = (file.errors ?? []).map((error) => `${file.filepath}:${error.row + 1}:1: ${error.message}`);
+    for (const diagnostic of new Set(diagnostics)) {
+      console.error(diagnostic);
       exitCode = 1;
     }
   }

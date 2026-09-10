@@ -173,3 +173,28 @@ it.each(['# Tail', '- foo --- bar'])(
     }
   }
 );
+
+it('reports each imported-file error once when the file is imported repeatedly', async () => {
+  const tmp = path.resolve('.tmp');
+  await fs.mkdir(tmp, { recursive: true });
+  const dir = await fs.mkdtemp(path.join(tmp, 'slidev-repeated-error-'));
+  try {
+    await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'slidev-repeated-error' }));
+    const deck = path.join(dir, 'intro.slidev.md');
+    const part = path.join(dir, 'part.md');
+    await fs.writeFile(deck, '---\nsrc: ./part.md\n---\n\n---\nsrc: ./part.md\n---\n');
+    await fs.writeFile(part, '---\nsrc: ./missing.md\n---\n\n---\nsrc: ./another.md\n---\n');
+    const result = spawnSync('node', [cliPath, 'slidev-check', deck], {
+      cwd: dir,
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    expect(result.status, result.stdout + result.stderr).toBe(1);
+    expect(result.stderr.match(/Imported markdown file not found/g)).toHaveLength(2);
+    expect(result.stderr).toContain(`${part}:1:1:`);
+    expect(result.stderr).toContain(`${part}:5:1:`);
+    expect(result.stdout).not.toContain('Command:');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
