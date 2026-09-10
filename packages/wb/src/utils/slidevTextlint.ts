@@ -3,6 +3,7 @@ import path from 'node:path';
 import { load } from '@slidev/parser/fs';
 import { TextlintKernel, type TextlintKernelRule } from '@textlint/kernel';
 import { moduleInterop } from '@textlint/module-interop';
+// The pinned package has no named Processor export; its default import also fails NodeNext typing.
 import { MarkdownProcessor } from '@textlint/textlint-plugin-markdown/lib/src/MarkdownProcessor.js';
 import noInvalidControlCharacter from '@textlint-rule/textlint-rule-no-invalid-control-character';
 import noHankakuKana from 'textlint-rule-no-hankaku-kana';
@@ -38,7 +39,7 @@ export async function lintSlidevText(deckPath: string, workspaceRoot: string): P
     const key = `${source.filepath}:${source.index}`;
     if (checked.has(key)) continue;
     checked.add(key);
-    // The parser's contentStart can exceed the slide when a final separator has no following blank line.
+    // The parser always sets contentStart >= start, but it can exceed end after a final separator without a blank line.
     const contentStart = source.contentStart > source.end ? source.start : source.contentStart;
     const text = source.raw
       .split('\n')
