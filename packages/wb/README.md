@@ -169,8 +169,9 @@ textlint configuration or extra textlint installation is needed; repository
 
 Textlint checks Markdown content in visible slides, including `src:` imports
 within the workspace root or deck directory, and reports original file paths,
-lines, columns, and rule names. Imports outside those roots fail before their
-contents are read. Slidev frontmatter,
+lines, columns, and rule names. Slidev's parser rejects import paths outside those
+roots before reading them. This check compares paths without resolving symlink
+targets. Slidev frontmatter,
 comments/speaker notes, and code are excluded. Parsing uses the standard Markdown
 textlint plugin; raw HTML blocks, component attributes, and dynamically generated
 text are not checked. Half-width kana and bracket/quote pairing are checked in
