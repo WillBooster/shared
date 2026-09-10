@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { afterEach, expect, test } from 'bun:test';
+import semver from 'semver';
 
 import { generateMiseToml } from '../../src/generators/miseToml.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
@@ -39,7 +40,7 @@ test('pins the concrete version behind an lts/* mise selector and adds a concret
   expect(content).toMatch(/bun = "\d+\.\d+\.\d+"/u);
 });
 
-test('updates Bun and fnox to the latest releases while preserving unrelated settings', async () => {
+test('updates Bun and fnox without downgrading newer pins or changing unrelated settings', async () => {
   const latestBun = Bun.spawnSync(['mise', '--no-config', 'latest', 'bun']).stdout.toString().trim();
   const latestFnox = Bun.spawnSync(['mise', '--no-config', 'latest', 'fnox']).stdout.toString().trim();
   const content = await generateFrom({
@@ -51,5 +52,15 @@ test('updates Bun and fnox to the latest releases while preserving unrelated set
   expect(Bun.TOML.parse(content)).toEqual({
     tools: { node: '22.0.0', bun: latestBun, fnox: latestFnox, python: '3.12.0' },
     settings: { experimental: true },
+  });
+
+  const newerBun = semver.inc(latestBun, 'patch');
+  const newerFnox = semver.inc(latestFnox, 'patch');
+  const newerContent = await generateFrom({
+    'mise.toml': `[tools]\nnode = "22.0.0"\nbun = "${newerBun}"\nfnox = "${newerFnox}"\n`,
+    'fnox.toml': '',
+  });
+  expect(Bun.TOML.parse(newerContent)).toEqual({
+    tools: { node: '22.0.0', bun: newerBun, fnox: newerFnox },
   });
 }, 60_000);

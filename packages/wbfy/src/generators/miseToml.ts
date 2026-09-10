@@ -48,11 +48,15 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
   });
 }
 
-/** Pins the latest release across major versions, keeping the existing value if resolution fails. */
+/** Updates to the latest release across major versions without downgrading existing exact pins. */
 function pinLatestToolVersion(tool: string, version: unknown, cwd: string): unknown {
   // Resolve independently of the target's trust state and tool aliases.
   const resolvedVersion = spawnSyncAndReturnStdout('mise', ['--no-config', 'latest', tool], cwd);
-  return semver.valid(resolvedVersion) ? resolvedVersion : (version ?? 'latest');
+  if (!semver.valid(resolvedVersion)) return version ?? 'latest';
+  // A cached release listing can lag behind another machine that already updated the pin.
+  return typeof version === 'string' && semver.valid(version) && semver.gt(version, resolvedVersion)
+    ? version
+    : resolvedVersion;
 }
 
 /**
