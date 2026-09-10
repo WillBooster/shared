@@ -1,13 +1,13 @@
 import path from 'node:path';
 
-import { globIgnore, spawnAsync } from '@willbooster/shared-lib-node/src';
+import { globIgnore } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import fg from 'fast-glob';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findSelfProject, type Project } from '../project.js';
-import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { runPackageCommand } from '../utils/packageCommand.js';
 
 const builder = {
   files: { type: 'string', array: true, default: [] as string[], describe: 'Slidev deck files to check' },
@@ -52,21 +52,7 @@ export async function checkSlidevDecks(
   for (const deckPath of deckPaths) {
     const quotedDeckPath = `'${deckPath.replaceAll("'", String.raw`'\''`)}'`;
     const command = `${project.packageManagerCommand} slidev-check ${argv.fix ? '--fix ' : ''}${quotedDeckPath}`;
-    console.info('\n' + chalk.cyan(chalk.bold('Command:'), command) + chalk.gray(` at ${project.dirPath}`));
-    if (argv.dryRun) continue;
-
-    const result = await spawnAsync(command, undefined, {
-      cwd: project.dirPath,
-      env: configureEnv(project.env, { preserveColor: false }),
-      shell: true,
-      stdio: 'pipe',
-      mergeOutAndError: true,
-      killOnExit: true,
-      printingStdout: true,
-      printingStderr: true,
-      verbose: argv.verbose,
-    });
-    const exitCode = result.status ?? 1;
+    const exitCode = await runPackageCommand(command, project, argv, { allowFailure: true });
     if (exitCode !== 0) return exitCode;
   }
   return 0;

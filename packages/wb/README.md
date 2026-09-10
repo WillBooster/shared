@@ -90,6 +90,8 @@ Commands:
                                  @willbooster-private/ @willbooster-private/`)
                                  so the in-image install resolves the rewritten
                                  file: paths.
+  wb slidev-check [files..]      Check selected Slidev decks, or all *.slidev.md
+                                 decks when no files are given
   wb start [args..]              Start app. Use '--' to stop wb option parsing
                                  and forward the remaining arguments to the
                                  underlying app command. Example: wb start --

@@ -1,14 +1,13 @@
 import path from 'node:path';
 
-import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import { findDescendantProjects, findRootAndSelfProjects, findSelfProject } from '../project.js';
-import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { normalizeBunLockfile } from '../utils/bunLockfile.js';
+import { PackageCommandError, runPackageCommand } from '../utils/packageCommand.js';
 import { startVerificationOutput } from '../utils/verificationOutput.js';
 
 import { buildLintCommand, lint, type LintCommandArgv } from './lint.js';
@@ -26,7 +25,6 @@ const builder = {
 
 type VerifyCodeCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
 type VerifyCodeCommandArgv = ArgumentsCamelCase<VerifyCodeCommandOptions>;
-type PackageCommandArgv = Pick<VerifyCodeCommandArgv, 'dryRun' | 'verbose'>;
 
 /** A completed `wb verify` step, recorded so the final summary can prove every step actually ran. */
 interface VerifyStep {
@@ -43,15 +41,6 @@ interface VerifyStep {
 interface VerificationProgress {
   steps: VerifyStep[];
   reporter?: ReturnType<typeof startVerificationOutput>;
-}
-
-class VerificationCommandError extends Error {
-  readonly exitCode: number;
-
-  constructor(exitCode: number) {
-    super(`Verification command exited with code ${exitCode}.`);
-    this.exitCode = exitCode;
-  }
 }
 
 export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions> = {
@@ -85,8 +74,8 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
       reporter?.succeed();
       printVerifySummary(steps, Boolean(argv.dryRun));
     } catch (error) {
-      if (!(error instanceof VerificationCommandError)) console.error(error);
-      exitCode = error instanceof VerificationCommandError ? error.exitCode : 1;
+      if (!(error instanceof PackageCommandError)) console.error(error);
+      exitCode = error instanceof PackageCommandError ? error.exitCode : 1;
       process.exitCode = exitCode;
     } finally {
       await reporter?.finish(exitCode);
@@ -108,7 +97,7 @@ async function verifyCode(
     if (!argv.dryRun) normalizeBunLockfile(project.rootDirPath);
     if (exitCode !== 0) {
       console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), installCommand));
-      throw new VerificationCommandError(exitCode);
+      throw new PackageCommandError(exitCode);
     }
   });
   if (project.packageJson.scripts?.['gen-code']) {
@@ -157,7 +146,7 @@ async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Pr
 
   if (!project.packageJson.scripts?.['db-reset']) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), 'test'));
-    throw new VerificationCommandError(exitCode);
+    throw new PackageCommandError(exitCode);
   }
 
   console.info(
@@ -168,7 +157,7 @@ async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Pr
   const retryExitCode = await test(testArgv, { exitIfFailed: false });
   if (retryExitCode !== 0) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${retryExitCode}):`), 'test after db-reset retry'));
-    throw new VerificationCommandError(retryExitCode);
+    throw new PackageCommandError(retryExitCode);
   }
   console.info(chalk.green('Tests passed after db-reset retry.'));
 }
@@ -243,7 +232,7 @@ async function runInProcessCommand(commandName: string, command: () => Promise<n
   const exitCode = (await command()) ?? 0;
   if (exitCode !== 0) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), commandName));
-    throw new VerificationCommandError(exitCode);
+    throw new PackageCommandError(exitCode);
   }
   return exitCode;
 }
@@ -280,41 +269,6 @@ function printVerifySummary(steps: VerifyStep[], dryRun: boolean): void {
     const detail = step.detail ? `  ${step.detail}` : '';
     console.info(chalk.green('  ✔ ') + step.name.padEnd(nameWidth) + chalk.gray(`  ${duration}${detail}`));
   }
-}
-
-async function runPackageCommand(
-  command: string,
-  project: Project,
-  argv: PackageCommandArgv,
-  options: { allowFailure?: boolean } = {}
-): Promise<number> {
-  printCommand(command, project.dirPath);
-  if (argv.dryRun) {
-    return 0;
-  }
-
-  const ret = await spawnAsync(command, undefined, {
-    cwd: project.dirPath,
-    env: configureEnv(project.env, { preserveColor: false }),
-    shell: true,
-    stdio: 'pipe',
-    mergeOutAndError: true,
-    killOnExit: true,
-    printingStdout: true,
-    printingStderr: true,
-    verbose: argv.verbose,
-  });
-  const exitCode = ret.status ?? 1;
-
-  if (exitCode !== 0 && !options.allowFailure) {
-    console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), command));
-    throw new VerificationCommandError(exitCode);
-  }
-  return exitCode;
-}
-
-function printCommand(command: string, cwd: string): void {
-  console.info('\n' + chalk.cyan(chalk.bold('Command:'), command) + chalk.gray(` at ${cwd}`));
 }
 
 /** Sub-minute steps keep one decimal so a fast step is not flattened to a misleading `0s`. */
