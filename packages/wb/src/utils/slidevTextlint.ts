@@ -5,14 +5,12 @@ import { TextlintKernel, type TextlintKernelRule } from '@textlint/kernel';
 import { moduleInterop } from '@textlint/module-interop';
 import { MarkdownProcessor } from '@textlint/textlint-plugin-markdown/lib/src/MarkdownProcessor.js';
 import noInvalidControlCharacter from '@textlint-rule/textlint-rule-no-invalid-control-character';
-import noUnmatchedPair from '@textlint-rule/textlint-rule-no-unmatched-pair';
 import noHankakuKana from 'textlint-rule-no-hankaku-kana';
 import noNfd from 'textlint-rule-no-nfd';
 import noZeroWidthSpaces from 'textlint-rule-no-zero-width-spaces';
 
 const rules: TextlintKernelRule[] = [
   { ruleId: 'no-invalid-control-character', rule: moduleInterop(noInvalidControlCharacter) },
-  { ruleId: 'no-unmatched-pair', rule: moduleInterop(noUnmatchedPair) },
   { ruleId: 'no-hankaku-kana', rule: moduleInterop(noHankakuKana) },
   { ruleId: 'no-nfd', rule: moduleInterop(noNfd) },
   { ruleId: 'no-zero-width-spaces', rule: moduleInterop(noZeroWidthSpaces) },

@@ -84,7 +84,6 @@ it('reports original source locations in imported slides without linting metadat
     expect(result.status, result.stdout + result.stderr).toBe(1);
     expect(result.stderr).toContain(`${imported}:21:3:`);
     expect(result.stderr.match(/\(no-hankaku-kana\)/g)).toHaveLength(1);
-    expect(result.stderr).not.toContain('no-unmatched-pair');
     expect(result.stdout).not.toContain('Command:');
     expect(await fs.readFile(imported, 'utf8')).toBe(content);
   } finally {

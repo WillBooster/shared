@@ -160,9 +160,9 @@ the working directory (or `--working-dir`). Page selection within a deck is not 
 `wb verify` does not check Slidev decks. `wb verify --full` checks all discovered
 decks before running tests, without applying fixes.
 
-The bundled textlint rules check unmatched brackets/quotes, half-width kana,
+The bundled textlint rules check half-width kana,
 decomposed Japanese dakuten, invalid control characters, and zero-width spaces
-(U+200B). Sentence fragments, omitted final punctuation, long technical terms,
+(U+200B). Numeric inch marks, sentence fragments, omitted final punctuation, long technical terms,
 polite/plain style, sentence length, and cautious wording are allowed. No local
 textlint configuration or extra textlint installation is needed; repository
 `.textlintrc` files do not affect these slide checks.
@@ -174,7 +174,7 @@ roots before reading them. This check compares paths without resolving symlink
 targets. Slidev frontmatter,
 comments/speaker notes, and code are excluded. Parsing uses the standard Markdown
 textlint plugin; raw HTML blocks, component attributes, and dynamically generated
-text are not checked. Half-width kana and bracket/quote pairing are checked in
-plain paragraph and list text, but not in headings or bold/italic spans. The
+text are not checked. Half-width kana is checked in plain paragraph and list text, but not in headings
+or bold/italic spans. The
 other rules also inspect headings; each rule's exclusions (such as quoted text)
 still apply, so Markdown coverage is not exhaustive.
