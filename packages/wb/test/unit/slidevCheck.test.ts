@@ -148,3 +148,25 @@ it.each(['missing.slidev.md', '.'])('reports an unreadable entry %s without usag
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+it('reports text immediately after the final slide separator at its original location', async () => {
+  const tmp = path.resolve('.tmp');
+  await fs.mkdir(tmp, { recursive: true });
+  const dir = await fs.mkdtemp(path.join(tmp, 'slidev-tail-'));
+  try {
+    await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'slidev-tail' }));
+    const deck = path.join(dir, 'intro.slidev.md');
+    await fs.writeFile(deck, '---\nlayout: cover\n---\n# Title\n\n---\n- ﾃｽﾄ\n');
+    const result = spawnSync('node', [cliPath, 'slidev-check', deck], {
+      cwd: dir,
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    expect(result.status, result.stdout + result.stderr).toBe(1);
+    expect(result.stderr).toContain(`${deck}:7:3:`);
+    expect(result.stderr.match(/\(no-hankaku-kana\)/g)).toHaveLength(1);
+    expect(result.stdout).not.toContain('Command:');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

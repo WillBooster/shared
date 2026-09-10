@@ -37,10 +37,11 @@ export async function lintSlidevText(deckPath: string, workspaceRoot: string): P
     const key = `${source.filepath}:${source.index}`;
     if (checked.has(key)) continue;
     checked.add(key);
-    // Keep source lines intact so diagnostics point at the original file, including imported slides.
+    // The parser's contentStart can exceed the slide when a final separator has no following blank line.
+    const contentStart = source.frontmatterStyle === 'frontmatter' ? source.contentStart : source.start;
     const text = source.raw
       .split('\n')
-      .slice(source.contentStart - source.start)
+      .slice(contentStart - source.start)
       .join('\n');
     const result = await kernel.lintText(text, {
       filePath: source.filepath,
@@ -50,7 +51,7 @@ export async function lintSlidevText(deckPath: string, workspaceRoot: string): P
     });
     for (const message of result.messages) {
       console.error(
-        `${source.filepath}:${source.contentStart + message.line}:${message.column}: ${message.message} (${message.ruleId})`
+        `${source.filepath}:${contentStart + message.line}:${message.column}: ${message.message} (${message.ruleId})`
       );
       exitCode = 1;
     }
