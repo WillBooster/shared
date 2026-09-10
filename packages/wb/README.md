@@ -172,9 +172,10 @@ lines, columns, and rule names. Slidev's parser rejects import paths outside tho
 roots before reading them. This check compares paths without resolving symlink
 targets. Slidev frontmatter,
 comments/speaker notes, and code are excluded. Parsing uses the standard Markdown
-textlint plugin; raw HTML blocks and component attributes are not checked. Vue
-expressions are not evaluated, but their source text may be checked when the
-Markdown parser treats it as prose (including `{{ "ﾃｽﾄ" }}`). Half-width kana is checked in plain paragraph and list text, but not in headings
+textlint plugin; raw HTML blocks and HTML tag attributes are not checked. Slidev-specific
+syntax is not interpreted: Vue expressions and MDC attributes may be checked
+when the Markdown parser treats their source as prose (for example,
+`{{ "ﾃｽﾄ" }}` or `[visible]{title="ﾃｽﾄ"}`). Half-width kana is checked in plain paragraph and list text, but not in headings
 or bold/italic spans. The
 other rules also inspect headings; each rule's exclusions (such as quoted text)
 still apply, so Markdown coverage is not exhaustive.
