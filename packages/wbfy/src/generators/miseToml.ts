@@ -17,8 +17,8 @@ interface MiseToml {
 export const minimumBunVersion = '1.4.0';
 
 /**
- * Ensures mise.toml manages the Node.js and (when fnox.toml exists) fnox tool versions while
- * preserving the Bun pin and unrelated mise settings.
+ * Pins Node.js and the latest Bun and (when fnox.toml exists) fnox versions while preserving
+ * unrelated mise settings.
  */
 export async function generateMiseToml(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateMiseToml', async () => {
@@ -37,15 +37,9 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
       liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
       config.dirPath
     );
-    // Bun is never added or changed: a missing pin stays missing (developers install Bun globally
-    // to run wbfy), and hasSupportedBunPin() has already rejected any pin that is not one exact
-    // supported version.
+    tools.bun = pinLatestToolVersion('bun', tools.bun, config.dirPath);
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
-      tools.fnox = pinConcreteToolVersion(
-        'fnox',
-        liftOutdatedToolVersionWithinMajor('fnox', tools.fnox, config.dirPath),
-        config.dirPath
-      );
+      tools.fnox = pinLatestToolVersion('fnox', tools.fnox, config.dirPath);
     }
     settings.tools = tools;
 
@@ -54,26 +48,22 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
   });
 }
 
-/** Whether mise.toml omits Bun or pins it to one exact version that wbfy supports. */
-export function hasSupportedBunPin(dirPath: string): boolean {
-  let bunVersion: unknown;
-  try {
-    bunVersion = parseMiseToml(path.resolve(dirPath, 'mise.toml')).tools?.bun;
-  } catch {
-    // Let generateMiseToml report the unreadable or malformed file.
-    return true;
-  }
-  return (
-    bunVersion === undefined ||
-    (typeof bunVersion === 'string' && !!semver.valid(bunVersion) && semver.gte(bunVersion, minimumBunVersion))
-  );
+/** Updates to the latest release across major versions without downgrading existing exact pins. */
+function pinLatestToolVersion(tool: string, version: unknown, cwd: string): unknown {
+  // Resolve independently of the target's trust state and tool aliases.
+  const resolvedVersion = spawnSyncAndReturnStdout('mise', ['--no-config', 'latest', tool], cwd);
+  if (!semver.valid(resolvedVersion)) return version ?? 'latest';
+  // A cached release listing can lag behind another machine that already updated the pin.
+  return typeof version === 'string' && semver.valid(version) && semver.gt(version, resolvedVersion)
+    ? version
+    : resolvedVersion;
 }
 
 /**
  * Lifts an exact tool pin below the latest resolvable version — within the SAME major — to that
  * version (Node.js resolves against the latest LTS): the repository-structure standard tracks the
  * current toolchain across repositories and Renovate does not manage mise.toml pins, so
- * patch/minor drift (e.g. node 24.16.0 vs 24.18.0, fnox 1.30.0 vs 1.31.0) never self-heals. A pin
+ * patch/minor drift (e.g. node 24.16.0 vs 24.18.0) never self-heals. A pin
  * on an older major is a deliberate compatibility choice and is kept, as are non-exact and
  * non-string forms. When mise cannot resolve the selector (e.g. offline), the pin is kept.
  */

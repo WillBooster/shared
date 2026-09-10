@@ -1,8 +1,8 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import { afterEach, expect, test } from 'bun:test';
+import semver from 'semver';
 
 import { generateMiseToml } from '../../src/generators/miseToml.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
@@ -16,7 +16,8 @@ afterEach(() => {
 });
 
 async function generateFrom(files: Record<string, string>): Promise<string> {
-  const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-mise-'));
+  fs.mkdirSync('.tmp', { recursive: true });
+  const dirPath = fs.mkdtempSync(path.resolve('.tmp', 'wbfy-mise-'));
   try {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
     for (const [fileName, content] of Object.entries(files)) {
@@ -31,10 +32,36 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
   }
 }
 
-test('pins the concrete version behind an lts/* mise selector without adding a Bun pin', async () => {
+test('pins the concrete version behind an lts/* mise selector and adds a concrete Bun pin', async () => {
   const content = await generateFrom({ 'mise.toml': '[tools]\nnode = "lts/*"\n' });
 
   expect(content).not.toContain('lts/*');
   expect(content).toMatch(/node = "\d+\.\d+\.\d+"/u);
-  expect(content).not.toContain('bun');
+  expect(content).toMatch(/bun = "\d+\.\d+\.\d+"/u);
 });
+
+test('updates Bun and fnox without downgrading newer pins or changing unrelated settings', async () => {
+  // Require successful live lookups: accepting original pins would let a broken updater pass.
+  const latestBun = Bun.spawnSync(['mise', '--no-config', 'latest', 'bun']).stdout.toString().trim();
+  const latestFnox = Bun.spawnSync(['mise', '--no-config', 'latest', 'fnox']).stdout.toString().trim();
+  const content = await generateFrom({
+    'mise.toml':
+      '[tools]\nnode = "22.0.0"\nbun = "0.1.0"\nfnox = "0.1.0"\npython = "3.12.0"\n[settings]\nexperimental = true\n',
+    'fnox.toml': '',
+  });
+
+  expect(Bun.TOML.parse(content)).toEqual({
+    tools: { node: '22.0.0', bun: latestBun, fnox: latestFnox, python: '3.12.0' },
+    settings: { experimental: true },
+  });
+
+  const newerBun = semver.inc(latestBun, 'patch');
+  const newerFnox = semver.inc(latestFnox, 'patch');
+  const newerContent = await generateFrom({
+    'mise.toml': `[tools]\nnode = "22.0.0"\nbun = "${newerBun}"\nfnox = "${newerFnox}"\n`,
+    'fnox.toml': '',
+  });
+  expect(Bun.TOML.parse(newerContent)).toEqual({
+    tools: { node: '22.0.0', bun: newerBun, fnox: newerFnox },
+  });
+}, 60_000);
