@@ -27,6 +27,7 @@ import { retryCommand } from './commands/retry.js';
 import { runCommand } from './commands/run.js';
 import { setupCommand } from './commands/setup.js';
 import { setupPrivatePackagesCommand } from './commands/setupPrivatePackages.js';
+import { slidevCheckCommand } from './commands/slidevCheck.js';
 import { startCommand } from './commands/start.js';
 import { testCommand } from './commands/test.js';
 import { testOnCiCommand } from './commands/testOnCi.js';
@@ -85,6 +86,7 @@ await yargs(hideBin(process.argv))
   .command(runCommand)
   .command(setupCommand)
   .command(setupPrivatePackagesCommand)
+  .command(slidevCheckCommand)
   .command(startCommand)
   .command(testCommand)
   .command(testOnCiCommand)

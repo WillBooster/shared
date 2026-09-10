@@ -1,8 +1,7 @@
 import path from 'node:path';
 
-import { globIgnore, spawnAsync } from '@willbooster/shared-lib-node/src';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
-import fg from 'fast-glob';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
@@ -13,6 +12,7 @@ import { normalizeBunLockfile } from '../utils/bunLockfile.js';
 import { startVerificationOutput } from '../utils/verificationOutput.js';
 
 import { buildLintCommand, lint, type LintCommandArgv } from './lint.js';
+import { checkSlidevDecks, findSlidevDecks } from './slidevCheck.js';
 import { test, type TestCommandArgv, withDefaultTestCascadeEnv } from './test.js';
 import { buildTypeCheckCommands, typeCheck, type TypeCheckCommandArgv } from './typecheck.js';
 
@@ -74,7 +74,12 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
     try {
       await verifyCode(projects.self, argv, progress);
       if (argv.full) {
-        await checkSlidevDecks(projects.self, argv, progress);
+        const deckPaths = findSlidevDecks(projects.self);
+        if (deckPaths.length > 0) {
+          await runStep(progress, { detail: deckPaths.join(' '), name: 'slidev-check' }, () =>
+            runInProcessCommand('slidev-check', () => checkSlidevDecks(projects.self, deckPaths, argv))
+          );
+        }
         await runStep(progress, { name: 'test' }, () => runProjectTest(projects.self, argv));
       }
       reporter?.succeed();
@@ -138,38 +143,6 @@ async function verifyCode(
   await runStep(progress, { detail: stepDetails.typecheck, name: 'typecheck' }, () =>
     runInProcessCommand('typecheck', () => typeCheck({ ...argv, _: ['typecheck'] } as unknown as TypeCheckCommandArgv))
   );
-}
-
-/**
- * Audits every Slidev deck in the repository with slidev-check.
- *
- * A deck whose content overflows its slide still type-checks, lints, and tests clean, so rendering
- * the decks is the only signal that catches it. wbfy's deck detection is recursive, so a monorepo
- * whose deck lives in a workspace gets the checker at its root too; running every deck from this
- * project's directory therefore always resolves the bin, and Slidev takes the deck's own directory
- * as its user root regardless of the working directory.
- */
-async function checkSlidevDecks(
-  project: Project,
-  argv: VerifyCodeCommandArgv,
-  progress: VerificationProgress
-): Promise<void> {
-  // The very glob wbfy's doesContainSlidevMd runs, so the decks audited here are exactly the ones
-  // it installed the checker for: a deck under an ignored directory (a fixture deck, a built copy)
-  // gets no checker and must not be audited either.
-  const deckPaths = fg
-    .globSync('**/*.slidev.md', { dot: true, cwd: project.dirPath, ignore: globIgnore })
-    .toSorted((a, b) => a.localeCompare(b));
-  if (deckPaths.length === 0) return;
-
-  await runStep(progress, { detail: deckPaths.join(' '), name: 'slidev-check' }, async () => {
-    for (const deckPath of deckPaths) {
-      // Single quotes (with embedded quotes escaped) keep a deck name containing shell syntax from
-      // being expanded by the shell runPackageCommand spawns.
-      const quotedDeckPath = `'${deckPath.replaceAll("'", String.raw`'\''`)}'`;
-      await runPackageCommand(`${project.packageManagerCommand} slidev-check ${quotedDeckPath}`, project, argv);
-    }
-  });
 }
 
 async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
