@@ -243,6 +243,8 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
     const node = nodes[nodeIndex];
     if (!isBadgeBlockNode(node)) break;
     badgeBlockNodes.push(node);
+    // Without a title, merging leading blocks could change which node is recognized as the title on the next run.
+    if (titleIndex === -1) break;
   }
   const existing = badgeBlockNodes.flatMap((node) => readBadges(node, content));
   const bodyNode = nodes[titleIndex + 1 + badgeBlockNodes.length];

@@ -223,6 +223,22 @@ test.each([
   });
 });
 
+test('keeps the applied version current with separated badge blocks above the title', async () => {
+  await withTempDir(async (dirPath) => {
+    const custom = '[![custom](https://example.test/b.svg)](https://example.test)';
+    const body = `# Project\n\nDescription.\n`;
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `${custom}\n\n${custom}\n\n${body}`);
+
+    const first = await runGenerateReadme(dirPath, '1.2.3');
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(first);
+    const updated = await runGenerateReadme(dirPath, '2.0.0');
+    expect(updated).toBe(first.replace(badgeOf('1.2.3'), badgeOf('2.0.0')));
+    expect(updated.match(/\[!\[wbfy\]/gu)).toHaveLength(1);
+    expect(updated.endsWith(body)).toBe(true);
+    expect(await readAppliedWbfyVersionLabel(dirPath)).toBe('2.0.0');
+  });
+});
+
 test('stays idempotent with a Markdown-significant workflow filename', async () => {
   await withTempDir(async (dirPath) => {
     // An unencoded `(` would end the Markdown destination early, so wbfy could not read its own
