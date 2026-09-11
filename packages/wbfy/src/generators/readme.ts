@@ -65,7 +65,10 @@ export async function readAppliedWbfyVersionLabel(dirPath: string): Promise<stri
   return undefined;
 }
 
-export async function generateReadme(config: PackageConfig): Promise<void> {
+export async function generateReadme(
+  config: PackageConfig,
+  allPackageConfigs: PackageConfig[] = [config]
+): Promise<void> {
   return logger.functionIgnoringException('generateReadme', async () => {
     const filePath = path.resolve(config.dirPath, 'README.md');
     // The wbfy badge marks a repository as wbfied, so a repository without a README still gets one.
@@ -79,7 +82,7 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
     // then the workflow badges report whether the code is currently healthy, then how it is
     // released, and last the wbfy build that configured it.
     const badges: string[] = [];
-    const npmPackages = await getPublishedNpmPackages(config);
+    const npmPackages = await getPublishedNpmPackages(config, allPackageConfigs);
     for (const npmPackage of npmPackages) {
       badges.push(buildNpmBadge(npmPackage.name));
       if (npmPackage.hasLicense && config.repository) {
@@ -108,22 +111,38 @@ interface PublishedNpmPackage {
   hasLicense: boolean;
 }
 
-async function getPublishedNpmPackages(config: PackageConfig): Promise<PublishedNpmPackage[]> {
-  if (!config.release.npm) return [];
+async function getPublishedNpmPackages(
+  config: PackageConfig,
+  allPackageConfigs: PackageConfig[]
+): Promise<PublishedNpmPackage[]> {
   const packageJsons = [
-    config.packageJson,
+    { packageJson: config.packageJson, releaseNpm: config.release.npm, isRoot: true },
     ...getWorkspacePackageJsonPaths(config).map((packageJsonPath) => {
+      const packageDirPath = path.resolve(config.dirPath, path.posix.dirname(packageJsonPath));
+      const packageConfig = allPackageConfigs.find((candidate) => candidate.dirPath === packageDirPath);
       try {
-        return JSON.parse(fs.readFileSync(path.resolve(config.dirPath, packageJsonPath), 'utf8')) as NonNullable<
-          PackageConfig['packageJson']
-        >;
+        const packageJson = JSON.parse(
+          fs.readFileSync(path.resolve(config.dirPath, packageJsonPath), 'utf8')
+        ) as NonNullable<PackageConfig['packageJson']>;
+        return {
+          packageJson,
+          releaseNpm:
+            packageConfig?.release.npm ||
+            ((!packageConfig || !hasOwnReleaseConfiguration(packageDirPath, packageJson)) && config.release.npm),
+          isRoot: false,
+        };
       } catch {
         return;
       }
     }),
-  ];
+  ].filter(
+    (entry): entry is { packageJson: PackageConfig['packageJson']; releaseNpm: boolean; isRoot: boolean } =>
+      entry !== undefined
+  );
   const packages = await Promise.all(
-    packageJsons.map((packageJson, index) => getPublishedNpmPackageName(config, packageJson, index === 0))
+    packageJsons.map(({ packageJson, releaseNpm, isRoot }) =>
+      getPublishedNpmPackageName(config, packageJson, isRoot, releaseNpm)
+    )
   );
   return packages
     .filter((packageJson): packageJson is NonNullable<PackageConfig['packageJson']> => packageJson !== undefined)
@@ -133,12 +152,26 @@ async function getPublishedNpmPackages(config: PackageConfig): Promise<Published
     }));
 }
 
+function hasOwnReleaseConfiguration(dirPath: string, packageJson: NonNullable<PackageConfig['packageJson']>): boolean {
+  if ('release' in packageJson) return true;
+  return [
+    '.releaserc',
+    '.releaserc.json',
+    '.releaserc.yaml',
+    '.releaserc.yml',
+    '.releaserc.js',
+    'release.config.js',
+  ].some((fileName) => fs.existsSync(path.resolve(dirPath, fileName)));
+}
+
 async function getPublishedNpmPackageName(
   config: PackageConfig,
   packageJson: PackageConfig['packageJson'],
-  isRoot: boolean
+  isRoot: boolean,
+  releaseNpm: boolean
 ): Promise<PackageConfig['packageJson'] | undefined> {
   if (!packageJson?.name) return undefined;
+  if (!releaseNpm) return undefined;
   // `private` is read the way generatePackageJson writes it: it removes the flag from a MONOREPO
   // root that declares publishing intent, so reading the flag alone would deny the badge to the
   // very manifest the same run makes publishable. Anywhere else the flag stands as written.

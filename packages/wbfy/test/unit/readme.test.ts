@@ -36,11 +36,13 @@ afterEach(() => {
 async function runGenerateReadme(
   dirPath: string,
   versionLabel: string | undefined,
-  overrides: Partial<Parameters<typeof createConfig>[0]> = {}
+  overrides: Partial<Parameters<typeof createConfig>[0]> = {},
+  allPackageConfigs?: Parameters<typeof generateReadme>[1]
 ): Promise<string> {
   spyOn(version, 'getWbfyVersionLabel').mockReturnValue(versionLabel);
   fsUtil.setRootDirPath(dirPath);
-  await generateReadme(createConfig({ dirPath, isRoot: true, packageJson: { name: 'example' }, ...overrides }));
+  const config = createConfig({ dirPath, isRoot: true, packageJson: { name: 'example' }, ...overrides });
+  await generateReadme(config, allPackageConfigs ?? [config]);
   await promisePool.promiseAll();
   return fs.readFileSync(path.resolve(dirPath, 'README.md'), 'utf8');
 }
@@ -614,6 +616,46 @@ ${badgeOf('1.2.3')}
 
 Body text.
 `);
+  });
+});
+
+test('badges a workspace package with its own npm release configuration', async () => {
+  await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@example/one']);
+    const packageDirPath = path.resolve(dirPath, 'packages/one');
+    fs.mkdirSync(packageDirPath, { recursive: true });
+    fs.writeFileSync(path.resolve(packageDirPath, 'package.json'), JSON.stringify({ name: '@example/one' }));
+    fs.writeFileSync(
+      path.resolve(packageDirPath, '.releaserc.json'),
+      JSON.stringify({ plugins: ['@semantic-release/npm'] })
+    );
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
+
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      packageJson: { name: 'example', private: true, workspaces: ['packages/*'] },
+      doesContainSubPackageJsons: true,
+      release: { branches: [], github: true, npm: false, npmPublishesRoot: false },
+    });
+    const workspaceConfig = createConfig({
+      dirPath: packageDirPath,
+      packageJson: { name: '@example/one' },
+      release: { branches: [], github: false, npm: true, npmPublishesRoot: false },
+    });
+
+    expect(
+      await runGenerateReadme(
+        dirPath,
+        '1.2.3',
+        {
+          packageJson: rootConfig.packageJson,
+          doesContainSubPackageJsons: true,
+          release: rootConfig.release,
+        },
+        [rootConfig, workspaceConfig]
+      )
+    ).toContain('[![npm version](https://img.shields.io/npm/v/@example/one.svg)]');
   });
 });
 
