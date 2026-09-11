@@ -27,7 +27,6 @@ export async function setupGitHubSettings(config: PackageConfig): Promise<void> 
             allow_update_branch: true,
             delete_branch_on_merge: true,
             has_wiki: false,
-            has_discussions: false,
             has_projects: false,
             squash_merge_commit_title: 'PR_TITLE',
             squash_merge_commit_message: 'BLANK',
@@ -46,5 +45,31 @@ export async function setupGitHubSettings(config: PackageConfig): Promise<void> 
       // Local wbfy runs often have push permission without admin permission.
       console.warn('Skip setupGitHubSettings due to:', (error as Error | undefined)?.stack ?? error);
     }
+
+    try {
+      await withRetry(() => disableDiscussions(octokit, owner, repo), {
+        shouldRetry: (error) => !isGitHubPermissionOrVisibilityError(error),
+      });
+    } catch (error) {
+      if (!isGitHubPermissionOrVisibilityError(error)) throw error;
+      console.warn('Skip disabling GitHub Discussions due to:', (error as Error | undefined)?.stack ?? error);
+    }
+  });
+}
+
+async function disableDiscussions(octokit: ReturnType<typeof getOctokit>, owner: string, repo: string): Promise<void> {
+  const repositoryResponse = await octokit.request('POST /graphql', {
+    query: `query($owner: String!, $repo: String!) {
+      repository(owner: $owner, name: $repo) { id }
+    }`,
+    variables: { owner, repo },
+  });
+  const repositoryId = (repositoryResponse.data as { data?: { repository?: { id?: string } } }).data?.repository?.id;
+  if (!repositoryId) return;
+  await octokit.request('POST /graphql', {
+    query: `mutation($input: UpdateRepositoryInput!) {
+      updateRepository(input: $input) { repository { id } }
+    }`,
+    variables: { input: { repositoryId, hasDiscussionsEnabled: false } },
   });
 }
