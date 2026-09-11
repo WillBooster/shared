@@ -26,6 +26,9 @@ export async function setupGitHubSettings(config: PackageConfig): Promise<void> 
             allow_rebase_merge: false,
             allow_update_branch: true,
             delete_branch_on_merge: true,
+            has_wiki: false,
+            has_discussions: false,
+            has_projects: false,
             squash_merge_commit_title: 'PR_TITLE',
             squash_merge_commit_message: 'BLANK',
             headers: {
