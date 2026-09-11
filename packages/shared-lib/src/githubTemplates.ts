@@ -40,6 +40,15 @@ export const PULL_REQUEST_SECTIONS: readonly TemplateSection[] = [
 ];
 
 /**
+ * How a tool that writes or rewrites a PR body derives it from the repository's PR template, as
+ * markdown bullets for an agent's instructions. Stated once here and rendered by every writer (the
+ * generated agent instructions, the PR-drafting skills) so the writers cannot drift apart; the
+ * template-less branch lets the same text serve repositories outside the organization.
+ */
+const PULL_REQUEST_TEMPLATE_RULES = `- Base the PR body on \`.github/pull_request_template.md\` when creating or updating a PR, even when a skill or workflow supplies its own skeleton: keep the template's headings in order, fill each section with what its placeholder comment asks for at a length fitting the change (a sentence for a small change, numbered subsections for a large one), and delete the placeholder comments and an empty Notes section. Without a template, use no fixed headings: state the scope, the motivation, and the verification concisely.
+- Start the body with \`Close #<n>\` only when the PR resolves an existing issue.`;
+
+/**
  * How a tool that writes or rewrites a PR body fills the Requirements section of
  * `PULL_REQUEST_SECTIONS`, as markdown bullets for an agent's instructions. Skills that draft PR
  * bodies render this text instead of restating it, so the writers and the reviewers that read the
@@ -49,6 +58,19 @@ export const PULL_REQUEST_REQUIREMENTS_RULES = `- Requirements section: one line
 - Record rule: an existing Requirements section is a record, not a description of the diff. Keep its \`required\` lines as they are, rewriting them only when the requester's instructions changed (then from the updated instructions, dropping a line only when the requester removed it; with no instructions available, keep them unchanged); add a \`chosen\` line for a new decision, and replace or remove one when the decision it records changed. A section that merely describes the implementation, or holds only the template's placeholder or a \`required: not recorded\` line, is not a record: write it afresh by the rule above.
 - Place the section where the template puts it; when the template has no such heading, right after the issue-closing line, or at the top of the body when there is none.
 - Never drop or weaken a \`required\` line to fit what was implemented: when one cannot hold in the diff, keep it and say so in Notes.`;
+
+/** The complete rules for writing a PR body: the template rules followed by the Requirements rules. */
+export const PULL_REQUEST_BODY_RULES = `${PULL_REQUEST_TEMPLATE_RULES}\n${PULL_REQUEST_REQUIREMENTS_RULES}`;
+
+/**
+ * How a tool that creates an issue derives it from the repository's issue templates, as markdown
+ * bullets for an agent's instructions; shared by the same writers as `PULL_REQUEST_BODY_RULES`.
+ * Guidance the templates state in their own placeholder comments (which sections to keep, deleting
+ * the comments) is deliberately not repeated here, since the writer reads the template anyway.
+ */
+export const ISSUE_TEMPLATE_RULES = `- Follow the closest template under \`.github/ISSUE_TEMPLATE/\`: \`bug.md\` for wrong behavior, \`change.md\` for anything to build or alter; a question or note fitting neither, or a repository without templates, needs no template.
+- Title: a Conventional Commits prefix for the type that fits the change (\`feat:\`, \`fix:\`, \`refactor:\`, \`docs:\`, \`chore:\`, ...); when it differs from the template's \`title\` prefix, replace the template's type label (\`t: ...\`) with the one matching the type.
+- The YAML front matter between the \`---\` lines is metadata, not body text: pass its \`labels\` via \`--label\` and submit only the content below the closing \`---\` as the body.`;
 
 /** Sections of a bug report, in the order they appear in the issue template. */
 export const BUG_ISSUE_SECTIONS: readonly TemplateSection[] = [

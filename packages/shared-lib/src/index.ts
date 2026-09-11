@@ -3,6 +3,8 @@ export { ensureTruthy } from './assert.js';
 export {
   BUG_ISSUE_SECTIONS,
   CHANGE_ISSUE_SECTIONS,
+  ISSUE_TEMPLATE_RULES,
+  PULL_REQUEST_BODY_RULES,
   PULL_REQUEST_REQUIREMENTS_RULES,
   PULL_REQUEST_SECTIONS,
   renderSectionChecklist,
@@ -15,6 +17,7 @@ export { parseCommandLineArgs } from './parseCommandLineArgs.js';
 export { shuffle } from './shuffle.js';
 export { sleep } from './sleep.js';
 export { getConnectionLevelSqlitePragmas, getPersistentSqlitePragmas } from './sqlite.js';
+export { TEST_WRITING_RULES } from './testingRules.js';
 export { zenkakuAlphanumericalsToHankaku } from './zenkaku.js';
 
 export type { AppEnv } from './appEnv.js';

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { PULL_REQUEST_REQUIREMENTS_RULES } from '@willbooster/shared-lib/src';
+import { ISSUE_TEMPLATE_RULES, PULL_REQUEST_BODY_RULES, TEST_WRITING_RULES } from '@willbooster/shared-lib/src';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -115,14 +115,14 @@ function generateAgentInstruction(
   // run writes the templates for WillBooster / WillBoosterLab repositories before this generator
   // runs, and hand-added templates elsewhere belong to AGENTS_EXTRA.md.
   const prTemplateInstruction = rootConfig.isWillBoosterRepo
-    ? `\n  - Base the PR body on \`.github/pull_request_template.md\` when creating or updating a PR, even when a skill or workflow supplies its own skeleton: keep the template's headings in order, fill each section with what its placeholder comment asks for at a length fitting the change (a sentence for a small change, numbered subsections for a large one), delete the placeholder comments and an empty Notes section, and keep \`Close #<n>\` only when the PR resolves an existing issue.\n  - Fill the Requirements section by these rules:\n${PULL_REQUEST_REQUIREMENTS_RULES.replaceAll(/^/gm, '    ')}`
+    ? `\n${PULL_REQUEST_BODY_RULES.replaceAll(/^/gm, '  ')}`
     : '';
   // Gated like prTemplateInstruction: the section it names exists only where the template is generated.
   const requirementsExemption = rootConfig.isWillBoosterRepo
     ? ", and so is the PR body's Requirements section, which records what was asked for rather than what the code contains"
     : '';
   const issueTemplateInstruction = rootConfig.isWillBoosterRepo
-    ? '\n- When creating an issue, follow the closest template under `.github/ISSUE_TEMPLATE/`: `bug.md` for wrong behavior, `change.md` for anything to build or alter; a question or note fitting neither needs no template. The YAML front matter between the `---` lines is metadata, not body text: prefix the title as its `title` says, pass its `labels` via `--label`, and submit only the content below the closing `---` as the body. Always keep the first three sections of `change.md` and add the rest as the change grows; keep Problem and Proposal of `bug.md` and drop Evidence or Impact when they add nothing. Delete the placeholder comments.'
+    ? `\n- When creating an issue:\n${ISSUE_TEMPLATE_RULES.replaceAll(/^/gm, '  ')}`
     : '';
   const projectName = rootConfig.packageJson?.name || path.basename(path.resolve(rootConfig.dirPath));
   const baseContent = `
@@ -135,12 +135,7 @@ function generateAgentInstruction(
 
 - If on \`main\`, create a new branch; otherwise work on the current branch.
 - Run \`git\` commands one at a time to avoid \`index.lock\` conflicts.
-- Write a test only when explicitly requested, or when a behavior is likely to regress and no existing automatic check (type checking, linting, an existing test or CI check) would catch the breakage. Never add a test that merely restates a mapping from conditions to constant outputs (it fails only on intentional edits) or that only confirms an external fact (a library's behavior, whether a version fixes an issue); verify those once manually.
-- When writing tests, follow these rules:
-  - Test externally observable behavior (e.g., emitted files, CLI output, rendered results) at the system boundary, not implementation details: do not mirror production logic, assert that a branch is taken, or feed hand-assembled internal objects to internal functions.
-  - Prefer actual API calls over mocks, unless actual calls are impractical, have unintended side effects, or mocks are explicitly requested.
-  - Ensure tests are idempotent and independent (e.g., reset persistent data) so they can run repeatedly or in parallel.
-  - Avoid fixed waits in E2E tests; wait for conditions instead.
+${TEST_WRITING_RULES}
 - When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
 - After making changes, run \`${packageManager} run verify\` (type checking and linting; up to 10 minutes), or \`${packageManager} run verify-full\` (all tests; up to 1 hour) if you changed runtime behavior or tests. Fix errors and re-run until it passes.
   - Wait for it to finish without restarting it: prefer completion notifications, otherwise the longest permitted wait; no output does not mean it has stopped. If the displayed excerpt is insufficient, read the indicated log file before rerunning. If the environment kills long-running commands, run it detached with a saved log and exit status.
