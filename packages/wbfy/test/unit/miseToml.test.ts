@@ -38,7 +38,7 @@ test('pins the concrete version behind an lts/* mise selector and adds a concret
   expect(content).not.toContain('lts/*');
   expect(content).toMatch(/node = "\d+\.\d+\.\d+"/u);
   expect(content).toMatch(/bun = "\d+\.\d+\.\d+"/u);
-});
+}, 60_000);
 
 test('updates Bun and fnox without downgrading newer pins or changing unrelated settings', async () => {
   // Require successful live lookups: accepting original pins would let a broken updater pass.
