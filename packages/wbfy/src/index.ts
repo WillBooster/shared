@@ -332,7 +332,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       !!rootConfig.repository?.startsWith('github:') &&
       rootConfig.isRoot;
     await Promise.all([
-      abbreviationPromise.then(() => generateReadme(rootConfig, allPackageConfigs)),
+      abbreviationPromise.then(() => generateReadme(rootConfig)),
       generateDockerignore(rootConfig),
       generateEditorconfig(rootConfig),
       generateGeminiConfig(rootConfig, allPackageConfigs),

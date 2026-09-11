@@ -36,13 +36,12 @@ afterEach(() => {
 async function runGenerateReadme(
   dirPath: string,
   versionLabel: string | undefined,
-  overrides: Partial<Parameters<typeof createConfig>[0]> = {},
-  allPackageConfigs?: Parameters<typeof generateReadme>[1]
+  overrides: Partial<Parameters<typeof createConfig>[0]> = {}
 ): Promise<string> {
   spyOn(version, 'getWbfyVersionLabel').mockReturnValue(versionLabel);
   fsUtil.setRootDirPath(dirPath);
   const config = createConfig({ dirPath, isRoot: true, packageJson: { name: 'example' }, ...overrides });
-  await generateReadme(config, allPackageConfigs ?? [config]);
+  await generateReadme(config);
   await promisePool.promiseAll();
   return fs.readFileSync(path.resolve(dirPath, 'README.md'), 'utf8');
 }
@@ -552,7 +551,7 @@ test('replaces an npm badge written in another form instead of keeping both', as
   });
 });
 
-test('consolidates separated managed badge blocks and manages the license badge', async () => {
+test.each([false, true])('consolidates separated badge blocks (monorepo: %s)', async (isMonorepo) => {
   await withTempDir(async (dirPath) => {
     mockNpmRegistry(['@willbooster/wbfy']);
     fs.writeFileSync(
@@ -573,89 +572,14 @@ Body text.
       await runGenerateReadme(dirPath, '1.2.3', {
         ...npmPublishingOverrides,
         packageJson: { ...npmPublishingOverrides.packageJson, license: 'Apache-2.0' },
+        doesContainSubPackageJsons: isMonorepo,
       })
     ).toBe(`# example
 
-${npmBadge}
-${licenseBadge}
-${badgeOf('1.2.3')}
+${isMonorepo ? '' : `${npmBadge}\n${licenseBadge}\n`}${badgeOf('1.2.3')}
 
 Body text.
 `);
-  });
-});
-
-test('adds badges for each published workspace package', async () => {
-  await withTempDir(async (dirPath) => {
-    mockNpmRegistry(['@example/one', '@example/two']);
-    fs.mkdirSync(path.resolve(dirPath, 'packages/one'), { recursive: true });
-    fs.mkdirSync(path.resolve(dirPath, 'packages/two'), { recursive: true });
-    fs.writeFileSync(
-      path.resolve(dirPath, 'packages/one/package.json'),
-      JSON.stringify({ name: '@example/one', license: 'Apache-2.0' })
-    );
-    fs.writeFileSync(
-      path.resolve(dirPath, 'packages/two/package.json'),
-      JSON.stringify({ name: '@example/two', license: 'Apache-2.0' })
-    );
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
-
-    const content = await runGenerateReadme(dirPath, '1.2.3', {
-      packageJson: { name: 'example', private: true, workspaces: ['packages/*'] },
-      doesContainSubPackageJsons: true,
-      release: { branches: [], github: true, npm: true, npmPublishesRoot: false },
-    });
-
-    expect(content).toBe(`# example
-
-[![npm version](https://img.shields.io/npm/v/@example/one.svg)](https://www.npmjs.com/package/@example/one)
-[![license](https://img.shields.io/npm/l/@example/one.svg)](https://github.com/WillBooster/example/blob/main/LICENSE)
-[![npm version](https://img.shields.io/npm/v/@example/two.svg)](https://www.npmjs.com/package/@example/two)
-[![license](https://img.shields.io/npm/l/@example/two.svg)](https://github.com/WillBooster/example/blob/main/LICENSE)
-${badgeOf('1.2.3')}
-
-Body text.
-`);
-  });
-});
-
-test('badges a workspace package with its own npm release configuration', async () => {
-  await withTempDir(async (dirPath) => {
-    mockNpmRegistry(['@example/one']);
-    const packageDirPath = path.resolve(dirPath, 'packages/one');
-    fs.mkdirSync(packageDirPath, { recursive: true });
-    fs.writeFileSync(path.resolve(packageDirPath, 'package.json'), JSON.stringify({ name: '@example/one' }));
-    fs.writeFileSync(
-      path.resolve(packageDirPath, '.releaserc.json'),
-      JSON.stringify({ plugins: ['@semantic-release/npm'] })
-    );
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
-
-    const rootConfig = createConfig({
-      dirPath,
-      isRoot: true,
-      packageJson: { name: 'example', private: true, workspaces: ['packages/*'] },
-      doesContainSubPackageJsons: true,
-      release: { branches: [], github: true, npm: false, npmPublishesRoot: false },
-    });
-    const workspaceConfig = createConfig({
-      dirPath: packageDirPath,
-      packageJson: { name: '@example/one' },
-      release: { branches: [], github: false, npm: true, npmPublishesRoot: false },
-    });
-
-    expect(
-      await runGenerateReadme(
-        dirPath,
-        '1.2.3',
-        {
-          packageJson: rootConfig.packageJson,
-          doesContainSubPackageJsons: true,
-          release: rootConfig.release,
-        },
-        [rootConfig, workspaceConfig]
-      )
-    ).toContain('[![npm version](https://img.shields.io/npm/v/@example/one.svg)]');
   });
 });
 
@@ -678,22 +602,6 @@ test('keeps the npm badge in place when the registry cannot be reached', async (
     expect(await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides)).toBe(
       `# example\n\n${npmBadge}\n${badgeOf('1.2.3')}\n\nBody text.\n`
     );
-  });
-});
-
-test('badges a private monorepo root that the manifest generator makes publishable', async () => {
-  await withTempDir(async (dirPath) => {
-    mockNpmRegistry(['@willbooster/wbfy']);
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
-
-    // generatePackageJson deletes `private` from such a root in the same run.
-    expect(
-      await runGenerateReadme(dirPath, '1.2.3', {
-        ...npmPublishingOverrides,
-        packageJson: { ...npmPublishingOverrides.packageJson, private: true },
-        doesContainSubPackageJsons: true,
-      })
-    ).toContain(npmBadge);
   });
 });
 
@@ -720,19 +628,5 @@ test('omits the npm badge for a manifest that is not published', async () => {
         packageJson: { ...npmPublishingOverrides.packageJson, private: true, publishConfig: { access: 'public' } },
       })
     ).not.toContain('npmjs.com');
-  });
-});
-
-test('omits the license badge for an empty license field', async () => {
-  await withTempDir(async (dirPath) => {
-    mockNpmRegistry(['@willbooster/wbfy']);
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
-
-    const content = await runGenerateReadme(dirPath, '1.2.3', {
-      ...npmPublishingOverrides,
-      packageJson: { ...npmPublishingOverrides.packageJson, license: '' },
-    });
-    expect(content).toContain(npmBadge);
-    expect(content).not.toContain('npm/l/');
   });
 });

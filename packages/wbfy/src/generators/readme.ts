@@ -5,13 +5,12 @@ import type { Image, Link, Paragraph, PhrasingContent, RootContent } from 'mdast
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { logger } from '../logger.js';
-import { semanticReleaseConfigSearchPlaces, type PackageConfig } from '../packageConfig.js';
+import type { PackageConfig } from '../packageConfig.js';
 import { jobsAllCallReusableWorkflow } from './workflow.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { getOctokit } from '../utils/githubUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { getWbfyVersionLabel } from '../utils/version.js';
-import { getWorkspacePackageJsonPaths } from '../utils/workspaceUtil.js';
 
 const semanticReleaseBadge =
   '[![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg)](https://github.com/semantic-release/semantic-release)';
@@ -26,10 +25,6 @@ const npmLicenseBadgePattern = /^\[!\[[^\]]*\]\(https:\/\/img\.shields\.io\/npm\
 const managedBadgePatterns = [
   /^\[!\[wbfy\]\(https:\/\/img\.shields\.io\/badge\/wbfy-[^)\s]+-1e90ff\.svg\)\]\(https:\/\/github\.com\/WillBooster\/shared\/tree\/main\/packages\/wbfy\)$/u,
   /^\[!\[[^\]]*\]\((https:\/\/github\.com\/[^)\s]+\/actions\/workflows\/[^)\s]+)\/badge\.svg\)\]\(\1\)$/u,
-  // Any badge linking to an npm package page, whatever image it shows and however the link is
-  // spelled: the block is wbfy's, it writes one npm badge per published root/workspace package, so
-  // a badge for a renamed or unpublished package is a stale copy of one of those — not another
-  // badge to keep beside them.
   /^\[!\[[^\]]*\]\([^)\s]+\)\]\(https?:\/\/(?:www\.)?npmjs\.com\/package\/[^)\s]*\)$/u,
   npmLicenseBadgePattern,
 ];
@@ -66,10 +61,7 @@ export async function readAppliedWbfyVersionLabel(dirPath: string): Promise<stri
   return undefined;
 }
 
-export async function generateReadme(
-  config: PackageConfig,
-  allPackageConfigs: PackageConfig[] = [config]
-): Promise<void> {
+export async function generateReadme(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateReadme', async () => {
     const filePath = path.resolve(config.dirPath, 'README.md');
     // The wbfy badge marks a repository as wbfied, so a repository without a README still gets one.
@@ -83,11 +75,12 @@ export async function generateReadme(
     // then the workflow badges report whether the code is currently healthy, then how it is
     // released, and last the wbfy build that configured it.
     const badges: string[] = [];
-    const npmPackages = await getPublishedNpmPackages(config, allPackageConfigs);
-    for (const npmPackage of npmPackages) {
-      badges.push(buildNpmBadge(npmPackage.name));
-      if (npmPackage.hasLicense && config.repository) {
-        badges.push(buildLicenseBadge(npmPackage.name, config.repository));
+    const packageName = await getPublishedNpmPackageName(config);
+    if (packageName) {
+      badges.push(buildNpmBadge(packageName));
+      const license = config.packageJson?.license;
+      if (license && license !== 'UNLICENSED' && config.repository) {
+        badges.push(buildLicenseBadge(packageName, config.repository));
       }
     }
     badges.push(...(await buildWorkflowBadges(config)));
@@ -103,79 +96,13 @@ export async function generateReadme(
   });
 }
 
-/**
- * The published npm packages represented by the repository's root and workspace manifests. A
- * manifest that does not publish, or is kept out of the registry on purpose, has no package page.
- */
-interface PublishedNpmPackage {
-  name: string;
-  hasLicense: boolean;
-}
-
-async function getPublishedNpmPackages(
-  config: PackageConfig,
-  allPackageConfigs: PackageConfig[]
-): Promise<PublishedNpmPackage[]> {
-  const packageJsons = [
-    { packageJson: config.packageJson, releaseNpm: config.release.npm, isRoot: true },
-    ...getWorkspacePackageJsonPaths(config).map((packageJsonPath) => {
-      const packageDirPath = path.resolve(config.dirPath, path.posix.dirname(packageJsonPath));
-      const packageConfig = allPackageConfigs.find((candidate) => candidate.dirPath === packageDirPath);
-      try {
-        const packageJson = JSON.parse(
-          fs.readFileSync(path.resolve(config.dirPath, packageJsonPath), 'utf8')
-        ) as NonNullable<PackageConfig['packageJson']>;
-        return {
-          packageJson,
-          releaseNpm:
-            packageConfig?.release.npm ||
-            ((!packageConfig || !hasOwnReleaseConfiguration(packageDirPath, packageJson)) && config.release.npm),
-          isRoot: false,
-        };
-      } catch {
-        return;
-      }
-    }),
-  ].filter(
-    (entry): entry is { packageJson: PackageConfig['packageJson']; releaseNpm: boolean; isRoot: boolean } =>
-      entry !== undefined
-  );
-  const packages = await Promise.all(
-    packageJsons.map(({ packageJson, releaseNpm, isRoot }) =>
-      getPublishedNpmPackageName(config, packageJson, isRoot, releaseNpm)
-    )
-  );
-  return packages
-    .filter((packageJson): packageJson is NonNullable<PackageConfig['packageJson']> => packageJson !== undefined)
-    .map((packageJson) => ({
-      name: packageJson.name!,
-      hasLicense: !!packageJson.license && packageJson.license !== 'UNLICENSED',
-    }));
-}
-
-function hasOwnReleaseConfiguration(dirPath: string, packageJson: NonNullable<PackageConfig['packageJson']>): boolean {
-  if ('release' in packageJson) return true;
-  return semanticReleaseConfigSearchPlaces.some(({ fileName }) => fs.existsSync(path.resolve(dirPath, fileName)));
-}
-
-async function getPublishedNpmPackageName(
-  config: PackageConfig,
-  packageJson: PackageConfig['packageJson'],
-  isRoot: boolean,
-  releaseNpm: boolean
-): Promise<PackageConfig['packageJson'] | undefined> {
-  if (!packageJson?.name) return undefined;
-  if (!releaseNpm) return undefined;
-  // `private` is read the way generatePackageJson writes it: it removes the flag from a MONOREPO
-  // root that declares publishing intent, so reading the flag alone would deny the badge to the
-  // very manifest the same run makes publishable. Anywhere else the flag stands as written.
-  const declaresPublishingIntent = !!packageJson.publishConfig || config.release.npmPublishesRoot;
-  if (packageJson.private && !(isRoot && config.doesContainSubPackageJsons && declaresPublishingIntent))
+async function getPublishedNpmPackageName(config: PackageConfig): Promise<string | undefined> {
+  const packageJson = config.packageJson;
+  // A monorepo has no single npm version representing the whole repository.
+  if (config.doesContainSubPackageJsons || !config.release.npm || !packageJson?.name || packageJson.private) {
     return undefined;
-  // The manifest only says the repository INTENDS to publish: a monorepo root that configures
-  // @semantic-release/npm for its workspaces is never on npm itself, and a package's first release
-  // has not happened yet. Both would render a broken badge, so the registry decides.
-  return (await isMissingFromNpmRegistry(packageJson.name)) ? undefined : packageJson;
+  }
+  return (await isMissingFromNpmRegistry(packageJson.name)) ? undefined : packageJson.name;
 }
 
 /**
@@ -207,8 +134,8 @@ function buildNpmBadge(packageName: string): string {
   return `[![npm version](https://img.shields.io/npm/v/${packageName}.svg)](${npmPackageUrlPrefix}${packageName})`;
 }
 
-function buildLicenseBadge(packageName: string, repository: string | undefined): string {
-  const githubRepository = repository?.replace(/^github:/u, '');
+function buildLicenseBadge(packageName: string, repository: string): string {
+  const githubRepository = repository.replace(/^github:/u, '');
   return `[![license](https://img.shields.io/npm/l/${packageName}.svg)](https://github.com/${githubRepository}/blob/main/LICENSE)`;
 }
 
@@ -317,14 +244,13 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
     if (!isBadgeBlockNode(node)) break;
     badgeBlockNodes.push(node);
   }
-  const existing =
-    badgeBlockNodes.length > 0 ? badgeBlockNodes.flatMap((node) => readBadges(node, content)) : undefined;
+  const existing = badgeBlockNodes.flatMap((node) => readBadges(node, content));
   const bodyNode = nodes[titleIndex + 1 + badgeBlockNodes.length];
   const body = bodyNode ? content.slice(startOffsetWithIndent(content, bodyNode)) : '';
 
   // Superseding a managed badge is just dropping the old one: a version, workflow, npm, or license
   // change leaves no stale copy, while any other badge in the managed region is kept.
-  const badges = [...managedBadges, ...(existing ?? []).filter((badge) => !isManagedBadge(badge))];
+  const badges = [...managedBadges, ...existing.filter((badge) => !isManagedBadge(badge))];
   // Content is sliced from its node's start offset, so whatever blank space followed the front
   // matter is gone; exactly one blank line is restored here. A closing delimiter that ended at EOF
   // carries no newline of its own and needs both, or `---` would fuse with the first badge and
