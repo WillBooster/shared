@@ -72,7 +72,7 @@
     "rolldown": "1.2.6",
     "sort-package-json": "4.0.0",
     "textlint-rule-no-hankaku-kana": "2.0.1",
-    "type-fest": "5.8.0",
+    "type-fest": "5.9.0",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
   },

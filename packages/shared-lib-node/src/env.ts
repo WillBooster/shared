@@ -207,7 +207,7 @@ export function readEnvironmentVariables(
 /**
  * This function reads environment variables from the repository's fnox configuration (`fnox.toml`).
  * The base `[secrets]` table carries the development values, and `[profiles.<cascade>.secrets]`
- * overlays it; an unknown profile falls back to the base secrets.
+ * overlays it; selected profiles must be declared in the configuration.
  */
 export function readFnoxEnvironmentVariables(
   cwd: string,

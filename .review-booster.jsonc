@@ -1,0 +1,5 @@
+{
+  "facts": [
+    "[risk] Automatic tests in this repository exercise the runtime tools declared in mise.toml. A missing declared tool is a setup failure, not a condition for skipping a test. The applied organization testing guidelines prohibit environment-dependent skips; untouched neighboring runIf guards do not establish a supported tool-free test environment.",
+  ],
+}
