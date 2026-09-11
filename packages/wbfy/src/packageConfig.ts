@@ -119,7 +119,7 @@ const wbfyJsonSchema = z.object({
  * are listed only to detect a hand-written config, whose format JSON.parse cannot read and whose
  * plugin list is therefore statically uninspectable.
  */
-const semanticReleaseConfigSearchPlaces: { fileName: string; jsonParseable: boolean }[] = [
+export const semanticReleaseConfigSearchPlaces: { fileName: string; jsonParseable: boolean }[] = [
   { fileName: '.releaserc', jsonParseable: true },
   { fileName: '.releaserc.json', jsonParseable: true },
   { fileName: '.releaserc.yaml', jsonParseable: false },

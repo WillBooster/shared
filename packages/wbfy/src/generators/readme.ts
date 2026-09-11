@@ -5,8 +5,8 @@ import type { Image, Link, Paragraph, PhrasingContent, RootContent } from 'mdast
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { logger } from '../logger.js';
+import { semanticReleaseConfigSearchPlaces, type PackageConfig } from '../packageConfig.js';
 import { jobsAllCallReusableWorkflow } from './workflow.js';
-import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { getOctokit } from '../utils/githubUtil.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -155,14 +155,7 @@ async function getPublishedNpmPackages(
 
 function hasOwnReleaseConfiguration(dirPath: string, packageJson: NonNullable<PackageConfig['packageJson']>): boolean {
   if ('release' in packageJson) return true;
-  return [
-    '.releaserc',
-    '.releaserc.json',
-    '.releaserc.yaml',
-    '.releaserc.yml',
-    '.releaserc.js',
-    'release.config.js',
-  ].some((fileName) => fs.existsSync(path.resolve(dirPath, fileName)));
+  return semanticReleaseConfigSearchPlaces.some(({ fileName }) => fs.existsSync(path.resolve(dirPath, fileName)));
 }
 
 async function getPublishedNpmPackageName(

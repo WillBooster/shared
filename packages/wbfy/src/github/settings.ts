@@ -48,28 +48,40 @@ export async function setupGitHubSettings(config: PackageConfig): Promise<void> 
 
     try {
       await withRetry(() => disableDiscussions(octokit, owner, repo), {
-        shouldRetry: (error) => !isGitHubPermissionOrVisibilityError(error),
+        shouldRetry: (error) => !isGitHubSettingsError(error),
       });
     } catch (error) {
-      if (!isGitHubPermissionOrVisibilityError(error)) throw error;
+      if (!isGitHubSettingsError(error)) throw error;
       console.warn('Skip disabling GitHub Discussions due to:', (error as Error | undefined)?.stack ?? error);
     }
   });
 }
 
 async function disableDiscussions(octokit: ReturnType<typeof getOctokit>, owner: string, repo: string): Promise<void> {
-  const repositoryResponse = await octokit.request('POST /graphql', {
-    query: `query($owner: String!, $repo: String!) {
+  const repositoryResponse = await octokit.graphql<{ repository?: { id?: string } }>(
+    `query($owner: String!, $repo: String!) {
       repository(owner: $owner, name: $repo) { id }
     }`,
-    variables: { owner, repo },
-  });
-  const repositoryId = (repositoryResponse.data as { data?: { repository?: { id?: string } } }).data?.repository?.id;
+    { owner, repo }
+  );
+  const repositoryId = repositoryResponse.repository?.id;
   if (!repositoryId) return;
-  await octokit.request('POST /graphql', {
-    query: `mutation($input: UpdateRepositoryInput!) {
+  await octokit.graphql(
+    `mutation($input: UpdateRepositoryInput!) {
       updateRepository(input: $input) { repository { id } }
     }`,
-    variables: { input: { repositoryId, hasDiscussionsEnabled: false } },
-  });
+    { input: { repositoryId, hasDiscussionsEnabled: false } }
+  );
+}
+
+function isGitHubSettingsError(error: unknown): boolean {
+  if (isGitHubPermissionOrVisibilityError(error)) return true;
+  if (!error || typeof error !== 'object' || !('errors' in error) || !Array.isArray(error.errors)) return false;
+  return error.errors.some(
+    (graphqlError: unknown) =>
+      !!graphqlError &&
+      typeof graphqlError === 'object' &&
+      'type' in graphqlError &&
+      ['FORBIDDEN', 'INSUFFICIENT_SCOPES', 'NOT_FOUND'].includes(graphqlError.type as string)
+  );
 }
