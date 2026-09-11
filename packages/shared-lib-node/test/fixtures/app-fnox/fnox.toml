@@ -9,6 +9,8 @@ SAME_IN_PROFILE = { default = "same-value" }
 # Bare `$VAR` passes through fnox, so this exercises the reader's own expansion of loaded keys.
 REF = { default = "ref-$FNOX_ONLY" }
 
+[profiles.development]
+
 [profiles.test.secrets]
 ENV = { default = "fnox-test" }
 PORT = { default = "6002" }

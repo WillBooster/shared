@@ -3,3 +3,5 @@
 [secrets]
 WORKER_SECRET = { default = "$EXPORTED_SECRET" }
 CALLBACK_URL = { default = "https://$API_HOST/cb" }
+
+[profiles.development]
