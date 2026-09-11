@@ -523,6 +523,8 @@ const npmPublishingOverrides = {
 };
 const npmBadge =
   '[![npm version](https://img.shields.io/npm/v/@willbooster/wbfy.svg)](https://www.npmjs.com/package/@willbooster/wbfy)';
+const licenseBadge =
+  '[![license](https://img.shields.io/npm/l/@willbooster/wbfy.svg)](https://github.com/WillBooster/example/blob/main/LICENSE)';
 
 test('adds an npm badge above the other badges for a published package', async () => {
   await withTempDir(async (dirPath) => {
@@ -545,6 +547,39 @@ test('replaces an npm badge written in another form instead of keeping both', as
 
     const content = await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides);
     expect(content).toBe(`# example\n\n${npmBadge}\n${badgeOf('1.2.3')}\n\nBody text.\n`);
+  });
+});
+
+test('consolidates separated managed badge blocks and manages the license badge', async () => {
+  await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@willbooster/wbfy']);
+    fs.writeFileSync(
+      path.resolve(dirPath, 'README.md'),
+      `# example
+
+[![Test](https://github.com/WillBooster/example/actions/workflows/test.yml/badge.svg)](https://github.com/WillBooster/example/actions/workflows/test.yml)
+[![wbfy](https://img.shields.io/badge/wbfy-0.9.0-1e90ff.svg)](https://github.com/WillBooster/shared/tree/main/packages/wbfy)
+
+[![npm version](https://img.shields.io/npm/v/@willbooster/wbfy.svg)](https://www.npmjs.com/package/@willbooster/wbfy)
+[![license](https://img.shields.io/npm/l/@willbooster/wbfy.svg)](https://github.com/WillBooster/example/blob/main/LICENSE)
+
+Body text.
+`
+    );
+
+    expect(
+      await runGenerateReadme(dirPath, '1.2.3', {
+        ...npmPublishingOverrides,
+        packageJson: { ...npmPublishingOverrides.packageJson, license: 'Apache-2.0' },
+      })
+    ).toBe(`# example
+
+${npmBadge}
+${licenseBadge}
+${badgeOf('1.2.3')}
+
+Body text.
+`);
   });
 });
 
