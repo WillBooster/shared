@@ -103,8 +103,8 @@ export async function generateReadme(
 }
 
 /**
- * The npm package name the repository publishes from its root manifest, if any. A manifest no
- * release publishes, or one kept out of the registry on purpose, has no package page to link to.
+ * The published npm packages represented by the repository's root and workspace manifests. A
+ * manifest that does not publish, or is kept out of the registry on purpose, has no package page.
  */
 interface PublishedNpmPackage {
   name: string;
