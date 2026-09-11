@@ -148,7 +148,7 @@ async function getPublishedNpmPackages(
     .filter((packageJson): packageJson is NonNullable<PackageConfig['packageJson']> => packageJson !== undefined)
     .map((packageJson) => ({
       name: packageJson.name!,
-      hasLicense: packageJson.license !== undefined && packageJson.license !== 'UNLICENSED',
+      hasLicense: !!packageJson.license && packageJson.license !== 'UNLICENSED',
     }));
 }
 

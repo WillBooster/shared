@@ -722,3 +722,17 @@ test('omits the npm badge for a manifest that is not published', async () => {
     ).not.toContain('npmjs.com');
   });
 });
+
+test('omits the license badge for an empty license field', async () => {
+  await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@willbooster/wbfy']);
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
+
+    const content = await runGenerateReadme(dirPath, '1.2.3', {
+      ...npmPublishingOverrides,
+      packageJson: { ...npmPublishingOverrides.packageJson, license: '' },
+    });
+    expect(content).toContain(npmBadge);
+    expect(content).not.toContain('npm/l/');
+  });
+});
