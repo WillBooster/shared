@@ -138,7 +138,7 @@ function generateAgentInstruction(
 ${TEST_WRITING_RULES}
 - When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
 - After making changes, run \`${packageManager} run verify\` (type checking and linting; up to 10 minutes), or \`${packageManager} run verify-full\` (all tests; up to 1 hour) if you changed runtime behavior or tests. Fix errors and re-run until it passes.
-  - Wait for it to finish without restarting it: prefer completion notifications, otherwise the longest permitted wait; no output does not mean it has stopped. If the displayed excerpt is insufficient, read the indicated log file before rerunning. If the environment kills long-running commands, run it detached with a saved log and exit status.
+  - Wait for it to finish without restarting it: prefer completion notifications, otherwise the longest permitted wait; no output does not mean it has stopped. If the displayed excerpt is insufficient, read the indicated log file before rerunning. If the environment kills long-running commands, run them detached with a saved log and exit status.
 - Once verified, commit and push to the current (non-main) branch, and create a PR via \`gh\` if none exists for the branch.
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
   - Always create new commits; avoid \`--amend\`.${prTemplateInstruction}${issueTemplateInstruction}
