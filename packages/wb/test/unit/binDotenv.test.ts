@@ -66,7 +66,7 @@ describe('bin/index.js dotenv fast path', () => {
     await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
     await fs.writeFile(
       path.join(projectDirPath, 'fnox.toml'),
-      '[secrets]\nENV = { default = "fnox-value" }\nFNOX_ONLY = { default = "fnox-only" }\n'
+      '[secrets]\nENV = { default = "fnox-value" }\nFNOX_ONLY = { default = "fnox-only" }\n\n[profiles.development]\n'
     );
 
     const result = childProcess.spawnSync(
@@ -210,7 +210,10 @@ describe('bin/index.js dotenv fast path', () => {
       // child labeled one environment while carrying another's secrets, so it must fail fast
       // (matching the forced-mode mismatch guard).
       await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
-      await fs.writeFile(path.join(projectDirPath, 'fnox.toml'), '[secrets]\nWB_ENV = { default = "production" }\n');
+      await fs.writeFile(
+        path.join(projectDirPath, 'fnox.toml'),
+        '[secrets]\nWB_ENV = { default = "production" }\n\n[profiles.development]\n'
+      );
 
       const result = childProcess.spawnSync(
         process.execPath,
@@ -287,7 +290,7 @@ describe('bin/index.js run command', () => {
     async () => {
       await fs.writeFile(
         path.join(projectDirPath, 'fnox.toml'),
-        '[secrets]\nLOADED_BY_WB = { default = "from-fnox" }\n'
+        '[secrets]\nLOADED_BY_WB = { default = "from-fnox" }\n\n[profiles.development]\n'
       );
       await fs.writeFile(
         path.join(projectDirPath, 'probe.ts'),
@@ -329,7 +332,10 @@ describe('bin/index.js run command', () => {
 
   it.runIf(isFnoxAvailable())('enforces the project environment contract on the default path', async () => {
     await fs.writeFile(path.join(projectDirPath, 'package.json'), '{}');
-    await fs.writeFile(path.join(projectDirPath, 'fnox.toml'), '[secrets]\nLOADED_BY_WB = { default = "value" }\n');
+    await fs.writeFile(
+      path.join(projectDirPath, 'fnox.toml'),
+      '[secrets]\nLOADED_BY_WB = { default = "value" }\n\n[profiles.development]\n'
+    );
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
     const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', 'probe.js'], {
@@ -458,7 +464,10 @@ describe('bin/index.js run command', () => {
   });
 
   it.runIf(isFnoxAvailable())('rejects an invalid WB_ENV in a standalone script directory', async () => {
-    await fs.writeFile(path.join(projectDirPath, 'fnox.toml'), '[secrets]\nWB_ENV = { default = "prodcution" }\n');
+    await fs.writeFile(
+      path.join(projectDirPath, 'fnox.toml'),
+      '[secrets]\nWB_ENV = { default = "prodcution" }\n\n[profiles.development]\n'
+    );
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
     const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {

@@ -2,6 +2,8 @@
   "days": 7,
   "excludes": [
     "@exercode/problem-utils",
+    "@exercode/problem-utils-browser",
+    "@exercode/problem-utils-llm",
     "@openai/codex",
     "@willbooster-private/agentic-workflows",
     "@willbooster-private/ai-ocr",
