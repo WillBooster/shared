@@ -563,7 +563,7 @@ test('consolidates separated managed badge blocks and manages the license badge'
 [![wbfy](https://img.shields.io/badge/wbfy-0.9.0-1e90ff.svg)](https://github.com/WillBooster/shared/tree/main/packages/wbfy)
 
 [![npm version](https://img.shields.io/npm/v/@willbooster/wbfy.svg)](https://www.npmjs.com/package/@willbooster/wbfy)
-[![license](https://img.shields.io/npm/l/@willbooster/wbfy.svg)](https://github.com/WillBooster/example/blob/main/LICENSE)
+[![license](https://img.shields.io/npm/l/@willbooster/wbfy.svg?style=flat-square)](https://github.com/WillBooster/example/blob/main/LICENSE)
 
 Body text.
 `

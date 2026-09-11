@@ -21,14 +21,15 @@ const wbfyBadgeUrlSuffix = '-1e90ff.svg';
 const wbfyBadgeLink = 'https://github.com/WillBooster/shared/tree/main/packages/wbfy';
 
 const npmPackageUrlPrefix = 'https://www.npmjs.com/package/';
-const npmLicenseBadgePattern = /^\[!\[[^\]]*\]\(https:\/\/img\.shields\.io\/npm\/l\/[^)\s]+\.svg\)\]\([^)\s]+\)$/u;
+const npmLicenseBadgePattern = /^\[!\[[^\]]*\]\(https:\/\/img\.shields\.io\/npm\/l\/[^)\s]+\)\]\([^)\s]+\)$/u;
 
 const managedBadgePatterns = [
   /^\[!\[wbfy\]\(https:\/\/img\.shields\.io\/badge\/wbfy-[^)\s]+-1e90ff\.svg\)\]\(https:\/\/github\.com\/WillBooster\/shared\/tree\/main\/packages\/wbfy\)$/u,
   /^\[!\[[^\]]*\]\((https:\/\/github\.com\/[^)\s]+\/actions\/workflows\/[^)\s]+)\/badge\.svg\)\]\(\1\)$/u,
   // Any badge linking to an npm package page, whatever image it shows and however the link is
-  // spelled: the block is wbfy's, it writes at most one npm badge, so a badge for a renamed or
-  // unpublished package is a stale copy of that one — not another badge to keep beside it.
+  // spelled: the block is wbfy's, it writes one npm badge per published root/workspace package, so
+  // a badge for a renamed or unpublished package is a stale copy of one of those — not another
+  // badge to keep beside them.
   /^\[!\[[^\]]*\]\([^)\s]+\)\]\(https?:\/\/(?:www\.)?npmjs\.com\/package\/[^)\s]*\)$/u,
   npmLicenseBadgePattern,
 ];
