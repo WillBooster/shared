@@ -15,7 +15,7 @@ test('fetches repository visibility when the CLI entry is a workspace child', as
   const config = await getPackageConfig(path.resolve(import.meta.dirname, '..', '..', '..', 'shared-lib'));
   expect(config?.isRoot).toBe(false);
   expect(config?.isPublicRepo).toBe(true);
-});
+}, 60_000);
 
 test('detects Tauri packages from every supported signal', async () => {
   expect(await detectTauri({ packageJson: { dependencies: { '@tauri-apps/api': '2.0.0' } } })).toBe(true);

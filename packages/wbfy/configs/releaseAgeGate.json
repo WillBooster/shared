@@ -35,6 +35,7 @@
     "@willbooster/wbfy",
     "agent-runtime-kit",
     "at-decorators",
+    "better-auth-email-otp-reliable",
     "build-ts",
     "code-gauge",
     "gen-i18n-ts",
