@@ -3,6 +3,7 @@ export { ensureTruthy } from './assert.js';
 export {
   BUG_ISSUE_SECTIONS,
   CHANGE_ISSUE_SECTIONS,
+  PULL_REQUEST_REQUIREMENTS_RULES,
   PULL_REQUEST_SECTIONS,
   renderSectionChecklist,
   renderSectionTemplate,

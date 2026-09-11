@@ -39,6 +39,17 @@ export const PULL_REQUEST_SECTIONS: readonly TemplateSection[] = [
   },
 ];
 
+/**
+ * How a tool that writes or rewrites a PR body fills the Requirements section of
+ * `PULL_REQUEST_SECTIONS`, as markdown bullets for an agent's instructions. Skills that draft PR
+ * bodies render this text instead of restating it, so the writers and the reviewers that read the
+ * section as the boundary a fix must keep never disagree on what a line means.
+ */
+export const PULL_REQUEST_REQUIREMENTS_RULES = `- Requirements section: one line per requirement, taken from the requester's instructions as they were given (the issue, the conversation that asked for the change), each marked \`required\` (asked for, or an existing contract callers depend on) or \`chosen\` (your own decision, which a simpler design may replace). Never infer a requirement from the diff: when no issue, PR message, or conversation states the request, write \`required: not recorded — ask the requester\` as the only request-derived line (a \`required\` line for an existing contract callers depend on may still be listed) and say so in Notes.
+- Record rule: an existing Requirements section is a record, not a description of the diff. Keep its \`required\` lines as they are, rewriting them only when the requester's instructions changed (then from the updated instructions, dropping a line only when the requester removed it; with no instructions available, keep them unchanged); add a \`chosen\` line for a new decision, and replace or remove one when the decision it records changed. A section that merely describes the implementation, or holds only the template's placeholder or a \`required: not recorded\` line, is not a record: write it afresh by the rule above.
+- Place the section where the template puts it; when the template has no such heading, right after the issue-closing line, or at the top of the body when there is none.
+- Never drop or weaken a \`required\` line to fit what was implemented: when one cannot hold in the diff, keep it and say so in Notes.`;
+
 /** Sections of a bug report, in the order they appear in the issue template. */
 export const BUG_ISSUE_SECTIONS: readonly TemplateSection[] = [
   { heading: 'Problem', requirement: 'what happens, and what should happen instead' },

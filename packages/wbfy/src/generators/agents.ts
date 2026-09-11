@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { PULL_REQUEST_REQUIREMENTS_RULES } from '@willbooster/shared-lib/src';
+
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -113,7 +115,7 @@ function generateAgentInstruction(
   // run writes the templates for WillBooster / WillBoosterLab repositories before this generator
   // runs, and hand-added templates elsewhere belong to AGENTS_EXTRA.md.
   const prTemplateInstruction = rootConfig.isWillBoosterRepo
-    ? "\n  - Base the PR body on `.github/pull_request_template.md` when creating or updating a PR, even when a skill or workflow supplies its own skeleton: keep the template's headings in order, fill each section with what its placeholder comment asks for at a length fitting the change (a sentence for a small change, numbered subsections for a large one), delete the placeholder comments and an empty Notes section, and keep `Close #<n>` only when the PR resolves an existing issue.\n  - Never drop or weaken a `required` line of the PR body's Requirements section to fit what was implemented (say so in Notes when one cannot hold), and leave that section as it is when rewriting a PR body from the diff unless the requester's instructions changed."
+    ? `\n  - Base the PR body on \`.github/pull_request_template.md\` when creating or updating a PR, even when a skill or workflow supplies its own skeleton: keep the template's headings in order, fill each section with what its placeholder comment asks for at a length fitting the change (a sentence for a small change, numbered subsections for a large one), delete the placeholder comments and an empty Notes section, and keep \`Close #<n>\` only when the PR resolves an existing issue.\n  - Fill the Requirements section by these rules:\n${PULL_REQUEST_REQUIREMENTS_RULES.replaceAll(/^/gm, '    ')}`
     : '';
   // Gated like prTemplateInstruction: the section it names exists only where the template is generated.
   const requirementsExemption = rootConfig.isWillBoosterRepo
