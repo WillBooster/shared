@@ -541,7 +541,7 @@ const npmPublishingOverrides = {
 const npmBadge =
   '[![npm version](https://img.shields.io/npm/v/@willbooster/wbfy.svg)](https://www.npmjs.com/package/@willbooster/wbfy)';
 const licenseBadge =
-  '[![license](https://img.shields.io/npm/l/@willbooster/wbfy.svg)](https://github.com/WillBooster/example/blob/main/LICENSE)';
+  '[![license](https://img.shields.io/npm/l/@willbooster/wbfy.svg)](https://www.npmjs.com/package/@willbooster/wbfy)';
 
 test('adds an npm badge above the other badges for a published package', async () => {
   await withTempDir(async (dirPath) => {

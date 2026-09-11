@@ -79,8 +79,8 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
     if (packageName) {
       badges.push(buildNpmBadge(packageName));
       const license = config.packageJson?.license;
-      if (license && license !== 'UNLICENSED' && config.repository) {
-        badges.push(buildLicenseBadge(packageName, config.repository));
+      if (license && license !== 'UNLICENSED') {
+        badges.push(buildLicenseBadge(packageName));
       }
     }
     badges.push(...(await buildWorkflowBadges(config)));
@@ -134,9 +134,8 @@ function buildNpmBadge(packageName: string): string {
   return `[![npm version](https://img.shields.io/npm/v/${packageName}.svg)](${npmPackageUrlPrefix}${packageName})`;
 }
 
-function buildLicenseBadge(packageName: string, repository: string): string {
-  const githubRepository = repository.replace(/^github:/u, '');
-  return `[![license](https://img.shields.io/npm/l/${packageName}.svg)](https://github.com/${githubRepository}/blob/main/LICENSE)`;
+function buildLicenseBadge(packageName: string): string {
+  return `[![license](https://img.shields.io/npm/l/${packageName}.svg)](${npmPackageUrlPrefix}${packageName})`;
 }
 
 async function buildWorkflowBadges(config: PackageConfig): Promise<string[]> {
