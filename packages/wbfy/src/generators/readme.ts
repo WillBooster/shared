@@ -11,6 +11,7 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { getOctokit } from '../utils/githubUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { getWbfyVersionLabel } from '../utils/version.js';
+import { getWorkspacePackageJsonPaths } from '../utils/workspaceUtil.js';
 
 const semanticReleaseBadge =
   '[![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg)](https://github.com/semantic-release/semantic-release)';
@@ -78,11 +79,11 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
     // then the workflow badges report whether the code is currently healthy, then how it is
     // released, and last the wbfy build that configured it.
     const badges: string[] = [];
-    const npmPackageName = await getPublishedNpmPackageName(config);
-    if (npmPackageName) {
-      badges.push(buildNpmBadge(npmPackageName));
-      if (config.packageJson?.license && config.packageJson.license !== 'UNLICENSED' && config.repository) {
-        badges.push(buildLicenseBadge(npmPackageName, config.repository));
+    const npmPackages = await getPublishedNpmPackages(config);
+    for (const npmPackage of npmPackages) {
+      badges.push(buildNpmBadge(npmPackage.name));
+      if (npmPackage.hasLicense && config.repository) {
+        badges.push(buildLicenseBadge(npmPackage.name, config.repository));
       }
     }
     badges.push(...(await buildWorkflowBadges(config)));
@@ -102,18 +103,52 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
  * The npm package name the repository publishes from its root manifest, if any. A manifest no
  * release publishes, or one kept out of the registry on purpose, has no package page to link to.
  */
-async function getPublishedNpmPackageName(config: PackageConfig): Promise<string | undefined> {
-  const packageJson = config.packageJson;
-  if (!packageJson?.name || !config.release.npm) return undefined;
+interface PublishedNpmPackage {
+  name: string;
+  hasLicense: boolean;
+}
+
+async function getPublishedNpmPackages(config: PackageConfig): Promise<PublishedNpmPackage[]> {
+  if (!config.release.npm) return [];
+  const packageJsons = [
+    config.packageJson,
+    ...getWorkspacePackageJsonPaths(config).map((packageJsonPath) => {
+      try {
+        return JSON.parse(fs.readFileSync(path.resolve(config.dirPath, packageJsonPath), 'utf8')) as NonNullable<
+          PackageConfig['packageJson']
+        >;
+      } catch {
+        return;
+      }
+    }),
+  ];
+  const packages = await Promise.all(
+    packageJsons.map((packageJson, index) => getPublishedNpmPackageName(config, packageJson, index === 0))
+  );
+  return packages
+    .filter((packageJson): packageJson is NonNullable<PackageConfig['packageJson']> => packageJson !== undefined)
+    .map((packageJson) => ({
+      name: packageJson.name!,
+      hasLicense: packageJson.license !== undefined && packageJson.license !== 'UNLICENSED',
+    }));
+}
+
+async function getPublishedNpmPackageName(
+  config: PackageConfig,
+  packageJson: PackageConfig['packageJson'],
+  isRoot: boolean
+): Promise<PackageConfig['packageJson'] | undefined> {
+  if (!packageJson?.name) return undefined;
   // `private` is read the way generatePackageJson writes it: it removes the flag from a MONOREPO
   // root that declares publishing intent, so reading the flag alone would deny the badge to the
   // very manifest the same run makes publishable. Anywhere else the flag stands as written.
   const declaresPublishingIntent = !!packageJson.publishConfig || config.release.npmPublishesRoot;
-  if (packageJson.private && !(config.doesContainSubPackageJsons && declaresPublishingIntent)) return undefined;
+  if (packageJson.private && !(isRoot && config.doesContainSubPackageJsons && declaresPublishingIntent))
+    return undefined;
   // The manifest only says the repository INTENDS to publish: a monorepo root that configures
   // @semantic-release/npm for its workspaces is never on npm itself, and a package's first release
   // has not happened yet. Both would render a broken badge, so the registry decides.
-  return (await isMissingFromNpmRegistry(packageJson.name)) ? undefined : packageJson.name;
+  return (await isMissingFromNpmRegistry(packageJson.name)) ? undefined : packageJson;
 }
 
 /**

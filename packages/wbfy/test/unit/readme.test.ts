@@ -583,6 +583,40 @@ Body text.
   });
 });
 
+test('adds badges for each published workspace package', async () => {
+  await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@example/one', '@example/two']);
+    fs.mkdirSync(path.resolve(dirPath, 'packages/one'), { recursive: true });
+    fs.mkdirSync(path.resolve(dirPath, 'packages/two'), { recursive: true });
+    fs.writeFileSync(
+      path.resolve(dirPath, 'packages/one/package.json'),
+      JSON.stringify({ name: '@example/one', license: 'Apache-2.0' })
+    );
+    fs.writeFileSync(
+      path.resolve(dirPath, 'packages/two/package.json'),
+      JSON.stringify({ name: '@example/two', license: 'Apache-2.0' })
+    );
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
+
+    const content = await runGenerateReadme(dirPath, '1.2.3', {
+      packageJson: { name: 'example', private: true, workspaces: ['packages/*'] },
+      doesContainSubPackageJsons: true,
+      release: { branches: [], github: true, npm: true, npmPublishesRoot: false },
+    });
+
+    expect(content).toBe(`# example
+
+[![npm version](https://img.shields.io/npm/v/@example/one.svg)](https://www.npmjs.com/package/@example/one)
+[![license](https://img.shields.io/npm/l/@example/one.svg)](https://github.com/WillBooster/example/blob/main/LICENSE)
+[![npm version](https://img.shields.io/npm/v/@example/two.svg)](https://www.npmjs.com/package/@example/two)
+[![license](https://img.shields.io/npm/l/@example/two.svg)](https://github.com/WillBooster/example/blob/main/LICENSE)
+${badgeOf('1.2.3')}
+
+Body text.
+`);
+  });
+});
+
 test('drops the npm badge once the registry reports the package is gone', async () => {
   await withTempDir(async (dirPath) => {
     mockNpmRegistry([]);
