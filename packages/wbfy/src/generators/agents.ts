@@ -109,7 +109,7 @@ function generateAgentInstruction(
     ? `\n- Use \`${packageManager} wb start --mode test\` to launch a web server for debugging or testing.`
     : '';
   const coAuthorInstruction = rootConfig.isWillBoosterRepo
-    ? `\n  - End your commit message with a blank line followed by \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`.`
+    ? `\n  - End your commit message with a blank line followed by \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`, the only AI attribution to add.`
     : '';
   // Keyed on the repository classification rather than on the template files' presence: the same
   // run writes the templates for WillBooster / WillBoosterLab repositories before this generator
@@ -141,14 +141,13 @@ function generateAgentInstruction(
   - Prefer actual API calls over mocks, unless actual calls are impractical, have unintended side effects, or mocks are explicitly requested.
   - Ensure tests are idempotent and independent (e.g., reset persistent data) so they can run repeatedly or in parallel.
   - Avoid fixed waits in E2E tests; wait for conditions instead.
-  - Continue modifying tests and/or code until all tests pass.
 - When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
 - After making changes, run \`${packageManager} run verify\` (type checking and linting; up to 10 minutes), or \`${packageManager} run verify-full\` (all tests; up to 1 hour) if you changed runtime behavior or tests. Fix errors and re-run until it passes.
-  - Run verification normally and wait for completion without restarting it. Prefer completion notifications; otherwise use the longest permitted wait. No output does not mean the command has stopped. If the displayed excerpt is insufficient, read the indicated log file before rerunning verification. If the environment kills long-running commands, use detached execution with a saved log and exit status.
+  - Wait for it to finish without restarting it: prefer completion notifications, otherwise the longest permitted wait; no output does not mean it has stopped. If the displayed excerpt is insufficient, read the indicated log file before rerunning. If the environment kills long-running commands, run it detached with a saved log and exit status.
 - Once verified, commit and push to the current (non-main) branch, and create a PR via \`gh\` if none exists for the branch.
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
   - Always create new commits; avoid \`--amend\`.${prTemplateInstruction}${issueTemplateInstruction}
-- In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.), describe only the current implementation: never mention symbols or concepts that were added and later removed or renamed along the way, and drop any statement naming an identifier or feature you cannot confirm exists in the final diff or the current codebase. Whenever you notice documentation or comments that no longer match the current implementation (removed options, deprecated usage, outdated behavior), delete or rewrite them, even in files you are not otherwise changing. Mention a past state only where it is needed to understand why the current design is as it is, or when explicitly asked; files that record history by design (e.g., a changelog) are exempt${requirementsExemption}.
+- In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.), describe only the current implementation: drop any statement naming an identifier, feature, or concept you cannot confirm exists in the final diff or the current codebase (e.g., one added and later removed or renamed along the way). Whenever documentation or comments no longer match the current implementation (removed options, deprecated usage, outdated behavior), delete or rewrite them, even in files you are not otherwise changing. Mention a past state only where it is needed to understand why the current design is as it is, or when explicitly asked; files that record history by design (e.g., a changelog) are exempt${requirementsExemption}.
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`, \`gh issue create --body-file -\`).
 - Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.
 - \`AGENTS.md\`, \`CLAUDE.md\`, \`GEMINI.md\`, \`.cursor/rules/general.mdc\`, and \`.gemini/styleguide.md\` are generated from \`AGENTS_EXTRA.md\` and overwritten on every \`wbfy\` run; to change agent instructions, edit only \`AGENTS_EXTRA.md\`.${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}
