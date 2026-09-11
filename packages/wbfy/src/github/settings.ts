@@ -26,6 +26,8 @@ export async function setupGitHubSettings(config: PackageConfig): Promise<void> 
             allow_rebase_merge: false,
             allow_update_branch: true,
             delete_branch_on_merge: true,
+            has_wiki: false,
+            has_projects: false,
             squash_merge_commit_title: 'PR_TITLE',
             squash_merge_commit_message: 'BLANK',
             headers: {
@@ -43,5 +45,43 @@ export async function setupGitHubSettings(config: PackageConfig): Promise<void> 
       // Local wbfy runs often have push permission without admin permission.
       console.warn('Skip setupGitHubSettings due to:', (error as Error | undefined)?.stack ?? error);
     }
+
+    try {
+      await withRetry(() => disableDiscussions(octokit, owner, repo), {
+        shouldRetry: (error) => !isGitHubSettingsError(error),
+      });
+    } catch (error) {
+      if (!isGitHubSettingsError(error)) throw error;
+      console.warn('Skip disabling GitHub Discussions due to:', (error as Error | undefined)?.stack ?? error);
+    }
   });
+}
+
+async function disableDiscussions(octokit: ReturnType<typeof getOctokit>, owner: string, repo: string): Promise<void> {
+  const repositoryResponse = await octokit.graphql<{ repository?: { id?: string } }>(
+    `query($owner: String!, $repo: String!) {
+      repository(owner: $owner, name: $repo) { id }
+    }`,
+    { owner, repo }
+  );
+  const repositoryId = repositoryResponse.repository?.id;
+  if (!repositoryId) return;
+  await octokit.graphql(
+    `mutation($input: UpdateRepositoryInput!) {
+      updateRepository(input: $input) { repository { id } }
+    }`,
+    { input: { repositoryId, hasDiscussionsEnabled: false } }
+  );
+}
+
+function isGitHubSettingsError(error: unknown): boolean {
+  if (isGitHubPermissionOrVisibilityError(error)) return true;
+  if (!error || typeof error !== 'object' || !('errors' in error) || !Array.isArray(error.errors)) return false;
+  return error.errors.some(
+    (graphqlError: unknown) =>
+      !!graphqlError &&
+      typeof graphqlError === 'object' &&
+      'type' in graphqlError &&
+      ['FORBIDDEN', 'INSUFFICIENT_SCOPES', 'NOT_FOUND'].includes(graphqlError.type as string)
+  );
 }

@@ -84,8 +84,7 @@ describe('readAndApplyEnvironmentVariables()', () => {
     expect(process.env.PORT).toBe('9999');
   });
 
-  it.runIf(isFnoxAvailable())('should fall back to base fnox secrets for an unknown profile', () => {
-    // The auto cascade selects `development`, which app-fnox does not declare as a profile.
+  it('should load base fnox secrets through a declared profile without overrides', () => {
     const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app-fnox');
     expect(envVars).toMatchObject({
       ENV: 'fnox-development',

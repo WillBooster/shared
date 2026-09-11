@@ -38,6 +38,19 @@ it.each([false, true])('keeps successful output concise and saves raw output (fu
   else expect(log).not.toContain('RAW_TEST_STDOUT');
 });
 
+it('fails full verification on slide text errors and saves their source locations', async () => {
+  const dir = await createFixture();
+  const deckPath = path.join(dir, 'intro.slidev.md');
+  await fs.writeFile(deckPath, '# 検証\n\n- ﾃｽﾄ\n');
+  const result = runCli(dir, ['verify', '--full']);
+  expect(result.status, result.stdout + result.stderr).toBe(1);
+  expect(result.stdout).toContain('Failed step: slidev-check (exit code 1)');
+  const log = await fs.readFile(path.join(dir, '.wb/verify-full.log'), 'utf8');
+  expect(log).toContain(`${deckPath}:3:3:`);
+  expect(log).toContain('(no-hankaku-kana)');
+  expect(log).not.toContain('RAW_TEST_STDOUT');
+});
+
 it('shows the failed test step without earlier successful steps', async () => {
   const dir = await createFixture();
   await fs.writeFile(

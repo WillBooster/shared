@@ -40,7 +40,8 @@ async function runGenerateReadme(
 ): Promise<string> {
   spyOn(version, 'getWbfyVersionLabel').mockReturnValue(versionLabel);
   fsUtil.setRootDirPath(dirPath);
-  await generateReadme(createConfig({ dirPath, isRoot: true, packageJson: { name: 'example' }, ...overrides }));
+  const config = createConfig({ dirPath, isRoot: true, packageJson: { name: 'example' }, ...overrides });
+  await generateReadme(config);
   await promisePool.promiseAll();
   return fs.readFileSync(path.resolve(dirPath, 'README.md'), 'utf8');
 }
@@ -219,6 +220,22 @@ test.each([
 
     expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(expected);
     expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(expected);
+  });
+});
+
+test('keeps the applied version current with separated badge blocks above the title', async () => {
+  await withTempDir(async (dirPath) => {
+    const custom = '[![custom](https://example.test/b.svg)](https://example.test)';
+    const body = `# Project\n\nDescription.\n`;
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `${custom}\n\n${custom}\n\n${body}`);
+
+    const first = await runGenerateReadme(dirPath, '1.2.3');
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(first);
+    const updated = await runGenerateReadme(dirPath, '2.0.0');
+    expect(updated).toBe(first.replace(badgeOf('1.2.3'), badgeOf('2.0.0')));
+    expect(updated.match(/\[!\[wbfy\]/gu)).toHaveLength(1);
+    expect(updated.endsWith(body)).toBe(true);
+    expect(await readAppliedWbfyVersionLabel(dirPath)).toBe('2.0.0');
   });
 });
 
@@ -523,6 +540,8 @@ const npmPublishingOverrides = {
 };
 const npmBadge =
   '[![npm version](https://img.shields.io/npm/v/@willbooster/wbfy.svg)](https://www.npmjs.com/package/@willbooster/wbfy)';
+const licenseBadge =
+  '[![license](https://img.shields.io/npm/l/@willbooster/wbfy.svg)](https://www.npmjs.com/package/@willbooster/wbfy)';
 
 test('adds an npm badge above the other badges for a published package', async () => {
   await withTempDir(async (dirPath) => {
@@ -548,6 +567,38 @@ test('replaces an npm badge written in another form instead of keeping both', as
   });
 });
 
+test.each([false, true])('consolidates separated badge blocks (monorepo: %s)', async (isMonorepo) => {
+  await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@willbooster/wbfy']);
+    fs.writeFileSync(
+      path.resolve(dirPath, 'README.md'),
+      `# example
+
+[![Test](https://github.com/WillBooster/example/actions/workflows/test.yml/badge.svg)](https://github.com/WillBooster/example/actions/workflows/test.yml)
+[![wbfy](https://img.shields.io/badge/wbfy-0.9.0-1e90ff.svg)](https://github.com/WillBooster/shared/tree/main/packages/wbfy)
+
+[![npm version](https://img.shields.io/npm/v/@willbooster/wbfy.svg)](https://www.npmjs.com/package/@willbooster/wbfy)
+[![license](https://img.shields.io/npm/l/@willbooster/wbfy.svg?style=flat-square)](https://github.com/WillBooster/example/blob/main/LICENSE)
+
+Body text.
+`
+    );
+
+    expect(
+      await runGenerateReadme(dirPath, '1.2.3', {
+        ...npmPublishingOverrides,
+        packageJson: { ...npmPublishingOverrides.packageJson, license: 'Apache-2.0' },
+        doesContainSubPackageJsons: isMonorepo,
+      })
+    ).toBe(`# example
+
+${isMonorepo ? '' : `${npmBadge}\n${licenseBadge}\n`}${badgeOf('1.2.3')}
+
+Body text.
+`);
+  });
+});
+
 test('drops the npm badge once the registry reports the package is gone', async () => {
   await withTempDir(async (dirPath) => {
     mockNpmRegistry([]);
@@ -567,22 +618,6 @@ test('keeps the npm badge in place when the registry cannot be reached', async (
     expect(await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides)).toBe(
       `# example\n\n${npmBadge}\n${badgeOf('1.2.3')}\n\nBody text.\n`
     );
-  });
-});
-
-test('badges a private monorepo root that the manifest generator makes publishable', async () => {
-  await withTempDir(async (dirPath) => {
-    mockNpmRegistry(['@willbooster/wbfy']);
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
-
-    // generatePackageJson deletes `private` from such a root in the same run.
-    expect(
-      await runGenerateReadme(dirPath, '1.2.3', {
-        ...npmPublishingOverrides,
-        packageJson: { ...npmPublishingOverrides.packageJson, private: true },
-        doesContainSubPackageJsons: true,
-      })
-    ).toContain(npmBadge);
   });
 });
 

@@ -1,18 +1,17 @@
 import path from 'node:path';
 
-import { globIgnore, spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
-import fg from 'fast-glob';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import { findDescendantProjects, findRootAndSelfProjects, findSelfProject } from '../project.js';
-import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { normalizeBunLockfile } from '../utils/bunLockfile.js';
+import { PackageCommandError, runPackageCommand } from '../utils/packageCommand.js';
 import { startVerificationOutput } from '../utils/verificationOutput.js';
 
 import { buildLintCommand, lint, type LintCommandArgv } from './lint.js';
+import { checkSlidevDecks, findSlidevDecks } from './slidevCheck.js';
 import { test, type TestCommandArgv, withDefaultTestCascadeEnv } from './test.js';
 import { buildTypeCheckCommands, typeCheck, type TypeCheckCommandArgv } from './typecheck.js';
 
@@ -26,7 +25,6 @@ const builder = {
 
 type VerifyCodeCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
 type VerifyCodeCommandArgv = ArgumentsCamelCase<VerifyCodeCommandOptions>;
-type PackageCommandArgv = Pick<VerifyCodeCommandArgv, 'dryRun' | 'verbose'>;
 
 /** A completed `wb verify` step, recorded so the final summary can prove every step actually ran. */
 interface VerifyStep {
@@ -43,15 +41,6 @@ interface VerifyStep {
 interface VerificationProgress {
   steps: VerifyStep[];
   reporter?: ReturnType<typeof startVerificationOutput>;
-}
-
-class VerificationCommandError extends Error {
-  readonly exitCode: number;
-
-  constructor(exitCode: number) {
-    super(`Verification command exited with code ${exitCode}.`);
-    this.exitCode = exitCode;
-  }
 }
 
 export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions> = {
@@ -74,14 +63,19 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
     try {
       await verifyCode(projects.self, argv, progress);
       if (argv.full) {
-        await checkSlidevDecks(projects.self, argv, progress);
+        const deckPaths = findSlidevDecks(projects.self);
+        if (deckPaths.length > 0) {
+          await runStep(progress, { detail: deckPaths.join(' '), name: 'slidev-check' }, () =>
+            runInProcessCommand('slidev-check', () => checkSlidevDecks(projects.self, deckPaths, argv))
+          );
+        }
         await runStep(progress, { name: 'test' }, () => runProjectTest(projects.self, argv));
       }
       reporter?.succeed();
       printVerifySummary(steps, Boolean(argv.dryRun));
     } catch (error) {
-      if (!(error instanceof VerificationCommandError)) console.error(error);
-      exitCode = error instanceof VerificationCommandError ? error.exitCode : 1;
+      if (!(error instanceof PackageCommandError)) console.error(error);
+      exitCode = error instanceof PackageCommandError ? error.exitCode : 1;
       process.exitCode = exitCode;
     } finally {
       await reporter?.finish(exitCode);
@@ -103,7 +97,7 @@ async function verifyCode(
     if (!argv.dryRun) normalizeBunLockfile(project.rootDirPath);
     if (exitCode !== 0) {
       console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), installCommand));
-      throw new VerificationCommandError(exitCode);
+      throw new PackageCommandError(exitCode);
     }
   });
   if (project.packageJson.scripts?.['gen-code']) {
@@ -140,38 +134,6 @@ async function verifyCode(
   );
 }
 
-/**
- * Audits every Slidev deck in the repository with slidev-check.
- *
- * A deck whose content overflows its slide still type-checks, lints, and tests clean, so rendering
- * the decks is the only signal that catches it. wbfy's deck detection is recursive, so a monorepo
- * whose deck lives in a workspace gets the checker at its root too; running every deck from this
- * project's directory therefore always resolves the bin, and Slidev takes the deck's own directory
- * as its user root regardless of the working directory.
- */
-async function checkSlidevDecks(
-  project: Project,
-  argv: VerifyCodeCommandArgv,
-  progress: VerificationProgress
-): Promise<void> {
-  // The very glob wbfy's doesContainSlidevMd runs, so the decks audited here are exactly the ones
-  // it installed the checker for: a deck under an ignored directory (a fixture deck, a built copy)
-  // gets no checker and must not be audited either.
-  const deckPaths = fg
-    .globSync('**/*.slidev.md', { dot: true, cwd: project.dirPath, ignore: globIgnore })
-    .toSorted((a, b) => a.localeCompare(b));
-  if (deckPaths.length === 0) return;
-
-  await runStep(progress, { detail: deckPaths.join(' '), name: 'slidev-check' }, async () => {
-    for (const deckPath of deckPaths) {
-      // Single quotes (with embedded quotes escaped) keep a deck name containing shell syntax from
-      // being expanded by the shell runPackageCommand spawns.
-      const quotedDeckPath = `'${deckPath.replaceAll("'", String.raw`'\''`)}'`;
-      await runPackageCommand(`${project.packageManagerCommand} slidev-check ${quotedDeckPath}`, project, argv);
-    }
-  });
-}
-
 async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
   const testArgv = withDefaultTestCascadeEnv({
     ...argv,
@@ -184,7 +146,7 @@ async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Pr
 
   if (!project.packageJson.scripts?.['db-reset']) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), 'test'));
-    throw new VerificationCommandError(exitCode);
+    throw new PackageCommandError(exitCode);
   }
 
   console.info(
@@ -195,7 +157,7 @@ async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Pr
   const retryExitCode = await test(testArgv, { exitIfFailed: false });
   if (retryExitCode !== 0) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${retryExitCode}):`), 'test after db-reset retry'));
-    throw new VerificationCommandError(retryExitCode);
+    throw new PackageCommandError(retryExitCode);
   }
   console.info(chalk.green('Tests passed after db-reset retry.'));
 }
@@ -270,7 +232,7 @@ async function runInProcessCommand(commandName: string, command: () => Promise<n
   const exitCode = (await command()) ?? 0;
   if (exitCode !== 0) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), commandName));
-    throw new VerificationCommandError(exitCode);
+    throw new PackageCommandError(exitCode);
   }
   return exitCode;
 }
@@ -307,41 +269,6 @@ function printVerifySummary(steps: VerifyStep[], dryRun: boolean): void {
     const detail = step.detail ? `  ${step.detail}` : '';
     console.info(chalk.green('  ✔ ') + step.name.padEnd(nameWidth) + chalk.gray(`  ${duration}${detail}`));
   }
-}
-
-async function runPackageCommand(
-  command: string,
-  project: Project,
-  argv: PackageCommandArgv,
-  options: { allowFailure?: boolean } = {}
-): Promise<number> {
-  printCommand(command, project.dirPath);
-  if (argv.dryRun) {
-    return 0;
-  }
-
-  const ret = await spawnAsync(command, undefined, {
-    cwd: project.dirPath,
-    env: configureEnv(project.env, { preserveColor: false }),
-    shell: true,
-    stdio: 'pipe',
-    mergeOutAndError: true,
-    killOnExit: true,
-    printingStdout: true,
-    printingStderr: true,
-    verbose: argv.verbose,
-  });
-  const exitCode = ret.status ?? 1;
-
-  if (exitCode !== 0 && !options.allowFailure) {
-    console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), command));
-    throw new VerificationCommandError(exitCode);
-  }
-  return exitCode;
-}
-
-function printCommand(command: string, cwd: string): void {
-  console.info('\n' + chalk.cyan(chalk.bold('Command:'), command) + chalk.gray(` at ${cwd}`));
 }
 
 /** Sub-minute steps keep one decimal so a fast step is not flattened to a misleading `0s`. */

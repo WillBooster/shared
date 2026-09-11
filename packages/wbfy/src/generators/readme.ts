@@ -5,8 +5,8 @@ import type { Image, Link, Paragraph, PhrasingContent, RootContent } from 'mdast
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { logger } from '../logger.js';
-import { jobsAllCallReusableWorkflow } from './workflow.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { jobsAllCallReusableWorkflow } from './workflow.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { getOctokit } from '../utils/githubUtil.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -20,14 +20,13 @@ const wbfyBadgeUrlSuffix = '-1e90ff.svg';
 const wbfyBadgeLink = 'https://github.com/WillBooster/shared/tree/main/packages/wbfy';
 
 const npmPackageUrlPrefix = 'https://www.npmjs.com/package/';
+const npmLicenseBadgePattern = /^\[!\[[^\]]*\]\(https:\/\/img\.shields\.io\/npm\/l\/[^)\s]+\)\]\([^)\s]+\)$/u;
 
 const managedBadgePatterns = [
   /^\[!\[wbfy\]\(https:\/\/img\.shields\.io\/badge\/wbfy-[^)\s]+-1e90ff\.svg\)\]\(https:\/\/github\.com\/WillBooster\/shared\/tree\/main\/packages\/wbfy\)$/u,
   /^\[!\[[^\]]*\]\((https:\/\/github\.com\/[^)\s]+\/actions\/workflows\/[^)\s]+)\/badge\.svg\)\]\(\1\)$/u,
-  // Any badge linking to an npm package page, whatever image it shows and however the link is
-  // spelled: the block is wbfy's, it writes at most one npm badge, so a badge for a renamed or
-  // unpublished package is a stale copy of that one — not another badge to keep beside it.
   /^\[!\[[^\]]*\]\([^)\s]+\)\]\(https?:\/\/(?:www\.)?npmjs\.com\/package\/[^)\s]*\)$/u,
+  npmLicenseBadgePattern,
 ];
 
 function buildWbfyBadge(label: string): string {
@@ -76,8 +75,14 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
     // then the workflow badges report whether the code is currently healthy, then how it is
     // released, and last the wbfy build that configured it.
     const badges: string[] = [];
-    const npmPackageName = await getPublishedNpmPackageName(config);
-    if (npmPackageName) badges.push(buildNpmBadge(npmPackageName));
+    const packageName = await getPublishedNpmPackageName(config);
+    if (packageName) {
+      badges.push(buildNpmBadge(packageName));
+      const license = config.packageJson?.license;
+      if (license && license !== 'UNLICENSED') {
+        badges.push(buildLicenseBadge(packageName));
+      }
+    }
     badges.push(...(await buildWorkflowBadges(config)));
     if (fs.existsSync(path.resolve(config.dirPath, '.releaserc.json'))) badges.push(semanticReleaseBadge);
     badges.push(buildWbfyBadge(getWbfyVersionLabel() ?? 'applied'));
@@ -91,21 +96,12 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
   });
 }
 
-/**
- * The npm package name the repository publishes from its root manifest, if any. A manifest no
- * release publishes, or one kept out of the registry on purpose, has no package page to link to.
- */
 async function getPublishedNpmPackageName(config: PackageConfig): Promise<string | undefined> {
   const packageJson = config.packageJson;
-  if (!packageJson?.name || !config.release.npm) return undefined;
-  // `private` is read the way generatePackageJson writes it: it removes the flag from a MONOREPO
-  // root that declares publishing intent, so reading the flag alone would deny the badge to the
-  // very manifest the same run makes publishable. Anywhere else the flag stands as written.
-  const declaresPublishingIntent = !!packageJson.publishConfig || config.release.npmPublishesRoot;
-  if (packageJson.private && !(config.doesContainSubPackageJsons && declaresPublishingIntent)) return undefined;
-  // The manifest only says the repository INTENDS to publish: a monorepo root that configures
-  // @semantic-release/npm for its workspaces is never on npm itself, and a package's first release
-  // has not happened yet. Both would render a broken badge, so the registry decides.
+  // A monorepo has no single npm version representing the whole repository.
+  if (config.doesContainSubPackageJsons || !config.release.npm || !packageJson?.name || packageJson.private) {
+    return undefined;
+  }
   return (await isMissingFromNpmRegistry(packageJson.name)) ? undefined : packageJson.name;
 }
 
@@ -136,6 +132,10 @@ async function isMissingFromNpmRegistry(packageName: string): Promise<boolean> {
 
 function buildNpmBadge(packageName: string): string {
   return `[![npm version](https://img.shields.io/npm/v/${packageName}.svg)](${npmPackageUrlPrefix}${packageName})`;
+}
+
+function buildLicenseBadge(packageName: string): string {
+  return `[![license](https://img.shields.io/npm/l/${packageName}.svg)](${npmPackageUrlPrefix}${packageName})`;
 }
 
 async function buildWorkflowBadges(config: PackageConfig): Promise<string[]> {
@@ -197,9 +197,9 @@ async function hasAnyWorkflowRun(
 }
 
 /**
- * Replaces the badge block — the badges wbfy keeps directly under the title — with `managedBadges`,
- * keeping any badge there that wbfy does not manage, and reassembles the README around it with
- * exactly one blank line on each side.
+ * Replaces the badge blocks directly under the title with `managedBadges`, keeping any badge there
+ * that wbfy does not manage, and reassembles the README around them with exactly one blank line on
+ * each side.
  *
  * Both the title and the block are located in a CommonMark syntax tree rather than by scanning
  * lines: only a real parser knows whether a line that looks like a badge is a badge (a paragraph of
@@ -237,15 +237,21 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
       ? ''
       : content.slice(startOffsetWithIndent(content, headStartNode!), nodes[titleIndex]!.position!.end.offset);
 
-  const blockNode = nodes[titleIndex + 1];
-  const existing = blockNode && isBadgeBlockNode(blockNode) ? readBadges(blockNode, content) : undefined;
-  const bodyNode = existing && blockNode ? nodes[nodes.indexOf(blockNode) + 1] : blockNode;
+  const badgeBlockNodes: Paragraph[] = [];
+  for (let nodeIndex = titleIndex + 1; ; nodeIndex++) {
+    const node = nodes[nodeIndex];
+    if (!isBadgeBlockNode(node)) break;
+    badgeBlockNodes.push(node);
+    // Without a title, merging leading blocks could change which node is recognized as the title on the next run.
+    if (titleIndex === -1) break;
+  }
+  const existing = badgeBlockNodes.flatMap((node) => readBadges(node, content));
+  const bodyNode = nodes[titleIndex + 1 + badgeBlockNodes.length];
   const body = bodyNode ? content.slice(startOffsetWithIndent(content, bodyNode)) : '';
 
-  // Superseding a managed badge is just dropping the old one: a version or workflow change leaves
-  // no stale copy, while any other badge in the block (including a non-canonical wbfy badge, which
-  // is removed manually) is kept.
-  const badges = [...managedBadges, ...(existing ?? []).filter((badge) => !isManagedBadge(badge))];
+  // Superseding a managed badge is just dropping the old one: a version, workflow, npm, or license
+  // change leaves no stale copy, while any other badge in the managed region is kept.
+  const badges = [...managedBadges, ...existing.filter((badge) => !isManagedBadge(badge))];
   // Content is sliced from its node's start offset, so whatever blank space followed the front
   // matter is gone; exactly one blank line is restored here. A closing delimiter that ended at EOF
   // carries no newline of its own and needs both, or `---` would fuse with the first badge and
@@ -312,8 +318,9 @@ function containsRenderedH1(html: string): boolean {
 }
 
 /** Whether the node is a paragraph of badges and nothing else — the only content wbfy puts in the block. */
-function isBadgeBlockNode(node: RootContent): node is Paragraph {
+function isBadgeBlockNode(node: RootContent | undefined): node is Paragraph {
   return (
+    !!node &&
     node.type === 'paragraph' &&
     node.children.some((child) => isBadgeNode(child)) &&
     node.children.every(
