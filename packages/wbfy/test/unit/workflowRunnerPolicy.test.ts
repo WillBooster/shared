@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -55,8 +56,9 @@ test('private custom runner violations stop generation before any workflow is re
     const filePath = path.join(workflowsPath, 'custom.yaml');
     const content = `jobs:\n  build:\n    strategy:\n      matrix:\n        runner: [ubuntu-latest, macos-latest]\n    runs-on: \${{ matrix.runner }}\n    steps:\n      - run: echo build\n`;
     fs.writeFileSync(filePath, content);
-    await expect(generateWorkflows(createConfig({ dirPath, isRoot: true, isPublicRepo: false }))).rejects.toThrow(
-      'jobs.build.runs-on'
+    await assert.rejects(
+      generateWorkflows(createConfig({ dirPath, isRoot: true, isPublicRepo: false })),
+      /jobs\.build\.runs-on/u
     );
     expect(fs.readFileSync(filePath, 'utf8')).toBe(content);
     expect(fs.readdirSync(workflowsPath)).toEqual(['custom.yaml']);
