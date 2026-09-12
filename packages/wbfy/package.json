@@ -32,7 +32,7 @@
     "verify-full": "bun wb verify --full"
   },
   "dependencies": {
-    "@octokit/core": "7.0.7",
+    "@octokit/core": "7.0.8",
     "deepmerge": "4.3.1",
     "fast-glob": "3.3.3",
     "js-yaml": "5.4.1",
