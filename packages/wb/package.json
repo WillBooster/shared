@@ -59,7 +59,7 @@
     "@tsconfig/node-ts": "23.6.4",
     "@types/babel__core": "7.20.5",
     "@types/bun": "1.4.1",
-    "@types/node": "26.4.0",
+    "@types/node": "26.4.1",
     "@types/semver": "7.8.0",
     "@types/yargs": "17.0.35",
     "@willbooster/oxfmt-config": "1.2.2",
