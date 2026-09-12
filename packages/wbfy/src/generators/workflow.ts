@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import merge from 'deepmerge';
 import * as yaml from 'js-yaml';
+import { z } from 'zod';
 
 import { logger } from '../logger.js';
 import { hasFnoxSyncFailed, resolveFnoxCiAgeKeySecretName } from './fnoxToml.js';
@@ -15,6 +16,7 @@ import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
 import { repoResolvesPrivatePackages } from '../utils/privatePackages.js';
 import { promisePool } from '../utils/promisePool.js';
+import { assertPrivateWorkflowRunners } from './workflowRunnerPolicy.js';
 
 interface Workflow {
   name?: string;
@@ -219,13 +221,20 @@ function parseOrgReusableWorkflowCall(
 }
 
 export async function generateWorkflows(rootConfig: PackageConfig): Promise<void> {
+  if (!rootConfig.isRepoVisibilityKnown) {
+    console.warn('Skipped workflow generation because repository visibility is unknown.');
+    return;
+  }
+  const workflowsPath = path.resolve(rootConfig.dirPath, '.github', 'workflows');
+  if (!isReusableWorkflowsRepo(rootConfig.repository) && (await fsUtil.isConfinedWritablePath(workflowsPath))) {
+    await assertPrivateWorkflowRunners(rootConfig, workflowsPath);
+  }
   return logger.functionIgnoringException('generateWorkflow', async () => {
     if (isReusableWorkflowsRepo(rootConfig.repository)) {
       // Don't touch reusable-workflows repo because it hosts upstream workflow definitions.
       return;
     }
 
-    const workflowsPath = path.resolve(rootConfig.dirPath, '.github', 'workflows');
     // With .github or .github/workflows symlinked outside the repository, writeYaml's guards
     // already refuse the writes, but readdir/rm below would still enumerate and DELETE files
     // outside the repository — so require the directory to resolve inside it before any
@@ -866,16 +875,35 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   if (config.doesContainDockerfile && !job.with.ci_label && kind.startsWith('test')) {
     job.with.ci_label = 'large';
   }
-  // Because github.event.repository.private is always true if job is scheduled
-  if (kind === 'release' || kind.startsWith('test') || kind.startsWith('deploy')) {
-    if (config.isPublicRepo) {
+  const acceptsRunnerInput = ['test', 'test-rust', 'deploy', 'release', 'run-script'].includes(
+    orgWorkflowCall?.workflowName ?? ''
+  );
+  if (config.isRepoVisibilityKnown) {
+    if (config.isPublicRepo && acceptsRunnerInput) {
       job.with.github_hosted_runner = true;
+    } else {
+      delete job.with.github_hosted_runner;
     }
-    // An existing github_hosted_runner on a PRIVATE repository is preserved on purpose: the input
-    // exists precisely so a private caller can opt into GitHub-hosted runners, and wbfy must not
-    // revert that manual choice (only the other kinds below never take the input).
-  } else {
-    delete job.with.github_hosted_runner;
+    if (!config.isPublicRepo && job.with.runs_on !== undefined) {
+      const labels = z
+        .string()
+        .transform((value, ctx) => {
+          try {
+            return JSON.parse(value) as unknown;
+          } catch {
+            ctx.addIssue({ code: 'custom', message: 'Expected JSON runner labels' });
+            return z.NEVER;
+          }
+        })
+        .pipe(z.array(z.string()))
+        .safeParse(job.with.runs_on);
+      if (labels.success && labels.data.includes('self-hosted')) {
+        job.with.runs_on = JSON.stringify(labels.data);
+      } else {
+        console.warn(`Removed runs_on from ${job.uses}: private repositories require a self-hosted label array.`);
+        delete job.with.runs_on;
+      }
+    }
   }
 
   if (Object.keys(job.with).length > 0) {
