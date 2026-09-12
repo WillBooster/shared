@@ -124,6 +124,9 @@ function generateAgentInstruction(
   const issueTemplateInstruction = rootConfig.isWillBoosterRepo
     ? `\n- When creating an issue:\n${ISSUE_TEMPLATE_RULES.replaceAll(/^/gm, '  ')}`
     : '';
+  const runnerInstruction = rootConfig.isWillBoosterRepo
+    ? '\n- Private repositories use self-hosted CI runners. Keep OS/size constraints in an explicit self-hosted label array; fix missing runner capabilities instead of switching to GitHub-hosted runners. The sole approved exception is the Windows desktop build in WillBooster/cheerlings.'
+    : '';
   const projectName = rootConfig.packageJson?.name || path.basename(path.resolve(rootConfig.dirPath));
   const baseContent = `
 ## Project Information
@@ -145,7 +148,7 @@ ${TEST_WRITING_RULES}
 - In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.), describe only the current implementation: drop any statement naming an identifier, feature, or concept you cannot confirm exists in the final diff or the current codebase (e.g., one added and later removed or renamed along the way). Whenever documentation or comments no longer match the current implementation (removed options, deprecated usage, outdated behavior), delete or rewrite them, even in files you are not otherwise changing. Mention a past state only where it is needed to understand why the current design is as it is, or when explicitly asked; files that record history by design (e.g., a changelog) are exempt${requirementsExemption}.
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`, \`gh issue create --body-file -\`).
 - Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.
-- \`AGENTS.md\`, \`CLAUDE.md\`, \`GEMINI.md\`, \`.cursor/rules/general.mdc\`, and \`.gemini/styleguide.md\` are generated from \`AGENTS_EXTRA.md\` and overwritten on every \`wbfy\` run; to change agent instructions, edit only \`AGENTS_EXTRA.md\`.${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}
+- \`AGENTS.md\`, \`CLAUDE.md\`, \`GEMINI.md\`, \`.cursor/rules/general.mdc\`, and \`.gemini/styleguide.md\` are generated from \`AGENTS_EXTRA.md\` and overwritten on every \`wbfy\` run; to change agent instructions, edit only \`AGENTS_EXTRA.md\`.${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}${runnerInstruction}
 
 ${generateAgentCodingStyle(rootConfig, allConfigs)}
 `

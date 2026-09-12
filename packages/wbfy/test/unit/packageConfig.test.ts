@@ -82,6 +82,8 @@ jobs:
 
     const config = await getPackageConfig(packageDirPath);
     if (!config) throw new Error('unreachable');
+    config.isRepoVisibilityKnown = true;
+    config.isPublicRepo = true;
     expect(config?.cargoTomlDirPaths).toEqual([]);
     await generateWorkflows(config);
     await promisePool.promiseAll();
@@ -114,6 +116,8 @@ jobs:
 
     const config = await getPackageConfig(packageDirPath);
     if (!config) throw new Error('unreachable');
+    config.isRepoVisibilityKnown = true;
+    config.isPublicRepo = true;
     await generateWorkflows(config);
     await promisePool.promiseAll();
 
