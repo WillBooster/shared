@@ -88,10 +88,17 @@ export async function spawnAsync(
       let stderr = '';
       const stdoutPrinter = createRealtimePrinter(process.stdout, options?.omitBlankLinesWhilePrinting);
       const stderrPrinter = createRealtimePrinter(process.stderr, options?.omitBlankLinesWhilePrinting);
+      const resumeStdout = (): void => {
+        proc.stdout?.resume();
+      };
+      const resumeStderr = (): void => {
+        proc.stderr?.resume();
+      };
       proc.stdout?.on('data', (data: string) => {
         if (options?.collectOutput !== false) stdout += data;
-        if (options?.printingStdout) {
-          stdoutPrinter.write(data);
+        if (options?.printingStdout && !stdoutPrinter.write(data)) {
+          proc.stdout?.pause();
+          process.stdout.once('drain', resumeStdout);
         }
       });
       proc.stderr?.on('data', (data: string) => {
@@ -99,8 +106,9 @@ export async function spawnAsync(
           if (options?.mergeOutAndError) stdout += data;
           else stderr += data;
         }
-        if (options?.printingStderr) {
-          stderrPrinter.write(data);
+        if (options?.printingStderr && !stderrPrinter.write(data)) {
+          proc.stderr?.pause();
+          process.stderr.once('drain', resumeStderr);
         }
       });
 
@@ -145,12 +153,18 @@ export async function spawnAsync(
         }
       }
 
+      const removeDrainHandlers = (): void => {
+        process.stdout.removeListener('drain', resumeStdout);
+        process.stderr.removeListener('drain', resumeStderr);
+      };
       proc.on('error', (error) => {
+        removeDrainHandlers();
         removeKillOnExitHandlers();
         proc.removeAllListeners('close');
         reject(error);
       });
       proc.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+        removeDrainHandlers();
         removeKillOnExitHandlers();
         stdoutPrinter.flush();
         stderrPrinter.flush();
@@ -183,7 +197,7 @@ const ANSI_ESCAPE_CODE_REGEXP = new RegExp(`${String.fromCodePoint(27)}\\[[0-?]*
 function createRealtimePrinter(
   stream: NodeJS.WriteStream,
   omitBlankLines = false
-): { write: (data: string) => void; flush: () => void } {
+): { write: (data: string) => boolean; flush: () => void } {
   if (!omitBlankLines) {
     return {
       write: (data) => stream.write(data),
@@ -196,12 +210,12 @@ function createRealtimePrinter(
     write: (data) => {
       pending += data;
       const lines = pending.split(/\r?\n/);
+      let ready = true;
       pending = lines.pop() ?? '';
       for (const line of lines) {
-        if (!isBlankLine(line)) {
-          stream.write(`${line}\n`);
-        }
+        if (!isBlankLine(line) && !stream.write(`${line}\n`)) ready = false;
       }
+      return ready;
     },
     flush: () => {
       if (!isBlankLine(pending)) {

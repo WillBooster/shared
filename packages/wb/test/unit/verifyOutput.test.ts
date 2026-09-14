@@ -1,6 +1,7 @@
 import { spawn, spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { setImmediate } from 'node:timers/promises';
 import { stripVTControlCharacters } from 'node:util';
 
 import { afterEach, beforeAll, expect, it } from 'vitest';
@@ -231,15 +232,28 @@ import { test } from 'bun:test';
 test('large stream', () => {
   const chunk = 'x'.repeat(1024 * 1024);
   for (let i = 0; i < 160; i++) fs.writeFileSync(1, chunk);
-});`
+}, 30_000);`
   );
-  const result = spawnSync('node', ['--max-old-space-size=96', cliPath, 'test-on-ci'], {
+  const child = spawn('node', ['--max-old-space-size=96', cliPath, 'test-on-ci'], {
     cwd: dir,
-    stdio: ['ignore', 'ignore', 'pipe'],
-    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 30_000,
   });
-  expect(result.status, result.stderr).toBe(0);
+  let stderr = '';
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+  const exited = new Promise<number | null>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', resolve);
+  });
+  let bytes = 0;
+  for await (const chunk of child.stdout) {
+    bytes += (chunk as Buffer).length;
+    await setImmediate();
+  }
+  expect(await exited, stderr).toBe(0);
+  expect(bytes).toBeGreaterThanOrEqual(160 * 1024 * 1024);
   const log = await fs.stat(path.join(dir, '.wb/test-ci.log'));
   expect(log.size).toBeGreaterThanOrEqual(160 * 1024 * 1024);
 });
