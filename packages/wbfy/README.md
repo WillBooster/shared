@@ -18,3 +18,5 @@ This tool must keep idempotency, i.e., it always yields the same result when a u
 
 1. `bunx @willbooster/wbfy <project directory>`
 2. `bunx @willbooster/wbfy generate-user-agent-configs` to overwrite your user-level agent instruction files (`~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`) with the organization's fixed content and merge the organization's settings (disabling Claude Code's commit/PR attribution and both agents' auto memory) into `~/.claude/settings.json` and `~/.gemini/settings.json`
+
+Generated standalone test workflows stream output. Log capture and upload are enabled together. Set the repository Actions variable `UPLOAD_TEST_LOG` to `true` to save and upload a log after success or failure with 14-day retention. Enable this only for secret-free test output: artifact files do not receive GitHub console secret masking. Artifact names include the OS and Node version plus a unique suffix.

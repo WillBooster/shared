@@ -181,6 +181,24 @@ test('large output', () => {
   expect(result.stdout).toContain(logPath);
 });
 
+it('preserves stdin EOF for CI E2E commands while capturing output', async () => {
+  const dir = await createFixture();
+  await fs.mkdir(path.join(dir, 'test/e2e'));
+  await fs.writeFile(
+    path.join(dir, 'test/e2e/input.test.ts'),
+    `import fs from 'node:fs';
+import { test, expect } from 'bun:test';
+test('stdin', () => {
+  expect(fs.readFileSync(0).length).toBe(0);
+  console.log('E2E_STDIN_CLOSED');
+});`
+  );
+  const result = runCli(dir, ['test-on-ci']);
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  expect(result.stdout).toContain('E2E_STDIN_CLOSED');
+  expect(await fs.readFile(path.join(dir, '.wb/test-ci.log'), 'utf8')).toContain('E2E_STDIN_CLOSED');
+});
+
 async function createFixture(): Promise<string> {
   const tmp = path.resolve('.tmp');
   await fs.mkdir(tmp, { recursive: true });

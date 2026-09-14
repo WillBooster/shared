@@ -64,7 +64,7 @@ export async function runWithSpawn(
     cwd: project.dirPath,
     env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? (argv.silent ? true : undefined) }),
     shell: true,
-    stdio: captureOutput || argv.silent ? 'pipe' : 'inherit',
+    stdio: captureOutput ? ['inherit', 'pipe', 'pipe'] : argv.silent ? 'pipe' : 'inherit',
     timeout: opts.timeout,
     mergeOutAndError: shouldProcessSilentOutput,
     killOnExit: true,

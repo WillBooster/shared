@@ -193,24 +193,28 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
     {
       name: 'Test',
       id: 'test',
-      run: `log_dir=$(mktemp -d "$RUNNER_TEMP/test-output.XXXXXX")
+      run: `if [[ "$UPLOAD_TEST_LOG" != "true" ]]; then
+  exec bun run test/ci
+fi
+log_dir=$(mktemp -d "$RUNNER_TEMP/test-output.XXXXXX")
 echo "log_path=$log_dir/test.log" >> "$GITHUB_OUTPUT"
-echo "artifact_name=$(basename "$log_dir")" >> "$GITHUB_OUTPUT"
+echo "artifact_name=$(basename "$log_dir")-$RUNNER_OS-$(node --version)" >> "$GITHUB_OUTPUT"
 set +e
 bun run test/ci 2>&1 | tee "$log_dir/test.log"
-test_exit=\${PIPESTATUS[0]}
-exit "$test_exit"`,
-      ...fnoxEnv,
+test_status=("\${PIPESTATUS[@]}")
+if (( test_status[0] != 0 )); then exit "\${test_status[0]}"; fi
+exit "\${test_status[1]}"`,
+      env: { ...fnoxEnv.env, UPLOAD_TEST_LOG: '${{ vars.UPLOAD_TEST_LOG }}' },
     },
     {
       name: 'Upload test log',
-      if: "${{ always() && steps.test.outputs.log_path != '' }}",
+      if: "${{ always() && vars.UPLOAD_TEST_LOG == 'true' && steps.test.outputs.log_path != '' }}",
       uses: uploadArtifactAction,
       with: {
         name: '${{ steps.test.outputs.artifact_name }}',
         path: '${{ steps.test.outputs.log_path }}',
         'retention-days': 14,
-        'if-no-files-found': 'warn',
+        'if-no-files-found': 'error',
       },
     },
     ...(playwrightDirPaths.length > 0

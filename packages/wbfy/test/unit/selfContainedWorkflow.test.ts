@@ -135,7 +135,7 @@ test('generated test step preserves full logs and failing exit codes', async () 
     const script = workflow.jobs.test!.steps.find((step) => step.name === 'Test')!.run!;
     await fs.writeFile(
       path.join(dirPath, 'emit.js'),
-      String.raw`require('node:fs').writeFileSync(1, 'evidence\n'.repeat(100_000)); process.exit(Number(process.argv[2]));`
+      String.raw`require('node:fs').writeFileSync(1, 'stdout-evidence\n'.repeat(50_000)); require('node:fs').writeFileSync(2, 'stderr-evidence\n'.repeat(50_000)); process.exit(Number(process.argv[2]));`
     );
     for (const exitCode of [0, 7]) {
       await fs.writeFile(
@@ -145,7 +145,7 @@ test('generated test step preserves full logs and failing exit codes', async () 
       const outputPath = path.join(dirPath, `outputs-${exitCode}`);
       const result = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
         cwd: dirPath,
-        env: { ...process.env, RUNNER_TEMP: dirPath, GITHUB_OUTPUT: outputPath },
+        env: { ...process.env, UPLOAD_TEST_LOG: 'true', RUNNER_TEMP: dirPath, GITHUB_OUTPUT: outputPath },
         encoding: 'utf8',
         maxBuffer: 2 * 1024 * 1024,
       });
@@ -153,9 +153,41 @@ test('generated test step preserves full logs and failing exit codes', async () 
       const outputs = await fs.readFile(outputPath, 'utf8');
       const logPath = outputs.match(/^log_path=(.+)$/m)![1]!;
       const log = await fs.readFile(logPath, 'utf8');
-      expect(log.match(/evidence/g)).toHaveLength(100_000);
-      expect(result.stdout.match(/evidence/g)).toHaveLength(100_000);
+      for (const marker of ['stdout-evidence', 'stderr-evidence']) {
+        expect(log.split(marker)).toHaveLength(50_001);
+        expect(result.stdout.split(marker)).toHaveLength(50_001);
+      }
     }
+    await fs.writeFile(
+      path.join(dirPath, 'package.json'),
+      JSON.stringify({ scripts: { 'test/ci': "printf '%4096s' x" } })
+    );
+    const limited = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', `ulimit -f 1\n${script}`], {
+      cwd: dirPath,
+      env: {
+        ...process.env,
+        UPLOAD_TEST_LOG: 'true',
+        RUNNER_TEMP: dirPath,
+        GITHUB_OUTPUT: path.join(dirPath, 'limited-outputs'),
+      },
+      encoding: 'utf8',
+    });
+    expect(limited.status).not.toBe(0);
+    expect(limited.stderr).toMatch(/File.*(size|limit)/i);
+    const directOutputs = path.join(dirPath, 'direct-outputs');
+    const direct = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
+      cwd: dirPath,
+      env: {
+        ...process.env,
+        UPLOAD_TEST_LOG: 'false',
+        RUNNER_TEMP: path.join(dirPath, 'missing'),
+        GITHUB_OUTPUT: directOutputs,
+      },
+      encoding: 'utf8',
+    });
+    expect(direct.status, direct.stderr).toBe(0);
+    expect(direct.stdout).toHaveLength(4096);
+    expect(await Bun.file(directOutputs).exists()).toBe(false);
   });
 });
 
