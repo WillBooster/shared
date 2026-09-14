@@ -137,7 +137,7 @@ Output is saved as it arrives, before display filtering,
 to `.wb/verify.log` or `.wb/verify-full.log` in the verified project. Each command
 overwrites its previous log; `--dry-run` leaves logs untouched.
 
-`wb test-on-ci` streams raw output and overwrites `.wb/test-ci.log` in the selected project on each run. Failed commands retain their exit status after output has been flushed; `--dry-run` preserves the previous log.
+`wb test-on-ci` streams raw output and overwrites `.wb/test-ci.log` in the selected project on each run. Failed commands retain their exit status after output has been flushed; `--dry-run` preserves the previous log. Local logs are independent of workflow artifact uploads. If a log cannot be completed, the command reports the log error and fails an otherwise successful run; an existing nonzero test exit status is preserved.
 
 ## Slidev checks
 
