@@ -75,15 +75,17 @@ export function startVerificationOutput(
     process.stderr.write = stderrWrite;
     globalThis.console = originalConsole;
     process.removeListener('exit', onExit);
-    const tail = succeeded || streamOutput ? '' : readFailureTail(logFile, stepStart, logSize);
-    fs.closeSync(logFile);
+    let tail = '';
     const message = `${succeeded || streamOutput ? 'Full log' : 'Verification failed. Full log'}: ${logPath}\n`;
-    if (!logError) {
+    try {
       try {
-        fs.appendFileSync(logPath, message);
-      } catch (error) {
-        logError = error instanceof Error ? error : new Error('Unknown log write error');
+        tail = succeeded || streamOutput ? '' : readFailureTail(logFile, stepStart, logSize);
+      } finally {
+        fs.closeSync(logFile);
       }
+      if (!logError) fs.appendFileSync(logPath, message);
+    } catch (error) {
+      logError ??= error instanceof Error ? error : new Error('Unknown log I/O error');
     }
     if (logError && !exitCode) process.exitCode = 1;
     const output =
