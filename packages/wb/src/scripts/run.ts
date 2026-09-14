@@ -63,6 +63,7 @@ export async function runWithSpawn(
   const ret = await spawnAsync(normalizedScript.runnable, undefined, {
     cwd: project.dirPath,
     env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? (argv.silent ? true : undefined) }),
+    collectOutput: !captureOutput,
     shell: true,
     stdio: captureOutput ? ['inherit', 'pipe', 'pipe'] : argv.silent ? 'pipe' : 'inherit',
     timeout: opts.timeout,
@@ -118,6 +119,7 @@ export function runWithSpawnInParallel(
     const ret = await spawnAsync(normalizedScript.runnable, undefined, {
       cwd: project.dirPath,
       env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? true }),
+      collectOutput: !captureOutput,
       shell: true,
       stdio: captureOutput ? ['inherit', 'pipe', 'pipe'] : 'pipe',
       timeout: opts.timeout,

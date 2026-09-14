@@ -199,6 +199,29 @@ test('stdin', () => {
   expect(await fs.readFile(path.join(dir, '.wb/test-ci.log'), 'utf8')).toContain('E2E_STDIN_CLOSED');
 });
 
+it('streams CI output larger than the wrapper heap without retaining it in memory', async () => {
+  const dir = await createFixture();
+  await fs.mkdir(path.join(dir, 'test/e2e'));
+  await fs.writeFile(
+    path.join(dir, 'test/e2e/large.test.ts'),
+    `import fs from 'node:fs';
+import { test } from 'bun:test';
+test('large stream', () => {
+  const chunk = 'x'.repeat(1024 * 1024);
+  for (let i = 0; i < 160; i++) fs.writeFileSync(1, chunk);
+});`
+  );
+  const result = spawnSync('node', ['--max-old-space-size=96', cliPath, 'test-on-ci'], {
+    cwd: dir,
+    stdio: ['ignore', 'ignore', 'pipe'],
+    encoding: 'utf8',
+    timeout: 30_000,
+  });
+  expect(result.status, result.stderr).toBe(0);
+  const log = await fs.stat(path.join(dir, '.wb/test-ci.log'));
+  expect(log.size).toBeGreaterThanOrEqual(160 * 1024 * 1024);
+});
+
 async function createFixture(): Promise<string> {
   const tmp = path.resolve('.tmp');
   await fs.mkdir(tmp, { recursive: true });

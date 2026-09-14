@@ -30,6 +30,8 @@ export type SpawnAsyncOptions = (
   | SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioNull>
   | SpawnOptions
 ) & {
+  /** Whether to retain stdout/stderr in the returned result; defaults to true. */
+  collectOutput?: boolean;
   /** Input string to write to the spawned process's stdin */
   input?: string;
   /** If true, stderr output will be merged into stdout */
@@ -87,16 +89,15 @@ export async function spawnAsync(
       const stdoutPrinter = createRealtimePrinter(process.stdout, options?.omitBlankLinesWhilePrinting);
       const stderrPrinter = createRealtimePrinter(process.stderr, options?.omitBlankLinesWhilePrinting);
       proc.stdout?.on('data', (data: string) => {
-        stdout += data;
+        if (options?.collectOutput !== false) stdout += data;
         if (options?.printingStdout) {
           stdoutPrinter.write(data);
         }
       });
       proc.stderr?.on('data', (data: string) => {
-        if (options?.mergeOutAndError) {
-          stdout += data;
-        } else {
-          stderr += data;
+        if (options?.collectOutput !== false) {
+          if (options?.mergeOutAndError) stdout += data;
+          else stderr += data;
         }
         if (options?.printingStderr) {
           stderrPrinter.write(data);

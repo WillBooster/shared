@@ -198,7 +198,6 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
 fi
 log_dir=$(mktemp -d "$RUNNER_TEMP/test-output.XXXXXX")
 echo "log_path=$log_dir/test.log" >> "$GITHUB_OUTPUT"
-echo "artifact_name=$(basename "$log_dir")-$RUNNER_OS-$(node --version)" >> "$GITHUB_OUTPUT"
 set +e
 bun run test/ci 2>&1 | tee "$log_dir/test.log"
 test_status=("\${PIPESTATUS[@]}")
@@ -211,7 +210,7 @@ exit "\${test_status[1]}"`,
       if: "${{ always() && vars.UPLOAD_TEST_LOG == 'true' && steps.test.outputs.log_path != '' }}",
       uses: uploadArtifactAction,
       with: {
-        name: '${{ steps.test.outputs.artifact_name }}',
+        name: 'test-output-${{ runner.os }}-${{ job.check_run_id }}-${{ github.run_attempt }}',
         path: '${{ steps.test.outputs.log_path }}',
         'retention-days': 14,
         'if-no-files-found': 'error',
