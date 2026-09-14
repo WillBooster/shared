@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -46,7 +47,6 @@ test('generates self-contained test and semantic-pr workflows without reusable-w
     expect(testContent).not.toContain('reusable-workflows');
     const testWorkflow = YAML.parse(testContent) as ParsedWorkflow;
     const runCommands = testWorkflow.jobs.test?.steps.map((step) => step.run).filter(Boolean);
-    expect(runCommands).toContain('bun run test/ci');
     // No TypeScript and no Playwright in this repository.
     expect(runCommands).not.toContain('bun run typecheck');
     expect(testContent).not.toContain('playwright');
@@ -82,7 +82,7 @@ test('includes typecheck, Playwright caching and step-scoped FNOX_AGE_KEY when t
     // Step-scoped, not job-wide: `bun install` must not see the age identity.
     const installStep = steps.find((step) => step.name === 'Install dependencies');
     expect(installStep?.env?.FNOX_AGE_KEY).toBeUndefined();
-    const testStep = steps.find((step) => step.run === 'bun run test/ci');
+    const testStep = steps.find((step) => step.name === 'Test');
     expect(testStep?.env?.FNOX_AGE_KEY).toBe('${{ secrets.FNOX_AGE_KEY }}');
   });
 });
@@ -120,8 +120,82 @@ test('installs Playwright browsers from the declaring workspace package in a mon
     expect(cacheStep?.with?.key).toBe(
       'playwright-${{ runner.os }}-${{ steps.playwright-version-0.outputs.version }}-${{ steps.playwright-version-1.outputs.version }}'
     );
-    const uploadStep = steps.find((step) => step.uses?.startsWith('actions/upload-artifact@'));
+    const uploadStep = steps.find((step) => step.name === 'Upload test results');
     expect(uploadStep?.with?.path).toBe('packages/app/test-results\npackages/web/test-results');
+  });
+});
+
+test('generated test step preserves full logs and failing exit codes', async () => {
+  await withTempRepo(async (dirPath) => {
+    await generateSelfContainedWorkflows(createConfig({ dirPath, isRoot: true, isWillBoosterRepo: false }));
+    await promisePool.promiseAll();
+    const workflow = YAML.parse(
+      await fs.readFile(path.join(dirPath, '.github/workflows/test.yml'), 'utf8')
+    ) as ParsedWorkflow;
+    const script = workflow.jobs.test!.steps.find((step) => step.name === 'Test')!.run!;
+    await fs.writeFile(
+      path.join(dirPath, 'emit.js'),
+      String.raw`require('node:fs').writeFileSync(1, 'stdout-evidence\n'.repeat(50_000)); require('node:fs').writeFileSync(2, 'stderr-evidence\n'.repeat(50_000)); process.exit(Number(process.argv[2]));`
+    );
+    for (const exitCode of [0, 7]) {
+      await fs.writeFile(
+        path.join(dirPath, 'package.json'),
+        JSON.stringify({ scripts: { 'test/ci': `node emit.js ${exitCode}` } })
+      );
+      const outputPath = path.join(dirPath, `outputs-${exitCode}`);
+      const result = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
+        cwd: dirPath,
+        env: { ...process.env, UPLOAD_TEST_LOG: 'true', RUNNER_TEMP: dirPath, GITHUB_OUTPUT: outputPath },
+        encoding: 'utf8',
+        maxBuffer: 2 * 1024 * 1024,
+      });
+      expect(result.status, result.stderr).toBe(exitCode);
+      const outputs = await fs.readFile(outputPath, 'utf8');
+      const logPath = outputs.match(/^log_path=(.+)$/m)![1]!;
+      const log = await fs.readFile(logPath, 'utf8');
+      for (const marker of ['stdout-evidence', 'stderr-evidence']) {
+        expect(log.split(marker)).toHaveLength(50_001);
+        expect(result.stdout.split(marker)).toHaveLength(50_001);
+      }
+    }
+    for (const exitCode of [0, 7]) {
+      await fs.writeFile(
+        path.join(dirPath, 'package.json'),
+        JSON.stringify({ scripts: { 'test/ci': `node emit.js ${exitCode}` } })
+      );
+      const limited = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', `ulimit -f 1\n${script}`], {
+        cwd: dirPath,
+        env: {
+          ...process.env,
+          UPLOAD_TEST_LOG: 'true',
+          RUNNER_TEMP: dirPath,
+          GITHUB_OUTPUT: path.join(dirPath, `limited-outputs-${exitCode}`),
+        },
+        encoding: 'utf8',
+        maxBuffer: 3 * 1024 * 1024,
+      });
+      expect(limited.status).toBe(exitCode || 1);
+      expect(limited.stdout.split('stdout-evidence')).toHaveLength(50_001);
+      expect(limited.stderr).toMatch(/File.*(size|limit|large)/i);
+    }
+    await fs.writeFile(
+      path.join(dirPath, 'package.json'),
+      JSON.stringify({ scripts: { 'test/ci': "printf '%4096s' x" } })
+    );
+    const directOutputs = path.join(dirPath, 'direct-outputs');
+    const direct = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
+      cwd: dirPath,
+      env: {
+        ...process.env,
+        UPLOAD_TEST_LOG: 'false',
+        RUNNER_TEMP: path.join(dirPath, 'missing'),
+        GITHUB_OUTPUT: directOutputs,
+      },
+      encoding: 'utf8',
+    });
+    expect(direct.status, direct.stderr).toBe(0);
+    expect(direct.stdout).toHaveLength(4096);
+    expect(await Bun.file(directOutputs).exists()).toBe(false);
   });
 });
 

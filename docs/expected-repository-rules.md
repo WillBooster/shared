@@ -59,6 +59,10 @@ A repository that deviates from these rules is fixed manually (or by re-running 
 - Plain Next.js apps run Next.js >= 16.3, so `wb start` passes no bundler flag to `next dev` (Turbopack is the default). Blitz apps pin Next.js 15, where the flagless `next dev` selects the webpack dev server that `withBlitz` requires, and wbfy keeps their `typescript` pin below 7 (Next.js 15's `next build` cannot use tsgo).
 - macOS and Linux only; Windows is unsupported. A project using `wb db restore` with Turso declares a `libsql:` or `turso:` `DATABASE_URL` and `DATABASE_AUTH_TOKEN`, and has `sqlite3` on `PATH`.
 
+## Standalone GitHub workflows
+
+- Generated standalone test workflows capture and upload raw test logs only when the repository Actions variable `UPLOAD_TEST_LOG` is `true`, with 14-day artifact retention after success or failure. Enable this only for secret-free test output: artifact files do not receive GitHub's console secret masking.
+
 ## GitHub-side conventions (WillBooster / WillBoosterLab repositories)
 
 - Squash-only merges with `PR_TITLE` messages, auto-merge enabled, and head-branch deletion on merge.

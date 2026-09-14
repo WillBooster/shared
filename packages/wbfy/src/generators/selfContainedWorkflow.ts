@@ -190,7 +190,33 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
       : []),
     ...(hasTypecheck ? [{ run: 'bun run typecheck', ...fnoxEnv }] : []),
     { run: 'bun run lint', ...fnoxEnv },
-    { run: 'bun run test/ci', ...fnoxEnv },
+    {
+      name: 'Test',
+      id: 'test',
+      run: `if [[ "$UPLOAD_TEST_LOG" != "true" ]]; then
+  exec bun run test/ci
+fi
+log_dir=$(mktemp -d "$RUNNER_TEMP/test-output.XXXXXX")
+echo "log_path=$log_dir/test.log" >> "$GITHUB_OUTPUT"
+# Keep draining test output when the log reaches a file-size limit.
+set +e
+bun run test/ci 2>&1 | (trap '' XFSZ; tee "$log_dir/test.log")
+test_status=("\${PIPESTATUS[@]}")
+if (( test_status[0] != 0 )); then exit "\${test_status[0]}"; fi
+exit "\${test_status[1]}"`,
+      env: { ...fnoxEnv.env, UPLOAD_TEST_LOG: '${{ vars.UPLOAD_TEST_LOG }}' },
+    },
+    {
+      name: 'Upload test log',
+      if: "${{ always() && vars.UPLOAD_TEST_LOG == 'true' && steps.test.outputs.log_path != '' }}",
+      uses: uploadArtifactAction,
+      with: {
+        name: 'test-output-${{ runner.os }}-${{ job.check_run_id }}-${{ github.run_attempt }}',
+        path: '${{ steps.test.outputs.log_path }}',
+        'retention-days': 14,
+        'if-no-files-found': 'error',
+      },
+    },
     ...(playwrightDirPaths.length > 0
       ? [
           {

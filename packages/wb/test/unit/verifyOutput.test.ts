@@ -1,6 +1,7 @@
 import { spawn, spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { setImmediate } from 'node:timers/promises';
 import { stripVTControlCharacters } from 'node:util';
 
 import { afterEach, beforeAll, expect, it } from 'vitest';
@@ -152,6 +153,133 @@ it('preserves the previous log during dry-run and keeps standalone tests verbose
   expect(result.stdout).toContain('RAW_TEST_STDOUT');
 });
 
+it.each([0, 7])('saves and flushes complete CI output with exit code %s', async (exitCode) => {
+  const dir = await createFixture();
+  const logPath = path.join(dir, '.wb/test-ci.log');
+  await fs.mkdir(path.dirname(logPath), { recursive: true });
+  await fs.writeFile(logPath, 'PREVIOUS_RUN');
+  const dryRun = runCli(dir, ['test-on-ci', '--dry-run']);
+  expect(dryRun.status, dryRun.stderr).toBe(0);
+  expect(await fs.readFile(logPath, 'utf8')).toBe('PREVIOUS_RUN');
+  await fs.writeFile(
+    path.join(dir, 'test/unit/example.test.ts'),
+    `import fs from 'node:fs';
+import { test } from 'bun:test';
+test('large output', () => {
+  fs.writeFileSync(1, 'CI_STDOUT_α😀\\n'.repeat(20_000));
+  fs.writeFileSync(2, 'CI_STDERR_α😀\\n'.repeat(20_000));
+  ${exitCode ? `process.exit(${exitCode});` : ''}
+});`
+  );
+  const result = runCli(dir, ['test-on-ci']);
+  expect(result.status, result.stderr).toBe(exitCode);
+  const log = await fs.readFile(logPath, 'utf8');
+  for (const output of [log, result.stdout + result.stderr]) {
+    expect(output.match(/CI_STDOUT_α😀/g)).toHaveLength(20_000);
+    expect(output.match(/CI_STDERR_α😀/g)).toHaveLength(20_000);
+    expect(output).not.toContain('PREVIOUS_RUN');
+  }
+  expect(result.stdout).toContain(logPath);
+});
+
+it('preserves stdin EOF for CI E2E commands while capturing output', async () => {
+  const dir = await createFixture();
+  await fs.mkdir(path.join(dir, 'test/e2e'));
+  await fs.writeFile(
+    path.join(dir, 'test/e2e/input.test.ts'),
+    `import fs from 'node:fs';
+import { test, expect } from 'bun:test';
+test('stdin', () => {
+  expect(fs.readFileSync(0).length).toBe(0);
+  console.log('E2E_STDIN_CLOSED');
+});`
+  );
+  const result = runCli(dir, ['test-on-ci']);
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  expect(result.stdout).toContain('E2E_STDIN_CLOSED');
+  expect(await fs.readFile(path.join(dir, '.wb/test-ci.log'), 'utf8')).toContain('E2E_STDIN_CLOSED');
+});
+
+it.each([0, 7])('reports a full log device without interrupting the command with exit code %s', async (exitCode) => {
+  const dir = await createFixture();
+  await fs.writeFile(
+    path.join(dir, 'test/unit/example.test.ts'),
+    `import fs from 'node:fs';
+import { test } from 'bun:test';
+test('output', () => {
+  fs.writeFileSync(1, 'DISK_LIMIT_OUTPUT\\n'.repeat(20_000));
+  ${exitCode ? `process.exit(${exitCode});` : ''}
+});`
+  );
+  const result = spawnSync('bash', ['-c', 'trap \'\' XFSZ; ulimit -f 1; exec node "$1" test-on-ci', 'bash', cliPath], {
+    cwd: dir,
+    encoding: 'utf8',
+    maxBuffer: 2 * 1024 * 1024,
+    timeout: 30_000,
+  });
+  expect(result.status, result.stderr).toBe(exitCode || 1);
+  expect(result.stdout.split('DISK_LIMIT_OUTPUT')).toHaveLength(20_001);
+  expect(result.stdout).toContain('Log incomplete:');
+});
+
+it('streams failing verification output when its log is full', async () => {
+  const dir = await createFixture();
+  await fs.writeFile(path.join(dir, 'generate.ts'), "process.stdout.write('FILL_LOG'.repeat(8192));");
+  await fs.writeFile(
+    path.join(dir, 'test/unit/example.test.ts'),
+    "import { test, expect } from 'bun:test'; test('failure', () => { expect(false, 'ASSERTION_AFTER_LOG_FAILURE').toBe(true); });"
+  );
+  const result = spawnSync(
+    'bash',
+    ['-c', 'trap \'\' XFSZ; ulimit -f 1; exec node "$1" verify --full', 'bash', cliPath],
+    {
+      cwd: dir,
+      encoding: 'utf8',
+      timeout: 30_000,
+      maxBuffer: 2 * 1024 * 1024,
+    }
+  );
+  expect(result.status, result.stdout + result.stderr).toBe(1);
+  expect(result.stdout + result.stderr).toContain('ASSERTION_AFTER_LOG_FAILURE');
+  expect(result.stdout).toContain('Log incomplete:');
+});
+
+it('streams CI output larger than the wrapper heap without retaining it in memory', async () => {
+  const dir = await createFixture();
+  await fs.mkdir(path.join(dir, 'test/e2e'));
+  await fs.writeFile(
+    path.join(dir, 'test/e2e/large.test.ts'),
+    `import fs from 'node:fs';
+import { test } from 'bun:test';
+test('large stream', () => {
+  const chunk = 'x'.repeat(1024 * 1024);
+  for (let i = 0; i < 160; i++) fs.writeFileSync(1, chunk);
+}, 30_000);`
+  );
+  const child = spawn('node', ['--max-old-space-size=96', cliPath, 'test-on-ci'], {
+    cwd: dir,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 30_000,
+  });
+  let stderr = '';
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+  const exited = new Promise<number | null>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', resolve);
+  });
+  let bytes = 0;
+  for await (const chunk of child.stdout) {
+    bytes += (chunk as Buffer).length;
+    await setImmediate();
+  }
+  expect(await exited, stderr).toBe(0);
+  expect(bytes).toBeGreaterThanOrEqual(160 * 1024 * 1024);
+  const log = await fs.stat(path.join(dir, '.wb/test-ci.log'));
+  expect(log.size).toBeGreaterThanOrEqual(160 * 1024 * 1024);
+});
+
 async function createFixture(): Promise<string> {
   const tmp = path.resolve('.tmp');
   await fs.mkdir(tmp, { recursive: true });
@@ -178,5 +306,10 @@ async function createFixture(): Promise<string> {
 }
 
 function runCli(dir: string, args: string[]): SpawnSyncReturns<string> {
-  return spawnSync('node', [cliPath, ...args], { cwd: dir, encoding: 'utf8', timeout: 30_000 });
+  return spawnSync('node', [cliPath, ...args], {
+    cwd: dir,
+    encoding: 'utf8',
+    timeout: 30_000,
+    maxBuffer: 4 * 1024 * 1024,
+  });
 }

@@ -10,8 +10,11 @@ export function isCapturingVerificationOutput(): boolean {
   return capturingVerificationOutput;
 }
 
-/** Saves output as it arrives; successful verification exposes only its final recap. */
-export function startVerificationOutput(logPath: string): {
+/** Saves output as it arrives, optionally streaming it instead of showing only a verification recap. */
+export function startVerificationOutput(
+  logPath: string,
+  streamOutput = false
+): {
   startStep: (name?: string) => void;
   succeed: () => void;
   finish: (exitCode: number) => Promise<void>;
@@ -23,6 +26,7 @@ export function startVerificationOutput(logPath: string): {
   const originalConsole = globalThis.console;
   stdoutWrite(`Full log: ${logPath}\n`);
   let logSize = 0;
+  let logError: Error | undefined;
   let stepStart = 0;
   let stepName: string | undefined;
   let succeeded = false;
@@ -35,9 +39,21 @@ export function startVerificationOutput(logPath: string): {
         typeof chunk === 'string'
           ? Buffer.from(chunk, typeof encodingOrCallback === 'string' ? encodingOrCallback : 'utf8')
           : chunk;
-      logSize += fs.writeSync(logFile, buffer);
+      if (!logError) {
+        try {
+          let offset = 0;
+          while (offset < buffer.length) {
+            const written = fs.writeSync(logFile, buffer, offset, buffer.length - offset);
+            if (written === 0) throw new Error('Log write made no progress');
+            offset += written;
+            logSize += written;
+          }
+        } catch (error) {
+          logError = error instanceof Error ? error : new Error('Unknown log write error');
+        }
+      }
       const done = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
-      if (succeeded) return original.call(stream, buffer, undefined, done);
+      if (succeeded || streamOutput || logError) return original.call(stream, buffer, undefined, done);
       if (done) queueMicrotask(done);
       return true;
     }) as typeof original;
@@ -59,16 +75,33 @@ export function startVerificationOutput(logPath: string): {
     process.stderr.write = stderrWrite;
     globalThis.console = originalConsole;
     process.removeListener('exit', onExit);
-    const tail = succeeded ? '' : readFailureTail(logFile, stepStart, logSize);
-    fs.closeSync(logFile);
-    const message = `${succeeded ? 'Full log' : 'Verification failed. Full log'}: ${logPath}\n`;
-    fs.appendFileSync(logPath, message);
-    const output = succeeded
-      ? message
-      : `Failed step: ${stepName ?? 'verification setup'} (exit code ${exitCode})\n${tail}${message}`;
-    await new Promise<void>((resolve, reject) => {
-      stdoutWrite(output, (error) => (error ? reject(error) : resolve()));
-    });
+    let tail = '';
+    const message = `${succeeded || streamOutput ? 'Full log' : 'Verification failed. Full log'}: ${logPath}\n`;
+    try {
+      try {
+        tail = succeeded || streamOutput ? '' : readFailureTail(logFile, stepStart, logSize);
+      } finally {
+        fs.closeSync(logFile);
+      }
+      if (!logError) fs.appendFileSync(logPath, message);
+    } catch (error) {
+      logError ??= error instanceof Error ? error : new Error('Unknown log I/O error');
+    }
+    if (logError && !exitCode) process.exitCode = 1;
+    const output =
+      succeeded || streamOutput
+        ? message
+        : `Failed step: ${stepName ?? 'verification setup'} (exit code ${exitCode})\n${tail}${message}`;
+    await Promise.all([
+      new Promise<void>((resolve, reject) => {
+        stdoutWrite(`${output}${logError ? `Log incomplete: ${String(logError)}\n` : ''}`, (error) =>
+          error ? reject(error) : resolve()
+        );
+      }),
+      new Promise<void>((resolve, reject) => {
+        stderrWrite('', (error) => (error ? reject(error) : resolve()));
+      }),
+    ]);
   };
   // An unexpected process.exit() still closes the saved log. Normal failures await the flush.
   const onExit = (exitCode: number): void => {
