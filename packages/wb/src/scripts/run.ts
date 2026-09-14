@@ -119,7 +119,7 @@ export function runWithSpawnInParallel(
       cwd: project.dirPath,
       env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? true }),
       shell: true,
-      stdio: 'pipe',
+      stdio: captureOutput ? ['inherit', 'pipe', 'pipe'] : 'pipe',
       timeout: opts.timeout,
       mergeOutAndError: true,
       killOnExit: true,
