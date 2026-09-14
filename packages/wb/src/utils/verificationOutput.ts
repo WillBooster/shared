@@ -53,7 +53,7 @@ export function startVerificationOutput(
         }
       }
       const done = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
-      if (succeeded || streamOutput) return original.call(stream, buffer, undefined, done);
+      if (succeeded || streamOutput || logError) return original.call(stream, buffer, undefined, done);
       if (done) queueMicrotask(done);
       return true;
     }) as typeof original;

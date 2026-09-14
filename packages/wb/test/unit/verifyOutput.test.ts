@@ -222,6 +222,28 @@ test('output', () => {
   expect(result.stdout).toContain('Log incomplete:');
 });
 
+it('streams failing verification output when its log is full', async () => {
+  const dir = await createFixture();
+  await fs.writeFile(path.join(dir, 'generate.ts'), "process.stdout.write('FILL_LOG'.repeat(8192));");
+  await fs.writeFile(
+    path.join(dir, 'test/unit/example.test.ts'),
+    "import { test, expect } from 'bun:test'; test('failure', () => { expect(false, 'ASSERTION_AFTER_LOG_FAILURE').toBe(true); });"
+  );
+  const result = spawnSync(
+    'bash',
+    ['-c', 'trap \'\' XFSZ; ulimit -f 1; exec node "$1" verify --full', 'bash', cliPath],
+    {
+      cwd: dir,
+      encoding: 'utf8',
+      timeout: 30_000,
+      maxBuffer: 2 * 1024 * 1024,
+    }
+  );
+  expect(result.status, result.stdout + result.stderr).toBe(1);
+  expect(result.stdout + result.stderr).toContain('ASSERTION_AFTER_LOG_FAILURE');
+  expect(result.stdout).toContain('Log incomplete:');
+});
+
 it('streams CI output larger than the wrapper heap without retaining it in memory', async () => {
   const dir = await createFixture();
   await fs.mkdir(path.join(dir, 'test/e2e'));
