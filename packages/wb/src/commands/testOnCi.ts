@@ -4,12 +4,15 @@ import path from 'node:path';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
+import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
 import { toDevNull } from '../scripts/builder.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import { selectScripts } from '../scripts/execution/selectScripts.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { PackageCommandError } from '../utils/packageCommand.js';
+import { startVerificationOutput } from '../utils/verificationOutput.js';
 import { promisePool } from '../utils/promisePool.js';
 import { findTestStructureViolations, printTestStructureViolations } from '../utils/testStructure.js';
 
@@ -47,7 +50,25 @@ export async function testOnCi(
     process.exit(1);
   }
 
-  for (const project of projects.descendants) {
+  const reporter = argv.dryRun
+    ? undefined
+    : startVerificationOutput(path.join(projects.self.dirPath, '.wb', 'test-ci.log'), true);
+  try {
+    await runTests(projects.descendants, argv);
+    if (!process.exitCode) reporter?.succeed();
+  } catch (error) {
+    if (!(error instanceof PackageCommandError)) console.error(error);
+    process.exitCode = error instanceof PackageCommandError ? error.exitCode : 1;
+  } finally {
+    await reporter?.finish(Number(process.exitCode ?? 0));
+  }
+}
+
+async function runTests(
+  projects: Project[],
+  argv: ArgumentsCamelCase<InferredOptionTypes<typeof testOnCiBuilder & typeof sharedOptionsBuilder>>
+): Promise<void> {
+  for (const project of projects) {
     project.env.CI ||= '1';
     // Overwrite, not ||=: project.env already carries the dotenv-derived value.
     project.env.WB_ENV = process.env.WB_ENV;
@@ -65,21 +86,21 @@ export async function testOnCi(
 
     const hasDockerfile = project.hasDockerfile;
     if (hasDockerfile) {
-      await runWithSpawnInParallel(dockerScripts.stopAll(), project, argv);
+      await runCiStep(dockerScripts.stopAll(), project, argv);
     }
     const defaultUnitTargets = getDefaultUnitTargets(project);
     if (defaultUnitTargets !== false) {
       // CI mode disallows `only` to avoid including debug tests
       const unitArgv = { ...argv, targets: defaultUnitTargets };
-      await runWithSpawnInParallel(scripts.testUnit(project, unitArgv).replaceAll(' --allowOnly', ''), project, argv);
+      await runCiStep(scripts.testUnit(project, unitArgv).replaceAll(' --allowOnly', ''), project, argv);
     }
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
       // Confirm dev server startup for consistency across projects with E2E tests.
-      await runWithSpawnInParallel(await scripts.testStart(project, argv), project, argv);
+      await runCiStep(await scripts.testStart(project, argv), project, argv);
       await promisePool.promiseAll();
       if (hasDockerfile) {
         project.env.WB_DOCKER ||= '1';
-        await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
+        await runCiStep(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
       }
       const script = hasDockerfile
         ? await scripts.testE2EDocker(project, argv, {})
@@ -99,8 +120,17 @@ export async function testOnCi(
         process.exitCode = e2eExitCode;
       }
       if (hasDockerfile) {
-        await runWithSpawn(dockerScripts.stop(project), project, argv);
+        await runCiStep(dockerScripts.stop(project), project, argv);
       }
     }
   }
+}
+
+async function runCiStep(
+  script: string,
+  project: Project,
+  argv: ArgumentsCamelCase<InferredOptionTypes<typeof testOnCiBuilder & typeof sharedOptionsBuilder>>
+): Promise<void> {
+  const exitCode = await runWithSpawnInParallel(script, project, argv, { exitIfFailed: false });
+  if (exitCode !== 0) throw new PackageCommandError(exitCode);
 }

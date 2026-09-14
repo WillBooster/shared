@@ -190,7 +190,29 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
       : []),
     ...(hasTypecheck ? [{ run: 'bun run typecheck', ...fnoxEnv }] : []),
     { run: 'bun run lint', ...fnoxEnv },
-    { run: 'bun run test/ci', ...fnoxEnv },
+    {
+      name: 'Test',
+      id: 'test',
+      run: `log_dir=$(mktemp -d "$RUNNER_TEMP/test-output.XXXXXX")
+echo "log_path=$log_dir/test.log" >> "$GITHUB_OUTPUT"
+echo "artifact_name=$(basename "$log_dir")" >> "$GITHUB_OUTPUT"
+set +e
+bun run test/ci 2>&1 | tee "$log_dir/test.log"
+test_exit=\${PIPESTATUS[0]}
+exit "$test_exit"`,
+      ...fnoxEnv,
+    },
+    {
+      name: 'Upload test log',
+      if: "${{ always() && steps.test.outputs.log_path != '' }}",
+      uses: uploadArtifactAction,
+      with: {
+        name: '${{ steps.test.outputs.artifact_name }}',
+        path: '${{ steps.test.outputs.log_path }}',
+        'retention-days': 14,
+        'if-no-files-found': 'warn',
+      },
+    },
     ...(playwrightDirPaths.length > 0
       ? [
           {

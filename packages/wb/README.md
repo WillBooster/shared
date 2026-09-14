@@ -178,3 +178,5 @@ when the Markdown parser treats their source as prose (for example,
 `{{ "ﾃｽﾄ" }}` or `[visible]{title="ﾃｽﾄ"}`). Half-width kana is checked in plain paragraph and list text, but not in headings
 or bold/italic spans or blockquotes. The other rules also inspect headings and
 blockquotes. Markdown coverage is not exhaustive.
+
+`wb test-on-ci` streams raw output and overwrites `.wb/test-ci.log` in the selected project on each run. Failed commands retain their exit status after output has been flushed; `--dry-run` preserves the previous log.

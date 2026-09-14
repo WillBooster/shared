@@ -10,8 +10,11 @@ export function isCapturingVerificationOutput(): boolean {
   return capturingVerificationOutput;
 }
 
-/** Saves output as it arrives; successful verification exposes only its final recap. */
-export function startVerificationOutput(logPath: string): {
+/** Saves output as it arrives, optionally streaming it instead of showing only a verification recap. */
+export function startVerificationOutput(
+  logPath: string,
+  streamOutput = false
+): {
   startStep: (name?: string) => void;
   succeed: () => void;
   finish: (exitCode: number) => Promise<void>;
@@ -37,7 +40,7 @@ export function startVerificationOutput(logPath: string): {
           : chunk;
       logSize += fs.writeSync(logFile, buffer);
       const done = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
-      if (succeeded) return original.call(stream, buffer, undefined, done);
+      if (succeeded || streamOutput) return original.call(stream, buffer, undefined, done);
       if (done) queueMicrotask(done);
       return true;
     }) as typeof original;
@@ -59,16 +62,22 @@ export function startVerificationOutput(logPath: string): {
     process.stderr.write = stderrWrite;
     globalThis.console = originalConsole;
     process.removeListener('exit', onExit);
-    const tail = succeeded ? '' : readFailureTail(logFile, stepStart, logSize);
+    const tail = succeeded || streamOutput ? '' : readFailureTail(logFile, stepStart, logSize);
     fs.closeSync(logFile);
-    const message = `${succeeded ? 'Full log' : 'Verification failed. Full log'}: ${logPath}\n`;
+    const message = `${succeeded || streamOutput ? 'Full log' : 'Verification failed. Full log'}: ${logPath}\n`;
     fs.appendFileSync(logPath, message);
-    const output = succeeded
-      ? message
-      : `Failed step: ${stepName ?? 'verification setup'} (exit code ${exitCode})\n${tail}${message}`;
-    await new Promise<void>((resolve, reject) => {
-      stdoutWrite(output, (error) => (error ? reject(error) : resolve()));
-    });
+    const output =
+      succeeded || streamOutput
+        ? message
+        : `Failed step: ${stepName ?? 'verification setup'} (exit code ${exitCode})\n${tail}${message}`;
+    await Promise.all([
+      new Promise<void>((resolve, reject) => {
+        stdoutWrite(output, (error) => (error ? reject(error) : resolve()));
+      }),
+      new Promise<void>((resolve, reject) => {
+        stderrWrite('', (error) => (error ? reject(error) : resolve()));
+      }),
+    ]);
   };
   // An unexpected process.exit() still closes the saved log. Normal failures await the flush.
   const onExit = (exitCode: number): void => {

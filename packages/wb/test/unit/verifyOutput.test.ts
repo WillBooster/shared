@@ -152,6 +152,35 @@ it('preserves the previous log during dry-run and keeps standalone tests verbose
   expect(result.stdout).toContain('RAW_TEST_STDOUT');
 });
 
+it.each([0, 7])('saves and flushes complete CI output with exit code %s', async (exitCode) => {
+  const dir = await createFixture();
+  const logPath = path.join(dir, '.wb/test-ci.log');
+  await fs.mkdir(path.dirname(logPath), { recursive: true });
+  await fs.writeFile(logPath, 'PREVIOUS_RUN');
+  const dryRun = runCli(dir, ['test-on-ci', '--dry-run']);
+  expect(dryRun.status, dryRun.stderr).toBe(0);
+  expect(await fs.readFile(logPath, 'utf8')).toBe('PREVIOUS_RUN');
+  await fs.writeFile(
+    path.join(dir, 'test/unit/example.test.ts'),
+    `import fs from 'node:fs';
+import { test } from 'bun:test';
+test('large output', () => {
+  fs.writeFileSync(1, 'CI_STDOUT_α😀\\n'.repeat(20_000));
+  fs.writeFileSync(2, 'CI_STDERR_α😀\\n'.repeat(20_000));
+  ${exitCode ? `process.exit(${exitCode});` : ''}
+});`
+  );
+  const result = runCli(dir, ['test-on-ci']);
+  expect(result.status, result.stderr).toBe(exitCode);
+  const log = await fs.readFile(logPath, 'utf8');
+  for (const output of [log, result.stdout + result.stderr]) {
+    expect(output.match(/CI_STDOUT_α😀/g)).toHaveLength(20_000);
+    expect(output.match(/CI_STDERR_α😀/g)).toHaveLength(20_000);
+    expect(output).not.toContain('PREVIOUS_RUN');
+  }
+  expect(result.stdout).toContain(logPath);
+});
+
 async function createFixture(): Promise<string> {
   const tmp = path.resolve('.tmp');
   await fs.mkdir(tmp, { recursive: true });
@@ -178,5 +207,10 @@ async function createFixture(): Promise<string> {
 }
 
 function runCli(dir: string, args: string[]): SpawnSyncReturns<string> {
-  return spawnSync('node', [cliPath, ...args], { cwd: dir, encoding: 'utf8', timeout: 30_000 });
+  return spawnSync('node', [cliPath, ...args], {
+    cwd: dir,
+    encoding: 'utf8',
+    timeout: 30_000,
+    maxBuffer: 4 * 1024 * 1024,
+  });
 }
