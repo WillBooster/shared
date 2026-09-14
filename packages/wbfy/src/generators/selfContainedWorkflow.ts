@@ -198,8 +198,9 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
 fi
 log_dir=$(mktemp -d "$RUNNER_TEMP/test-output.XXXXXX")
 echo "log_path=$log_dir/test.log" >> "$GITHUB_OUTPUT"
+# Keep draining test output when the log reaches a file-size limit.
 set +e
-bun run test/ci 2>&1 | tee "$log_dir/test.log"
+bun run test/ci 2>&1 | (trap '' XFSZ; tee "$log_dir/test.log")
 test_status=("\${PIPESTATUS[@]}")
 if (( test_status[0] != 0 )); then exit "\${test_status[0]}"; fi
 exit "\${test_status[1]}"`,

@@ -26,6 +26,7 @@ export function startVerificationOutput(
   const originalConsole = globalThis.console;
   stdoutWrite(`Full log: ${logPath}\n`);
   let logSize = 0;
+  let logError: unknown;
   let stepStart = 0;
   let stepName: string | undefined;
   let succeeded = false;
@@ -38,7 +39,19 @@ export function startVerificationOutput(
         typeof chunk === 'string'
           ? Buffer.from(chunk, typeof encodingOrCallback === 'string' ? encodingOrCallback : 'utf8')
           : chunk;
-      logSize += fs.writeSync(logFile, buffer);
+      if (!logError) {
+        try {
+          let offset = 0;
+          while (offset < buffer.length) {
+            const written = fs.writeSync(logFile, buffer, offset, buffer.length - offset);
+            if (written === 0) throw new Error('Log write made no progress');
+            offset += written;
+            logSize += written;
+          }
+        } catch (error) {
+          logError = error;
+        }
+      }
       const done = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
       if (succeeded || streamOutput) return original.call(stream, buffer, undefined, done);
       if (done) queueMicrotask(done);
@@ -65,14 +78,23 @@ export function startVerificationOutput(
     const tail = succeeded || streamOutput ? '' : readFailureTail(logFile, stepStart, logSize);
     fs.closeSync(logFile);
     const message = `${succeeded || streamOutput ? 'Full log' : 'Verification failed. Full log'}: ${logPath}\n`;
-    fs.appendFileSync(logPath, message);
+    if (!logError) {
+      try {
+        fs.appendFileSync(logPath, message);
+      } catch (error) {
+        logError = error;
+      }
+    }
+    if (logError && !exitCode) process.exitCode = 1;
     const output =
       succeeded || streamOutput
         ? message
         : `Failed step: ${stepName ?? 'verification setup'} (exit code ${exitCode})\n${tail}${message}`;
     await Promise.all([
       new Promise<void>((resolve, reject) => {
-        stdoutWrite(output, (error) => (error ? reject(error) : resolve()));
+        stdoutWrite(`${output}${logError ? `Log incomplete: ${String(logError)}\n` : ''}`, (error) =>
+          error ? reject(error) : resolve()
+        );
       }),
       new Promise<void>((resolve, reject) => {
         stderrWrite('', (error) => (error ? reject(error) : resolve()));

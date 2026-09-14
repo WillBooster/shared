@@ -158,22 +158,30 @@ test('generated test step preserves full logs and failing exit codes', async () 
         expect(result.stdout.split(marker)).toHaveLength(50_001);
       }
     }
+    for (const exitCode of [0, 7]) {
+      await fs.writeFile(
+        path.join(dirPath, 'package.json'),
+        JSON.stringify({ scripts: { 'test/ci': `node emit.js ${exitCode}` } })
+      );
+      const limited = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', `ulimit -f 1\n${script}`], {
+        cwd: dirPath,
+        env: {
+          ...process.env,
+          UPLOAD_TEST_LOG: 'true',
+          RUNNER_TEMP: dirPath,
+          GITHUB_OUTPUT: path.join(dirPath, `limited-outputs-${exitCode}`),
+        },
+        encoding: 'utf8',
+        maxBuffer: 3 * 1024 * 1024,
+      });
+      expect(limited.status).toBe(exitCode || 1);
+      expect(limited.stdout.split('stdout-evidence')).toHaveLength(50_001);
+      expect(limited.stderr).toMatch(/File.*(size|limit|large)/i);
+    }
     await fs.writeFile(
       path.join(dirPath, 'package.json'),
       JSON.stringify({ scripts: { 'test/ci': "printf '%4096s' x" } })
     );
-    const limited = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', `ulimit -f 1\n${script}`], {
-      cwd: dirPath,
-      env: {
-        ...process.env,
-        UPLOAD_TEST_LOG: 'true',
-        RUNNER_TEMP: dirPath,
-        GITHUB_OUTPUT: path.join(dirPath, 'limited-outputs'),
-      },
-      encoding: 'utf8',
-    });
-    expect(limited.status).not.toBe(0);
-    expect(limited.stderr).toMatch(/File.*(size|limit)/i);
     const directOutputs = path.join(dirPath, 'direct-outputs');
     const direct = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
       cwd: dirPath,

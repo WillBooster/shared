@@ -199,6 +199,28 @@ test('stdin', () => {
   expect(await fs.readFile(path.join(dir, '.wb/test-ci.log'), 'utf8')).toContain('E2E_STDIN_CLOSED');
 });
 
+it.each([0, 7])('reports a full log device without interrupting the command with exit code %s', async (exitCode) => {
+  const dir = await createFixture();
+  await fs.writeFile(
+    path.join(dir, 'test/unit/example.test.ts'),
+    `import fs from 'node:fs';
+import { test } from 'bun:test';
+test('output', () => {
+  fs.writeFileSync(1, 'DISK_LIMIT_OUTPUT\\n'.repeat(20_000));
+  ${exitCode ? `process.exit(${exitCode});` : ''}
+});`
+  );
+  const result = spawnSync('bash', ['-c', 'trap \'\' XFSZ; ulimit -f 1; exec node "$1" test-on-ci', 'bash', cliPath], {
+    cwd: dir,
+    encoding: 'utf8',
+    maxBuffer: 2 * 1024 * 1024,
+    timeout: 30_000,
+  });
+  expect(result.status, result.stderr).toBe(exitCode || 1);
+  expect(result.stdout.split('DISK_LIMIT_OUTPUT')).toHaveLength(20_001);
+  expect(result.stdout).toContain('Log incomplete:');
+});
+
 it('streams CI output larger than the wrapper heap without retaining it in memory', async () => {
   const dir = await createFixture();
   await fs.mkdir(path.join(dir, 'test/e2e'));
