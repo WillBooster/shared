@@ -26,7 +26,7 @@ export function startVerificationOutput(
   const originalConsole = globalThis.console;
   stdoutWrite(`Full log: ${logPath}\n`);
   let logSize = 0;
-  let logError: unknown;
+  let logError: Error | undefined;
   let stepStart = 0;
   let stepName: string | undefined;
   let succeeded = false;
@@ -49,7 +49,7 @@ export function startVerificationOutput(
             logSize += written;
           }
         } catch (error) {
-          logError = error;
+          logError = error instanceof Error ? error : new Error('Unknown log write error');
         }
       }
       const done = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
@@ -82,7 +82,7 @@ export function startVerificationOutput(
       try {
         fs.appendFileSync(logPath, message);
       } catch (error) {
-        logError = error;
+        logError = error instanceof Error ? error : new Error('Unknown log write error');
       }
     }
     if (logError && !exitCode) process.exitCode = 1;
