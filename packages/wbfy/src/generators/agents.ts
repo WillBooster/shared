@@ -175,6 +175,12 @@ export function generateAgentCodingStyle(rootConfig: PackageConfig, allConfigs: 
   // isPublicRepo=false and therefore keeps the restrictive default.
   const isGeneralPublicOss =
     rootConfig.isPublicRepo && allConfigs.every((c) => !c.packageJson?.name?.startsWith('@willbooster/'));
+  // Only public repositories publish packages to the public npm registry, whose users read the
+  // JSDoc without the source; private repositories are read only by agents that have the source.
+  const npmApiException = rootConfig.isPublicRepo
+    ? ' Exception: the exported API of a package published to npm may carry JSDoc describing what it does and how to call it, because its users read it without the source.'
+    : '';
+  const commentInstruction = `- Comments and JSDoc: every reader has the source, so never restate what the code, its names, or its types already say (e.g., \`@param name The name\`, \`@returns the result\`, a narration of the control flow). Write one only when a plausible edit (simplifying, deleting, reordering, replacing) would break something without that knowledge and no type check, lint rule, or existing test would catch the breakage; first try to encode the knowledge in code (a name such as \`timeoutMs\`, a type, an \`assert\`, a test) and comment only what cannot be encoded: a deliberately odd-looking workaround, a dependency on a fact outside the repository (an external API's behavior, an agreement with another system), or a rejected alternative and why. Put it in JSDoc when it is a contract of the declared symbol, so callers see it, and in an inline comment when it concerns specific lines. Delete comments that fail this test in files you touch.${npmApiException}`;
   const osCompatibilityInstruction = isGeneralPublicOss
     ? ''
     : hasDesktopApp
@@ -209,7 +215,7 @@ export function generateAgentCodingStyle(rootConfig: PackageConfig, allConfigs: 
 - Simplify code as much as possible to eliminate redundancy.
 - Design modules and directories with high cohesion and low coupling; split large modules when needed.
 - Place calling functions above the functions they call (top-down order); place variable and type declarations above their usage.
-- Write comments and JSDoc only for hard-to-understand code: explain "why" in comments and "what" in JSDoc.
+${commentInstruction}
 - Never explain how WillBooster's in-house tools (e.g., \`wb\`, \`wbfy\`) work in code comments or documents outside the tool's own package, except in instructions for AI agents (e.g., do not note that \`PORT\` is unset because \`wb\` picks a free port).
 - If lint errors or warnings cannot be fixed, use ignore comments with reasons (e.g., \`// oxlint-disable-next-line <rule> -- <reason>\`).
 - Prefer \`undefined\` over \`null\` unless required by APIs or libraries.
