@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { setTimeout } from 'node:timers/promises';
 
-import { spawnAsync } from '@willbooster/shared-lib-node/src';
+import { isProcessAlive, spawnAsync } from '@willbooster/shared-lib-node/src';
 
 import type { Project } from '../project.js';
 import { printFinishedAndExitIfNeeded, printStart } from '../scripts/run.js';
@@ -63,11 +63,7 @@ function listListeningProcessIds(port: number): number[] {
 export async function removeStaleProcess(pid: number): Promise<void> {
   for (let i = 0; i < staleProcessMaxPolls; i++) {
     await setTimeout(staleProcessPollIntervalMs);
-    try {
-      process.kill(pid, 0);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return;
-    }
+    if (!isProcessAlive(pid)) return;
   }
 
   try {
