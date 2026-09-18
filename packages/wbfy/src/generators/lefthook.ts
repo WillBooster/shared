@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { quoteForShell } from '@willbooster/shared-lib/src';
 import * as yaml from 'js-yaml';
 
 import { logger } from '../logger.js';
@@ -379,14 +380,11 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
 // a double-quoted argument (processing \, `, $ and " immediately), and run_if_changed then eval's
 // it (word-splitting and globbing). An unquoted path containing spaces (e.g. `apps/my app/.next`)
 // would word-split into unrelated rm targets, and `$`/backtick would expand at the first stage.
-// So: single-quote for the eval stage, then backslash-escape the double-quote-context specials.
+// So: quote for the eval stage — `quoteForShell` leaves only words that carry no shell meaning
+// unquoted — then backslash-escape the double-quote-context specials.
 function quoteForEvaluatedShell(filePath: string): string {
   const evalQuoted = quoteForShell(filePath);
   return evalQuoted.replaceAll(/[\\`$"]/gu, String.raw`\$&`);
-}
-
-function quoteForShell(filePath: string): string {
-  return `'${filePath.replaceAll("'", String.raw`'\''`)}'`;
 }
 
 /**

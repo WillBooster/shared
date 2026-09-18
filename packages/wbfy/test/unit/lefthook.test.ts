@@ -76,10 +76,10 @@ test('post-merge cache clearing covers workspace frameworks with workspace-relat
     const prepareScript = fs.readFileSync(path.join(tempDirPath, '.lefthook', 'post-merge', 'prepare.sh'), 'utf8');
     expect(prepareScript).toContain(String.raw`bun install && rm -Rf -- 'apps/\$site/.next'`);
     expect(prepareScript).toContain(
-      String.raw`if git diff --no-color -U0 ORIG_HEAD HEAD -- '*bunfig.toml' | grep --quiet -E '^[+-] *(globalStore|linker|publicHoistPattern)'; then rm -Rf -- 'apps/$site/node_modules' 'node_modules' 'packages/web/node_modules'; fi`
+      String.raw`if git diff --no-color -U0 ORIG_HEAD HEAD -- '*bunfig.toml' | grep --quiet -E '^[+-] *(globalStore|linker|publicHoistPattern)'; then rm -Rf -- 'apps/$site/node_modules' node_modules packages/web/node_modules; fi`
     );
     expect(prepareScript).toContain(
-      String.raw`run_if_changed "(bunfig\.toml|\.npmrc)" "rm -Rf -- 'packages/web/node_modules/.vite'"`
+      String.raw`run_if_changed "(bunfig\.toml|\.npmrc)" "rm -Rf -- packages/web/node_modules/.vite"`
     );
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
@@ -114,7 +114,7 @@ test('post-merge cache clearing stays root-relative for a root-level Next.js app
     await generateLefthook(rootConfig, [rootConfig]);
 
     const prepareScript = fs.readFileSync(path.join(tempDirPath, '.lefthook', 'post-merge', 'prepare.sh'), 'utf8');
-    expect(prepareScript).toContain("bun install && rm -Rf -- '.next'");
+    expect(prepareScript).toContain('bun install && rm -Rf -- .next');
     expect(prepareScript).not.toContain('node_modules/.vite');
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
