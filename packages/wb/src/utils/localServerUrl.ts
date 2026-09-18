@@ -189,7 +189,6 @@ function isServing(hostname: string, port: number): Promise<boolean> {
  * publication and misdirect a mutating script. The start time makes the identity non-recyclable.
  */
 function isPublisherAlive(pid: number, startTime: string | undefined): boolean {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
   if (!isProcessAlive(pid)) return false;
   const currentStartTime = readProcessStartTime(pid);
   // Absent on either side (a `ps`-less environment) leaves the pid check as the only evidence,
