@@ -8,6 +8,7 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import { findDescendantProjects } from '../project.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { promisePool } from '../utils/promisePool.js';
+import { shellEscapeArgument } from '../utils/shell.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
@@ -61,9 +62,9 @@ export async function setup(
         // mise missing or python unconfigured; let poetry pick its default interpreter.
       }
       if (pythonPath) {
-        // The command runs through a shell; POSIX single quotes keep the path one literal argument
-        // even when a relocated mise data dir puts metacharacters into it.
-        const quotedPythonPath = `'${pythonPath.replaceAll("'", String.raw`'\''`)}'`;
+        // The command runs through a shell; quoting keeps the path one literal argument even when
+        // a relocated mise data dir puts metacharacters into it.
+        const quotedPythonPath = shellEscapeArgument(pythonPath);
         await runWithSpawnInParallel(`poetry env use ${quotedPythonPath}`, project, argv);
       }
       await promisePool.promiseAll();

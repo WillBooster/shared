@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { escapeRegExp, quoteForShell } from '@willbooster/shared-lib/src';
 import { globIgnore } from '@willbooster/shared-lib-node/src';
 import merge from 'deepmerge';
 import fg from 'fast-glob';
@@ -19,7 +20,6 @@ import { combineMerge } from '../utils/mergeUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
-import { escapeRegExp } from '../utils/stringUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
@@ -243,9 +243,9 @@ async function applyPackageJsonConventions(
     // build it during install; registry installs ship a prebuilt dist and need no extra step.
     const wbWorkspaceDir = getWorkspacePackageDirs(rootConfig).get(wbDependency);
     if (wbWorkspaceDir) {
-      // Single quotes (with embedded quotes escaped) prevent the shell from expanding `$(…)` or
-      // variables that a hostile directory name could smuggle into the generated script.
-      jsonObj.scripts.prepare += ` && bun run --cwd '${wbWorkspaceDir.replaceAll("'", String.raw`'\''`)}' build`;
+      // Quoted unless the name carries no shell meaning, so that `$(…)` or a variable a hostile
+      // directory name could smuggle into the generated script never reaches the shell unquoted.
+      jsonObj.scripts.prepare += ` && bun run --cwd ${quoteForShell(wbWorkspaceDir)} build`;
     }
     devDependencies.push(lefthookDependency);
 

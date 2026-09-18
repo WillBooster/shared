@@ -14,8 +14,8 @@ describe('normalizeArgs', () => {
     normalizeArgs(argv);
 
     expect(argv.normalizedArgsText).toBe(
-      `'space value' 'semi;colon' 'quo'"'"'te' 'double"quote' --host 0.0.0.0 'quo'"'"'te'`
+      String.raw`'space value' 'semi;colon' 'quo'\''te' 'double"quote' --host 0.0.0.0 'quo'\''te'`
     );
-    expect(argv.normalizedDockerOptionsText).toBe(`'name=quo'"'"'ted'`);
+    expect(argv.normalizedDockerOptionsText).toBe(String.raw`'name=quo'\''ted'`);
   });
 });

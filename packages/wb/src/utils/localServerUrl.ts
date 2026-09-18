@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 
+import { isProcessAlive } from '@willbooster/shared-lib-node/src';
+
 import type { Project } from '../project.js';
 
 // Only local environments serve a URL that cannot be known ahead of time; staging and production
@@ -187,12 +189,7 @@ function isServing(hostname: string, port: number): Promise<boolean> {
  * publication and misdirect a mutating script. The start time makes the identity non-recyclable.
  */
 function isPublisherAlive(pid: number, startTime: string | undefined): boolean {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EPERM') return false;
-  }
+  if (!isProcessAlive(pid)) return false;
   const currentStartTime = readProcessStartTime(pid);
   // Absent on either side (a `ps`-less environment) leaves the pid check as the only evidence,
   // which is what this feature had before and still beats refusing every publication.

@@ -7,11 +7,11 @@ import { sleep } from './sleep.js';
 export function errorify(obj: unknown): Error {
   if (obj instanceof Error) return obj;
   if (typeof obj === 'string') return new Error(obj);
-  try {
-    return new Error(JSON.stringify(obj));
-  } catch {
-    return new Error(String(obj));
-  }
+  // `JSON.stringify` answers `undefined` for `undefined`, a symbol and a function, and throws
+  // on a bigint or a cycle; `new Error(undefined)` has an empty message, which would drop the
+  // only diagnostic a caller has about such a thrown value. Neither representation may throw
+  // out of here: this runs in a catch block, where it would replace the error it converts.
+  return new Error(ignoreError(() => JSON.stringify(obj)) ?? ignoreError(() => String(obj)));
 }
 
 export function ignoreError<T>(fn: () => T): T | undefined {

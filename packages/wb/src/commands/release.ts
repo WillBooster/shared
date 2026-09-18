@@ -6,6 +6,7 @@ import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
+import { escapeRegExp } from '@willbooster/shared-lib/src';
 import { treeKill } from '@willbooster/shared-lib-node/src';
 
 import type { Project } from '../project.js';
@@ -488,10 +489,6 @@ function collectWorkspaceDependencies(
     }
   }
   return dependencies;
-}
-
-function escapeRegExp(text: string): string {
-  return text.replaceAll(/[$()*+.?[\\\]^{|}]/g, String.raw`\$&`);
 }
 
 async function runSemanticRelease(project: Project, argv: ReleaseArgv, activeChild: ActiveChildRef): Promise<number> {

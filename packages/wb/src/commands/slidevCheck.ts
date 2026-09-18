@@ -8,6 +8,7 @@ import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } fro
 import { findSelfProject, type Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { runPackageCommand } from '../utils/packageCommand.js';
+import { shellEscapeArgument } from '../utils/shell.js';
 
 const argumentsBuilder = {
   files: { type: 'string', array: true, default: [] as string[], describe: 'Slidev deck files to check' },
@@ -63,7 +64,7 @@ export async function checkSlidevDecks(
       const textlintExitCode = await lintSlidevText(path.resolve(project.dirPath, deckPath), project.rootDirPath);
       if (textlintExitCode !== 0) return textlintExitCode;
     }
-    const quotedDeckPath = `'${deckPath.replaceAll("'", String.raw`'\''`)}'`;
+    const quotedDeckPath = shellEscapeArgument(deckPath);
     const command = `${project.packageManagerCommand} slidev-check ${argv.fix ? '--fix ' : ''}${quotedDeckPath}`;
     const exitCode = await runPackageCommand(command, project, argv, { allowFailure: true });
     if (exitCode !== 0) return exitCode;
