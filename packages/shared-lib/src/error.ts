@@ -8,7 +8,10 @@ export function errorify(obj: unknown): Error {
   if (obj instanceof Error) return obj;
   if (typeof obj === 'string') return new Error(obj);
   try {
-    return new Error(JSON.stringify(obj));
+    // `JSON.stringify` answers `undefined` for `undefined`, a symbol and a function, and
+    // `new Error(undefined)` has an empty message, which would drop the only diagnostic a
+    // caller has about such a thrown value.
+    return new Error(JSON.stringify(obj) ?? String(obj));
   } catch {
     return new Error(String(obj));
   }
