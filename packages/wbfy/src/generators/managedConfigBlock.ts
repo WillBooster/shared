@@ -1,5 +1,4 @@
-import { escapeRegExp } from '../utils/stringUtil.js';
-
+import { escapeRegExp } from '@willbooster/shared-lib/src';
 export type ConfigBlockName = 'base' | 'export';
 
 interface ManagedConfigBlocksOptions {

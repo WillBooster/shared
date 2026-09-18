@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
+import { escapeRegExp } from '@willbooster/shared-lib/src';
 import { globIgnore } from '@willbooster/shared-lib-node/src';
 import fg from 'fast-glob';
 import type { PackageJson } from 'type-fest';
@@ -11,7 +12,6 @@ import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
 import { classifyScriptSegment, splitScriptSegments } from './utils/managedScriptSegment.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
-import { escapeRegExp } from './utils/stringUtil.js';
 import { getWorkspacePackageJsonPaths, getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
 
 export interface PackageConfig {

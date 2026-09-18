@@ -26,5 +26,6 @@ export type { EnvReaderOptions } from './env.js';
 export { existsAsync } from './exists.js';
 export { globIgnore } from './glob.js';
 export { calculateHashFromFiles, canSkipSeed, updateHashFromFiles } from './hash.js';
+export { isProcessAlive } from './process.js';
 export { spawnAsync } from './spawn.js';
 export { treeKill } from './treeKill.js';

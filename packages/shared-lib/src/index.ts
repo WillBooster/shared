@@ -17,6 +17,7 @@ export { parseCommandLineArgs } from './parseCommandLineArgs.js';
 export { shuffle } from './shuffle.js';
 export { sleep } from './sleep.js';
 export { getConnectionLevelSqlitePragmas, getPersistentSqlitePragmas } from './sqlite.js';
+export { escapeRegExp } from './text.js';
 export { TEST_WRITING_RULES } from './testingRules.js';
 export { zenkakuAlphanumericalsToHankaku } from './zenkaku.js';
 
