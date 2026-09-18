@@ -200,6 +200,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/shared-lib": "workspace:*",
+        "@willbooster/shared-lib-node": "workspace:*",
         "at-decorators": "7.1.2",
         "build-ts": "21.0.14",
         "oxfmt": "0.66.0",
