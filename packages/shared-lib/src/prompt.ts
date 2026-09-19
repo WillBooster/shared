@@ -27,21 +27,35 @@ interface Context {
 }
 
 /**
- * Serializes plain JSON data (objects, arrays, strings, numbers, booleans, and null, honoring `toJSON` such as that of `Date`)
- * into a code block to embed in an LLM prompt.
+ * Serializes data into a code block to embed in an LLM prompt, so that the LLM can read its contents.
+ * Accepts JSON data (honoring `toJSON` such as that of `Date`) as well as `undefined`, `NaN`, `Infinity`, bigints,
+ * `Map`s (including non-string keys), `Set`s and other iterables, `Error`s (with their name, message, cause, and own properties),
+ * and `RegExp`s. Functions and symbols throw. The output is not meant to be deserialized back into the original value.
  * The format inside the code block is an implementation detail and may change.
  */
 export function serializeForPrompt(value: unknown): string {
-  return toTildeCodeBlock(`${stringifyValue(toJsonValue(value), { indent: '' })}\n`, 'yaml');
+  return toTildeCodeBlock(`${stringifyValue(toSerializable(value), { indent: '' })}\n`, 'yaml');
 }
 
 // The functions below reproduce `stringify(value, { lineWidth: 0, aliasDuplicateObjects: false, blockQuote: 'literal' })`
-// of the `yaml` package, restricted to JSON-compatible values.
+// of the `yaml` package, except that `toSerializable` makes `Error`s and `RegExp`s readable instead of `{}`.
 
-function toJsonValue(value: unknown): unknown {
-  return typeof (value as { toJSON?: unknown } | null | undefined)?.toJSON === 'function'
-    ? (value as { toJSON: () => unknown }).toJSON()
-    : value;
+function toSerializable(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null || Array.isArray(value) || value instanceof Map) return value;
+  if (typeof (value as { toJSON?: unknown }).toJSON === 'function')
+    return (value as { toJSON: () => unknown }).toJSON();
+  if (value instanceof Error) {
+    // `name` and `message` usually live on the prototype, and `cause` and `errors` are not enumerable.
+    return {
+      name: value.name,
+      message: value.message,
+      ...Object.fromEntries(Object.entries(value)),
+      ...('cause' in value && { cause: value.cause }),
+      ...(value instanceof AggregateError && { errors: value.errors }),
+    };
+  }
+  if (value instanceof RegExp) return String(value);
+  return Symbol.iterator in value ? [...(value as Iterable<unknown>)] : value;
 }
 
 function stringifyValue(value: unknown, ctx: Context): string {
@@ -55,6 +69,9 @@ function stringifyValue(value: unknown, ctx: Context): string {
     case 'number': {
       return stringifyNumber(value);
     }
+    case 'bigint': {
+      return String(value);
+    }
     case 'string': {
       return stringifyString(value, ctx);
     }
@@ -66,18 +83,20 @@ function stringifyValue(value: unknown, ctx: Context): string {
         if (value.length === 0) return '[]';
         const itemCtx = { indent: ctx.indent + INDENT_STEP };
         for (const item of value as unknown[]) {
-          str += `${str ? separator : ''}- ${stringifyValue(toJsonValue(item), itemCtx)}`;
+          str += `${str ? separator : ''}- ${stringifyValue(toSerializable(item), itemCtx)}`;
         }
         return str;
       }
-      // `Object.keys` would silently turn these into `{}` and drop their content.
-      if (value instanceof Map || value instanceof Set) {
-        throw new TypeError(`Cannot serialize a ${value.constructor.name} value for a prompt`);
+      if (value instanceof Map) {
+        for (const [key, item] of value) {
+          if (item !== undefined) str += `${str ? separator : ''}${stringifyPair(key, item, ctx)}`;
+        }
+        return str || '{}';
       }
       const record = value as Record<string, unknown>;
       for (const key of Object.keys(record)) {
         const item = record[key];
-        if (item !== undefined) str += `${str ? separator : ''}${stringifyPair(key, toJsonValue(item), ctx)}`;
+        if (item !== undefined) str += `${str ? separator : ''}${stringifyPair(key, item, ctx)}`;
       }
       return str || '{}';
     }
@@ -87,13 +106,19 @@ function stringifyValue(value: unknown, ctx: Context): string {
   }
 }
 
-function stringifyPair(key: string, value: unknown, ctx: Context): string {
+function stringifyPair(rawKey: unknown, rawValue: unknown, ctx: Context): string {
   const indent = ctx.indent + INDENT_STEP;
-  const keyStr = stringifyString(key, { indent, implicitKey: true });
+  const key = toSerializable(rawKey);
+  const value = toSerializable(rawValue);
+  const keyStr = stringifyValue(key, { indent, implicitKey: true });
   const valueStr = stringifyValue(value, { indent });
-  if (keyStr.length > MAX_IMPLICIT_KEY_LENGTH) return `? ${keyStr}\n${ctx.indent}: ${valueStr}`;
-  const isBlockCollection = typeof value === 'object' && value !== null && valueStr !== '[]' && valueStr !== '{}';
+  if (isCollection(key) || keyStr.length > MAX_IMPLICIT_KEY_LENGTH) return `? ${keyStr}\n${ctx.indent}: ${valueStr}`;
+  const isBlockCollection = isCollection(value) && valueStr !== '[]' && valueStr !== '{}';
   return `${keyStr}:${isBlockCollection ? `\n${indent}` : ' '}${valueStr}`;
+}
+
+function isCollection(value: unknown): value is object {
+  return typeof value === 'object' && value !== null;
 }
 
 function stringifyNumber(value: number): string {

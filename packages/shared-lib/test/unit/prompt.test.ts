@@ -121,6 +121,29 @@ const FIXTURES: unknown[] = [
   [1, [2, [3, 4]], { a: [5, { b: 6 }] }],
   { nested: { deeper: { deepest: 'value' } }, list: [{ a: 1, b: 'x' }, { c: [] }] },
   { date: new Date('2024-01-02T03:04:05.678Z'), custom: { toJSON: () => ({ x: 1 }) } },
+  { big: 12_345_678_901_234_567_890n, negative: -1n, list: [0n] },
+  new Map(),
+  new Set(),
+  new Map<unknown, unknown>([
+    ['a', 1],
+    [1, 'number key'],
+    ['1', 'string key'],
+    [2n, 'bigint key'],
+    [true, 'boolean key'],
+    [null, 'null key'],
+    ['omitted', undefined],
+    [new Date(0), 'date key'],
+    [
+      { x: 1, y: [2] },
+      { a: 1, b: [1] },
+    ],
+    [[{ a: 1 }], [1]],
+    [new Map([[{ z: 1 }, new Set([1])]]), 'map key'],
+    [{}, 'empty key'],
+    ['x'.repeat(1025), { long: 'key' }],
+  ]),
+  { set: new Set([1, 'a', { b: new Set() }, undefined]), typed: new Uint8Array([1, 2]) },
+  [new Map([['k', new Map([[1, [new Set([2])]]])]])],
   ...TRICKY_STRINGS,
   TRICKY_STRINGS,
   Object.fromEntries(TRICKY_STRINGS.map((str, i) => [str, i])),
@@ -129,7 +152,7 @@ const FIXTURES: unknown[] = [
   [TRICKY_STRINGS.map((str) => ({ [str]: [str] }))],
 ];
 
-test.each(FIXTURES.map((value) => [value]))('serializeForPrompt matches yaml for %j', (value) => {
+test.each(FIXTURES.map((value) => [value]))('serializeForPrompt matches yaml for fixture %#', (value) => {
   expectSameAsYaml(value);
 });
 
@@ -181,7 +204,27 @@ function expectSameAsYaml(value: unknown): void {
   expect(body).toBe(expected);
 }
 
-test('serializeForPrompt rejects Map and Set instead of dropping their content', () => {
-  expect(() => serializeForPrompt({ data: new Map([['k', 'v']]) })).toThrow(TypeError);
-  expect(() => serializeForPrompt([new Set([1])])).toThrow(TypeError);
+test('serializeForPrompt writes the contents of Error and RegExp', () => {
+  class CodedError extends Error {
+    code = 'E_CODED';
+  }
+  const error = new CodedError('outer', { cause: new AggregateError([new RangeError('inner')], 'many') });
+  expect(serializeForPrompt({ error, pattern: /a+b/giu })).toBe(`~~~yaml
+error:
+  name: Error
+  message: outer
+  code: E_CODED
+  cause:
+    name: AggregateError
+    message: many
+    errors:
+      - name: RangeError
+        message: inner
+pattern: /a+b/giu
+~~~`);
+});
+
+test('serializeForPrompt rejects values that cannot be written', () => {
+  expect(() => serializeForPrompt({ fn: () => 1 })).toThrow(TypeError);
+  expect(() => serializeForPrompt([Symbol('s')])).toThrow(TypeError);
 });
