@@ -9,7 +9,7 @@
         "@tsconfig/bun": "1.0.11",
         "@tsconfig/node-lts": "24.0.1",
         "@tsconfig/node-ts": "23.6.4",
-        "@types/bun": "1.4.1",
+        "@types/bun": "1.4.2",
         "@types/node": "26.4.1",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
@@ -33,7 +33,7 @@
         "@tsconfig/bun": "1.0.11",
         "@tsconfig/node-lts": "24.0.1",
         "@tsconfig/node-ts": "23.6.4",
-        "@types/bun": "1.4.1",
+        "@types/bun": "1.4.2",
         "@types/node": "26.4.1",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
@@ -54,7 +54,7 @@
         "@tsconfig/bun": "1.0.11",
         "@tsconfig/node-lts": "24.0.1",
         "@tsconfig/node-ts": "23.6.4",
-        "@types/bun": "1.4.1",
+        "@types/bun": "1.4.2",
         "@types/node": "26.4.1",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
@@ -76,7 +76,7 @@
         "@tsconfig/bun": "1.0.11",
         "@tsconfig/node-lts": "24.0.1",
         "@tsconfig/node-ts": "23.6.4",
-        "@types/bun": "1.4.1",
+        "@types/bun": "1.4.2",
         "@types/node": "26.4.1",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
@@ -106,7 +106,7 @@
         "@tsconfig/bun": "1.0.11",
         "@tsconfig/node-lts": "24.0.1",
         "@tsconfig/node-ts": "23.6.4",
-        "@types/bun": "1.4.1",
+        "@types/bun": "1.4.2",
         "@types/node": "26.4.1",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
@@ -127,7 +127,7 @@
         "@tsconfig/bun": "1.0.11",
         "@tsconfig/node-lts": "24.0.1",
         "@tsconfig/node-ts": "23.6.4",
-        "@types/bun": "1.4.1",
+        "@types/bun": "1.4.2",
         "@types/node": "26.4.1",
         "@types/react": "19.3.0",
         "@types/react-dom": "19.3.0",
@@ -182,7 +182,7 @@
         "@tsconfig/node-lts": "24.0.1",
         "@tsconfig/node-ts": "23.6.4",
         "@types/babel__core": "7.20.5",
-        "@types/bun": "1.4.1",
+        "@types/bun": "1.4.2",
         "@types/node": "26.4.1",
         "@types/semver": "7.8.0",
         "@types/yargs": "17.0.35",
@@ -224,7 +224,7 @@
         "@tsconfig/bun": "1.0.11",
         "@tsconfig/node-lts": "24.0.1",
         "@tsconfig/node-ts": "23.6.4",
-        "@types/bun": "1.4.1",
+        "@types/bun": "1.4.2",
         "@types/jest": "30.0.0",
         "@types/js-yaml": "4.0.9",
         "@types/mdast": "4.0.4",
@@ -1025,7 +1025,7 @@
 
     "@types/babel__traverse": ["@types/babel__traverse@7.28.0", "", { "dependencies": { "@babel/types": "^7.28.2" } }, "sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q=="],
 
-    "@types/bun": ["@types/bun@1.4.1", "", { "dependencies": { "bun-types": "1.4.1" } }, "sha512-0AVGiTXGajf1rgKom3N+c5L7CBxuoyyv1i44M0nX4UDK0G/fnRAMiri93nHuVPIb429KKtAgj7HatVmmOjeQLA=="],
+    "@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
 
     "@types/cacheable-request": ["@types/cacheable-request@6.0.3", "", { "dependencies": { "@types/http-cache-semantics": "*", "@types/keyv": "^3.1.4", "@types/node": "*", "@types/responselike": "^1.0.0" } }, "sha512-IQ3EbTzGxIigb1I3qPZc1rWJnH0BmSKv5QYTalEwweFvyBDLSAe24zP0le/hyi7ecGfZVlIVAg4BZqb8WBwKqw=="],
 
@@ -1425,7 +1425,7 @@
 
     "build-ts": ["build-ts@21.0.14", "", { "dependencies": { "@babel/core": "8.0.1", "@babel/plugin-proposal-decorators": "8.0.2", "@babel/plugin-transform-explicit-resource-management": "8.0.1", "@babel/preset-env": "8.0.2", "@babel/preset-react": "8.0.1", "@babel/preset-typescript": "8.0.1", "@willbooster/shared-lib-node": "13.3.1", "magic-string": "1.2.3", "oxc-parser": "0.148.0", "rolldown": "1.2.7", "signal-exit": "4.1.0", "tsx": "4.23.13", "typescript": "7.0.2", "yargs": "18.1.0" }, "bin": { "build-ts": "bin/index.js" } }, "sha512-l/0RGWU1xhM3q811UjjnE7VdczCFa5KHqvEht+A7czfxNZASsGO482/kPANW3RHICSIqTLTiA+DpLcRhVIghEQ=="],
 
-    "bun-types": ["bun-types@1.4.1", "", { "dependencies": { "@types/node": "*" } }, "sha512-loKuVrAFZKfEv+JvWkHRS9GW5IqLuLRjVXN9p+vZvBN86O5hf/pBZQ5hSoyipsrMmWObZBDvWnlmKvjKTM0PdA=="],
+    "bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
     "bundle-name": ["bundle-name@4.1.0", "", { "dependencies": { "run-applescript": "^7.0.0" } }, "sha512-tjwM5exMg6BGRI+kNmTntNsvdZS1X8BFYS6tnJ2hdH0kVxM6/eVZ2xy+FqStSWvYmtfFMDLIxurorHwDKfDz5Q=="],
 

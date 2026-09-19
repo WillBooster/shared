@@ -40,7 +40,7 @@
     "@tsconfig/bun": "1.0.11",
     "@tsconfig/node-lts": "24.0.1",
     "@tsconfig/node-ts": "23.6.4",
-    "@types/bun": "1.4.1",
+    "@types/bun": "1.4.2",
     "@types/node": "26.4.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
