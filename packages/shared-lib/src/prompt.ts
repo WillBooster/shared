@@ -60,11 +60,14 @@ export function escapePromptTag(text: string, tagName: string): string {
 }
 
 /**
- * Matches a block produced by `serializeForPrompt`, whose fence is longer than any `~` run inside it.
- * Interpolating the block into an indented template literal indents its opening fence but none of its other lines,
- * so the indentation is captured separately and dropped: four spaces would make the fence an indented code block.
+ * Matches a block produced by `serializeForPrompt`. The match starts at the opening fence rather than at a line start,
+ * since an interpolation can place the block after a label; the fence is by construction longer than any `~` run
+ * inside the block, so the same run at the start of a line can only be the closing fence.
  */
-const SERIALIZED_BLOCK = /^([ \t]*)(~{3,})yaml\n[\s\S]*?\n\2[ \t]*$/gmu;
+const SERIALIZED_BLOCK = /(~{3,})yaml\n[\s\S]*?\n\1(?=[ \t]*$)/gmu;
+
+/** Whitespace that indents an interpolated block, which would make its opening fence an indented code block. */
+const BLOCK_INDENTATION = /(?<=^|\n)[ \t]+$/u;
 
 /**
  * Strips the indentation that nested template literals add to Markdown markers (headings and code fences) and
@@ -75,7 +78,7 @@ export function formatPrompt(prompt: string): string {
   let formatted = '';
   let lastIndex = 0;
   for (const match of prompt.matchAll(SERIALIZED_BLOCK)) {
-    formatted += dedentPromptMarkers(prompt.slice(lastIndex, match.index)) + match[0].slice(match[1]?.length ?? 0);
+    formatted += dedentPromptMarkers(prompt.slice(lastIndex, match.index)).replace(BLOCK_INDENTATION, '') + match[0];
     lastIndex = match.index + match[0].length;
   }
   return (formatted + dedentPromptMarkers(prompt.slice(lastIndex))).trim();
