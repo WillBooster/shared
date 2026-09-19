@@ -262,8 +262,10 @@ test('formatPrompt keeps serialized blocks byte for byte, indented by a template
   const serialized = serializeForPrompt({ history: ['  ## indented heading\n  ```js\n  code\n  ```\n\n\n'] });
 
   expect(formatPrompt(`# History\n\n${serialized}\n`)).toBe(`# History\n\n${serialized}`);
-  // The interpolation indents the opening fence of the block, and nothing else.
-  expect(formatPrompt(`\n  # History\n\n  ${serialized}\n`)).toContain(serialized.slice(serialized.indexOf('\n')));
+  // The interpolation indents the opening fence of the block, and nothing else; four spaces of it would otherwise
+  // turn the fence into an indented code block.
+  expect(formatPrompt(`\n  # History\n\n  ${serialized}\n`)).toBe(`# History\n\n${serialized}`);
+  expect(formatPrompt(`\n    # History\n\n    ${serialized}\n\n    # End\n`)).toBe(`# History\n\n${serialized}\n# End`);
 });
 
 test('serializeForPromptInTag escapes the tag in every scalar it writes', () => {
