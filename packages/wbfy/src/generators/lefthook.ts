@@ -308,6 +308,9 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
   const postMergeCommands: string[] = [];
   const toolsChangedPattern = String.raw`(mise\.toml|\.mise\.toml)`;
   postMergeCommands.push(String.raw`run_if_changed "${toolsChangedPattern}" "mise install"`);
+  // `mise activate` updates PATH only when the prompt is drawn, so the hook inherits the tool
+  // versions pinned before the merge; refresh PATH so a pulled Bun pin installs with that Bun.
+  postMergeCommands.push('eval "$(mise env -s bash)"');
   const installCommand = 'bun install';
   // Do NOT add `.vinext` here: it holds only vinext's content-hashed font cache and the dev
   // server's lock file (deleting the lock disables the duplicate-dev-server guard for a running
