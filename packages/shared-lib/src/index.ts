@@ -18,7 +18,7 @@ export { serializeForPrompt } from './prompt.js';
 export { shuffle } from './shuffle.js';
 export { sleep } from './sleep.js';
 export { getConnectionLevelSqlitePragmas, getPersistentSqlitePragmas } from './sqlite.js';
-export { escapeRegExp, quoteForShell } from './text.js';
+export { escapeRegExp, quoteForShell, toTildeCodeBlock } from './text.js';
 export { TEST_WRITING_RULES } from './testingRules.js';
 export { zenkakuAlphanumericalsToHankaku } from './zenkaku.js';
 

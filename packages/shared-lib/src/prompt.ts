@@ -1,3 +1,5 @@
+import { toTildeCodeBlock } from './text.js';
+
 const INDENT_STEP = '  ';
 const MAX_IMPLICIT_KEY_LENGTH = 1024;
 const MIN_MULTI_LINE_DOUBLE_QUOTED_LENGTH = 40;
@@ -28,17 +30,11 @@ interface Context {
 }
 
 /**
- * Serializes a JSON-compatible value into a fenced block to embed in an LLM prompt.
- * The fence consists of tildes (never backticks, which often appear in Markdown values)
- * and is longer than any run of tildes in the serialized value.
- * The format inside the fence is an implementation detail and may change.
+ * Serializes a JSON-compatible value into a code block to embed in an LLM prompt.
+ * The format inside the code block is an implementation detail and may change.
  */
 export function serializeForPrompt(value: unknown): string {
-  const body = `${stringifyValue(toJsonValue(value), { indent: '' })}\n`;
-  let longestTildeRun = 0;
-  for (const [run] of body.matchAll(/~+/gu)) longestTildeRun = Math.max(longestTildeRun, run.length);
-  const fence = '~'.repeat(Math.max(3, longestTildeRun + 1));
-  return `${fence}yaml\n${body}${fence}`;
+  return toTildeCodeBlock(`${stringifyValue(toJsonValue(value), { indent: '' })}\n`, 'yaml');
 }
 
 // The functions below reproduce `stringify(value, { lineWidth: 0, aliasDuplicateObjects: false, blockQuote: 'literal' })`

@@ -7,3 +7,14 @@ export function escapeRegExp(text: string): string {
 export function quoteForShell(value: string): string {
   return /^[\w./-]+$/u.test(value) ? value : `'${value.replaceAll("'", String.raw`'\''`)}'`;
 }
+
+/**
+ * Wraps text in a Markdown code block fenced with tildes, which are rarer than backticks in Markdown content.
+ * The fence is longer than any run of tildes in the text so that the text cannot close it.
+ */
+export function toTildeCodeBlock(text: string, language = ''): string {
+  let longestTildeRun = 0;
+  for (const [run] of text.matchAll(/~+/gu)) longestTildeRun = Math.max(longestTildeRun, run.length);
+  const fence = '~'.repeat(Math.max(3, longestTildeRun + 1));
+  return `${fence}${language}\n${text}${text.endsWith('\n') ? '' : '\n'}${fence}`;
+}
