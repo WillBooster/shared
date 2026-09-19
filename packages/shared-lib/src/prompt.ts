@@ -4,17 +4,15 @@ const INDENT_STEP = '  ';
 const MAX_IMPLICIT_KEY_LENGTH = 1024;
 const MIN_MULTI_LINE_DOUBLE_QUOTED_LENGTH = 40;
 
-/** Strings matching these would be read back as a non-string scalar, so they must be quoted. */
-const NON_STRING_SCALAR_PATTERNS = [
-  /^(?:~|[Nn]ull|NULL)?$/u,
-  /^(?:[Tt]rue|TRUE|[Ff]alse|FALSE)$/u,
-  /^0o[0-7]+$/u,
-  /^[-+]?[0-9]+$/u,
-  /^0x[0-9a-fA-F]+$/u,
-  /^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$/u,
-  /^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$/u,
-  /^[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)$/u,
-];
+/** Strings matching this would be read back as a non-string scalar (null, bool, int, or float), so they must be quoted. */
+const NON_STRING_SCALAR =
+  /^(?:~|[Nn]ull|NULL|[Tt]rue|TRUE|[Ff]alse|FALSE|0o[0-7]+|[-+]?[0-9]+|0x[0-9a-fA-F]+|[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN|[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+|[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*))?$/u;
+
+// A single-line string must be quoted if it matches any of these. Checking the start, the middle, and the end separately
+// is much faster on long strings than one regex whose anchored alternatives are retried at every position.
+const UNSAFE_PLAIN_START = /^(?:[\t ,[\]{}#&*!|>'"%@`]|[?-](?:[ \t]|$))/u;
+const UNSAFE_PLAIN_MIDDLE = /:[ \t]|[ \t]#/u;
+const UNSAFE_PLAIN_END = /[\t :]$/u;
 
 const SHORT_UNICODE_ESCAPES: Record<string, string> = {
   '0000': String.raw`\0`,
@@ -62,30 +60,27 @@ function stringifyValue(value: unknown, ctx: Context): string {
     }
     case 'object': {
       if (value === null) return 'null';
+      const separator = `\n${ctx.indent}`;
+      let str = '';
       if (Array.isArray(value)) {
+        if (value.length === 0) return '[]';
         const itemCtx = { indent: ctx.indent + INDENT_STEP };
-        return joinLines(
-          value.map((item: unknown) => `- ${stringifyValue(toJsonValue(item), itemCtx)}`),
-          ctx,
-          '[]'
-        );
+        for (const item of value as unknown[]) {
+          str += `${str ? separator : ''}- ${stringifyValue(toJsonValue(item), itemCtx)}`;
+        }
+        return str;
       }
-      return joinLines(
-        Object.entries(value)
-          .filter(([, item]) => item !== undefined)
-          .map(([key, item]) => stringifyPair(key, toJsonValue(item), ctx)),
-        ctx,
-        '{}'
-      );
+      const record = value as Record<string, unknown>;
+      for (const key of Object.keys(record)) {
+        const item = record[key];
+        if (item !== undefined) str += `${str ? separator : ''}${stringifyPair(key, toJsonValue(item), ctx)}`;
+      }
+      return str || '{}';
     }
     default: {
       throw new TypeError(`Cannot serialize a ${typeof value} value for a prompt`);
     }
   }
-}
-
-function joinLines(lines: string[], ctx: Context, empty: string): string {
-  return lines.length === 0 ? empty : lines.join(`\n${ctx.indent}`);
 }
 
 function stringifyPair(key: string, value: unknown, ctx: Context): string {
@@ -112,16 +107,15 @@ function stringifyString(value: string, ctx: Context): string {
 
 function plainString(value: string, ctx: Context): string {
   const { implicitKey, indent } = ctx;
-  if (implicitKey && value.includes('\n')) return quotedString(value, ctx);
-  if (/^[\n\t ,[\]{}#&*!|>'"%@`]|^[?-]$|^[?-][ \t]|[\n:][ \t]|[ \t]\n|[\n\t ]#|[\n\t :]$/u.test(value)) {
-    return implicitKey || !value.includes('\n') ? quotedString(value, ctx) : blockString(value, ctx);
+  if (value.includes('\n')) return implicitKey ? quotedString(value, ctx) : blockString(value, ctx);
+  if (UNSAFE_PLAIN_START.test(value) || UNSAFE_PLAIN_END.test(value.slice(-1)) || UNSAFE_PLAIN_MIDDLE.test(value)) {
+    return quotedString(value, ctx);
   }
-  if (!implicitKey && value.includes('\n')) return blockString(value, ctx);
   if (containsDocumentMarker(value)) {
     if (indent === '') return blockString(value, { ...ctx, forceBlockIndent: true });
     if (implicitKey && indent === INDENT_STEP) return quotedString(value, ctx);
   }
-  return NON_STRING_SCALAR_PATTERNS.some((pattern) => pattern.test(value)) ? quotedString(value, ctx) : value;
+  return NON_STRING_SCALAR.test(value) ? quotedString(value, ctx) : value;
 }
 
 function containsDocumentMarker(value: string): boolean {
@@ -187,13 +181,13 @@ function doubleQuotedString(value: string, ctx: Context): string {
 }
 
 function blockString(value: string, ctx: Context): string {
+  let endStart = value.length;
+  while (endStart > 0 && isBlockEndWhitespace(value.codePointAt(endStart - 1))) endStart--;
+  let end = value.slice(endStart);
   // A block scalar cannot end with a whitespace-only line.
-  if (/\n[\t ]+$/u.test(value)) return quotedString(value, ctx);
+  if (end.includes('\n') && !end.endsWith('\n')) return quotedString(value, ctx);
   const indent = ctx.indent || (ctx.forceBlockIndent || containsDocumentMarker(value) ? INDENT_STEP : '');
 
-  let endStart = value.length;
-  while (endStart > 0 && /[\n\t ]/u.test(value[endStart - 1] ?? '')) endStart--;
-  let end = value.slice(endStart);
   const endNewlinePos = end.indexOf('\n');
   const chomp = endNewlinePos === -1 ? '-' : value === end || endNewlinePos !== end.length - 1 ? '+' : '';
   if (end) {
@@ -211,5 +205,20 @@ function blockString(value: string, ctx: Context): string {
   }
 
   const header = (startsWithSpace ? (indent ? '2' : '1') : '') + chomp;
-  return `|${header}\n${indent}${start}${value.replaceAll(/\n+/gu, `$&${indent}`)}${end}`;
+  return `|${header}\n${indent}${start}${indentLines(value, indent)}${end}`;
+}
+
+/** Equivalent to `text.replaceAll(/\n+/g, `$&${indent}`)` for text without leading or trailing newlines, but faster. */
+function indentLines(text: string, indent: string): string {
+  const lines = text.split('\n');
+  let str = lines[0] ?? '';
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    str += line ? `\n${indent}${line}` : '\n';
+  }
+  return str;
+}
+
+function isBlockEndWhitespace(codePoint: number | undefined): boolean {
+  return codePoint === 0x0A || codePoint === 0x09 || codePoint === 0x20;
 }
