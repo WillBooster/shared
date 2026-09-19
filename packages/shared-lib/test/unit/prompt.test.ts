@@ -126,6 +126,8 @@ const FIXTURES: unknown[] = [
     map: Object.assign(new Map([['k', 1]]), { toJSON: () => ({ m: 1 }) }),
     fn: Object.assign(() => 1, { toJSON: () => 'fn' }),
     set: { toJSON: () => new Set(['a', new Uint8Array([1])]) },
+    // oxlint-disable-next-line unicorn/new-for-builtins -- boxed primitives are the input under test.
+    boxed: [new String('abc'), new Number(1), new Boolean(false), Object(1n)],
   },
   { big: 12_345_678_901_234_567_890n, negative: -1n, list: [0n] },
   new Map(),

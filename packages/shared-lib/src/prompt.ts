@@ -106,6 +106,10 @@ function toSerializable(rawValue: unknown): unknown {
       ? (rawValue as { toJSON: () => unknown }).toJSON()
       : rawValue;
   if (typeof value !== 'object' || value === null || Array.isArray(value) || value instanceof Map) return value;
+  // oxlint-disable-next-line unicorn/no-instanceof-builtins -- boxed primitives have no typeof check; `yaml` unwraps them the same way.
+  if (value instanceof String || value instanceof Number || value instanceof Boolean || value instanceof BigInt) {
+    return value.valueOf();
+  }
   if (value instanceof Error) {
     // `name` and `message` usually live on the prototype, and `cause` and `errors` are not enumerable.
     return {
