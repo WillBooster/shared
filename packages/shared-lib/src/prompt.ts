@@ -24,7 +24,6 @@ const SHORT_UNICODE_ESCAPES: Record<string, string> = {
 interface Context {
   indent: string;
   implicitKey?: boolean;
-  forceBlockIndent?: boolean;
 }
 
 /**
@@ -71,6 +70,10 @@ function stringifyValue(value: unknown, ctx: Context): string {
         }
         return str;
       }
+      // `Object.keys` would silently turn these into `{}` and drop their content.
+      if (value instanceof Map || value instanceof Set) {
+        throw new TypeError(`Cannot serialize a ${value.constructor.name} value for a prompt`);
+      }
       const record = value as Record<string, unknown>;
       for (const key of Object.keys(record)) {
         const item = record[key];
@@ -113,7 +116,7 @@ function plainString(value: string, ctx: Context): string {
     return quotedString(value, ctx);
   }
   if (containsDocumentMarker(value)) {
-    if (indent === '') return blockString(value, { ...ctx, forceBlockIndent: true });
+    if (indent === '') return blockString(value, ctx);
     if (implicitKey && indent === INDENT_STEP) return quotedString(value, ctx);
   }
   return NON_STRING_SCALAR.test(value) ? quotedString(value, ctx) : value;
@@ -128,11 +131,10 @@ function quotedString(value: string, ctx: Context): string {
 }
 
 function singleQuotedString(value: string, ctx: Context): string {
-  if ((ctx.implicitKey && value.includes('\n')) || /[ \t]\n|\n[ \t]/u.test(value)) {
-    return doubleQuotedString(value, ctx);
-  }
-  const indent = ctx.indent || (containsDocumentMarker(value) ? INDENT_STEP : '');
-  return `'${value.replaceAll("'", "''").replaceAll(/\n+/gu, `$&\n${indent}`)}'`;
+  // Every multi-line value reaching here would contain a space or tab next to a newline or be an implicit key,
+  // both of which need double quotes.
+  if (value.includes('\n')) return doubleQuotedString(value, ctx);
+  return `'${value.replaceAll("'", "''")}'`;
 }
 
 function doubleQuotedString(value: string, ctx: Context): string {
@@ -187,7 +189,7 @@ function blockString(value: string, ctx: Context): string {
   let end = value.slice(endStart);
   // A block scalar cannot end with a whitespace-only line.
   if (end.includes('\n') && !end.endsWith('\n')) return quotedString(value, ctx);
-  const indent = ctx.indent || (ctx.forceBlockIndent || containsDocumentMarker(value) ? INDENT_STEP : '');
+  const indent = ctx.indent || (containsDocumentMarker(value) ? INDENT_STEP : '');
 
   const endNewlinePos = end.indexOf('\n');
   const chomp = endNewlinePos === -1 ? '-' : value === end || endNewlinePos !== end.length - 1 ? '+' : '';

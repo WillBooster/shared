@@ -180,3 +180,8 @@ function expectSameAsYaml(value: unknown): void {
   const body = /^(~{3,})yaml\n([\s\S]*)\1$/u.exec(serializeForPrompt(value))?.[2];
   expect(body).toBe(expected);
 }
+
+test('serializeForPrompt rejects Map and Set instead of dropping their content', () => {
+  expect(() => serializeForPrompt({ data: new Map([['k', 'v']]) })).toThrow(TypeError);
+  expect(() => serializeForPrompt([new Set([1])])).toThrow(TypeError);
+});
