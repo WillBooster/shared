@@ -24,6 +24,7 @@ const SHORT_UNICODE_ESCAPES: Record<string, string> = {
 interface Context {
   indent: string;
   implicitKey?: boolean;
+  escapedTag?: string;
 }
 
 /**
@@ -43,33 +44,26 @@ export function serializeForPrompt(value: unknown): string {
  * The caller must wrap the result in the same tag.
  */
 export function serializeForPromptInTag(value: unknown, tagName: string): string {
-  // Escaping after serializing would turn a value starting with the escaped tag into a YAML flow sequence.
-  return serializeForPrompt(escapePromptTagInStrings(value, tagName));
-}
-
-function escapePromptTagInStrings(value: unknown, tagName: string): unknown {
-  if (typeof value === 'string') return escapePromptTag(value, tagName);
-  if (Array.isArray(value)) return value.map((item) => escapePromptTagInStrings(item, tagName));
-  // Only plain objects are walked, so that `Date` and the like are still serialized by their own rules.
-  if (typeof value === 'object' && value !== null && Object.getPrototypeOf(value) === Object.prototype) {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, escapePromptTagInStrings(item, tagName)])
-    );
-  }
-  return value;
+  // Escaping is applied while writing each scalar, so that keys and the contents of Maps, Sets and Errors are covered
+  // too, and so that a value starting with the escaped tag is still quoted as the string it is.
+  return toTildeCodeBlock(`${stringifyValue(toSerializable(value), { indent: '', escapedTag: tagName })}\n`, 'yaml');
 }
 
 /**
  * Replaces `<tagName>` and `</tagName>` in text with a harmless notation, so that data embedded in a `<tagName>`
  * element of a prompt cannot close the element and have the rest read as instructions.
- * Case is ignored deliberately: `tagName` is expected to be a literal written by the caller, while the data is not.
+ * Case and the whitespace an LLM still reads as part of the tag are ignored deliberately: `tagName` is expected to be
+ * a literal written by the caller, while the data is not.
  */
 export function escapePromptTag(text: string, tagName: string): string {
-  return text.replaceAll(new RegExp(`<(/?)(${tagName})>`, 'giu'), '[$1$2]');
+  return text.replaceAll(new RegExp(`<(/?)[ \\t]*(${tagName})[ \\t]*>`, 'giu'), '[$1$2]');
 }
 
-/** Matches a block produced by `serializeForPrompt`, whose fence is longer than any `~` run inside it. */
-const SERIALIZED_BLOCK = /^(~{3,})yaml\n[\s\S]*?\n\1$/gmu;
+/**
+ * Matches a block produced by `serializeForPrompt`, whose fence is longer than any `~` run inside it.
+ * Interpolating the block into an indented template literal indents its opening fence but none of its other lines.
+ */
+const SERIALIZED_BLOCK = /^[ \t]*(~{3,})yaml\n[\s\S]*?\n\1[ \t]*$/gmu;
 
 /**
  * Strips the indentation that nested template literals add to Markdown markers (headings and code fences) and
@@ -95,7 +89,10 @@ function dedentPromptMarkers(text: string): string {
 
 /** Cuts text down to `maxLength` characters, marking it so that an LLM reads the rest as missing rather than absent. */
 export function truncateForPrompt(text: string, maxLength: number): string {
-  return text.length <= maxLength ? text : `${text.slice(0, maxLength)}\n...<truncated>`;
+  if (text.length <= maxLength) return text;
+  const kept = text.slice(0, maxLength);
+  // Cutting between the halves of a surrogate pair would leave an unpaired one, which encoders replace with U+FFFD.
+  return `${/[\uD800-\uDBFF]$/u.test(kept) ? kept.slice(0, -1) : kept}\n...<truncated>`;
 }
 
 // The functions below reproduce `stringify(value, { lineWidth: 0, aliasDuplicateObjects: false, blockQuote: 'literal' })`
@@ -124,7 +121,7 @@ function stringifyValue(value: unknown, ctx: Context): string {
       let str = '';
       if (Array.isArray(value)) {
         if (value.length === 0) return '[]';
-        const itemCtx = { indent: ctx.indent + INDENT_STEP };
+        const itemCtx = { indent: ctx.indent + INDENT_STEP, escapedTag: ctx.escapedTag };
         for (const item of value as unknown[]) {
           str += `${str ? separator : ''}- ${stringifyValue(toSerializable(item), itemCtx)}`;
         }
@@ -153,8 +150,8 @@ function stringifyPair(rawKey: unknown, rawValue: unknown, ctx: Context): string
   const indent = ctx.indent + INDENT_STEP;
   const key = toSerializable(rawKey);
   const value = toSerializable(rawValue);
-  const keyStr = stringifyValue(key, { indent, implicitKey: true });
-  const valueStr = stringifyValue(value, { indent });
+  const keyStr = stringifyValue(key, { indent, implicitKey: true, escapedTag: ctx.escapedTag });
+  const valueStr = stringifyValue(value, { indent, escapedTag: ctx.escapedTag });
   if (isCollection(key) || keyStr.length > MAX_IMPLICIT_KEY_LENGTH) return `? ${keyStr}\n${ctx.indent}: ${valueStr}`;
   const isBlockCollection = isCollection(value) && valueStr !== '[]' && valueStr !== '{}';
   return `${keyStr}:${isBlockCollection ? `\n${indent}` : ' '}${valueStr}`;
@@ -195,7 +192,8 @@ function stringifyNumber(value: number): string {
   return Object.is(value, -0) ? '-0' : JSON.stringify(value);
 }
 
-function stringifyString(value: string, ctx: Context): string {
+function stringifyString(rawValue: string, ctx: Context): string {
+  const value = ctx.escapedTag ? escapePromptTag(rawValue, ctx.escapedTag) : rawValue;
   // oxlint-disable-next-line no-control-regex -- control characters and lone surrogates can only be written escaped.
   return /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u{D800}-\u{DFFF}]/u.test(value)
     ? doubleQuotedString(value, ctx)
