@@ -37,6 +37,67 @@ export function serializeForPrompt(value: unknown): string {
   return toTildeCodeBlock(`${stringifyValue(toSerializable(value), { indent: '' })}\n`, 'yaml');
 }
 
+/**
+ * Serializes data with `serializeForPrompt` for embedding inside a `<tagName>` element of a prompt, escaping that tag
+ * in every string so that untrusted data cannot close the element and have the rest read as instructions.
+ * The caller must wrap the result in the same tag.
+ */
+export function serializeForPromptInTag(value: unknown, tagName: string): string {
+  // Escaping after serializing would turn a value starting with the escaped tag into a YAML flow sequence.
+  return serializeForPrompt(escapePromptTagInStrings(value, tagName));
+}
+
+function escapePromptTagInStrings(value: unknown, tagName: string): unknown {
+  if (typeof value === 'string') return escapePromptTag(value, tagName);
+  if (Array.isArray(value)) return value.map((item) => escapePromptTagInStrings(item, tagName));
+  // Only plain objects are walked, so that `Date` and the like are still serialized by their own rules.
+  if (typeof value === 'object' && value !== null && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, escapePromptTagInStrings(item, tagName)])
+    );
+  }
+  return value;
+}
+
+/**
+ * Replaces `<tagName>` and `</tagName>` in text with a harmless notation, so that data embedded in a `<tagName>`
+ * element of a prompt cannot close the element and have the rest read as instructions.
+ * Case is ignored deliberately: `tagName` is expected to be a literal written by the caller, while the data is not.
+ */
+export function escapePromptTag(text: string, tagName: string): string {
+  return text.replaceAll(new RegExp(`<(/?)(${tagName})>`, 'giu'), '[$1$2]');
+}
+
+/** Matches a block produced by `serializeForPrompt`, whose fence is longer than any `~` run inside it. */
+const SERIALIZED_BLOCK = /^(~{3,})yaml\n[\s\S]*?\n\1$/gmu;
+
+/**
+ * Strips the indentation that nested template literals add to Markdown markers (headings and code fences) and
+ * collapses blank lines, so that a prompt written inline reads as Markdown.
+ * Blocks produced by `serializeForPrompt` are left untouched, since reindenting their lines would corrupt the YAML.
+ */
+export function formatPrompt(prompt: string): string {
+  let formatted = '';
+  let lastIndex = 0;
+  for (const match of prompt.matchAll(SERIALIZED_BLOCK)) {
+    formatted += dedentPromptMarkers(prompt.slice(lastIndex, match.index)) + match[0];
+    lastIndex = match.index + match[0].length;
+  }
+  return (formatted + dedentPromptMarkers(prompt.slice(lastIndex))).trim();
+}
+
+function dedentPromptMarkers(text: string): string {
+  return text
+    .replaceAll(/\n\s+("""|'''|```)/gu, '\n$1')
+    .replaceAll(/\n\s+(#+\s)/gu, '\n$1')
+    .replaceAll(/(?:\s*\n){2,}/gu, '\n\n');
+}
+
+/** Cuts text down to `maxLength` characters, marking it so that an LLM reads the rest as missing rather than absent. */
+export function truncateForPrompt(text: string, maxLength: number): string {
+  return text.length <= maxLength ? text : `${text.slice(0, maxLength)}\n...<truncated>`;
+}
+
 // The functions below reproduce `stringify(value, { lineWidth: 0, aliasDuplicateObjects: false, blockQuote: 'literal' })`
 // of the `yaml` package, except that `toSerializable` makes `Error`s and `RegExp`s readable instead of `{}`.
 
