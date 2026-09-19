@@ -30,7 +30,7 @@ interface Context {
  * Serializes data into a code block to embed in an LLM prompt, so that the LLM can read its contents.
  * Accepts JSON data (honoring `toJSON` such as that of `Date`) as well as `undefined`, `NaN`, `Infinity`, bigints,
  * `Map`s (including non-string keys), `Set`s and other iterables, `Error`s (with their name, message, cause, and own properties),
- * and `RegExp`s. Functions and symbols throw. The output is not meant to be deserialized back into the original value.
+ * and `RegExp`s. Symbols and functions without `toJSON` throw. The output is not meant to be deserialized back into the original value.
  * The format inside the code block is an implementation detail and may change.
  */
 export function serializeForPrompt(value: unknown): string {
@@ -100,9 +100,10 @@ function stringifyPair(rawKey: unknown, rawValue: unknown, ctx: Context): string
 }
 
 function toSerializable(value: unknown): unknown {
-  if (typeof value !== 'object' || value === null || Array.isArray(value) || value instanceof Map) return value;
-  if (typeof (value as { toJSON?: unknown }).toJSON === 'function')
+  if (typeof (value as { toJSON?: unknown } | null | undefined)?.toJSON === 'function') {
     return (value as { toJSON: () => unknown }).toJSON();
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value) || value instanceof Map) return value;
   if (value instanceof Error) {
     // `name` and `message` usually live on the prototype, and `cause` and `errors` are not enumerable.
     return {

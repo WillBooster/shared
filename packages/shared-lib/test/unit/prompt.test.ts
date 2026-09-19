@@ -121,6 +121,11 @@ const FIXTURES: unknown[] = [
   [1, [2, [3, 4]], { a: [5, { b: 6 }] }],
   { nested: { deeper: { deepest: 'value' } }, list: [{ a: 1, b: 'x' }, { c: [] }] },
   { date: new Date('2024-01-02T03:04:05.678Z'), custom: { toJSON: () => ({ x: 1 }) } },
+  {
+    array: Object.assign([1], { toJSON: () => 'array' }),
+    map: Object.assign(new Map([['k', 1]]), { toJSON: () => ({ m: 1 }) }),
+    fn: Object.assign(() => 1, { toJSON: () => 'fn' }),
+  },
   { big: 12_345_678_901_234_567_890n, negative: -1n, list: [0n] },
   new Map(),
   new Set(),
