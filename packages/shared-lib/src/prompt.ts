@@ -99,10 +99,12 @@ function stringifyPair(rawKey: unknown, rawValue: unknown, ctx: Context): string
   return `${keyStr}:${isBlockCollection ? `\n${indent}` : ' '}${valueStr}`;
 }
 
-function toSerializable(value: unknown): unknown {
-  if (typeof (value as { toJSON?: unknown } | null | undefined)?.toJSON === 'function') {
-    return (value as { toJSON: () => unknown }).toJSON();
-  }
+function toSerializable(rawValue: unknown): unknown {
+  // Like `yaml`, call `toJSON` only once, but classify its result.
+  const value =
+    typeof (rawValue as { toJSON?: unknown } | null | undefined)?.toJSON === 'function'
+      ? (rawValue as { toJSON: () => unknown }).toJSON()
+      : rawValue;
   if (typeof value !== 'object' || value === null || Array.isArray(value) || value instanceof Map) return value;
   if (value instanceof Error) {
     // `name` and `message` usually live on the prototype, and `cause` and `errors` are not enumerable.
