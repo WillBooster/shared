@@ -28,7 +28,8 @@ interface Context {
 }
 
 /**
- * Serializes a JSON-compatible value into a code block to embed in an LLM prompt.
+ * Serializes plain JSON data (objects, arrays, strings, numbers, booleans, and null, honoring `toJSON` such as that of `Date`)
+ * into a code block to embed in an LLM prompt.
  * The format inside the code block is an implementation detail and may change.
  */
 export function serializeForPrompt(value: unknown): string {
