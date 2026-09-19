@@ -40,24 +40,6 @@ export function serializeForPrompt(value: unknown): string {
 // The functions below reproduce `stringify(value, { lineWidth: 0, aliasDuplicateObjects: false, blockQuote: 'literal' })`
 // of the `yaml` package, except that `toSerializable` makes `Error`s and `RegExp`s readable instead of `{}`.
 
-function toSerializable(value: unknown): unknown {
-  if (typeof value !== 'object' || value === null || Array.isArray(value) || value instanceof Map) return value;
-  if (typeof (value as { toJSON?: unknown }).toJSON === 'function')
-    return (value as { toJSON: () => unknown }).toJSON();
-  if (value instanceof Error) {
-    // `name` and `message` usually live on the prototype, and `cause` and `errors` are not enumerable.
-    return {
-      name: value.name,
-      message: value.message,
-      ...Object.fromEntries(Object.entries(value)),
-      ...('cause' in value && { cause: value.cause }),
-      ...(value instanceof AggregateError && { errors: value.errors }),
-    };
-  }
-  if (value instanceof RegExp) return String(value);
-  return Symbol.iterator in value ? [...(value as Iterable<unknown>)] : value;
-}
-
 function stringifyValue(value: unknown, ctx: Context): string {
   switch (typeof value) {
     case 'undefined': {
@@ -117,6 +99,24 @@ function stringifyPair(rawKey: unknown, rawValue: unknown, ctx: Context): string
   return `${keyStr}:${isBlockCollection ? `\n${indent}` : ' '}${valueStr}`;
 }
 
+function toSerializable(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null || Array.isArray(value) || value instanceof Map) return value;
+  if (typeof (value as { toJSON?: unknown }).toJSON === 'function')
+    return (value as { toJSON: () => unknown }).toJSON();
+  if (value instanceof Error) {
+    // `name` and `message` usually live on the prototype, and `cause` and `errors` are not enumerable.
+    return {
+      name: value.name,
+      message: value.message,
+      ...Object.fromEntries(Object.entries(value)),
+      ...('cause' in value && { cause: value.cause }),
+      ...(value instanceof AggregateError && { errors: value.errors }),
+    };
+  }
+  if (value instanceof RegExp) return String(value);
+  return Symbol.iterator in value ? [...(value as Iterable<unknown>)] : value;
+}
+
 function isCollection(value: unknown): value is object {
   return typeof value === 'object' && value !== null;
 }
@@ -147,8 +147,32 @@ function plainString(value: string, ctx: Context): string {
   return NON_STRING_SCALAR.test(value) ? quotedString(value, ctx) : value;
 }
 
-function containsDocumentMarker(value: string): boolean {
-  return /^(?:%|---|\.\.\.)/mu.test(value);
+function blockString(value: string, ctx: Context): string {
+  let endStart = value.length;
+  while (endStart > 0 && isBlockEndWhitespace(value.codePointAt(endStart - 1))) endStart--;
+  let end = value.slice(endStart);
+  // A block scalar cannot end with a whitespace-only line.
+  if (end.includes('\n') && !end.endsWith('\n')) return quotedString(value, ctx);
+  const indent = ctx.indent || (containsDocumentMarker(value) ? INDENT_STEP : '');
+
+  const endNewlinePos = end.indexOf('\n');
+  const chomp = endNewlinePos === -1 ? '-' : value === end || endNewlinePos !== end.length - 1 ? '+' : '';
+  if (end) {
+    value = value.slice(0, -end.length);
+    if (end.endsWith('\n')) end = end.slice(0, -1);
+    end = end.replaceAll(/(?:^|(?<!\n))\n+(?!\n|$)/gu, `$&${indent}`);
+  }
+
+  const leadingWhitespace = /^[\n ]*/u.exec(value)?.[0] ?? '';
+  const startsWithSpace = leadingWhitespace.includes(' ');
+  let start = value.slice(0, leadingWhitespace.lastIndexOf('\n') + 1);
+  if (start) {
+    value = value.slice(start.length);
+    start = start.replaceAll(/\n+/gu, `$&${indent}`);
+  }
+
+  const header = (startsWithSpace ? (indent ? '2' : '1') : '') + chomp;
+  return `|${header}\n${indent}${start}${indentLines(value, indent)}${end}`;
 }
 
 function quotedString(value: string, ctx: Context): string {
@@ -208,32 +232,8 @@ function doubleQuotedString(value: string, ctx: Context): string {
   return start ? str + json.slice(start) : json;
 }
 
-function blockString(value: string, ctx: Context): string {
-  let endStart = value.length;
-  while (endStart > 0 && isBlockEndWhitespace(value.codePointAt(endStart - 1))) endStart--;
-  let end = value.slice(endStart);
-  // A block scalar cannot end with a whitespace-only line.
-  if (end.includes('\n') && !end.endsWith('\n')) return quotedString(value, ctx);
-  const indent = ctx.indent || (containsDocumentMarker(value) ? INDENT_STEP : '');
-
-  const endNewlinePos = end.indexOf('\n');
-  const chomp = endNewlinePos === -1 ? '-' : value === end || endNewlinePos !== end.length - 1 ? '+' : '';
-  if (end) {
-    value = value.slice(0, -end.length);
-    if (end.endsWith('\n')) end = end.slice(0, -1);
-    end = end.replaceAll(/(?:^|(?<!\n))\n+(?!\n|$)/gu, `$&${indent}`);
-  }
-
-  const leadingWhitespace = /^[\n ]*/u.exec(value)?.[0] ?? '';
-  const startsWithSpace = leadingWhitespace.includes(' ');
-  let start = value.slice(0, leadingWhitespace.lastIndexOf('\n') + 1);
-  if (start) {
-    value = value.slice(start.length);
-    start = start.replaceAll(/\n+/gu, `$&${indent}`);
-  }
-
-  const header = (startsWithSpace ? (indent ? '2' : '1') : '') + chomp;
-  return `|${header}\n${indent}${start}${indentLines(value, indent)}${end}`;
+function containsDocumentMarker(value: string): boolean {
+  return /^(?:%|---|\.\.\.)/mu.test(value);
 }
 
 /** Equivalent to `text.replaceAll(/\n+/g, `$&${indent}`)` for text without leading or trailing newlines, but faster. */
