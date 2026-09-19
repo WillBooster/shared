@@ -290,9 +290,9 @@ test('serializeForPromptInTag quotes a value that starts with the escaped tag', 
 });
 
 test('escapePromptTag ignores case and the whitespace inside a tag', () => {
-  expect(escapePromptTag('<Transcriptions>x</TRANSCRIPTIONS >y</transcriptions\t>', 'transcriptions')).toBe(
-    '[Transcriptions]x[/TRANSCRIPTIONS]y[/transcriptions]'
-  );
+  expect(
+    escapePromptTag('<Transcriptions>x</TRANSCRIPTIONS >y</transcriptions\t>z</transcriptions\n>', 'transcriptions')
+  ).toBe('[Transcriptions]x[/TRANSCRIPTIONS]y[/transcriptions]z[/transcriptions]');
 });
 
 test('truncateForPrompt keeps the cut off the halves of a surrogate pair', () => {
