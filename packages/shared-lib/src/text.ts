@@ -13,7 +13,14 @@ export function quoteForShell(value: string): string {
  * The fence is longer than any run of tildes in the text so that the text cannot close it.
  */
 export function toTildeCodeBlock(text: string, language = ''): string {
-  let fence = '~~~';
-  while (text.includes(fence)) fence += '~';
+  let longestRun = 2;
+  let start = text.indexOf('~~~');
+  while (start !== -1) {
+    let end = start + 3;
+    while (text[end] === '~') end++;
+    longestRun = Math.max(longestRun, end - start);
+    start = text.indexOf('~~~', end);
+  }
+  const fence = '~'.repeat(longestRun + 1);
   return `${fence}${language}\n${text}${text.endsWith('\n') ? '' : '\n'}${fence}`;
 }
