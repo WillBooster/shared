@@ -1,4 +1,4 @@
-import { toTildeCodeBlock } from './text.js';
+import { escapeRegExp, toTildeCodeBlock } from './text.js';
 
 const INDENT_STEP = '  ';
 const MAX_IMPLICIT_KEY_LENGTH = 1024;
@@ -56,7 +56,7 @@ export function serializeForPromptInTag(value: unknown, tagName: string): string
  * a literal written by the caller, while the data is not.
  */
 export function escapePromptTag(text: string, tagName: string): string {
-  return text.replaceAll(new RegExp(`<(/?)[ \\t]*(${tagName})[ \\t]*>`, 'giu'), '[$1$2]');
+  return text.replaceAll(new RegExp(`<(/?)[ \\t]*(${escapeRegExp(tagName)})[ \\t]*>`, 'giu'), '[$1$2]');
 }
 
 /**

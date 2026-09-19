@@ -300,3 +300,7 @@ test('truncateForPrompt keeps the cut off the halves of a surrogate pair', () =>
   expect(truncateForPrompt('xy\u{1F600}', 3)).toBe('xy\n...<truncated>');
   expect(truncateForPrompt('xyz', 3)).toBe('xyz');
 });
+
+test('escapePromptTag matches the tag name literally', () => {
+  expect(escapePromptTag('<userXprofile>x</user.profile>', 'user.profile')).toBe('<userXprofile>x[/user.profile]');
+});
