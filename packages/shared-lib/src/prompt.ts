@@ -94,8 +94,8 @@ interface PromptBlock {
 }
 
 /**
- * Strips the indentation that nested template literals add to Markdown markers (headings and code fences) and
- * collapses blank lines, so that a prompt written inline reads as Markdown.
+ * Strips template-literal indentation from Markdown headings, code fences, and triple-quote delimiters (`"""` and
+ * `'''`), and collapses blank lines.
  * The contents of a fenced block are left untouched, since reindenting them would rewrite the data they carry, such
  * as the YAML of `serializeForPrompt` or the source of `toCodeBlock`. A `serializeForPrompt` block must be
  * interpolated at the start of a line. Recognizable mid-line `~~~yaml` markers throw, including prose mentions;
