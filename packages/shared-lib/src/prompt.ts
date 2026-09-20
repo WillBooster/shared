@@ -24,7 +24,7 @@ const SHORT_UNICODE_ESCAPES: Record<string, string> = {
 interface Context {
   indent: string;
   implicitKey?: boolean;
-  escapedTags?: readonly string[];
+  tagPatterns?: readonly RegExp[];
 }
 
 /**
@@ -52,10 +52,9 @@ export function serializeForPrompt(value: unknown): string {
  * into one duplicate key of the emitted mapping.
  */
 export function serializeForPromptInTag(value: unknown, tagName: string | readonly string[]): string {
-  // Escaping is applied while writing each scalar, so that keys and the contents of Maps, Sets and Errors are covered
-  // too, and so that a value starting with an escaped tag is still quoted as the string it is.
   const escapedTags = typeof tagName === 'string' ? [tagName] : tagName;
-  return toTildeCodeBlock(`${stringifyValue(toSerializable(value), { indent: '', escapedTags })}\n`, 'yaml');
+  const tagPatterns = escapedTags.flatMap(createTagPatterns);
+  return toTildeCodeBlock(`${stringifyValue(toSerializable(value), { indent: '', tagPatterns })}\n`, 'yaml');
 }
 
 /**
@@ -67,18 +66,32 @@ export function serializeForPromptInTag(value: unknown, tagName: string | readon
  * the caller, while the data is not.
  */
 export function escapePromptTag(text: string, tagName: string): string {
+  return text.includes('<') ? escapeTags(text, createTagPatterns(tagName)) : text;
+}
+
+function createTagPatterns(tagName: string): RegExp[] {
   const name = escapeRegExp(tagName);
-  // The first pattern keeps a well-formed tag readable as `[tagName]`; the second one catches every other spelling.
-  return text
-    .replaceAll(new RegExp(`<(/?)\\s*(${name})\\s*>`, 'giu'), '[$1$2]')
-    .replaceAll(new RegExp(`<(/?)\\s*(${name})(?![\\w-])`, 'giu'), '[$1$2]');
+  // Keep well-formed tags readable while also catching incomplete and malformed tags.
+  return [new RegExp(`<(/?)\\s*(${name})\\s*>`, 'giu'), new RegExp(`<(/?)\\s*(${name})(?![\\w-])`, 'giu')];
+}
+
+function escapeTags(text: string, patterns: readonly RegExp[]): string {
+  if (!text.includes('<')) return text;
+  for (const pattern of patterns) text = text.replaceAll(pattern, '[$1$2]');
+  return text;
 }
 
 /** The line opening a fenced block, with the indentation an interpolation may put before it. */
-const BLOCK_OPENER = /^[ \t]*((?:`{3,}|~{3,})\S*)[ \t]*$/u;
+const BLOCK_OPENER = /^[ \t]*(((?:`{3,}|~{3,})[`~]*)\S*)[ \t]*$/u;
 
 /** A block interpolated after other text on its line, which no rule can tell from prose that ends in `~~~yaml`. */
 const MISPLACED_BLOCK_OPENER = /[^\s~][ \t]*~{3,}yaml[ \t]*$/u;
+
+interface PromptBlock {
+  opener: string;
+  fence: string;
+  end: number;
+}
 
 /**
  * Strips the indentation that nested template literals add to Markdown markers (headings and code fences) and
@@ -90,13 +103,13 @@ const MISPLACED_BLOCK_OPENER = /[^\s~][ \t]*~{3,}yaml[ \t]*$/u;
  */
 export function formatPrompt(prompt: string): string {
   const lines = prompt.split('\n');
+  const blocks = findBlocks(lines);
   let formatted = '';
   let prose = '';
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index] ?? '';
-    const opener = BLOCK_OPENER.exec(line)?.[1];
-    const endIndex = opener === undefined ? -1 : findBlockEnd(lines, index, opener);
-    if (endIndex === -1) {
+    const block = blocks[index];
+    if (block === undefined) {
       // An opening fence the prompt itself writes and never closes is prose, and so is every line inside a block.
       if (MISPLACED_BLOCK_OPENER.test(line)) {
         throw new TypeError('Interpolate a serializeForPrompt block at the start of a line');
@@ -105,45 +118,59 @@ export function formatPrompt(prompt: string): string {
       continue;
     }
     // Dropping the opener's indentation keeps four spaces of it from turning the fence into an indented code block.
-    formatted += `${dedentPromptMarkers(prose)}${opener}\n${lines.slice(index + 1, endIndex + 1).join('\n')}\n`;
+    formatted += `${dedentPromptMarkers(prose)}${block.opener}\n${lines.slice(index + 1, block.end + 1).join('\n')}\n`;
     prose = '';
-    index = endIndex;
+    index = block.end;
   }
   return (formatted + dedentPromptMarkers(prose)).trim();
 }
 
-/**
- * Finds the line closing the block opened at `openerIndex`, or -1 when the prompt never closes it.
- * A fence run shorter than the opening one is content, since the helpers of this package make the fence longer than
- * any run they write, while a run at least as long can only be the closing fence, whatever an interpolation put
- * after it.
- */
-function findBlockEnd(lines: string[], openerIndex: number, opener: string): number {
-  const fence = /^[`~]+/u.exec(opener)?.[0] ?? '';
-  const closer = new RegExp(`^${fence}${fence[0] ?? ''}*(?:[ \\t].*)?$`, 'u');
-  for (let index = openerIndex + 1; index < lines.length; index++) {
-    if (!closer.test(lines[index] ?? '')) continue;
-    return reachesBeyond(lines, openerIndex, index, fence.length) ? -1 : index;
+function findBlocks(lines: string[]): (PromptBlock | undefined)[] {
+  const blocks: (PromptBlock | undefined)[] = [];
+  const closedBlocks: (PromptBlock & { index: number })[] = [];
+  const nextClosers = new Map<string, { start: number; end: number; pattern: RegExp }>();
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const match = BLOCK_OPENER.exec(lines[index] ?? '');
+    const opener = match?.[1];
+    const fence = match?.[2];
+    if (opener === undefined || fence === undefined) continue;
+    const next = nextClosers.get(fence) ?? {
+      start: lines.length,
+      end: -1,
+      pattern: new RegExp(`^${fence}${fence[0] ?? ''}*(?:[ \\t].*)?$`, 'u'),
+    };
+    // The previous search already covered the suffix beyond start, including an absent closer.
+    for (let candidate = index + 1; candidate <= next.start && candidate < lines.length; candidate++) {
+      if (next.pattern.test(lines[candidate] ?? '')) {
+        next.end = candidate;
+        break;
+      }
+    }
+    next.start = index;
+    nextClosers.set(fence, next);
+    let end = next.end;
+    if (end !== -1) {
+      // Later blocks are resolved first, so nested fences never trigger recursive rescans.
+      for (let nestedIndex = closedBlocks.length - 1; nestedIndex >= 0; nestedIndex--) {
+        const nested = closedBlocks[nestedIndex];
+        if (nested === undefined || nested.index >= end) break;
+        if (nested.fence.length > fence.length && nested.end >= end) {
+          end = -1;
+          break;
+        }
+      }
+    }
+    if (end !== -1) {
+      const block = { opener, fence, end, index };
+      blocks[index] = block;
+      closedBlocks.push(block);
+    }
   }
-  return -1;
-}
-
-/**
- * Whether a block with a longer fence opens between the two lines and runs past `closerIndex`, which makes that line
- * its content rather than a closing fence: an opener the prompt writes as a sample and never closes would otherwise
- * take a later block apart. Only a longer fence counts, since a shorter or equal one cannot hold the candidate line
- * as content, and the contents of a block are copied whole anyway.
- */
-function reachesBeyond(lines: string[], openerIndex: number, closerIndex: number, fenceLength: number): boolean {
-  for (let index = openerIndex + 1; index < closerIndex; index++) {
-    const opener = BLOCK_OPENER.exec(lines[index] ?? '')?.[1];
-    const nestedFence = opener === undefined ? '' : (/^[`~]+/u.exec(opener)?.[0] ?? '');
-    if (nestedFence.length > fenceLength && findBlockEnd(lines, index, opener ?? '') >= closerIndex) return true;
-  }
-  return false;
+  return blocks;
 }
 
 function dedentPromptMarkers(text: string): string {
+  if (!text) return text;
   return text
     .replaceAll(/\n\s+("""|'''|```|~{3,})/gu, '\n$1')
     .replaceAll(/\n\s+(#+\s)/gu, '\n$1')
@@ -184,7 +211,7 @@ function stringifyValue(value: unknown, ctx: Context): string {
       let str = '';
       if (Array.isArray(value)) {
         if (value.length === 0) return '[]';
-        const itemCtx = { indent: ctx.indent + INDENT_STEP, escapedTags: ctx.escapedTags };
+        const itemCtx = { indent: ctx.indent + INDENT_STEP, tagPatterns: ctx.tagPatterns };
         for (const item of value as unknown[]) {
           str += `${str ? separator : ''}- ${stringifyValue(toSerializable(item), itemCtx)}`;
         }
@@ -213,8 +240,8 @@ function stringifyPair(rawKey: unknown, rawValue: unknown, ctx: Context): string
   const indent = ctx.indent + INDENT_STEP;
   const key = toSerializable(rawKey);
   const value = toSerializable(rawValue);
-  const keyStr = stringifyValue(key, { indent, implicitKey: true, escapedTags: ctx.escapedTags });
-  const valueStr = stringifyValue(value, { indent, escapedTags: ctx.escapedTags });
+  const keyStr = stringifyValue(key, { indent, implicitKey: true, tagPatterns: ctx.tagPatterns });
+  const valueStr = stringifyValue(value, { indent, tagPatterns: ctx.tagPatterns });
   if (isCollection(key) || keyStr.length > MAX_IMPLICIT_KEY_LENGTH) return `? ${keyStr}\n${ctx.indent}: ${valueStr}`;
   const isBlockCollection = isCollection(value) && valueStr !== '[]' && valueStr !== '{}';
   return `${keyStr}:${isBlockCollection ? `\n${indent}` : ' '}${valueStr}`;
@@ -256,8 +283,7 @@ function stringifyNumber(value: number): string {
 }
 
 function stringifyString(rawValue: string, ctx: Context): string {
-  let value = rawValue;
-  for (const tagName of ctx.escapedTags ?? []) value = escapePromptTag(value, tagName);
+  const value = ctx.tagPatterns === undefined ? rawValue : escapeTags(rawValue, ctx.tagPatterns);
   // oxlint-disable-next-line no-control-regex -- control characters and lone surrogates can only be written escaped.
   return /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u{D800}-\u{DFFF}]/u.test(value)
     ? doubleQuotedString(value, ctx)
