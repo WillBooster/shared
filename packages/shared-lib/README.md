@@ -14,4 +14,6 @@ const recovered = recoverJson(response);
 
 Unknown escape sequences retain their literal characters and require confirmation. Scalar-looking prefixes of same-line prose are excluded; a standalone scalar before later-line prose is retained as ambiguous. Trailing supported comments are removed with provenance.
 
+Markdown boundaries delimit partial answers. Literal fence lines inside a string are retained across those boundaries only when the extended document otherwise needs no repair except escaping raw control characters; that interpretation also requires confirmation.
+
 Inputs above one million UTF-16 code units and nesting above 128 levels produce errors. At most 32 candidates/errors are returned. JSONP, MongoDB constructors, and arbitrary JavaScript expressions are outside this API's scope. Upstream implementation and test attribution is included in `NOTICE`.

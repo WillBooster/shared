@@ -25,7 +25,7 @@ export interface JsonRecovery {
 const MAX_INPUT_LENGTH = 1_000_000;
 const MAX_DEPTH = 128;
 const MAX_CANDIDATES = 32;
-const QUOTES: Record<string, string> = { '"': '"', "'": "'", '“': '”', '‘': '’' };
+const QUOTES: Record<string, string> = { '"': '"', "'": "'", '“': '”', '”': '”', '‘': '’', '’': '’' };
 
 /**
  * Extracts JSON values from a response, repairing common LLM syntax and retaining repair provenance.
@@ -84,9 +84,25 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
       while (index < end && text[index] !== '{' && text[index] !== '[') index++;
     }
     if (index >= end) break;
-    const parser = new RecoveryParser(text, index, text.length);
+    let parser = new RecoveryParser(text, index, end);
     try {
-      const json = parser.value(0);
+      let json = parser.value(0);
+      if (parser.index === end && end < text.length) {
+        const extended = new RecoveryParser(text, index, text.length);
+        try {
+          const extendedJson = extended.value(0);
+          if (
+            extended.index > end &&
+            extended.repairs.every((repair) => repair.reason === 'unescaped-control-character')
+          ) {
+            extended.repairs.push({ offset: end, kind: 'ambiguous', reason: 'literal-fence-in-string' });
+            parser = extended;
+            json = extendedJson;
+          }
+        } catch {
+          // Keep the bounded interpretation when extending it is not a complete JSON document.
+        }
+      }
       if (rootValue && index === firstIndex && !parser.finishScalar(end)) {
         index = parser.index;
         continue;
@@ -245,8 +261,8 @@ class RecoveryParser {
     const close = QUOTES[open];
     if (open !== '"') this.repair('syntax', 'non-json-quote', start);
     let value = '';
-    const family = open === '"' || open === '“' ? '"“”' : "'‘’";
-    let alternative: { end: number; value: string } | undefined;
+    const family = '"“”'.includes(open) ? '"“”' : "'‘’";
+    let alternative: { end: number; value: string; repairCount: number } | undefined;
     while (this.index < this.end) {
       const char = this.text[this.index++]!;
       if (family.includes(char)) {
@@ -255,12 +271,13 @@ class RecoveryParser {
         if (char === close) {
           if (alternative !== undefined && !delimited) {
             this.index = alternative.end;
+            this.repairs.length = alternative.repairCount;
             this.repair('ambiguous', 'mismatched-quote', this.index - 1);
             return JSON.stringify(alternative.value);
           }
           return JSON.stringify(value);
         }
-        if (delimited) alternative ??= { end: this.index, value };
+        if (delimited) alternative ??= { end: this.index, value, repairCount: this.repairs.length };
       }
       if (char !== '\\') {
         if (char.codePointAt(0)! < 32) this.repair('syntax', 'unescaped-control-character', this.index - 1);
@@ -293,6 +310,7 @@ class RecoveryParser {
     }
     if (alternative !== undefined) {
       this.index = alternative.end;
+      this.repairs.length = alternative.repairCount;
       this.repair('ambiguous', 'mismatched-quote', this.index - 1);
       return JSON.stringify(alternative.value);
     }

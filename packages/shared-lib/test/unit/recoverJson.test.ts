@@ -11,6 +11,8 @@ test('recovers complete LLM answers without changing their data', () => {
     ],
     ["{name: 'John',}", { name: 'John' }],
     ['{“name”: “John”}', { name: 'John' }],
+    ['{”name”: ”John”}', { name: 'John' }],
+    ['{’name’: ’John’}', { name: 'John' }],
     ['{"a": 1 /* comment */ , "b": True}', { a: 1, b: true }],
     ['{"a": "hi\nthere"}', { a: 'hi\nthere' }],
     [
@@ -115,7 +117,7 @@ test('keeps fence opener content and fences embedded inside JSON strings', () =>
   for (const input of [embedded, `\`\`\`json\n${embedded}\n\`\`\``]) {
     const candidate = recoverJson(input).candidates[0]!;
     expect(candidate.value).toEqual({ explanation: 'Use this:\n```js\nconst a = 1;\n```\nDone' });
-    expect(candidate.requiresConfirmation).toBe(false);
+    expect(candidate.requiresConfirmation).toBe(true);
   }
   expect(recoverJson('```json {"verdict":"confirmed"}\n```').candidates[0]?.value).toEqual({ verdict: 'confirmed' });
 });
@@ -168,5 +170,29 @@ test('continues after rejected documents without extracting their nested members
     const result = recoverJson(`${prefix} {"verdict":"confirmed"}`);
     expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }]);
     expect(result.errors).toHaveLength(1);
+  }
+});
+
+test('keeps a truncated fenced answer separate from a following complete answer', () => {
+  const input =
+    '```json\n{"notes":"unfinished\n```\nSorry, cut off. Full answer:\n```json\n{"verdict":"confirmed"}\n```';
+  const { candidates } = recoverJson(input);
+  expect(candidates.map((candidate) => candidate.value)).toEqual([{ notes: 'unfinished\n' }, { verdict: 'confirmed' }]);
+  expect(candidates[0]?.requiresConfirmation).toBe(true);
+  expect(candidates[1]?.repairs).toEqual([]);
+  const partial = recoverJson('```json\n{"notes":"cut off\n```\nI ran out of space.').candidates[0]!;
+  expect(partial.value).toEqual({ notes: 'cut off\n' });
+  expect(partial.requiresConfirmation).toBe(true);
+});
+
+test('keeps repair provenance within the retained string interpretation', () => {
+  for (const input of ['["a”, ]and more\n', '["hi”, ]oops\ntail', 'b["ea  -“n“]rax\nu']) {
+    const candidate = recoverJson(input).candidates[0]!;
+    expect(candidate.requiresConfirmation).toBe(true);
+    expect(candidate.repairs.some((repair) => repair.reason === 'unescaped-control-character')).toBe(false);
+    for (const repair of candidate.repairs) {
+      expect(repair.offset).toBeGreaterThanOrEqual(candidate.start);
+      expect(repair.offset).toBeLessThanOrEqual(candidate.end);
+    }
   }
 });
