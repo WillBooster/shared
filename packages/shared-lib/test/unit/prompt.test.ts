@@ -291,6 +291,13 @@ test('serializeForPromptInTag quotes a value that starts with the escaped tag', 
   );
 });
 
+test('escapePromptTag neutralizes a tag an HTML reader still closes', () => {
+  expect(escapePromptTag('a</transcriptions foo>b', 'transcriptions')).toBe('a[/transcriptions] foo>b');
+  expect(escapePromptTag('a</transcriptions/>b', 'transcriptions')).toBe('a[/transcriptions]/>b');
+  expect(escapePromptTag('a</transcriptions\nb', 'transcriptions')).toBe('a[/transcriptions]\nb');
+  expect(escapePromptTag('a<transcriptionsX>b', 'transcriptions')).toBe('a<transcriptionsX>b');
+});
+
 test('escapePromptTag ignores case and the whitespace inside a tag', () => {
   expect(
     escapePromptTag('<Transcriptions>x</TRANSCRIPTIONS >y</transcriptions\t>z</transcriptions\n>', 'transcriptions')

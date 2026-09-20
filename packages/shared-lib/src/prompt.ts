@@ -52,11 +52,15 @@ export function serializeForPromptInTag(value: unknown, tagName: string): string
 /**
  * Replaces `<tagName>` and `</tagName>` in text with a harmless notation, so that data embedded in a `<tagName>`
  * element of a prompt cannot close the element and have the rest read as instructions.
- * Case and the whitespace an LLM still reads as part of the tag are ignored deliberately: `tagName` is expected to be
- * a literal written by the caller, while the data is not.
+ * Case is ignored deliberately: `tagName` is expected to be a literal written by the caller, while the data is not.
  */
 export function escapePromptTag(text: string, tagName: string): string {
-  return text.replaceAll(new RegExp(`<(/?)\\s*(${escapeRegExp(tagName)})\\s*>`, 'giu'), '[$1$2]');
+  const name = escapeRegExp(tagName);
+  // The second pattern also neutralizes a tag an HTML reader still closes although this one cannot: one carrying
+  // attribute-like junk, a trailing solidus, or no `>` at all, which the next `>` in the prompt would complete.
+  return text
+    .replaceAll(new RegExp(`<(/?)\\s*(${name})\\s*>`, 'giu'), '[$1$2]')
+    .replaceAll(new RegExp(`<(/?)\\s*(${name})(?![\\w-])`, 'giu'), '[$1$2]');
 }
 
 /**
