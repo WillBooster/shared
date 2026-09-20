@@ -78,7 +78,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
   if (first === undefined) return;
   // Prose is not an unquoted root string: only structured starts are searched within prose.
   const rootValue =
-    first in QUOTES || /[-\d]/.test(first) || /^(?:true|false|null)(?:\s|$)/.test(text.slice(index, end));
+    first in QUOTES || /[-\d]/.test(first) || /^(?:true|false|null)(?=\s|\/[/*]|$)/.test(text.slice(index, end));
   while (index < end && result.candidates.length + result.errors.length < MAX_CANDIDATES) {
     if (!rootValue || index !== firstIndex) {
       while (index < end && text[index] !== '{' && text[index] !== '[') index++;

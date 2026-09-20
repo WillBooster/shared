@@ -141,11 +141,13 @@ test('recovers mismatched quotes as ambiguous while preserving valid quoted cont
 });
 
 test('retains scalar comments and separates standalone answers from later prose', () => {
-  for (const input of ['42 // answer', '42/*answer*/', '42\n// answer']) {
-    const candidate = recoverJson(input).candidates[0]!;
-    expect(candidate.value).toBe(42);
-    expect(candidate.requiresConfirmation).toBe(false);
-    expect(candidate.repairs.some((repair) => repair.reason.endsWith('comment'))).toBe(true);
+  for (const value of ['42', 'true', 'false', 'null']) {
+    for (const suffix of [' // answer', '/*answer*/', '\n// answer', '//answer']) {
+      const candidate = recoverJson(value + suffix).candidates[0]!;
+      expect(candidate.value).toEqual(JSON.parse(value));
+      expect(candidate.requiresConfirmation).toBe(false);
+      expect(candidate.repairs.some((repair) => repair.reason.endsWith('comment'))).toBe(true);
+    }
   }
   const candidate = recoverJson('"confirmed"\nExplanation of the result.').candidates[0]!;
   expect(candidate.value).toBe('confirmed');
