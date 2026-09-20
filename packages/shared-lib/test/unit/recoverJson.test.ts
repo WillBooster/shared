@@ -3,6 +3,7 @@ import { expect, test } from 'vitest';
 import { recoverJson } from '../../src/index.js';
 
 test('recovers complete LLM answers without changing their data', () => {
+  const astralCharacter = '😀';
   const cases = [
     [
       '{"a":2.3e100,"b":"str","c":null,"d":false,"e":[1,2,3]}',
@@ -16,7 +17,7 @@ test('recovers complete LLM answers without changing their data', () => {
     ['{"a": 1 /* comment */ , "b": True}', { a: 1, b: true }],
     ['{"a": "hi\nthere"}', { a: 'hi\nthere' }],
     [
-      String.raw`{"a": "\u2605", "b": "😀", "c": "https://example.com/*text*/"}`,
+      String.raw`{"a": "\u2605", "b": "${astralCharacter}", "c": "https://example.com/*text*/"}`,
       { a: '★', b: '😀', c: 'https://example.com/*text*/' },
     ],
     ['{"a": 1 "b": 2}', { a: 1, b: 2 }],
@@ -393,6 +394,37 @@ test('retains container answers abutting prose URLs without claiming independent
     expect(candidates.slice(0, -1).every((candidate) => candidate.requiresConfirmation)).toBe(true);
     expect(candidates.at(-1)?.value).toEqual({ answer: 42 });
     expect(candidates.at(-1)?.requiresConfirmation).toBe(false);
+  }
+});
+
+test('rejects backticks in ordinary fence metadata without rejecting inline JSON payloads', () => {
+  for (const newline of ['\n', '\r', '\r\n']) {
+    for (const marker of ['```', '````', '~~~']) {
+      const result = recoverJson(`{]${newline}${marker} bad \` info${newline}{"verdict":"confirmed"}`);
+      expect(result.candidates).toHaveLength(1);
+      expect(result.candidates[0]?.value).toEqual({ verdict: 'confirmed' });
+      expect(result.candidates[0]?.requiresConfirmation).toBe(marker !== '~~~');
+      expect(result.errors.length).toBeGreaterThan(0);
+    }
+    const inline = recoverJson(`\`\`\`json {"code":"\`foo\`"}${newline}\`\`\``);
+    expect(inline.candidates).toHaveLength(1);
+    expect(inline.candidates[0]?.value).toEqual({ code: '`foo`' });
+    expect(inline.candidates[0]?.requiresConfirmation).toBe(false);
+  }
+});
+
+test('retains independent ambiguity causes for LLM reconfirmation', () => {
+  for (const [prefix, reason] of [
+    ['{] ', 'fragment-after-rejected-document'],
+    ['"x", trailing ', 'fragment-after-ambiguous-scalar'],
+    ['Notes: // ', 'fragment-in-comment-like-prose'],
+  ]) {
+    const candidate = recoverJson(`${prefix}See http://x/a[1]`).candidates.at(-1);
+    expect(candidate?.value).toEqual([1]);
+    expect(candidate?.requiresConfirmation).toBe(true);
+    expect(candidate?.repairs.map((repair) => repair.reason)).toEqual(
+      expect.arrayContaining([reason, 'ambiguous-uri-boundary'])
+    );
   }
 });
 

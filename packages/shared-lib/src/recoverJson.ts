@@ -49,7 +49,19 @@ export function recoverJson(text: string): JsonRecovery {
     result.errors.push({ offset: MAX_INPUT_LENGTH, message: 'JSON recovery input exceeds one million characters' });
     return result;
   }
-  const fences = [...text.matchAll(/^(?: {0,3})(`{3,}|~{3,})[^\r\n]*(?:\r\n|[\r\n]|$)/gm)];
+  const fences = [...text.matchAll(/^(?: {0,3})(`{3,}|~{3,})[^\r\n]*(?:\r\n|[\r\n]|$)/gm)].flatMap((fence) => {
+    const marker = fence[1]!;
+    const markerEnd = fence.index + fence[0].indexOf(marker) + marker.length;
+    const lineEnd = fence.index + fence[0].length;
+    const info = text.slice(markerEnd, lineEnd);
+    const inlinePrefix = /^[ \t]*json(?=[ \t{["'“”‘’])[ \t]*/i.exec(info);
+    const inlineStart = inlinePrefix === null ? lineEnd : markerEnd + inlinePrefix[0].length;
+    const start =
+      text[inlineStart] === '{' || text[inlineStart] === '[' || scalarStart(text, inlineStart, lineEnd)
+        ? inlineStart
+        : lineEnd;
+    return marker[0] === '`' && start === lineEnd && info.includes('`') ? [] : [{ index: fence.index, marker, start }];
+  });
   if (fences.length > 0) {
     let consumed = 0;
     for (const fence of fences) {
@@ -60,15 +72,7 @@ export function recoverJson(text: string): JsonRecovery {
         consumed = parsedThrough;
         continue;
       }
-      const marker = fence[1]!;
-      const markerEnd = fence.index + fence[0].indexOf(marker) + marker.length;
-      const lineEnd = fence.index + fence[0].length;
-      const inlinePrefix = /^[ \t]*json(?=[ \t{["'“”‘’])[ \t]*/i.exec(text.slice(markerEnd, lineEnd));
-      const inlineStart = inlinePrefix === null ? lineEnd : markerEnd + inlinePrefix[0].length;
-      const start =
-        text[inlineStart] === '{' || text[inlineStart] === '[' || scalarStart(text, inlineStart, lineEnd)
-          ? inlineStart
-          : lineEnd;
+      const { marker, start } = fence;
       const close = new RegExp(`^ {0,3}${marker[0]}{${marker.length},}[ \\t]*$`, 'gm');
       close.lastIndex = start;
       const match = close.exec(text);
@@ -193,11 +197,11 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
       parser.space();
       if (commentFragment)
         parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'fragment-in-comment-like-prose' });
-      else if (failures > 0)
+      if (failures > 0)
         parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'fragment-after-rejected-document' });
-      else if (ambiguousScalarTail)
+      if (ambiguousScalarTail)
         parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'fragment-after-ambiguous-scalar' });
-      else if (index < uriBoundaryEnd)
+      if (index < uriBoundaryEnd)
         parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'ambiguous-uri-boundary' });
       ambiguousScalarTail ||= parser.repairs.some((repair) => repair.reason === 'trailing-scalar-content');
       result.candidates.push({
