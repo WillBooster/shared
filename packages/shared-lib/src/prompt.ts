@@ -42,6 +42,10 @@ export function serializeForPrompt(value: unknown): string {
  * Serializes data with `serializeForPrompt` for embedding inside a `<tagName>` element of a prompt, escaping that tag
  * in every string so that untrusted data cannot close the element and have the rest read as instructions.
  * The caller must wrap the result in the same tag.
+ *
+ * The escaped notation is the one `escapePromptTag` writes, and text that already holds it is left as it is, so two
+ * strings differing only in that notation are written alike. Keys taken from untrusted data can therefore collide
+ * into one duplicate key of the emitted mapping.
  */
 export function serializeForPromptInTag(value: unknown, tagName: string): string {
   // Escaping is applied while writing each scalar, so that keys and the contents of Maps, Sets and Errors are covered
@@ -50,14 +54,16 @@ export function serializeForPromptInTag(value: unknown, tagName: string): string
 }
 
 /**
- * Replaces `<tagName>` and `</tagName>` in text with a harmless notation, so that data embedded in a `<tagName>`
- * element of a prompt cannot close the element and have the rest read as instructions.
- * Case is ignored deliberately: `tagName` is expected to be a literal written by the caller, while the data is not.
+ * Replaces every `<tagName` and `</tagName` in text with a harmless notation such as `[/tagName]`, so that data
+ * embedded in a `<tagName>` element of a prompt cannot close the element and have the rest read as instructions.
+ * A closing `>` is not required, since an HTML reader also closes an element on a tag carrying attribute-like junk,
+ * on a trailing solidus, or on the next `>` anywhere in the prompt; the whitespace between `<` and the name is
+ * dropped along with the brackets. Case is ignored deliberately: `tagName` is expected to be a literal written by
+ * the caller, while the data is not.
  */
 export function escapePromptTag(text: string, tagName: string): string {
   const name = escapeRegExp(tagName);
-  // The second pattern also neutralizes a tag an HTML reader still closes although this one cannot: one carrying
-  // attribute-like junk, a trailing solidus, or no `>` at all, which the next `>` in the prompt would complete.
+  // The first pattern keeps a well-formed tag readable as `[tagName]`; the second one catches every other spelling.
   return text
     .replaceAll(new RegExp(`<(/?)\\s*(${name})\\s*>`, 'giu'), '[$1$2]')
     .replaceAll(new RegExp(`<(/?)\\s*(${name})(?![\\w-])`, 'giu'), '[$1$2]');
@@ -90,7 +96,7 @@ export function formatPrompt(prompt: string): string {
 
 function dedentPromptMarkers(text: string): string {
   return text
-    .replaceAll(/\n\s+("""|'''|```)/gu, '\n$1')
+    .replaceAll(/\n\s+("""|'''|```|~{3,})/gu, '\n$1')
     .replaceAll(/\n\s+(#+\s)/gu, '\n$1')
     .replaceAll(/(?:\s*\n){2,}/gu, '\n\n');
 }

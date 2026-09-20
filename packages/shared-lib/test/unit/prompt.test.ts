@@ -9,6 +9,7 @@ import {
   serializeForPromptInTag,
   truncateForPrompt,
 } from '../../src/prompt.js';
+import { toTildeCodeBlock } from '../../src/text.js';
 
 const TRICKY_STRINGS = [
   '',
@@ -256,6 +257,13 @@ test('formatPrompt dedents Markdown markers and drops the blank lines around the
     \`\`\`
   `)
   ).toBe('# Title\n## Section\n```js\n    code\n```');
+});
+
+test('formatPrompt dedents a tilde fence as it dedents a backtick one', () => {
+  const block = toTildeCodeBlock('example\n\ntext', 'md');
+
+  // Only the markers are dedented, so the ordinary line keeps its indentation.
+  expect(formatPrompt(`\n  # Title\n\n    ${block}\n\n  body\n`)).toBe(`# Title\n${block}\n\n  body`);
 });
 
 test('formatPrompt keeps serialized blocks byte for byte, indented by a template literal or not', () => {
