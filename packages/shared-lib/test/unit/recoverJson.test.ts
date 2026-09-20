@@ -42,6 +42,15 @@ test('returns all fenced answers and original response offsets', () => {
   expect(repaired.repairs.some((repair) => text.slice(repair.offset).startsWith('verdict'))).toBe(true);
 });
 
+test('does not treat numbered prose or Markdown bullets as root scalar answers', () => {
+  for (const prose of ['3 issues found. Details:', '- summary', 'true story follows:']) {
+    const result = recoverJson(`${prose}\n\`\`\`json\n{"verdict":"confirmed"}\n\`\`\``);
+    expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }]);
+  }
+  expect(recoverJson(' 42 ').candidates[0]?.value).toBe(42);
+  expect(recoverJson('```json\n"answer"\n```').candidates[0]?.value).toBe('answer');
+});
+
 test('rescues partial explanations without presenting them as complete answers', () => {
   for (const suffix of ['unfinished', 'unfinished\\', String.raw`unfinished\u12`]) {
     const text = `Here is the result:\n\`\`\`json\n{"verdict":"refuted","notes":"${suffix}`;

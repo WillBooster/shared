@@ -78,6 +78,10 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
     const parser = new RecoveryParser(text, index, end);
     try {
       const json = parser.value(0);
+      if (rootValue && index === firstIndex && text.slice(parser.index, end).trim() !== '') {
+        index = parser.index;
+        continue;
+      }
       result.candidates.push({
         value: JSON.parse(json),
         json,
