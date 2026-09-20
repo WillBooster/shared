@@ -9,7 +9,7 @@ import {
   serializeForPromptInTag,
   truncateForPrompt,
 } from '../../src/prompt.js';
-import { toTildeCodeBlock } from '../../src/text.js';
+import { toCodeBlock, toTildeCodeBlock } from '../../src/text.js';
 
 const TRICKY_STRINGS = [
   '',
@@ -263,7 +263,16 @@ test('formatPrompt dedents a tilde fence as it dedents a backtick one', () => {
   const block = toTildeCodeBlock('example\n\ntext', 'md');
 
   // Only the markers are dedented, so the ordinary line keeps its indentation.
-  expect(formatPrompt(`\n  # Title\n\n    ${block}\n\n  body\n`)).toBe(`# Title\n${block}\n\n  body`);
+  expect(formatPrompt(`\n  # Title\n\n    ${block}\n\n  body\n`)).toBe(`# Title\n\n${block}\n\n  body`);
+});
+
+test('formatPrompt keeps the contents of a code block as they were given', () => {
+  const source =
+    'def load(path):\n    # TODO read the file\n    with open(path) as f:\n        return f.read()\n\n\ndef main():\n    pass';
+
+  expect(formatPrompt(`\n  Here is the code:\n\n  ${toCodeBlock(source, 'py')}\n`)).toBe(
+    `Here is the code:\n\n${toCodeBlock(source, 'py')}`
+  );
 });
 
 test('formatPrompt keeps serialized blocks byte for byte, indented by a template literal or not', () => {

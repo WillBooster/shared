@@ -74,8 +74,8 @@ export function escapePromptTag(text: string, tagName: string): string {
     .replaceAll(new RegExp(`<(/?)\\s*(${name})(?![\\w-])`, 'giu'), '[$1$2]');
 }
 
-/** The line opening a block of `serializeForPrompt`, with the indentation an interpolation may put before it. */
-const BLOCK_OPENER = /^[ \t]*(~{3,})yaml[ \t]*$/u;
+/** The line opening a fenced block, with the indentation an interpolation may put before it. */
+const BLOCK_OPENER = /^[ \t]*((?:`{3,}|~{3,})\S*)[ \t]*$/u;
 
 /** A block interpolated after other text on its line, which no rule can tell from prose that ends in `~~~yaml`. */
 const MISPLACED_BLOCK_OPENER = /[^\s~][ \t]*~{3,}yaml[ \t]*$/u;
@@ -83,9 +83,10 @@ const MISPLACED_BLOCK_OPENER = /[^\s~][ \t]*~{3,}yaml[ \t]*$/u;
 /**
  * Strips the indentation that nested template literals add to Markdown markers (headings and code fences) and
  * collapses blank lines, so that a prompt written inline reads as Markdown.
- * Blocks produced by `serializeForPrompt` are left untouched, since reindenting their lines would corrupt the YAML.
- * Such a block must be interpolated at the start of a line, and this throws when one is not: recognizing a block
- * is what keeps its contents intact, and after other text an opening fence cannot be told from prose.
+ * The contents of a fenced block are left untouched, since reindenting them would rewrite the data they carry, such
+ * as the YAML of `serializeForPrompt` or the source of `toCodeBlock`. A `serializeForPrompt` block must be
+ * interpolated at the start of a line, and this throws when one is not: recognizing a block is what keeps its
+ * contents intact, and after other text an opening fence cannot be told from prose.
  */
 export function formatPrompt(prompt: string): string {
   const lines = prompt.split('\n');
@@ -93,8 +94,8 @@ export function formatPrompt(prompt: string): string {
   let prose = '';
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index] ?? '';
-    const fence = BLOCK_OPENER.exec(line)?.[1];
-    const endIndex = fence === undefined ? -1 : findBlockEnd(lines, index, fence);
+    const opener = BLOCK_OPENER.exec(line)?.[1];
+    const endIndex = opener === undefined ? -1 : findBlockEnd(lines, index, opener);
     if (endIndex === -1) {
       // An opening fence the prompt itself writes and never closes is prose, and so is every line inside a block.
       if (MISPLACED_BLOCK_OPENER.test(line)) {
@@ -104,7 +105,7 @@ export function formatPrompt(prompt: string): string {
       continue;
     }
     // Dropping the opener's indentation keeps four spaces of it from turning the fence into an indented code block.
-    formatted += `${dedentPromptMarkers(prose)}${fence}yaml\n${lines.slice(index + 1, endIndex + 1).join('\n')}\n`;
+    formatted += `${dedentPromptMarkers(prose)}${opener}\n${lines.slice(index + 1, endIndex + 1).join('\n')}\n`;
     prose = '';
     index = endIndex;
   }
@@ -113,26 +114,31 @@ export function formatPrompt(prompt: string): string {
 
 /**
  * Finds the line closing the block opened at `openerIndex`, or -1 when the prompt never closes it.
- * A `~` run shorter than the fence is content, since `serializeForPrompt` makes the fence longer than any run it
- * writes, while a run at least as long can only be the closing fence, whatever an interpolation put after it.
+ * A fence run shorter than the opening one is content, since the helpers of this package make the fence longer than
+ * any run they write, while a run at least as long can only be the closing fence, whatever an interpolation put
+ * after it.
  */
-function findBlockEnd(lines: string[], openerIndex: number, fence: string): number {
-  const closer = new RegExp(`^${fence}~*(?:[ \\t].*)?$`, 'u');
+function findBlockEnd(lines: string[], openerIndex: number, opener: string): number {
+  const fence = /^[`~]+/u.exec(opener)?.[0] ?? '';
+  const closer = new RegExp(`^${fence}${fence[0] ?? ''}*(?:[ \\t].*)?$`, 'u');
   for (let index = openerIndex + 1; index < lines.length; index++) {
     if (!closer.test(lines[index] ?? '')) continue;
-    return reachesBeyond(lines, openerIndex, index) ? -1 : index;
+    return reachesBeyond(lines, openerIndex, index, fence.length) ? -1 : index;
   }
   return -1;
 }
 
 /**
- * Whether a block opened between the two lines runs past `closerIndex`, which makes that line its content rather than
- * a closing fence: an opener the prompt writes as a sample and never closes would otherwise take a later block apart.
+ * Whether a block with a longer fence opens between the two lines and runs past `closerIndex`, which makes that line
+ * its content rather than a closing fence: an opener the prompt writes as a sample and never closes would otherwise
+ * take a later block apart. Only a longer fence counts, since a shorter or equal one cannot hold the candidate line
+ * as content, and the contents of a block are copied whole anyway.
  */
-function reachesBeyond(lines: string[], openerIndex: number, closerIndex: number): boolean {
+function reachesBeyond(lines: string[], openerIndex: number, closerIndex: number, fenceLength: number): boolean {
   for (let index = openerIndex + 1; index < closerIndex; index++) {
-    const fence = BLOCK_OPENER.exec(lines[index] ?? '')?.[1];
-    if (fence !== undefined && findBlockEnd(lines, index, fence) >= closerIndex) return true;
+    const opener = BLOCK_OPENER.exec(lines[index] ?? '')?.[1];
+    const nestedFence = opener === undefined ? '' : (/^[`~]+/u.exec(opener)?.[0] ?? '');
+    if (nestedFence.length > fenceLength && findBlockEnd(lines, index, opener ?? '') >= closerIndex) return true;
   }
   return false;
 }
