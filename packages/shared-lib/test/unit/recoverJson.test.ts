@@ -100,6 +100,9 @@ test('bounds malformed input and never promotes rejected-document fragments to c
   const capped = recoverJson(`${'{}\n'.repeat(40)}\`\`\`json\n{"verdict":"confirmed"}\n\`\`\``);
   expect(capped.candidates).toHaveLength(32);
   expect(capped.errors.some((error) => error.message.includes('candidate limit'))).toBe(true);
+  const commentCap = recoverJson(`Notes: // ${'{} '.repeat(40)}\n{"last":true}`);
+  expect(commentCap.candidates).toHaveLength(32);
+  expect(commentCap.errors.some((error) => error.message.includes('candidate limit'))).toBe(true);
   const repeated = recoverJson(`${'{'.repeat(40)}\n\`\`\`json\n{"verdict":"confirmed"}\n\`\`\``);
   expect(repeated.errors.length).toBeGreaterThan(0);
   expect(repeated.errors.length).toBeLessThanOrEqual(32);
@@ -294,22 +297,70 @@ test('keeps trailing comment examples out of candidates and marks ambiguous scal
   expect(recoverJson('true\rExplanation').candidates[0]?.value).toBe(true);
 });
 
-test('does not mine comment examples while scanning prose or mistake URLs for comments', () => {
+test('retains only unconfirmed fragments from comment-like prose without mistaking scheme URLs for comments', () => {
   for (const input of [
     'My notes:\n// earlier the model reported {"verdict":"confirmed"}\nConclusion: it is refuted.',
     'Before it: // not {"verdict":"refuted"}',
     'My notes: /* earlier: {"verdict":"confirmed"} */',
     'My notes:\n/*\n{"verdict":"confirmed"}\n*/',
-  ])
-    expect(recoverJson(input).candidates).toEqual([]);
-  expect(recoverJson('Introduction:\n// ignore {"wrong":1}\r42').candidates[0]?.value).toBe(42);
+    'The operator a // b was used. Then: {"verdict":"confirmed"}',
+    'He wrote "see // here" then {"verdict":"confirmed"}',
+    'Path src//utils.ts then {"verdict":"confirmed"}',
+    'See www.example.com/a//b then {"verdict":"confirmed"}',
+  ]) {
+    const candidates = recoverJson(input).candidates;
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.value).toEqual({ verdict: input.includes('refuted"') ? 'refuted' : 'confirmed' });
+    expect(candidates[0]?.requiresConfirmation).toBe(true);
+  }
+  expect(recoverJson('Introduction:\n// ignore {"wrong":1}\r42').candidates.at(-1)?.value).toBe(42);
   const incomplete = recoverJson('My notes: /* unfinished {"verdict":"confirmed"}');
-  expect(incomplete.candidates).toEqual([]);
+  expect(incomplete.candidates[0]?.value).toEqual({ verdict: 'confirmed' });
+  expect(incomplete.candidates[0]?.requiresConfirmation).toBe(true);
   expect(incomplete.errors.length).toBeGreaterThan(0);
   const linked = recoverJson('See https://example.com/a//b/*c*/ before {"verdict":"confirmed"}');
   expect(linked.candidates).toHaveLength(1);
   expect(linked.candidates[0]?.value).toEqual({ verdict: 'confirmed' });
   expect(linked.candidates[0]?.repairs).toEqual([]);
+  const bounded = 'Notes: /* ["cut */ "] {"verdict":"confirmed"}';
+  const fragments = recoverJson(bounded).candidates;
+  expect(fragments[0]?.end).toBeLessThanOrEqual(bounded.indexOf('"]'));
+  expect(fragments[0]?.repairs.some((repair) => repair.kind === 'incomplete')).toBe(true);
+  expect(fragments.at(-1)?.value).toEqual({ verdict: 'confirmed' });
+  for (const prefix of ['packages/*/package.json', '.github/workflows/*.{yml,yaml}', 'src/*/index.ts']) {
+    const result = recoverJson(`I checked ${prefix}.\n{"verdict":"refuted"}`);
+    expect(result.candidates.at(-1)?.value).toEqual({ verdict: 'refuted' });
+    expect(result.candidates.every((candidate) => candidate.requiresConfirmation)).toBe(true);
+  }
+});
+
+test('preserves apostrophes in comma continuations after embedded quoted words', () => {
+  for (const continuation of ["then it's over", "then the model's answer", 'then it’s over']) {
+    const result = recoverJson(`{"summary":"He said "hi", ${continuation}","verdict":"confirmed"}`);
+    expect(result.candidates[0]?.value).toEqual({ summary: `He said "hi", ${continuation}`, verdict: 'confirmed' });
+    expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+  }
+  const single = recoverJson("{'summary':'He said 'hi', then it's over'}");
+  expect(single.candidates[0]?.value).toEqual({ summary: "He said 'hi', then it's over" });
+  expect(single.candidates[0]?.requiresConfirmation).toBe(true);
+});
+
+test('retains container answers abutting prose URLs without claiming independent boundaries', () => {
+  for (const prefix of ['See http://x/a', 'Link <https://x/a>', 'Link (https://x/a)']) {
+    for (const fenced of [false, true]) {
+      for (const json of ['{"a":1}', '[{"a":1}]']) {
+        const body = prefix + json;
+        const result = recoverJson(fenced ? `\`\`\`json\n${body}\n\`\`\`` : body);
+        expect(result.candidates).toHaveLength(1);
+        expect(result.candidates[0]?.value).toEqual(JSON.parse(json));
+        expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+      }
+    }
+  }
+  expect(recoverJson('See http://x/a{"a":1}{"b":2}').candidates.map((candidate) => candidate.value)).toEqual([
+    { a: 1 },
+    { b: 2 },
+  ]);
 });
 
 test('recovers mismatched quotes as ambiguous while preserving valid quoted content', () => {
