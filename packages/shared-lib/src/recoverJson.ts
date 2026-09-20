@@ -196,7 +196,8 @@ class RecoveryParser {
     }
     if (char !== undefined && char in QUOTES) return this.string();
     const start = this.index;
-    while (this.index < this.end && !/[\s,}\]:]/.test(this.text[this.index]!) && !this.comment()) this.index++;
+    const uri = /^[A-Za-z][A-Za-z\d+.-]*:\/\//.test(this.text.slice(start, this.end));
+    while (this.index < this.end && !/[\s,}\]]/.test(this.text[this.index]!) && (uri || !this.comment())) this.index++;
     if (this.index === start) throw new Error('Expected a JSON value');
     const token = this.text.slice(start, this.index);
     if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(token)) return token;

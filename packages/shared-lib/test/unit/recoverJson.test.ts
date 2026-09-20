@@ -185,15 +185,15 @@ test('preserves missing array positions and literal invalid escapes for confirma
 });
 
 test('continues after rejected documents without extracting their nested members', () => {
-  for (const prefix of [
-    'See [PR-12: fix] for details:',
-    'Candidate 1: {"error": [}\nCandidate 2:',
-    '{] "nested": {"verdict":"wrong"}}',
-  ]) {
+  for (const prefix of ['Candidate 1: {"error": [}\nCandidate 2:', '{] "nested": {"verdict":"wrong"}}']) {
     const result = recoverJson(`${prefix} {"verdict":"confirmed"}`);
     expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }]);
     expect(result.errors).toHaveLength(1);
   }
+  const prose = recoverJson('See [PR-12: fix] for details: {"verdict":"confirmed"}');
+  expect(prose.candidates).toHaveLength(2);
+  expect(prose.candidates[0]?.requiresConfirmation).toBe(true);
+  expect(prose.candidates[1]?.value).toEqual({ verdict: 'confirmed' });
 });
 
 test('keeps a truncated fenced answer separate from a following complete answer', () => {
@@ -228,5 +228,13 @@ test('distinguishes a closed malformed Unicode escape from an exhausted escape',
       expect(candidate.requiresConfirmation).toBe(true);
       expect(candidate.repairs.some((repair) => repair.kind === 'incomplete')).toBe(!closed);
     }
+  }
+});
+
+test('retains unquoted URL and time values without losing surrounding fields', () => {
+  for (const value of ['https://example.com/a//b/*c*/', '12:30']) {
+    const candidate = recoverJson(`{"before":1,"value":${value},"after":2}`).candidates[0]!;
+    expect(candidate.value).toEqual({ before: 1, value, after: 2 });
+    expect(candidate.requiresConfirmation).toBe(true);
   }
 });
