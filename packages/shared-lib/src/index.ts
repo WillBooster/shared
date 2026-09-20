@@ -22,6 +22,8 @@ export {
   truncateForPrompt,
 } from './prompt.js';
 export { shuffle } from './shuffle.js';
+export { recoverJson } from './recoverJson.js';
+export type { JsonRepair, RecoveredJson, JsonRecovery } from './recoverJson.js';
 export { sleep } from './sleep.js';
 export { getConnectionLevelSqlitePragmas, getPersistentSqlitePragmas } from './sqlite.js';
 export { escapeRegExp, quoteForShell, toCodeBlock, toTildeCodeBlock } from './text.js';
