@@ -12,7 +12,7 @@ const recovered = recoverJson(response);
 
 `requiresConfirmation` marks incomplete or ambiguous repairs, including duplicate keys. A false value does not establish that an answer is correct or that the provider finished: callers must also check provider termination, extraction errors, multiple candidates, and their domain schema. Recovery never translates domain values or supplies missing evidence. Missing values are represented by JSON `null` with an incomplete repair annotation.
 
-Unknown escape sequences and stray quotes inside unquoted keys retain their literal characters and require confirmation. Scalar-looking prefixes of same-line prose are excluded; a standalone scalar before later-line prose is retained as ambiguous. Trailing supported comments are removed with provenance.
+Unknown escape sequences and stray quotes inside unquoted keys retain their literal characters and require confirmation. Unquoted scalar-looking prefixes of same-line prose are excluded; quoted scalars, scalars followed by punctuation, and standalone scalars before later-line prose are retained as ambiguous when trailing content remains. Trailing supported comments are removed with provenance.
 
 Markdown boundaries delimit partial answers. Literal fence lines inside a string are retained across those boundaries only when the extended document otherwise needs no repair except escaping raw control characters; that interpretation also requires confirmation. After a rejected document, extraction resumes only at an established lexical container boundary or a new Markdown region; it does not promote nested members of an unbalanced rejected document into standalone answers.
 

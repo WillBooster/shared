@@ -158,6 +158,14 @@ test('retains scalar comments and separates standalone answers from later prose'
   const candidate = recoverJson('"confirmed"\nExplanation of the result.').candidates[0]!;
   expect(candidate.value).toBe('confirmed');
   expect(candidate.requiresConfirmation).toBe(true);
+  for (const json of ['"confirmed"', '42', 'true', 'null']) {
+    const trailing = recoverJson(`\`\`\`json\n${json},\n\`\`\``).candidates[0]!;
+    expect(trailing.value).toEqual(JSON.parse(json));
+    expect(trailing.requiresConfirmation).toBe(true);
+  }
+  const adjacent = recoverJson('"a", "b"').candidates[0]!;
+  expect(adjacent.value).toBe('a');
+  expect(adjacent.requiresConfirmation).toBe(true);
   for (const [input, json] of [
     ['True', 'true'],
     ['False', 'false'],

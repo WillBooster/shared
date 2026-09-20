@@ -85,7 +85,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
   const firstIndex = index;
   if (first === undefined) return;
   // Prose is not an unquoted root string: only structured starts are searched within prose.
-  const keyword = /^([A-Za-z]+)(?=\s|\/[/*]|$)/.exec(text.slice(index, end))?.[1];
+  const keyword = /^([A-Za-z]+)(?=\s|\/[/*]|[,}\]]|$)/.exec(text.slice(index, end))?.[1];
   const rootValue =
     first in QUOTES || /[-\d]/.test(first) || (keyword !== undefined && Object.hasOwn(KEYWORDS, keyword));
   while (index < end && result.candidates.length + result.errors.length < MAX_CANDIDATES) {
@@ -112,7 +112,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
           // Keep the bounded interpretation when extending it is not a complete JSON document.
         }
       }
-      if (rootValue && index === firstIndex && !parser.finishScalar(end)) {
+      if (rootValue && index === firstIndex && !parser.finishScalar(end, first in QUOTES)) {
         index = parser.index;
         continue;
       }
@@ -170,12 +170,16 @@ class RecoveryParser {
     this.end = end;
   }
 
-  finishScalar(regionEnd: number): boolean {
+  finishScalar(regionEnd: number, quoted: boolean): boolean {
     const valueEnd = this.index;
     this.space();
     if (this.text.slice(this.index, regionEnd).trim() === '') return true;
     if (this.text.slice(valueEnd, this.index).includes('\n')) {
       this.repair('ambiguous', 'scalar-before-prose', valueEnd);
+      return true;
+    }
+    if (quoted || /^[\p{P}\p{S}]/u.test(this.text.slice(this.index, regionEnd))) {
+      this.repair('ambiguous', 'trailing-scalar-content', valueEnd);
       return true;
     }
     return false;
