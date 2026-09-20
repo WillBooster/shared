@@ -335,6 +335,18 @@ test('formatPrompt keeps a code-fence opener inside serialized data from claimin
   expect(formatPrompt(`${serialized}\n\n${code}`)).toBe(`${serialized}\n\n${code}`);
 });
 
+test('formatPrompt preserves consecutive blocks containing longer fences of the other character', () => {
+  const messages = ['    # heading', '    # other'];
+  for (const blocks of [
+    messages.map((message) => serializeForPrompt({ message: toCodeBlock(message, 'md').replaceAll('```', '````') })),
+    messages.map((message) => toCodeBlock(toTildeCodeBlock(message, 'md').replaceAll('~~~', '~~~~'))),
+  ]) {
+    const output = formatPrompt(blocks.join('\n\n# Latest\n\n'));
+
+    for (const block of blocks) expect(output).toContain(block);
+  }
+});
+
 test('formatPrompt rejects a block interpolated after other text on its line', () => {
   const serialized = serializeForPrompt({ a: 1 });
 

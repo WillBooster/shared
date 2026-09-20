@@ -100,8 +100,8 @@ interface PromptBlock {
  * as the YAML of `serializeForPrompt` or the source of `toCodeBlock`. A `serializeForPrompt` block must be
  * interpolated at the start of a line. Recognizable mid-line `~~~yaml` markers throw, including prose mentions;
  * this is not a complete placement validator, since preceding tildes can merge into an indistinguishable fence.
- * Closing fences may carry trailing prose. A longer nested fence can invalidate an earlier candidate closing
- * line; shorter or equal fences remain contents of the earlier block, even when they use the other character.
+ * Closing fences may carry trailing prose. A longer nested fence of the same character can invalidate an earlier
+ * candidate closing line; shorter, equal or opposite-character fences remain contents of the earlier block.
  */
 export function formatPrompt(prompt: string): string {
   const lines = prompt.split('\n');
@@ -158,7 +158,7 @@ function findBlocks(lines: string[]): (PromptBlock | undefined)[] {
       for (let nestedIndex = closedBlocks.length - 1; nestedIndex >= 0; nestedIndex--) {
         const nested = closedBlocks[nestedIndex];
         if (nested === undefined || nested.index >= end) break;
-        if (nested.fence.length > fence.length && nested.end >= end) {
+        if (nested.fence[0] === fence[0] && nested.fence.length > fence.length && nested.end >= end) {
           end = -1;
           break;
         }
