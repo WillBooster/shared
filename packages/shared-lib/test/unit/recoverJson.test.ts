@@ -108,6 +108,11 @@ test('bounds malformed input and never promotes rejected-document fragments to c
   expect(repeated.errors.length).toBeGreaterThan(0);
   expect(repeated.errors.length).toBeLessThanOrEqual(32);
   expect(repeated.candidates.at(-1)?.value).toEqual({ verdict: 'confirmed' });
+  const belowLimit = recoverJson(`${'{\n'.repeat(31)}{"verdict":"confirmed"}`);
+  expect(belowLimit.candidates).toHaveLength(1);
+  expect(belowLimit.candidates[0]?.value).toEqual({ verdict: 'confirmed' });
+  expect(belowLimit.candidates[0]?.requiresConfirmation).toBe(true);
+  expect(recoverJson(`${'{\n'.repeat(32)}{"verdict":"confirmed"}`).candidates).toEqual([]);
   const mixedBody = '"a", t\n{] \n'.repeat(20);
   const mixed = recoverJson(`\`\`\`json\n${mixedBody}\`\`\`\n\`\`\`json\n${mixedBody}\`\`\`\n`);
   expect(mixed.candidates).toHaveLength(32);
