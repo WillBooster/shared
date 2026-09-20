@@ -74,7 +74,7 @@ export function escapePromptTag(text: string, tagName: string): string {
  * can put a label before the block and prose after it; the fence is by construction longer than any `~` run inside
  * the block, so the first one the lazy body reaches at the start of a line is the closing fence.
  */
-const SERIALIZED_BLOCK = /(~{3,})yaml\n[\s\S]*?\n\1(?!~)/gu;
+const SERIALIZED_BLOCK = /(~{3,})yaml\n[\s\S]*?\n\1(?!~|yaml(?:\n|$))/gu;
 
 /** Whitespace that indents an interpolated block, which would make its opening fence an indented code block. */
 const BLOCK_INDENTATION = /(?<=^|\n)[ \t]+$/u;
