@@ -34,6 +34,8 @@ function toFencedCodeBlock(fenceChar: string, text: string, language: string): s
     longestRun = Math.max(longestRun, end - start);
     start = text.indexOf(shortestFence, end);
   }
-  const fence = fenceChar.repeat(longestRun + 1);
-  return `${fence}${language}\n${text}${text.endsWith('\n') ? '' : '\n'}${fence}`;
+  let languageStart = 0;
+  while (language[languageStart] === fenceChar) languageStart++;
+  const fence = fenceChar.repeat(longestRun + 1 + languageStart);
+  return `${fence}${language.slice(languageStart)}\n${text}${text.endsWith('\n') ? '' : '\n'}${fence}`;
 }

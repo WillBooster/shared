@@ -300,8 +300,12 @@ test('formatPrompt leaves a block alone whatever the prompt itself writes around
 test.each([
   [toCodeBlock, '~demo'],
   [toTildeCodeBlock, '`demo'],
+  [toCodeBlock, '`demo'],
+  [toTildeCodeBlock, '~demo'],
+  [toCodeBlock, '``demo'],
+  [toTildeCodeBlock, '~~demo'],
 ] as const)(
-  'formatPrompt preserves block contents when the info string starts with another fence character (%#)',
+  'formatPrompt preserves block contents when the info string starts with fence characters (%#)',
   (wrap, language) => {
     const block = wrap('    # inside\n\n    x', language);
 

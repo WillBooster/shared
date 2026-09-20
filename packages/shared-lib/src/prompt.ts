@@ -58,8 +58,8 @@ export function serializeForPromptInTag(value: unknown, tagName: string | readon
 }
 
 /**
- * Replaces every `<tagName` and `</tagName` in text with a harmless notation such as `[/tagName]`, so that data
- * embedded in a `<tagName>` element of a prompt cannot close the element and have the rest read as instructions.
+ * Replaces `<tagName` and `</tagName` not followed by `[\w-]` with a harmless notation such as `[/tagName]`, so that
+ * data embedded in a `<tagName>` element of a prompt cannot close the element and have the rest read as instructions.
  * A closing `>` is not required, since an HTML reader also closes an element on a tag carrying attribute-like junk,
  * on a trailing solidus, or on the next `>` anywhere in the prompt; the whitespace between `<` and the name is
  * dropped along with the brackets. Case is ignored deliberately: `tagName` is expected to be a literal written by
