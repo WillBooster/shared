@@ -398,6 +398,11 @@ test('retains container answers abutting prose URLs without claiming independent
 });
 
 test('rejects backticks in ordinary fence metadata without rejecting inline JSON payloads', () => {
+  const partial = recoverJson('```json "cut off `x`').candidates;
+  expect(partial).toHaveLength(1);
+  expect(partial[0]?.value).toBe('cut off `x`');
+  expect(partial[0]?.requiresConfirmation).toBe(true);
+  expect(partial[0]?.repairs.some((repair) => repair.reason === 'unterminated-string')).toBe(true);
   for (const newline of ['\n', '\r', '\r\n']) {
     for (const marker of ['```', '````', '~~~']) {
       const result = recoverJson(`{]${newline}${marker} bad \` info${newline}{"verdict":"confirmed"}`);
@@ -442,6 +447,23 @@ test('salvages comma-separated scalars without reopening a scalar window inside 
   }
   expect(recoverJson('"a", prose "b"').candidates.map((candidate) => candidate.value)).toEqual(['a']);
   expect(recoverJson('Example, "not an answer"').candidates).toEqual([]);
+});
+
+test('retains bounded source context when an ambiguous quote boundary hides an answer', () => {
+  const wrapped = '"{"verdict":"confirmed"}"';
+  for (const input of [wrapped, `Answer:\n${wrapped}`, `\`\`\`json\n${wrapped}\n\`\`\``]) {
+    const result = recoverJson(input);
+    expect(result.candidates[0]?.value).toBe('{');
+    expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+    expect(
+      result.errors.some((error) => error.message.includes('verdict') && error.message.includes('confirmed'))
+    ).toBe(true);
+    expect(result.errors[0]?.offset).toBe(input.indexOf('verdict'));
+  }
+  const large = recoverJson(`"{"${'line\n'.repeat(10_000)}`).errors[0];
+  expect(large?.message).toContain('truncated excerpt');
+  expect(large?.message.length).toBeLessThan(2000);
+  expect(recoverJson('"{literal}" // no ambiguity').errors).toEqual([]);
 });
 
 test('recovers mismatched quotes as ambiguous while preserving valid quoted content', () => {

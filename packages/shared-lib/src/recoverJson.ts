@@ -26,6 +26,7 @@ const MAX_INPUT_LENGTH = 1_000_000;
 const MAX_DEPTH = 128;
 const MAX_CANDIDATES = 32;
 const MAX_ERRORS = 32;
+const MAX_DIAGNOSTIC_EXCERPT = 256;
 const QUOTES: Record<string, string> = { '"': '"', "'": "'", '“': '”', '”': '”', '‘': '’', '’': '’' };
 const KEYWORDS: Record<string, string> = {
   true: 'true',
@@ -195,6 +196,17 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
         continue;
       }
       parser.space();
+      if (
+        text[valueStart]! in QUOTES &&
+        parser.repairs.some((repair) => repair.reason === 'trailing-scalar-content') &&
+        result.errors.length < MAX_ERRORS
+      ) {
+        const excerptEnd = Math.min(end, valueEnd + MAX_DIAGNOSTIC_EXCERPT);
+        result.errors.push({
+          offset: valueEnd,
+          message: `Ambiguous quoted-scalar tail (${excerptEnd < end ? 'truncated excerpt' : 'excerpt'}): ${JSON.stringify(text.slice(valueEnd, excerptEnd))}`,
+        });
+      }
       if (commentFragment)
         parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'fragment-in-comment-like-prose' });
       if (failures > 0)
