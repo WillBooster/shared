@@ -67,7 +67,7 @@ test('rescues partial explanations without presenting them as complete answers',
 });
 
 test('exposes ambiguity and never translates domain values', () => {
-  for (const text of ['{"verdict":"refuted","verdict":"confirmed"}', '{"a" "b"}', '{"a":word}', '[,1]']) {
+  for (const text of ['{"verdict":"refuted","verdict":"confirmed"}', '{"a" "b"}', '{"a":word}', '{,a:1}']) {
     const candidate = recoverJson(text).candidates[0]!;
     expect(candidate.requiresConfirmation).toBe(true);
     expect(candidate.repairs.some((repair) => repair.kind === 'ambiguous')).toBe(true);
@@ -136,4 +136,37 @@ test('recovers mismatched quotes as ambiguous while preserving valid quoted cont
   const valid = '{"notes":"He said “hi”, then left"}';
   expect(recoverJson(valid).candidates[0]?.value).toEqual(JSON.parse(valid));
   expect(recoverJson(valid).candidates[0]?.repairs).toEqual([]);
+});
+
+test('retains scalar comments and separates standalone answers from later prose', () => {
+  for (const input of ['42 // answer', '42/*answer*/', '42\n// answer']) {
+    const candidate = recoverJson(input).candidates[0]!;
+    expect(candidate.value).toBe(42);
+    expect(candidate.requiresConfirmation).toBe(false);
+    expect(candidate.repairs.some((repair) => repair.reason.endsWith('comment'))).toBe(true);
+  }
+  const candidate = recoverJson('"confirmed"\nExplanation of the result.').candidates[0]!;
+  expect(candidate.value).toBe('confirmed');
+  expect(candidate.requiresConfirmation).toBe(true);
+});
+
+test('preserves missing array positions and literal invalid escapes for confirmation', () => {
+  const candidate = recoverJson('[1,,3]').candidates[0]!;
+  expect(candidate.value).toEqual(JSON.parse('[1,null,3]'));
+  expect(candidate.requiresConfirmation).toBe(true);
+  const escaped = recoverJson(String.raw`{"summary":"user\'s request"}`).candidates[0]!;
+  expect(escaped.value).toEqual({ summary: String.raw`user\'s request` });
+  expect(escaped.requiresConfirmation).toBe(true);
+});
+
+test('continues after rejected documents without extracting their nested members', () => {
+  for (const prefix of [
+    'See [PR-12: fix] for details:',
+    'Candidate 1: {"error": [}\nCandidate 2:',
+    '{] "nested": {"verdict":"wrong"}}',
+  ]) {
+    const result = recoverJson(`${prefix} {"verdict":"confirmed"}`);
+    expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }]);
+    expect(result.errors).toHaveLength(1);
+  }
 });

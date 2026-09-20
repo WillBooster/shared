@@ -12,4 +12,6 @@ const recovered = recoverJson(response);
 
 `requiresConfirmation` marks incomplete or ambiguous repairs, including duplicate keys. A false value does not establish that an answer is correct or that the provider finished: callers must also check provider termination, extraction errors, multiple candidates, and their domain schema. Recovery never translates domain values or supplies missing evidence. Missing values are represented by JSON `null` with an incomplete repair annotation.
 
+Unknown escape sequences retain their literal characters and require confirmation. Scalar-looking prefixes of same-line prose are excluded; a standalone scalar before later-line prose is retained as ambiguous. Trailing supported comments are removed with provenance.
+
 Inputs above one million UTF-16 code units and nesting above 128 levels produce errors. At most 32 candidates/errors are returned. JSONP, MongoDB constructors, and arbitrary JavaScript expressions are outside this API's scope. Upstream implementation and test attribution is included in `NOTICE`.

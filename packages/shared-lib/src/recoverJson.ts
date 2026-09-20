@@ -87,7 +87,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
     const parser = new RecoveryParser(text, index, text.length);
     try {
       const json = parser.value(0);
-      if (rootValue && index === firstIndex && text.slice(parser.index, end).trim() !== '') {
+      if (rootValue && index === firstIndex && !parser.finishScalar(end)) {
         index = parser.index;
         continue;
       }
@@ -101,11 +101,37 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
       });
     } catch (error) {
       result.errors.push({ offset: parser.index, message: error instanceof Error ? error.message : String(error) });
-      return;
+      index = Math.max(parser.index, skipRejectedCandidate(text, index, end));
+      continue;
     }
     // Never reinterpret a nested member of a rejected document as its final answer.
     index = Math.max(index + 1, parser.index);
   }
+}
+
+function skipRejectedCandidate(text: string, start: number, end: number): number {
+  const stack: string[] = [];
+  let quote: string | undefined;
+  for (let index = start; index < end; index++) {
+    const char = text[index]!;
+    if (quote !== undefined) {
+      if (char === '\\') index++;
+      else if (char === quote) quote = undefined;
+    } else if (char in QUOTES) quote = QUOTES[char];
+    else if (text.startsWith('//', index)) {
+      const newline = text.indexOf('\n', index + 2);
+      index = newline === -1 ? end : newline;
+    } else if (text.startsWith('/*', index)) {
+      const close = text.indexOf('*/', index + 2);
+      index = close === -1 ? end : close + 1;
+    } else if (char === '{' || char === '[') stack.push(char === '{' ? '}' : ']');
+    else if (char === '}' || char === ']') {
+      const matching = stack.lastIndexOf(char);
+      if (matching !== -1) stack.length = matching;
+      if (stack.length === 0) return index + 1;
+    }
+  }
+  return end;
 }
 
 class RecoveryParser {
@@ -118,6 +144,17 @@ class RecoveryParser {
     this.text = text;
     this.index = index;
     this.end = end;
+  }
+
+  finishScalar(regionEnd: number): boolean {
+    const valueEnd = this.index;
+    this.space();
+    if (this.text.slice(this.index, regionEnd).trim() === '') return true;
+    if (this.text.slice(valueEnd, this.index).includes('\n')) {
+      this.repair('ambiguous', 'scalar-before-prose', valueEnd);
+      return true;
+    }
+    return false;
   }
 
   value(depth: number): string {
@@ -164,7 +201,13 @@ class RecoveryParser {
       }
       if (this.text[this.index] === '}' || this.text[this.index] === ']') throw new Error('Mismatched closing bracket');
       if (this.text[this.index] === ',') {
-        this.repair('ambiguous', 'extra-comma');
+        if (object) this.repair('ambiguous', 'extra-comma');
+        else {
+          items.push('null');
+          this.repair('incomplete', 'missing-value');
+        }
+        commaOffset = this.index;
+        afterComma = true;
         this.index++;
         continue;
       }
