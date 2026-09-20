@@ -110,7 +110,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
   let failures = 0;
   let ambiguousScalarTail = false;
   let scalarBoundary = true;
-  let uriBoundary = false;
+  let uriBoundaryEnd = start;
   while (index < end && /\s/.test(text[index]!)) index++;
   const firstIndex = index;
   const initialParser = new RecoveryParser(text, index, end);
@@ -134,7 +134,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
           index === start || !/[\w+.-]/.test(text[index - 1]!) ? unquotedUriEnd(text, index, end) : undefined;
         if (uriEnd !== undefined) {
           const container = text.slice(index, uriEnd).search(/[{[]/);
-          uriBoundary = container !== -1;
+          if (container !== -1) uriBoundaryEnd = Math.max(uriBoundaryEnd, uriEnd);
           index = container === -1 ? uriEnd : index + container;
           scalarBoundary = false;
           continue;
@@ -195,7 +195,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
         parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'fragment-after-rejected-document' });
       else if (ambiguousScalarTail)
         parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'fragment-after-ambiguous-scalar' });
-      else if (uriBoundary)
+      else if (index < uriBoundaryEnd)
         parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'ambiguous-uri-boundary' });
       ambiguousScalarTail ||= parser.repairs.some((repair) => repair.reason === 'trailing-scalar-content');
       result.candidates.push({
@@ -212,12 +212,10 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
       failures++;
       index = valueStart + 1;
       scalarBoundary = false;
-      uriBoundary = false;
       continue;
     }
     index = Math.max(index + 1, parser.index);
     scalarBoundary = true;
-    uriBoundary = false;
   }
 }
 

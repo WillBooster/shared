@@ -361,6 +361,15 @@ test('retains container answers abutting prose URLs without claiming independent
     { a: 1 },
     { b: 2 },
   ]);
+  for (const uri of ['http://x/a[1]b[2]', 'https://example.com/api?f[1]=a&g[2]=b', 'https://x/a[1]b[2]c[3]']) {
+    const candidates = recoverJson(`See ${uri} then {"answer":42}`).candidates;
+    expect(candidates.slice(0, -1).map((candidate) => candidate.value)).toEqual(
+      uri.endsWith('[3]') ? [[1], [2], [3]] : [[1], [2]]
+    );
+    expect(candidates.slice(0, -1).every((candidate) => candidate.requiresConfirmation)).toBe(true);
+    expect(candidates.at(-1)?.value).toEqual({ answer: 42 });
+    expect(candidates.at(-1)?.requiresConfirmation).toBe(false);
+  }
 });
 
 test('recovers mismatched quotes as ambiguous while preserving valid quoted content', () => {
