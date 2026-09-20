@@ -126,13 +126,10 @@ function generateAgentInstruction(
     : '';
   // Unknown visibility collapses to English so that an offline run never writes a Japanese default
   // into a public repository.
-  const proseTargets = 'issues, PRs, review comments, and documentation (e.g., README, `docs/`)';
-  const codeTargets =
-    'code comments (including JSDoc), identifiers, commit messages, and prompts and instructions for AI agents (e.g., `AGENTS_EXTRA.md`, skills)';
   const languageInstruction =
     getDefaultProseLanguage(rootConfig) === 'Japanese'
-      ? `\n- Unless instructed otherwise, write ${proseTargets} in Japanese, and ${codeTargets} in English.`
-      : `\n- Unless instructed otherwise, write ${proseTargets} and ${codeTargets} in English.`;
+      ? '\n- Unless instructed otherwise, write issues, PRs, review comments, and documentation in Japanese, and every other artifact except replies to the user in English.'
+      : '\n- Unless instructed otherwise, write every artifact except replies to the user in English.';
   const runnerInstruction = rootConfig.isWillBoosterRepo
     ? '\n- Private repositories use self-hosted CI runners. Keep OS/size constraints in an explicit self-hosted label array; fix missing runner capabilities instead of switching to GitHub-hosted runners. The sole approved exception is the Windows desktop build in WillBooster/cheerlings.'
     : '';
