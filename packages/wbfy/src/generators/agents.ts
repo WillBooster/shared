@@ -124,6 +124,10 @@ function generateAgentInstruction(
   const issueTemplateInstruction = rootConfig.isWillBoosterRepo
     ? `\n- When creating an issue:\n${ISSUE_TEMPLATE_RULES.replaceAll(/^/gm, '  ')}`
     : '';
+  const languageInstruction =
+    getDefaultProseLanguage(rootConfig) === 'Japanese'
+      ? '\n- Unless instructed otherwise, write issues, PRs, review comments, and documentation for people (README, `docs/`) in Japanese, and every other artifact (including code comments, JSDoc, and agent instructions) except your conversational replies and product-facing text in English.'
+      : '\n- Unless instructed otherwise, write every artifact except your conversational replies and product-facing text in English.';
   const runnerInstruction = rootConfig.isWillBoosterRepo
     ? '\n- Private repositories use self-hosted CI runners. Keep OS/size constraints in an explicit self-hosted label array; fix missing runner capabilities instead of switching to GitHub-hosted runners. The sole approved exception is the Windows desktop build in WillBooster/cheerlings.'
     : '';
@@ -137,7 +141,7 @@ function generateAgentInstruction(
 ## General Instructions
 
 - If on \`main\`, create a new branch; otherwise work on the current branch.
-- Run \`git\` commands one at a time to avoid \`index.lock\` conflicts.
+- Run \`git\` commands one at a time to avoid \`index.lock\` conflicts.${languageInstruction}
 ${TEST_WRITING_RULES}
 - When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
 - After making changes, run \`${packageManager} run verify\` (type checking and linting; up to 10 minutes), or \`${packageManager} run verify-full\` (all tests; up to 1 hour) if you changed runtime behavior or tests. Fix errors and re-run until it passes.
@@ -165,6 +169,17 @@ ${generateAgentCodingStyle(rootConfig, allConfigs)}
   return baseContent + normalizedExtraContent;
 }
 
+/**
+ * The language issues, PRs, review comments, and documentation default to: Japanese only in a
+ * WillBooster / WillBoosterLab repository confirmed private. An unknown visibility (offline run,
+ * failed lookup) yields English so that a Japanese default is never written into a public repository.
+ */
+export function getDefaultProseLanguage(rootConfig: PackageConfig): 'English' | 'Japanese' {
+  return rootConfig.isWillBoosterRepo && rootConfig.isRepoVisibilityKnown && !rootConfig.isPublicRepo
+    ? 'Japanese'
+    : 'English';
+}
+
 export function generateAgentCodingStyle(rootConfig: PackageConfig, allConfigs: PackageConfig[]): string {
   // Tauri desktop apps ship Windows builds, and the boundary between app code and shared code is
   // too fuzzy to scope the macOS/Linux-only rule per package, so such repositories target all
@@ -180,7 +195,7 @@ export function generateAgentCodingStyle(rootConfig: PackageConfig, allConfigs: 
   const npmApiException = rootConfig.isPublicRepo
     ? ' Exception: the exported API of a package published to npm may carry JSDoc describing what it does and how to call it, because its users read it without the source.'
     : '';
-  const commentInstruction = `- Comments and JSDoc: every reader has the source, so never restate what the code, its names, or its types already say (e.g., \`@param name The name\`, \`@returns the result\`, a narration of the control flow). Write one only when a plausible edit (simplifying, deleting, reordering, replacing) would break something without that knowledge and no type check, lint rule, or existing test would catch the breakage; first try to encode the knowledge in code (a name such as \`timeoutMs\`, a type, an \`assert\`, a test) and comment only what cannot be encoded: a deliberately odd-looking workaround, a dependency on a fact outside the repository (an external API's behavior, an agreement with another system), or a rejected alternative and why. Put it in JSDoc when it is a contract of the declared symbol, so callers see it, and in an inline comment when it concerns specific lines. Delete comments that fail this test in files you touch.${npmApiException}`;
+  const commentInstruction = `- Comments and JSDoc: every reader has the source, so never restate what the code, its names, or its types already say (e.g., \`@param name The name\`). Write one only when a plausible edit would break something without that knowledge and no type check, lint rule, or test would catch it; first encode the knowledge in code (a name, a type, an \`assert\`, a test) and comment only what cannot be encoded: an odd-looking workaround, a dependency on a fact outside the repository, or a rejected alternative and why. Put a contract of the declared symbol in JSDoc and line-specific knowledge in an inline comment. Delete comments that fail this test in files you touch.${npmApiException}`;
   const osCompatibilityInstruction = isGeneralPublicOss
     ? ''
     : hasDesktopApp
