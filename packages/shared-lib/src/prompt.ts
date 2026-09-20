@@ -119,9 +119,22 @@ export function formatPrompt(prompt: string): string {
 function findBlockEnd(lines: string[], openerIndex: number, fence: string): number {
   const closer = new RegExp(`^${fence}~*(?:[ \\t].*)?$`, 'u');
   for (let index = openerIndex + 1; index < lines.length; index++) {
-    if (closer.test(lines[index] ?? '')) return index;
+    if (!closer.test(lines[index] ?? '')) continue;
+    return reachesBeyond(lines, openerIndex, index) ? -1 : index;
   }
   return -1;
+}
+
+/**
+ * Whether a block opened between the two lines runs past `closerIndex`, which makes that line its content rather than
+ * a closing fence: an opener the prompt writes as a sample and never closes would otherwise take a later block apart.
+ */
+function reachesBeyond(lines: string[], openerIndex: number, closerIndex: number): boolean {
+  for (let index = openerIndex + 1; index < closerIndex; index++) {
+    const fence = BLOCK_OPENER.exec(lines[index] ?? '')?.[1];
+    if (fence !== undefined && findBlockEnd(lines, index, fence) >= closerIndex) return true;
+  }
+  return false;
 }
 
 function dedentPromptMarkers(text: string): string {

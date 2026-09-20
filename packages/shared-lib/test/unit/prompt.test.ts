@@ -285,6 +285,9 @@ test('formatPrompt leaves a block alone whatever the prompt itself writes around
 
   expect(formatPrompt(`Reply in a ~~~yaml block like this.\n\n${serialized}\n`)).toContain(serialized);
   expect(formatPrompt(`Reply as:\n\n~~~yaml\nkey: 1\n~~~\n\n${serialized}\n`)).toContain(serialized);
+  // An unclosed sample must not take the block apart by closing on one of its data lines.
+  expect(formatPrompt(`Reply as:\n\n~~~yaml\n\n${serialized}\n`)).toContain(serialized);
+  expect(formatPrompt(`  Answer like:\n\n    ~~~yaml\n    answer: 42\n\n  ${serialized}\n`)).toContain(serialized);
 });
 
 test('formatPrompt rejects a block interpolated after other text on its line', () => {
