@@ -70,11 +70,11 @@ export function escapePromptTag(text: string, tagName: string): string {
 }
 
 /**
- * Matches a block produced by `serializeForPrompt`. The match starts at the opening fence rather than at a line start,
- * since an interpolation can place the block after a label; the fence is by construction longer than any `~` run
- * inside the block, so the same run at the start of a line can only be the closing fence.
+ * Matches a block produced by `serializeForPrompt`. The match is bounded by the fences alone, since an interpolation
+ * can put a label before the block and prose after it; the fence is by construction longer than any `~` run inside
+ * the block, so the first one the lazy body reaches at the start of a line is the closing fence.
  */
-const SERIALIZED_BLOCK = /(~{3,})yaml\n[\s\S]*?\n\1(?=[ \t]*$)/gmu;
+const SERIALIZED_BLOCK = /(~{3,})yaml\n[\s\S]*?\n\1(?!~)/gu;
 
 /** Whitespace that indents an interpolated block, which would make its opening fence an indented code block. */
 const BLOCK_INDENTATION = /(?<=^|\n)[ \t]+$/u;
