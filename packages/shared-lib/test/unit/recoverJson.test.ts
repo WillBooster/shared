@@ -108,6 +108,14 @@ test('bounds malformed input and never promotes rejected-document fragments to c
   expect(repeated.errors.length).toBeGreaterThan(0);
   expect(repeated.errors.length).toBeLessThanOrEqual(32);
   expect(repeated.candidates.at(-1)?.value).toEqual({ verdict: 'confirmed' });
+  const mixedBody = '"a", t\n{] \n'.repeat(20);
+  const mixed = recoverJson(`\`\`\`json\n${mixedBody}\`\`\`\n\`\`\`json\n${mixedBody}\`\`\`\n`);
+  expect(mixed.candidates).toHaveLength(32);
+  expect(mixed.errors).toHaveLength(32);
+  expect(mixed.errors.some((error) => error.message.includes('excerpt'))).toBe(true);
+  expect(mixed.errors.some((error) => !error.message.includes('excerpt') && !error.message.includes('limit'))).toBe(
+    true
+  );
 });
 
 test('valid JSON survives truncation at every position without inventing a complete answer', () => {
@@ -460,9 +468,13 @@ test('retains bounded source context when an ambiguous quote boundary hides an a
     ).toBe(true);
     expect(result.errors[0]?.offset).toBe(input.indexOf('verdict'));
   }
-  const large = recoverJson(`"{"${'line\n'.repeat(10_000)}`).errors[0];
-  expect(large?.message).toContain('truncated excerpt');
-  expect(large?.message.length).toBeLessThan(2000);
+  const short = recoverJson(wrapped).errors[0]!;
+  expect(short.message).toContain(' (excerpt): ');
+  expect(JSON.parse(short.message.slice(short.message.indexOf('): ') + 3))).toBe(wrapped.slice(3));
+  const tail = 'line\n'.repeat(1000);
+  const large = recoverJson(`"{"${tail}`).errors[0]!;
+  expect(large.message).toContain(' (truncated excerpt): ');
+  expect(JSON.parse(large.message.slice(large.message.indexOf('): ') + 3))).toBe(tail.slice(0, 256));
   expect(recoverJson('"{literal}" // no ambiguity').errors).toEqual([]);
 });
 
