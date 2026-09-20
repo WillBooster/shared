@@ -244,7 +244,7 @@ test('serializeForPrompt rejects values that cannot be written', () => {
   expect(() => serializeForPrompt([Symbol('s')])).toThrow(TypeError);
 });
 
-test('formatPrompt dedents Markdown markers and drops the blank lines around them', () => {
+test('formatPrompt dedents Markdown markers while preserving fenced contents', () => {
   expect(
     formatPrompt(`
     # Title
@@ -256,7 +256,7 @@ test('formatPrompt dedents Markdown markers and drops the blank lines around the
     code
     \`\`\`
   `)
-  ).toBe('# Title\n## Section\n```js\n    code\n```');
+  ).toBe('# Title\n## Section\n\n```js\n    code\n```');
 });
 
 test('formatPrompt dedents a tilde fence as it dedents a backtick one', () => {
@@ -282,9 +282,7 @@ test('formatPrompt keeps serialized blocks byte for byte, indented by a template
   // The interpolation indents the opening fence of the block, and nothing else; four spaces of it would otherwise
   // turn the fence into an indented code block.
   expect(formatPrompt(`\n  # History\n\n  ${serialized}\n`)).toBe(`# History\n\n${serialized}`);
-  expect(formatPrompt(`\n    # History\n\n    ${serialized}\n\n    # End\n`)).toBe(
-    `# History\n\n${serialized}\n\n# End`
-  );
+  expect(formatPrompt(`\n    # History\n\n    ${serialized}\n\n    # End\n`)).toBe(`# History\n\n${serialized}\n# End`);
   expect(formatPrompt(`${serialized}\n${serialized}\n`)).toBe(`${serialized}\n${serialized}`);
 });
 
@@ -299,6 +297,44 @@ test('formatPrompt leaves a block alone whatever the prompt itself writes around
   expect(formatPrompt(`  Answer like:\n\n    ~~~yaml\n    answer: 42\n\n  ${serialized}\n`)).toContain(serialized);
 });
 
+test.each([
+  [toCodeBlock, '~demo'],
+  [toTildeCodeBlock, '`demo'],
+] as const)(
+  'formatPrompt preserves block contents when the info string starts with another fence character (%#)',
+  (wrap, language) => {
+    const block = wrap('    # inside\n\n    x', language);
+
+    expect(formatPrompt(`\n    ${block}\n`)).toBe(block);
+  }
+);
+
+test('formatPrompt formats prose immediately following a block', () => {
+  const block = serializeForPrompt({ a: 1 });
+
+  expect(formatPrompt(`${block}\n    # Instructions\ntext`)).toBe(`${block}\n# Instructions\ntext`);
+  expect(formatPrompt(`${block}\n\n\n\ntext`)).toBe(`${block}\n\ntext`);
+});
+
+test('formatPrompt preserves contents between indented fences', () => {
+  const contents = '    # inside\n\n\n    body';
+
+  expect(formatPrompt(`    \`\`\`md\n${contents}\n    \`\`\``)).toBe(toCodeBlock(contents, 'md'));
+});
+
+test('formatPrompt preserves blocks whose info string contains spaces', () => {
+  const block = toCodeBlock('text\n    # inside\n\n\nbody', 'ts title=x');
+
+  expect(formatPrompt(block)).toBe(block);
+});
+
+test('formatPrompt keeps a code-fence opener inside serialized data from claiming a later code block', () => {
+  const serialized = serializeForPrompt('text\n  # before\n```md\n  # data\n\n\n  body');
+  const code = toCodeBlock('text');
+
+  expect(formatPrompt(`${serialized}\n\n${code}`)).toBe(`${serialized}\n\n${code}`);
+});
+
 test('formatPrompt rejects a block interpolated after other text on its line', () => {
   const serialized = serializeForPrompt({ a: 1 });
 
@@ -311,7 +347,7 @@ test('formatPrompt keeps formatting the prompt after a block', () => {
   const serialized = serializeForPrompt({ a: 1 });
 
   // An interpolation may write prose on the closing fence's line.
-  expect(formatPrompt(`${serialized} <- end\n\n    # Head\n`)).toBe(`${serialized} <- end\n\n# Head`);
+  expect(formatPrompt(`${serialized} <- end\n\n    # Head\n`)).toBe(`${serialized} <- end\n# Head`);
   // An opening fence the prompt writes and never closes is prose, and must not swallow the rest.
   expect(formatPrompt(`Reply as:\n\n~~~yaml\n\n    # Head\n`)).toBe('Reply as:\n~~~yaml\n# Head');
 });
@@ -356,6 +392,15 @@ test('escapePromptTag ignores case and the whitespace inside a tag', () => {
   expect(
     escapePromptTag('<Transcriptions>x</TRANSCRIPTIONS >y</transcriptions\t>z</transcriptions\n>', 'transcriptions')
   ).toBe('[Transcriptions]x[/TRANSCRIPTIONS]y[/transcriptions]z[/transcriptions]');
+});
+
+test('escapePromptTag normalizes whitespace before and after the closing slash', () => {
+  for (const whitespace of [' ', '\t', '\n']) {
+    const text = `<${whitespace}/${whitespace}transcriptions>`;
+
+    expect(escapePromptTag(text, 'transcriptions')).toBe('[/transcriptions]');
+    expect(serializeForPromptInTag({ text }, 'transcriptions')).toBe(serializeForPrompt({ text: '[/transcriptions]' }));
+  }
 });
 
 test('truncateForPrompt keeps the cut off the halves of a surrogate pair', () => {

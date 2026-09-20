@@ -72,7 +72,7 @@ export function escapePromptTag(text: string, tagName: string): string {
 function createTagPatterns(tagName: string): RegExp[] {
   const name = escapeRegExp(tagName);
   // Keep well-formed tags readable while also catching incomplete and malformed tags.
-  return [new RegExp(`<(/?)\\s*(${name})\\s*>`, 'giu'), new RegExp(`<(/?)\\s*(${name})(?![\\w-])`, 'giu')];
+  return [new RegExp(`<\\s*(/?)\\s*(${name})\\s*>`, 'giu'), new RegExp(`<\\s*(/?)\\s*(${name})(?![\\w-])`, 'giu')];
 }
 
 function escapeTags(text: string, patterns: readonly RegExp[]): string {
@@ -82,7 +82,7 @@ function escapeTags(text: string, patterns: readonly RegExp[]): string {
 }
 
 /** The line opening a fenced block, with the indentation an interpolation may put before it. */
-const BLOCK_OPENER = /^[ \t]*(((?:`{3,}|~{3,})[`~]*)\S*)[ \t]*$/u;
+const BLOCK_OPENER = /^[ \t]*((`{3,}|~{3,})[^\n]*)$/u;
 
 /** A block interpolated after other text on its line, which no rule can tell from prose that ends in `~~~yaml`. */
 const MISPLACED_BLOCK_OPENER = /[^\s~][ \t]*~{3,}yaml[ \t]*$/u;
@@ -98,8 +98,10 @@ interface PromptBlock {
  * collapses blank lines, so that a prompt written inline reads as Markdown.
  * The contents of a fenced block are left untouched, since reindenting them would rewrite the data they carry, such
  * as the YAML of `serializeForPrompt` or the source of `toCodeBlock`. A `serializeForPrompt` block must be
- * interpolated at the start of a line, and this throws when one is not: recognizing a block is what keeps its
- * contents intact, and after other text an opening fence cannot be told from prose.
+ * interpolated at the start of a line. Recognizable mid-line `~~~yaml` markers throw, including prose mentions;
+ * this is not a complete placement validator, since preceding tildes can merge into an indistinguishable fence.
+ * Closing fences may carry trailing prose. A longer nested fence can invalidate an earlier candidate closing
+ * line; shorter or equal fences remain contents of the earlier block, even when they use the other character.
  */
 export function formatPrompt(prompt: string): string {
   const lines = prompt.split('\n');
@@ -118,8 +120,10 @@ export function formatPrompt(prompt: string): string {
       continue;
     }
     // Dropping the opener's indentation keeps four spaces of it from turning the fence into an indented code block.
-    formatted += `${dedentPromptMarkers(prose)}${block.opener}\n${lines.slice(index + 1, block.end + 1).join('\n')}\n`;
-    prose = '';
+    const blockLines = lines.slice(index + 1, block.end + 1);
+    blockLines[blockLines.length - 1] = blockLines.at(-1)?.trimStart() ?? '';
+    formatted += `${dedentPromptMarkers(prose)}${block.opener}\n${blockLines.join('\n')}`;
+    prose = '\n';
     index = block.end;
   }
   return (formatted + dedentPromptMarkers(prose)).trim();
@@ -131,13 +135,13 @@ function findBlocks(lines: string[]): (PromptBlock | undefined)[] {
   const nextClosers = new Map<string, { start: number; end: number; pattern: RegExp }>();
   for (let index = lines.length - 1; index >= 0; index--) {
     const match = BLOCK_OPENER.exec(lines[index] ?? '');
-    const opener = match?.[1];
+    const opener = match?.[1]?.trimEnd();
     const fence = match?.[2];
     if (opener === undefined || fence === undefined) continue;
     const next = nextClosers.get(fence) ?? {
       start: lines.length,
       end: -1,
-      pattern: new RegExp(`^${fence}${fence[0] ?? ''}*(?:[ \\t].*)?$`, 'u'),
+      pattern: new RegExp(`^[ \\t]*${fence}${fence[0] ?? ''}*(?:[ \\t].*)?$`, 'u'),
     };
     // The previous search already covered the suffix beyond start, including an absent closer.
     for (let candidate = index + 1; candidate <= next.start && candidate < lines.length; candidate++) {
