@@ -49,7 +49,7 @@ export function recoverJson(text: string): JsonRecovery {
     result.errors.push({ offset: MAX_INPUT_LENGTH, message: 'JSON recovery input exceeds one million characters' });
     return result;
   }
-  const fences = [...text.matchAll(/^(?: {0,3})(`{3,}|~{3,})[^\n]*\n/gm)];
+  const fences = [...text.matchAll(/^(?: {0,3})(`{3,}|~{3,})[^\n]*(?:\n|$)/gm)];
   if (fences.length > 0) {
     let consumed = 0;
     for (const fence of fences) {
@@ -93,27 +93,46 @@ export function recoverJson(text: string): JsonRecovery {
   } else {
     extractRegion(text, 0, text.length, result);
   }
+  if (result.candidates.length === MAX_CANDIDATES) {
+    const error = {
+      offset: result.candidates.at(-1)!.end,
+      message: 'JSON candidate limit reached; extraction may be incomplete',
+    };
+    if (result.errors.length === MAX_ERRORS) result.errors[MAX_ERRORS - 1] = error;
+    else result.errors.push(error);
+  }
   return result;
 }
 
 function extractRegion(text: string, start: number, end: number, result: JsonRecovery): void {
+  if (result.candidates.length >= MAX_CANDIDATES) return;
   let index = start;
   let failures = 0;
   while (index < end && /\s/.test(text[index]!)) index++;
-  const first = text[index];
   const firstIndex = index;
-  if (first === undefined) return;
+  const initialParser = new RecoveryParser(text, index, end);
+  initialParser.space();
+  const initialValueStart = initialParser.index;
+  if (initialValueStart >= end) {
+    if (initialParser.repairs.some((repair) => repair.kind === 'incomplete') && result.errors.length < MAX_ERRORS)
+      result.errors.push({ offset: index, message: 'Incomplete leading JSON comment' });
+    return;
+  }
+  const first = text[initialValueStart];
   // Prose is not an unquoted root string: only structured starts are searched within prose.
-  const rootValue = scalarStart(text, index, end);
+  const rootValue = scalarStart(text, initialValueStart, end);
+  const initialValue = rootValue || first === '{' || first === '[';
+  if (!initialValue) index = initialValueStart;
   while (index < end && result.candidates.length < MAX_CANDIDATES && failures < MAX_ERRORS) {
-    if (!rootValue || index !== firstIndex) {
+    if (!initialValue || index !== firstIndex) {
       while (index < end && text[index] !== '{' && text[index] !== '[') index++;
     }
     if (index >= end) break;
-    let parser = new RecoveryParser(text, index, end);
+    let parser = initialValue && index === firstIndex ? initialParser : new RecoveryParser(text, index, end);
+    const valueStart = parser.index;
     try {
       let json = parser.value(0);
-      if ((text[index] === '{' || text[index] === '[') && parser.index === end && end < text.length) {
+      if ((text[valueStart] === '{' || text[valueStart] === '[') && parser.index === end && end < text.length) {
         const extended = new RecoveryParser(text, index, text.length);
         try {
           const extendedJson = extended.value(0);
@@ -129,7 +148,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
           // Keep the bounded interpretation when extending it is not a complete JSON document.
         }
       }
-      if (rootValue && index === firstIndex && !parser.finishScalar(end, index)) {
+      if (rootValue && index === firstIndex && !parser.finishScalar(end, valueStart)) {
         index = parser.index;
         continue;
       }
@@ -147,7 +166,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
       if (result.errors.length < MAX_ERRORS)
         result.errors.push({ offset: parser.index, message: error instanceof Error ? error.message : String(error) });
       failures++;
-      index++;
+      index = valueStart + 1;
       continue;
     }
     index = Math.max(index + 1, parser.index);
@@ -206,7 +225,7 @@ class RecoveryParser {
       if (depth >= MAX_DEPTH) throw new Error('JSON nesting exceeds 128 levels');
       return this.container(depth, char === '{');
     }
-    if (char !== undefined && char in QUOTES) return this.string(depth > 0);
+    if (char !== undefined && char in QUOTES) return this.string(depth > 0 ? 'value' : 'root');
     const start = this.index;
     const uriEnd = unquotedUriEnd(this.text, start, this.end);
     if (uriEnd !== undefined) this.index = uriEnd;
@@ -286,12 +305,17 @@ class RecoveryParser {
     }
   }
 
-  private string(nestedValue = false): string {
+  private string(context: 'root' | 'key' | 'value' = 'key'): string {
     const start = this.index;
     const open = this.text[this.index++]!;
     const close = QUOTES[open]!;
     if (open !== '"') this.repair('syntax', 'non-json-quote', start);
     let value = '';
+    let tail = '';
+    const append = (text: string): void => {
+      value += text;
+      tail = (tail + text).slice(-2);
+    };
     let embeddedQuote = false;
     const family = '"“”'.includes(open) ? '"“”' : "'‘’";
     let alternative: { end: number; value: string; repairCount: number } | undefined;
@@ -300,11 +324,11 @@ class RecoveryParser {
       if (
         "'‘’".includes(open) &&
         "'’".includes(char) &&
-        /[\p{L}\p{N}]$/u.test(value) &&
+        /[\p{L}\p{N}]$/u.test(tail) &&
         /^[\p{L}\p{N}]/u.test(this.text.slice(this.index, this.end))
       ) {
         this.repair('ambiguous', 'literal-apostrophe', this.index - 1);
-        value += char;
+        append(char);
         continue;
       }
       if (family.includes(char)) {
@@ -314,27 +338,31 @@ class RecoveryParser {
           if (embeddedQuote) {
             embeddedQuote = false;
             this.repair('ambiguous', 'unescaped-quote', this.index - 1);
-            value += char;
+            append(char);
             continue;
           }
-          if (alternative !== undefined && !delimited) {
+          if (context !== 'root' && alternative !== undefined && !delimited) {
             this.index = alternative.end;
             this.repairs.length = alternative.repairCount;
             this.repair('ambiguous', 'mismatched-quote', this.index - 1);
             return JSON.stringify(alternative.value);
           }
           const nextClose = this.text.indexOf(close, this.index);
+          const afterNext = this.text.slice(nextClose + 1, this.end).trimStart()[0];
           if (
-            nestedValue &&
+            context === 'value' &&
             !delimited &&
             !/\s/.test(this.text[this.index] ?? '') &&
             nextClose > this.index &&
             nextClose < this.end &&
-            !/[\\:,{}[\]\r\n]/.test(this.text.slice(this.index, nextClose))
+            afterNext !== undefined &&
+            !/[,}:\]]/.test(afterNext) &&
+            !/[\\/*:,{}[\]\r\n]/.test(this.text.slice(this.index, nextClose)) &&
+            !this.startsKey(nextClose)
           ) {
             embeddedQuote = true;
             this.repair('ambiguous', 'unescaped-quote', this.index - 1);
-            value += char;
+            append(char);
             continue;
           }
           return JSON.stringify(value);
@@ -343,12 +371,12 @@ class RecoveryParser {
       }
       if (char !== '\\') {
         if (char.codePointAt(0)! < 32) this.repair('syntax', 'unescaped-control-character', this.index - 1);
-        value += char;
+        append(char);
         continue;
       }
       const escapeOffset = this.index - 1;
       if (this.index >= this.end) {
-        value += '\\';
+        append('\\');
         this.repair('incomplete', 'truncated-escape', escapeOffset);
         break;
       }
@@ -356,10 +384,10 @@ class RecoveryParser {
       if (escape === 'u') {
         const hex = this.text.slice(this.index, Math.min(this.index + 4, this.end));
         if (/^[\da-fA-F]{4}$/.test(hex)) {
-          value += String.fromCodePoint(Number.parseInt(hex, 16));
+          append(String.fromCodePoint(Number.parseInt(hex, 16)));
           this.index += 4;
         } else {
-          value += String.raw`\u`;
+          append(String.raw`\u`);
           this.repair(
             /^[\da-fA-F]{0,3}$/.test(hex) ? 'incomplete' : 'ambiguous',
             'invalid-unicode-escape',
@@ -367,10 +395,10 @@ class RecoveryParser {
           );
         }
       } else if (String.raw`"\/bfnrt`.includes(escape)) {
-        value += JSON.parse(`"\\${escape}"`) as string;
-      } else if (escape === "'" && open === "'") value += "'";
+        append(JSON.parse(`"\\${escape}"`) as string);
+      } else if (escape === "'" && open === "'") append("'");
       else {
-        value += `\\${escape}`;
+        append(`\\${escape}`);
         this.repair('ambiguous', 'invalid-escape', escapeOffset);
       }
     }
@@ -378,7 +406,14 @@ class RecoveryParser {
     return JSON.stringify(value);
   }
 
-  private space(): void {
+  private startsKey(index: number): boolean {
+    const parser = new RecoveryParser(this.text, index, this.end);
+    parser.string();
+    parser.space();
+    return this.text[parser.index] === ':';
+  }
+
+  space(): void {
     while (this.index < this.end) {
       if (/\s/.test(this.text[this.index]!)) {
         if (!/[ \t\r\n]/.test(this.text[this.index]!)) this.repair('syntax', 'non-json-whitespace');
@@ -404,6 +439,17 @@ class RecoveryParser {
 }
 
 function unquotedUriEnd(text: string, start: number, end: number): number | undefined {
-  const match = /^[A-Za-z][A-Za-z\d+.-]*:\/\/[^\s,}\]]*/.exec(text.slice(start, end));
-  return match === null ? undefined : start + match[0].length;
+  const match = /^[A-Za-z][A-Za-z\d+.-]*:\/\//.exec(text.slice(start, end));
+  if (match === null) return;
+  let index = start + match[0].length;
+  let brackets = 0;
+  while (index < end && !/[\s,}]/.test(text[index]!)) {
+    if (text[index] === '[') brackets++;
+    else if (text[index] === ']') {
+      if (brackets === 0) break;
+      brackets--;
+    }
+    index++;
+  }
+  return index;
 }

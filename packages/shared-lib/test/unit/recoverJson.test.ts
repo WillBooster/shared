@@ -97,6 +97,9 @@ test('bounds malformed input and never promotes rejected-document fragments to c
   expect(recoverJson('x'.repeat(1_000_001)).errors).toHaveLength(1);
   expect(recoverJson('['.repeat(130)).errors.length).toBeGreaterThan(0);
   expect(recoverJson('{}\n'.repeat(40)).candidates).toHaveLength(32);
+  const capped = recoverJson(`${'{}\n'.repeat(40)}\`\`\`json\n{"verdict":"confirmed"}\n\`\`\``);
+  expect(capped.candidates).toHaveLength(32);
+  expect(capped.errors.some((error) => error.message.includes('candidate limit'))).toBe(true);
   const repeated = recoverJson(`${'{'.repeat(40)}\n\`\`\`json\n{"verdict":"confirmed"}\n\`\`\``);
   expect(repeated.errors.length).toBeGreaterThan(0);
   expect(repeated.errors.length).toBeLessThanOrEqual(32);
@@ -137,8 +140,13 @@ test('keeps fence opener content and fences embedded inside JSON strings', () =>
   }
   for (const json of ['{"verdict":"confirmed"}', '[1,2]', '"answer"']) {
     for (const separator of ['', ' ', '\t']) {
-      expect(recoverJson(`\`\`\`json${separator}${json}\n\`\`\``).candidates[0]?.value).toEqual(JSON.parse(json));
+      for (const ending of ['', '\n```']) {
+        expect(recoverJson(`\`\`\`json${separator}${json}${ending}`).candidates[0]?.value).toEqual(JSON.parse(json));
+      }
     }
+  }
+  for (const scalar of ['true', '42']) {
+    expect(recoverJson(`\`\`\`json ${scalar}`).candidates[0]?.value).toEqual(JSON.parse(scalar));
   }
   for (const value of ['true', '42', '"answer"', '{"v":2}']) {
     const result = recoverJson(`\`\`\`json\n${embedded}\n\`\`\`\n\`\`\`json\n${value}\n\`\`\``);
@@ -156,6 +164,8 @@ test('retains contractions inside single-quoted strings without inventing fields
     ["{'note':'l'utilisateur'}", { note: "l'utilisateur" }],
     ["{'note':'version 2's behavior'}", { note: "version 2's behavior" }],
     ["['R2-D2's reply']", ["R2-D2's reply"]],
+    ["['𐐀's reply']", ["𐐀's reply"]],
+    [String.raw`['\u0061's reply']`, ["a's reply"]],
   ] as const) {
     const result = recoverJson(input);
     expect(result.candidates).toHaveLength(1);
@@ -194,6 +204,15 @@ test('retains embedded quoted words without changing valid or missing-comma valu
     expect(result.candidates[0]?.value).toEqual(['a', JSON.parse(next)]);
   }
   expect(recoverJson('{"a":"x" b:2}').candidates[0]?.value).toEqual({ a: 'x', b: 2 });
+  expect(recoverJson('{"a":"x"y"b":"z"}').candidates[0]?.value).toEqual({ a: 'x', 'y"b"': 'z' });
+  for (const prefix of ['{"note":"he said "hi"}', '["a"b"]', 'text {"a":"x"b":"y"} tail']) {
+    for (const fenced of [false, true]) {
+      const body = `${prefix} {"verdict":"confirmed"}`;
+      const result = recoverJson(fenced ? `\`\`\`json\n${body}\n\`\`\`` : body);
+      expect(result.candidates.at(-1)?.value).toEqual({ verdict: 'confirmed' });
+      expect(result.candidates.at(-1)?.repairs).toEqual([]);
+    }
+  }
 });
 
 test('removes adjacent comments without incorporating them into keys or values', () => {
@@ -202,6 +221,36 @@ test('removes adjacent comments without incorporating them into keys or values',
     expect(candidate.value).toEqual({ a: 1 });
     expect(candidate.requiresConfirmation).toBe(false);
   }
+  for (const [input, expected] of [
+    ['{"a":"x"/*c*/"b":"y"}', { a: 'x', b: 'y' }],
+    ['["x"/*x*/"y"]', ['x', 'y']],
+  ] as const) {
+    const candidate = recoverJson(input).candidates[0]!;
+    expect(candidate.value).toEqual(expected);
+    expect(candidate.requiresConfirmation).toBe(false);
+  }
+});
+
+test('consumes leading comments before root detection and retains their provenance', () => {
+  for (const prefix of ['// preface\n', '/* {"not":"an answer"} */ ']) {
+    for (const json of ['42', 'true', '"answer"', '{"a":1}', '[1]']) {
+      for (const fenced of [false, true]) {
+        const text = fenced ? `\`\`\`json\n${prefix}${json}\n\`\`\`` : prefix + json;
+        const result = recoverJson(text);
+        expect(result.candidates).toHaveLength(1);
+        const candidate = result.candidates[0]!;
+        expect(candidate.value).toEqual(JSON.parse(json));
+        expect(candidate.start).toBe(text.indexOf(prefix));
+        expect(
+          candidate.repairs.some((repair) => repair.reason.endsWith('comment') && repair.offset === candidate.start)
+        ).toBe(true);
+        expect(candidate.requiresConfirmation).toBe(false);
+      }
+    }
+  }
+  const partial = recoverJson('/* incomplete {"not":"an answer"}');
+  expect(partial.candidates).toEqual([]);
+  expect(partial.errors.length).toBeGreaterThan(0);
 });
 
 test('recovers mismatched quotes as ambiguous while preserving valid quoted content', () => {
@@ -216,7 +265,13 @@ test('recovers mismatched quotes as ambiguous while preserving valid quoted cont
     const fenced = recoverJson(`\`\`\`json\n${JSON.stringify(value)}\n\n\`\`\``).candidates[0]!;
     expect(fenced.value).toBe(value);
     expect(fenced.repairs).toEqual([]);
+    const withProse = recoverJson(`${JSON.stringify(value)} and then some prose`).candidates[0]!;
+    expect(withProse.value).toBe(value);
+    expect(withProse.requiresConfirmation).toBe(true);
   }
+  const key = recoverJson('{"verdict”: "confirmed", "notes":"fine"}').candidates[0]!;
+  expect(key.value).toEqual({ verdict: 'confirmed', notes: 'fine' });
+  expect(key.requiresConfirmation).toBe(true);
 });
 
 test('retains scalar comments and separates standalone answers from later prose', () => {
@@ -402,9 +457,16 @@ test('distinguishes a closed malformed Unicode escape from an exhausted escape',
 });
 
 test('retains unquoted URL and time values without losing surrounding fields', () => {
-  for (const value of ['https://example.com/a//b/*c*/', '12:30']) {
+  for (const value of [
+    'https://example.com/a//b/*c*/',
+    '12:30',
+    'http://[::1]:8080/x',
+    'http://example.com/api?filter[status]=active',
+    'http://example.com/a[x[y]]',
+  ]) {
     const candidate = recoverJson(`{"before":1,"value":${value},"after":2}`).candidates[0]!;
     expect(candidate.value).toEqual({ before: 1, value, after: 2 });
     expect(candidate.requiresConfirmation).toBe(true);
+    expect(recoverJson(`[${value}]`).candidates[0]?.value).toEqual([value]);
   }
 });
