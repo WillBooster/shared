@@ -26,6 +26,14 @@ const MAX_INPUT_LENGTH = 1_000_000;
 const MAX_DEPTH = 128;
 const MAX_CANDIDATES = 32;
 const QUOTES: Record<string, string> = { '"': '"', "'": "'", '“': '”', '”': '”', '‘': '’', '’': '’' };
+const KEYWORDS: Record<string, string> = {
+  true: 'true',
+  false: 'false',
+  null: 'null',
+  True: 'true',
+  False: 'false',
+  None: 'null',
+};
 
 /**
  * Extracts JSON values from a response, repairing common LLM syntax and retaining repair provenance.
@@ -77,8 +85,9 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
   const firstIndex = index;
   if (first === undefined) return;
   // Prose is not an unquoted root string: only structured starts are searched within prose.
+  const keyword = /^([A-Za-z]+)(?=\s|\/[/*]|$)/.exec(text.slice(index, end))?.[1];
   const rootValue =
-    first in QUOTES || /[-\d]/.test(first) || /^(?:true|false|null)(?=\s|\/[/*]|$)/.test(text.slice(index, end));
+    first in QUOTES || /[-\d]/.test(first) || (keyword !== undefined && Object.hasOwn(KEYWORDS, keyword));
   while (index < end && result.candidates.length + result.errors.length < MAX_CANDIDATES) {
     if (!rootValue || index !== firstIndex) {
       while (index < end && text[index] !== '{' && text[index] !== '[') index++;
@@ -190,11 +199,11 @@ class RecoveryParser {
     while (this.index < this.end && !/[\s,}\]:]/.test(this.text[this.index]!) && !this.comment()) this.index++;
     if (this.index === start) throw new Error('Expected a JSON value');
     const token = this.text.slice(start, this.index);
-    if (/^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)$/.test(token)) return token;
-    const keywords: Record<string, string> = { True: 'true', False: 'false', None: 'null' };
-    if (Object.hasOwn(keywords, token)) {
-      this.repair('syntax', 'python-keyword', start);
-      return keywords[token]!;
+    if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(token)) return token;
+    if (Object.hasOwn(KEYWORDS, token)) {
+      const canonical = KEYWORDS[token]!;
+      if (canonical !== token) this.repair('syntax', 'python-keyword', start);
+      return canonical;
     }
     this.repair(this.index >= this.end ? 'incomplete' : 'ambiguous', 'unquoted-value', start);
     return JSON.stringify(token);

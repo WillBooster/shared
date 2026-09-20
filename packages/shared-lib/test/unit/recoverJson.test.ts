@@ -158,6 +158,18 @@ test('retains scalar comments and separates standalone answers from later prose'
   const candidate = recoverJson('"confirmed"\nExplanation of the result.').candidates[0]!;
   expect(candidate.value).toBe('confirmed');
   expect(candidate.requiresConfirmation).toBe(true);
+  for (const [input, json] of [
+    ['True', 'true'],
+    ['False', 'false'],
+    ['None', 'null'],
+  ]) {
+    const value = JSON.parse(json!);
+    for (const text of [input!, `\`\`\`json\n${input}/*answer*/\n\`\`\``]) {
+      const recovered = recoverJson(text).candidates[0]!;
+      expect(recovered.value).toEqual(value);
+      expect(recovered.requiresConfirmation).toBe(false);
+    }
+  }
 });
 
 test('preserves missing array positions and literal invalid escapes for confirmation', () => {
