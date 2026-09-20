@@ -158,7 +158,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
           }
         }
         if (/[\r\n]/.test(text[index]!)) scalarBoundary = true;
-        else if (!/\s/.test(text[index]!)) scalarBoundary = false;
+        else if (!/[\s,]/.test(text[index]!)) scalarBoundary = false;
         index++;
       }
     }

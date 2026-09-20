@@ -428,6 +428,22 @@ test('retains independent ambiguity causes for LLM reconfirmation', () => {
   }
 });
 
+test('salvages comma-separated scalars without reopening a scalar window inside prose', () => {
+  for (const [input, values] of [
+    ['"confirmed", "refuted"', ['confirmed', 'refuted']],
+    ['1, 2, 3', [1, 2, 3]],
+    ['{"a":1}, "confirmed"', [{ a: 1 }, 'confirmed']],
+    [', 42', [42]],
+  ] as const) {
+    const candidates = recoverJson(input).candidates;
+    expect(candidates.map((candidate) => candidate.value)).toEqual(values);
+    if (!input.startsWith('{') && !input.startsWith(','))
+      expect(candidates.every((candidate) => candidate.requiresConfirmation)).toBe(true);
+  }
+  expect(recoverJson('"a", prose "b"').candidates.map((candidate) => candidate.value)).toEqual(['a']);
+  expect(recoverJson('Example, "not an answer"').candidates).toEqual([]);
+});
+
 test('recovers mismatched quotes as ambiguous while preserving valid quoted content', () => {
   const candidate = recoverJson('{"verdict": "refuted”, "notes": "fine"}').candidates[0]!;
   expect(candidate.value).toEqual({ verdict: 'refuted', notes: 'fine' });
