@@ -339,7 +339,9 @@ test('formatPrompt preserves consecutive blocks containing longer fences of the 
   const messages = ['    # heading', '    # other'];
   for (const blocks of [
     messages.map((message) => serializeForPrompt({ message: toCodeBlock(message, 'md').replaceAll('```', '````') })),
-    messages.map((message) => toCodeBlock(toTildeCodeBlock(message, 'md').replaceAll('~~~', '~~~~'))),
+    messages.map((message) =>
+      toCodeBlock(`text\n    # before\n${toTildeCodeBlock(message, 'md').replaceAll('~~~', '~~~~')}`)
+    ),
   ]) {
     const output = formatPrompt(blocks.join('\n\n# Latest\n\n'));
 

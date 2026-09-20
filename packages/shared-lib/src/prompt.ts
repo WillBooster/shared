@@ -72,7 +72,10 @@ export function escapePromptTag(text: string, tagName: string): string {
 function createTagPatterns(tagName: string): RegExp[] {
   const name = escapeRegExp(tagName);
   // Keep well-formed tags readable while also catching incomplete and malformed tags.
-  return [new RegExp(`<\\s*(/?)\\s*(${name})\\s*>`, 'giu'), new RegExp(`<\\s*(/?)\\s*(${name})(?![\\w-])`, 'giu')];
+  return [
+    new RegExp(`<\\s*(?:(/)\\s*)?(${name})\\s*>`, 'giu'),
+    new RegExp(`<\\s*(?:(/)\\s*)?(${name})(?![\\w-])`, 'giu'),
+  ];
 }
 
 function escapeTags(text: string, patterns: readonly RegExp[]): string {
@@ -100,8 +103,10 @@ interface PromptBlock {
  * as the YAML of `serializeForPrompt` or the source of `toCodeBlock`. A `serializeForPrompt` block must be
  * interpolated at the start of a line. Recognizable mid-line `~~~yaml` markers throw, including prose mentions;
  * this is not a complete placement validator, since preceding tildes can merge into an indistinguishable fence.
- * Closing fences may carry trailing prose. A longer nested fence of the same character can invalidate an earlier
- * candidate closing line; shorter, equal or opposite-character fences remain contents of the earlier block.
+ * Blocks end at the first compatible same-character fence, which may carry trailing prose, unless a longer fence
+ * of the same character opens and contains that candidate closing line. Other fence characters have no nesting
+ * significance. Balance authored fences before interpolating blocks: an unmatched sample can consume part of a
+ * later block and leave its tail subject to prose formatting.
  */
 export function formatPrompt(prompt: string): string {
   const lines = prompt.split('\n');
