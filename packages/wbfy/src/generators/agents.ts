@@ -126,7 +126,7 @@ function generateAgentInstruction(
     : '';
   const languageInstruction =
     getDefaultProseLanguage(rootConfig) === 'Japanese'
-      ? '\n- Unless instructed otherwise, write issues, PRs, review comments, and documentation in Japanese, and every other artifact except your conversational replies and product-facing text in English.'
+      ? '\n- Unless instructed otherwise, write issues, PRs, review comments, and documentation for people (README, `docs/`) in Japanese, and every other artifact (including code comments, JSDoc, and agent instructions) except your conversational replies and product-facing text in English.'
       : '\n- Unless instructed otherwise, write every artifact except your conversational replies and product-facing text in English.';
   const runnerInstruction = rootConfig.isWillBoosterRepo
     ? '\n- Private repositories use self-hosted CI runners. Keep OS/size constraints in an explicit self-hosted label array; fix missing runner capabilities instead of switching to GitHub-hosted runners. The sole approved exception is the Windows desktop build in WillBooster/cheerlings.'

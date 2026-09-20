@@ -61,11 +61,7 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
 
     const extraContent = await readAgentsExtraContent(config.dirPath);
     const codingRuleExtraContent = extraContent?.trimStart().startsWith('#') ? undefined : extraContent;
-    const reviewLanguageInstruction =
-      getDefaultProseLanguage(config) === 'Japanese'
-        ? '以下のコーディング規約を踏まえて、日本語でレビューしてください。'
-        : 'Review in English based on the following coding standards.';
-    const styleguideContent = `${reviewLanguageInstruction}\n\n${generateAgentCodingStyle(config, allConfigs)}${
+    const styleguideContent = `Review in ${getDefaultProseLanguage(config)} based on the following coding standards.\n\n${generateAgentCodingStyle(config, allConfigs)}${
       codingRuleExtraContent ? `\n${codingRuleExtraContent.trimEnd()}` : ''
     }`;
 
