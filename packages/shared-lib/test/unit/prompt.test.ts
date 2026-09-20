@@ -273,7 +273,24 @@ test('formatPrompt keeps serialized blocks byte for byte, indented by a template
   // The interpolation indents the opening fence of the block, and nothing else; four spaces of it would otherwise
   // turn the fence into an indented code block.
   expect(formatPrompt(`\n  # History\n\n  ${serialized}\n`)).toBe(`# History\n\n${serialized}`);
-  expect(formatPrompt(`\n    # History\n\n    ${serialized}\n\n    # End\n`)).toBe(`# History\n\n${serialized}\n# End`);
+  expect(formatPrompt(`\n    # History\n\n    ${serialized}\n\n    # End\n`)).toBe(
+    `# History\n\n${serialized}\n\n# End`
+  );
+  expect(formatPrompt(`${serialized}\n${serialized}\n`)).toBe(`${serialized}\n${serialized}`);
+});
+
+test('formatPrompt leaves a block alone whatever the prompt itself writes around it', () => {
+  // A `~~~` run inside the data is shorter than the fence, so it does not close the block.
+  const serialized = serializeForPrompt('~~~\ncode\n~~~\n\n  ## heading\n\n  body');
+
+  expect(formatPrompt(`Reply in a ~~~yaml block like this.\n\n${serialized}\n`)).toContain(serialized);
+  expect(formatPrompt(`Reply as:\n\n~~~yaml\nkey: 1\n~~~\n\n${serialized}\n`)).toContain(serialized);
+});
+
+test('formatPrompt rejects a block interpolated after other text on its line', () => {
+  const serialized = serializeForPrompt({ a: 1 });
+
+  expect(() => formatPrompt(`Data: ${serialized}\n`)).toThrow(TypeError);
 });
 
 test('serializeForPromptInTag escapes the tag in every scalar it writes', () => {

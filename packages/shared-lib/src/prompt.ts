@@ -72,31 +72,44 @@ export function escapePromptTag(text: string, tagName: string): string {
     .replaceAll(new RegExp(`<(/?)\\s*(${name})(?![\\w-])`, 'giu'), '[$1$2]');
 }
 
-/**
- * Matches a block produced by `serializeForPrompt`. The match is bounded by the fences alone, since an interpolation
- * can put a label before the block and prose after it. The fence is by construction longer than any `~` run inside
- * the block, so the closing fence is the first run of that length at the start of a line which does not itself open
- * another yaml block: a `~~~yaml` written in the prompt's own prose and never closed would otherwise end the match
- * at the opening fence of the block after it, leaving that block's YAML to be dedented.
- */
-const SERIALIZED_BLOCK = /(~{3,})yaml\n[\s\S]*?\n\1(?!~|yaml(?:\n|$))/gu;
+/** The line opening a block of `serializeForPrompt`, with the indentation an interpolation may put before it. */
+const BLOCK_OPENER = /^[ \t]*(~{3,})yaml[ \t]*$/u;
 
-/** Whitespace that indents an interpolated block, which would make its opening fence an indented code block. */
-const BLOCK_INDENTATION = /(?<=^|\n)[ \t]+$/u;
+/** A block interpolated after other text on its line, which no rule can tell from prose that ends in `~~~yaml`. */
+const MISPLACED_BLOCK_OPENER = /[^\s~][ \t]*~{3,}yaml[ \t]*$/mu;
 
 /**
  * Strips the indentation that nested template literals add to Markdown markers (headings and code fences) and
  * collapses blank lines, so that a prompt written inline reads as Markdown.
  * Blocks produced by `serializeForPrompt` are left untouched, since reindenting their lines would corrupt the YAML.
+ * Such a block must be interpolated at the start of a line, and this throws when one is not: recognizing a block
+ * is what keeps its contents intact, and after other text an opening fence cannot be told from prose.
  */
 export function formatPrompt(prompt: string): string {
-  let formatted = '';
-  let lastIndex = 0;
-  for (const match of prompt.matchAll(SERIALIZED_BLOCK)) {
-    formatted += dedentPromptMarkers(prompt.slice(lastIndex, match.index)).replace(BLOCK_INDENTATION, '') + match[0];
-    lastIndex = match.index + match[0].length;
+  if (MISPLACED_BLOCK_OPENER.test(prompt)) {
+    throw new TypeError('Interpolate a serializeForPrompt block at the start of a line');
   }
-  return (formatted + dedentPromptMarkers(prompt.slice(lastIndex))).trim();
+  const lines = prompt.split('\n');
+  let formatted = '';
+  let prose = '';
+  for (let index = 0; index < lines.length; index++) {
+    const fence = BLOCK_OPENER.exec(lines[index] ?? '')?.[1];
+    if (fence === undefined) {
+      prose += `${lines[index]}\n`;
+      continue;
+    }
+    // A shorter run inside the block is content, not its closing fence, as `serializeForPrompt` makes the fence
+    // longer than any `~` run it writes. Dropping the opener's indentation keeps four spaces of it from turning
+    // the fence into an indented code block.
+    const closer = new RegExp(`^${fence}~*[ \t]*$`, 'u');
+    formatted += `${dedentPromptMarkers(prose)}${fence}yaml\n`;
+    prose = '';
+    while (++index < lines.length) {
+      formatted += `${lines[index]}\n`;
+      if (closer.test(lines[index] ?? '')) break;
+    }
+  }
+  return (formatted + dedentPromptMarkers(prose)).trim();
 }
 
 function dedentPromptMarkers(text: string): string {
