@@ -393,7 +393,7 @@ test('serializeForPromptInTag escapes the tag in every scalar it writes', () => 
   expect(serialized).toContain('message: "[/transcriptions]boom"');
 });
 
-test.each(['<', 'text <', 'text\n<', '<\n', '< /', '<\n/ \n'])(
+test.each(['<', 'text <', 'text\n<', '<\n', '< /', '<\n/ \n', '<div class="a">\n  <span>hi</span>\n \n</div>\n<'])(
   'serializeForPromptInTag prevents a tag spanning mapping entries after %j',
   (text) => {
     for (const key of ['/transcriptions>', 'transcriptions>']) {
