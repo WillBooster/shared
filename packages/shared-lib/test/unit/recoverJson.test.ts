@@ -81,10 +81,12 @@ test('exposes ambiguity and never translates domain values', () => {
   expect('polluted' in {}).toBe(false);
 });
 
-test('bounds malformed input and does not mine a rejected outer document for a verdict', () => {
-  expect(recoverJson('{] "nested": {"verdict":"refuted"}}').candidates).toEqual([]);
+test('bounds malformed input and never promotes rejected-document fragments to complete answers', () => {
+  const nested = recoverJson('{] "nested": {"verdict":"refuted"}}').candidates[0]!;
+  expect(nested.value).toEqual({ verdict: 'refuted' });
+  expect(nested.requiresConfirmation).toBe(true);
   expect(recoverJson('x'.repeat(1_000_001)).errors).toHaveLength(1);
-  expect(recoverJson('['.repeat(130)).errors).toHaveLength(1);
+  expect(recoverJson('['.repeat(130)).errors.length).toBeGreaterThan(0);
   expect(recoverJson('{}\n'.repeat(40)).candidates).toHaveLength(32);
 });
 
@@ -121,6 +123,40 @@ test('keeps fence opener content and fences embedded inside JSON strings', () =>
     expect(candidate.requiresConfirmation).toBe(true);
   }
   expect(recoverJson('```json {"verdict":"confirmed"}\n```').candidates[0]?.value).toEqual({ verdict: 'confirmed' });
+  for (const value of ['true', '42', '"answer"', '{"v":2}']) {
+    const result = recoverJson(`\`\`\`json\n${embedded}\n\`\`\`\n\`\`\`json\n${value}\n\`\`\``);
+    expect(result.candidates).toHaveLength(2);
+    expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+    expect(result.candidates[1]?.value).toEqual(JSON.parse(value));
+    expect(result.candidates[1]?.repairs).toEqual([]);
+  }
+});
+
+test('retains contractions inside single-quoted strings without inventing fields or items', () => {
+  for (const [input, expected] of [
+    ["{'note':'it's fine'}", { note: "it's fine" }],
+    ["['don't stop']", ["don't stop"]],
+    ["{'note':'l'utilisateur'}", { note: "l'utilisateur" }],
+  ] as const) {
+    const result = recoverJson(input);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]?.value).toEqual(expected);
+    expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+    expect(result.candidates[0]?.repairs.some((repair) => repair.reason === 'literal-apostrophe')).toBe(true);
+  }
+});
+
+test('retains structured answers adjacent to root keyword atoms', () => {
+  for (const prefix of ['null', 'null;', 'true', 'false', '42']) {
+    for (const json of ['{"verdict":"confirmed"}', '[1,2]']) {
+      for (const text of [`${prefix}${json}`, `\`\`\`json\n${prefix}${json}\n\`\`\``]) {
+        const result = recoverJson(text);
+        expect(result.candidates).toHaveLength(2);
+        expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+        expect(result.candidates[1]?.value).toEqual(JSON.parse(json));
+      }
+    }
+  }
 });
 
 test('removes adjacent comments without incorporating them into keys or values', () => {
@@ -199,30 +235,43 @@ test('preserves missing array positions and literal invalid escapes for confirma
   expect(key.requiresConfirmation).toBe(true);
 });
 
-test('continues after rejected documents without extracting their nested members', () => {
-  for (const prefix of ['Candidate 1: {[]}\nCandidate 2:', '{] "nested": {"verdict":"wrong"}}']) {
+test('salvages only unconfirmed fragments after a structural rejection', () => {
+  for (const prefix of [
+    'Candidate 1: {[]}\nCandidate 2:',
+    '{] "nested": {"verdict":"wrong"}}',
+    '{"a": [} , "b": {"verdict":"wrong"}}',
+    '{"a":[}, "url":https://example.com/a//b/*c*/ ]}',
+    '{[] https://example.com }',
+    '{"a":[}, notes":cut ]}',
+    '{"a":[}, "key":"value” ]}',
+    '{"a":[}, "v":foo[bar ]}',
+    '[”]',
+  ]) {
     const result = recoverJson(`${prefix} {"verdict":"confirmed"}`);
-    expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }]);
-    expect(result.errors).toHaveLength(1);
-  }
-  for (const uri of ['https://example.com', 'https://example.com/a//b/*c*/']) {
-    const result = recoverJson(`{"a":[}, "url":${uri} ]} {"verdict":"confirmed"}`);
-    expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }]);
-    expect(result.errors).toHaveLength(1);
+    expect(result.candidates.at(-1)?.value).toEqual({ verdict: 'confirmed' });
+    expect(result.errors.length).toBeGreaterThan(0);
+    for (const candidate of result.candidates) {
+      expect(candidate.requiresConfirmation).toBe(true);
+      expect(candidate.repairs.some((repair) => repair.reason === 'fragment-after-rejected-document')).toBe(true);
+    }
+    const fenced = recoverJson(`${prefix}\n\`\`\`json\n{"verdict":"confirmed"}\n\`\`\``).candidates.at(-1)!;
+    expect(fenced.value).toEqual({ verdict: 'confirmed' });
+    expect(fenced.requiresConfirmation).toBe(false);
   }
   const prose = recoverJson('See [PR-12: fix] for details: {"verdict":"confirmed"}');
   expect(prose.candidates).toHaveLength(2);
   expect(prose.candidates[0]?.requiresConfirmation).toBe(true);
   expect(prose.candidates[1]?.value).toEqual({ verdict: 'confirmed' });
-  for (const input of [
-    '{"a": [} "nested": {"verdict":"wrong"}}',
-    '{"a": [} , "b": {"verdict":"wrong"}} {"verdict":"confirmed"}',
-  ]) {
-    const result = recoverJson(input);
-    expect(result.candidates).toEqual([]);
-    expect(result.errors).toHaveLength(1);
-    const fenced = recoverJson(`${input}\n\`\`\`json\n{"verdict":"confirmed"}\n\`\`\``);
-    expect(fenced.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }]);
+});
+
+test('treats ordinary Markdown info strings as metadata for every JSON root type', () => {
+  for (const language of ['jsonc', 'json5', 'text', 'javascript', 'true', '42']) {
+    for (const json of ['true', '42', '"answer"', '{"a":1}']) {
+      const result = recoverJson(`\`\`\`${language}\n${json}\n\`\`\``);
+      expect(result.candidates).toHaveLength(1);
+      expect(result.candidates[0]?.value).toEqual(JSON.parse(json));
+      expect(result.candidates[0]?.repairs).toEqual([]);
+    }
   }
 });
 

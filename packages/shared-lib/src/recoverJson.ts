@@ -60,12 +60,28 @@ export function recoverJson(text: string): JsonRecovery {
       }
       const marker = fence[1]!;
       const markerEnd = fence.index + fence[0].indexOf(marker) + marker.length;
-      const start = markerEnd + (/^[ \t]*json\b/i.exec(text.slice(markerEnd))?.[0].length ?? 0);
+      const lineEnd = fence.index + fence[0].length;
+      const inlinePrefix = /^[ \t]*json\b[ \t]*/i.exec(text.slice(markerEnd, lineEnd));
+      const inlineStart = inlinePrefix === null ? lineEnd : markerEnd + inlinePrefix[0].length;
+      const start =
+        text[inlineStart] === '{' || text[inlineStart] === '[' || scalarStart(text, inlineStart, lineEnd)
+          ? inlineStart
+          : lineEnd;
       const close = new RegExp(`^ {0,3}${marker[0]}{${marker.length},}[ \\t]*$`, 'gm');
       close.lastIndex = start;
       const match = close.exec(text);
       const end = match?.index ?? text.length;
       extractRegion(text, start, end, result);
+      const extendedEnd = result.candidates.at(-1)?.end ?? start;
+      if (extendedEnd > end) {
+        close.lastIndex = extendedEnd;
+        const outerClose = close.exec(text);
+        if (outerClose !== null && !fences.some((next) => next.index >= extendedEnd && next.index < outerClose.index)) {
+          extractRegion(text, extendedEnd, outerClose.index, result);
+          consumed = outerClose.index + outerClose[0].length;
+          continue;
+        }
+      }
       consumed = Math.max(
         result.candidates.at(-1)?.end ?? start,
         match === null ? text.length : match.index + match[0].length
@@ -80,14 +96,13 @@ export function recoverJson(text: string): JsonRecovery {
 
 function extractRegion(text: string, start: number, end: number, result: JsonRecovery): void {
   let index = start;
+  let fragmentAfterError = false;
   while (index < end && /\s/.test(text[index]!)) index++;
   const first = text[index];
   const firstIndex = index;
   if (first === undefined) return;
   // Prose is not an unquoted root string: only structured starts are searched within prose.
-  const keyword = /^([A-Za-z]+)/.exec(text.slice(index, end))?.[1];
-  const rootValue =
-    first in QUOTES || /[-\d]/.test(first) || (keyword !== undefined && Object.hasOwn(KEYWORDS, keyword));
+  const rootValue = scalarStart(text, index, end);
   while (index < end && result.candidates.length + result.errors.length < MAX_CANDIDATES) {
     if (!rootValue || index !== firstIndex) {
       while (index < end && text[index] !== '{' && text[index] !== '[') index++;
@@ -116,6 +131,8 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
         index = parser.index;
         continue;
       }
+      if (fragmentAfterError)
+        parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'fragment-after-rejected-document' });
       result.candidates.push({
         value: JSON.parse(json),
         json,
@@ -126,39 +143,19 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
       });
     } catch (error) {
       result.errors.push({ offset: parser.index, message: error instanceof Error ? error.message : String(error) });
-      // Never reinterpret a nested member of a rejected document as its final answer.
-      index = Math.max(parser.index, skipRejectedCandidate(text, index, end));
+      fragmentAfterError = true;
+      index++;
       continue;
     }
     index = Math.max(index + 1, parser.index);
   }
 }
 
-function skipRejectedCandidate(text: string, start: number, end: number): number {
-  const stack: string[] = [];
-  let quote: string | undefined;
-  for (let index = start; index < end; index++) {
-    const char = text[index]!;
-    if (quote !== undefined) {
-      if (char === '\\') index++;
-      else if (char === quote) quote = undefined;
-    } else if (char in QUOTES) quote = QUOTES[char];
-    else if (text.startsWith('//', index)) {
-      const newline = text.indexOf('\n', index + 2);
-      index = newline === -1 ? end : newline;
-    } else if (text.startsWith('/*', index)) {
-      const close = text.indexOf('*/', index + 2);
-      index = close === -1 ? end : close + 1;
-    } else if (char === '{' || char === '[') stack.push(char === '{' ? '}' : ']');
-    else if (char === '}' || char === ']') {
-      if (stack.at(-1) === char) stack.pop();
-      if (stack.length === 0) return index + 1;
-    } else if (index === start || /[\s:,{[]/.test(text[index - 1]!)) {
-      const uriEnd = unquotedUriEnd(text, index, end);
-      if (uriEnd !== undefined) index = uriEnd - 1;
-    }
-  }
-  return end;
+function scalarStart(text: string, start: number, end: number): boolean {
+  const first = text[start];
+  if (first === undefined) return false;
+  const keyword = /^([A-Za-z]+)/.exec(text.slice(start, end))?.[1];
+  return first in QUOTES || /[-\d]/.test(first) || (keyword !== undefined && Object.hasOwn(KEYWORDS, keyword));
 }
 
 class RecoveryParser {
@@ -207,7 +204,14 @@ class RecoveryParser {
     const start = this.index;
     const uriEnd = unquotedUriEnd(this.text, start, this.end);
     if (uriEnd !== undefined) this.index = uriEnd;
-    else while (this.index < this.end && !/[\s,}\]]/.test(this.text[this.index]!) && !this.comment()) this.index++;
+    else
+      while (
+        this.index < this.end &&
+        !/[\s,}\]]/.test(this.text[this.index]!) &&
+        !(depth === 0 && /[{[]/.test(this.text[this.index]!)) &&
+        !this.comment()
+      )
+        this.index++;
     if (this.index === start) throw new Error('Expected a JSON value');
     const token = this.text.slice(start, this.index);
     if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(token)) return token;
@@ -286,6 +290,16 @@ class RecoveryParser {
     let alternative: { end: number; value: string; repairCount: number } | undefined;
     while (this.index < this.end) {
       const char = this.text[this.index++]!;
+      if (
+        "'‘’".includes(open) &&
+        "'’".includes(char) &&
+        /\p{L}/u.test(value.at(-1) ?? '') &&
+        /\p{L}/u.test(this.text[this.index] ?? '')
+      ) {
+        this.repair('ambiguous', 'literal-apostrophe', this.index - 1);
+        value += char;
+        continue;
+      }
       if (family.includes(char)) {
         const after = this.text.slice(this.index, this.end).trimStart()[0];
         const delimited = after === undefined || /[,}\]:"']/.test(after);
