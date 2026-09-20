@@ -124,8 +124,6 @@ function generateAgentInstruction(
   const issueTemplateInstruction = rootConfig.isWillBoosterRepo
     ? `\n- When creating an issue:\n${ISSUE_TEMPLATE_RULES.replaceAll(/^/gm, '  ')}`
     : '';
-  // Unknown visibility collapses to English so that an offline run never writes a Japanese default
-  // into a public repository.
   const languageInstruction =
     getDefaultProseLanguage(rootConfig) === 'Japanese'
       ? '\n- Unless instructed otherwise, write issues, PRs, review comments, and documentation in Japanese, and every other artifact except your conversational replies and product-facing text in English.'
@@ -171,7 +169,11 @@ ${generateAgentCodingStyle(rootConfig, allConfigs)}
   return baseContent + normalizedExtraContent;
 }
 
-/** The language issues, PRs, review comments, and documentation default to; English unless the repository is confirmed private. */
+/**
+ * The language issues, PRs, review comments, and documentation default to. An unknown visibility
+ * (offline run, failed lookup) yields English so that a Japanese default is never written into a
+ * public repository.
+ */
 export function getDefaultProseLanguage(rootConfig: PackageConfig): 'English' | 'Japanese' {
   return rootConfig.isRepoVisibilityKnown && !rootConfig.isPublicRepo ? 'Japanese' : 'English';
 }

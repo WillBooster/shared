@@ -9,16 +9,17 @@ import {
   renderSectionTemplate,
 } from '@willbooster/shared-lib/src';
 
+import { getDefaultProseLanguage } from '../generators/agents.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
-const templates = {
+const generateTemplates = (languageNote: string): Record<string, string> => ({
   'pull_request_template.md': `
 Close #<IssueNumber>
 
-<!-- Write for a reviewer who has not followed the work, in the repository's default language, keeping the headings as they are. Scale each section to the change: a sentence for a small change, numbered subsections for a large one. Delete this comment and the placeholder comments below. -->
+<!-- Write for a reviewer who has not followed the work.${languageNote} Scale each section to the change: a sentence for a small change, numbered subsections for a large one. Delete this comment and the placeholder comments below. -->
 
 ${renderSectionTemplate(PULL_REQUEST_SECTIONS)}
 `.trim(),
@@ -30,7 +31,7 @@ title: 'fix: '
 labels: 't: fix :bug:'
 ---
 
-<!-- Keep Problem and Proposal; delete Evidence or Impact when they add nothing. Write in the repository's default language, keeping the headings as they are. Delete these comments. -->
+<!-- Keep Problem and Proposal; delete Evidence or Impact when they add nothing.${languageNote} Delete these comments. -->
 
 ${renderSectionTemplate(BUG_ISSUE_SECTIONS)}
 `.trim(),
@@ -42,12 +43,12 @@ title: 'feat: '
 labels: 't: feat :sparkles:'
 ---
 
-<!-- Keep the first three sections for any change and add the others as the change grows; a large change fills all of them (spec-booster reviews against this list). Write in the repository's default language, keeping the headings as they are. Delete these comments. -->
+<!-- Keep the first three sections for any change and add the others as the change grows; a large change fills all of them (spec-booster reviews against this list).${languageNote} Delete these comments. -->
 
 ${renderSectionTemplate(CHANGE_ISSUE_SECTIONS)}
 `.trim(),
   'ISSUE_TEMPLATE/config.yml': 'blank_issues_enabled: true',
-};
+});
 
 export async function generateGitHubTemplates(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateGitHubTemplates', async () => {
@@ -56,7 +57,9 @@ export async function generateGitHubTemplates(config: PackageConfig): Promise<vo
       return;
     }
 
-    for (const [fileName, content] of Object.entries(templates)) {
+    const languageNote =
+      getDefaultProseLanguage(config) === 'Japanese' ? ' Write in Japanese, keeping the headings as they are.' : '';
+    for (const [fileName, content] of Object.entries(generateTemplates(languageNote))) {
       const filePath = path.resolve(config.dirPath, '.github', fileName);
       await promisePool.run(() => fsUtil.generateFile(filePath, content));
     }
