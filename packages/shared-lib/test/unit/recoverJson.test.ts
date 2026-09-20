@@ -40,7 +40,7 @@ test('returns all fenced answers and original response offsets', () => {
   expect(candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }, { verdict: 'refuted' }]);
   expect(candidates[0]?.repairs).toEqual([]);
   const repaired = candidates[1]!;
-  expect(text.slice(repaired.start, repaired.end)).toBe('{verdict: "refuted",}');
+  expect(text.slice(repaired.start, repaired.end)).toBe('{verdict: "refuted",}\n');
   expect(repaired.repairs.some((repair) => text.slice(repair.offset).startsWith('verdict'))).toBe(true);
 });
 
@@ -132,6 +132,16 @@ test('reports the original trailing comma and enforces container depth consisten
 });
 
 test('keeps fence opener content and fences embedded inside JSON strings', () => {
+  for (const newline of ['\r', '\n', '\r\n']) {
+    for (const marker of ['```', '~~~']) {
+      const text = `${marker}json${newline}{"verdict":"confirmed"}${newline}${marker}${newline}`;
+      const result = recoverJson(text);
+      expect(result.candidates).toHaveLength(1);
+      expect(result.candidates[0]?.value).toEqual({ verdict: 'confirmed' });
+      expect(result.candidates[0]?.start).toBe(text.indexOf('{'));
+      expect(result.candidates[0]?.repairs).toEqual([]);
+    }
+  }
   const embedded = '{"explanation":"Use this:\n```js\nconst a = 1;\n```\nDone"}';
   for (const input of [embedded, `\`\`\`json\n${embedded}\n\`\`\``]) {
     const candidate = recoverJson(input).candidates[0]!;
@@ -204,8 +214,21 @@ test('retains embedded quoted words without changing valid or missing-comma valu
     expect(result.candidates[0]?.value).toEqual(['a', JSON.parse(next)]);
   }
   expect(recoverJson('{"a":"x" b:2}').candidates[0]?.value).toEqual({ a: 'x', b: 2 });
+  for (const fenced of [false, true]) {
+    const body = '{"summary":"He said "hi", then left","verdict":"confirmed"}';
+    const result = recoverJson(fenced ? `\`\`\`json\n${body}\n\`\`\`` : body);
+    expect(result.candidates[0]?.value).toEqual({ summary: 'He said "hi", then left', verdict: 'confirmed' });
+    expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+  }
   expect(recoverJson('{"a":"x"y"b":"z"}').candidates[0]?.value).toEqual({ a: 'x', 'y"b"': 'z' });
-  for (const prefix of ['{"note":"he said "hi"}', '["a"b"]', 'text {"a":"x"b":"y"} tail']) {
+  for (const prefix of [
+    '{"note":"he said "hi"}',
+    '["a"b"]',
+    'text {"a":"x"b":"y"} tail',
+    '{"a":"x"y", b:2}',
+    '["x"y",2]',
+    '{"a":"x"y","b":2}',
+  ]) {
     for (const fenced of [false, true]) {
       const body = `${prefix} {"verdict":"confirmed"}`;
       const result = recoverJson(fenced ? `\`\`\`json\n${body}\n\`\`\`` : body);
@@ -232,7 +255,7 @@ test('removes adjacent comments without incorporating them into keys or values',
 });
 
 test('consumes leading comments before root detection and retains their provenance', () => {
-  for (const prefix of ['// preface\n', '/* {"not":"an answer"} */ ']) {
+  for (const prefix of ['// preface\n', '// preface\r', '/* {"not":"an answer"} */ ']) {
     for (const json of ['42', 'true', '"answer"', '{"a":1}', '[1]']) {
       for (const fenced of [false, true]) {
         const text = fenced ? `\`\`\`json\n${prefix}${json}\n\`\`\`` : prefix + json;
@@ -251,6 +274,24 @@ test('consumes leading comments before root detection and retains their provenan
   const partial = recoverJson('/* incomplete {"not":"an answer"}');
   expect(partial.candidates).toEqual([]);
   expect(partial.errors.length).toBeGreaterThan(0);
+});
+
+test('keeps trailing comment examples out of candidates and marks ambiguous scalar-tail fragments', () => {
+  for (const suffix of [' // not {"verdict":"refuted"}', ' /* {"verdict":"refuted"} */']) {
+    const text = '{"verdict":"confirmed"}' + suffix;
+    const result = recoverJson(text);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]?.value).toEqual({ verdict: 'confirmed' });
+    expect(result.candidates[0]?.repairs.some((repair) => repair.reason.endsWith('comment'))).toBe(true);
+    expect(result.candidates[0]?.end).toBe(text.length);
+  }
+  for (const input of ['"{"verdict":"confirmed","extra":{"n":1}}', '"["a",[1]]']) {
+    const result = recoverJson(input);
+    expect(result.candidates).toHaveLength(2);
+    expect(result.candidates.every((candidate) => candidate.requiresConfirmation)).toBe(true);
+  }
+  expect(recoverJson('{"a":1// comment\r,"b":2}').candidates[0]?.value).toEqual({ a: 1, b: 2 });
+  expect(recoverJson('true\rExplanation').candidates[0]?.value).toBe(true);
 });
 
 test('recovers mismatched quotes as ambiguous while preserving valid quoted content', () => {
@@ -463,6 +504,10 @@ test('retains unquoted URL and time values without losing surrounding fields', (
     'http://[::1]:8080/x',
     'http://example.com/api?filter[status]=active',
     'http://example.com/a[x[y]]',
+    'http://es:9200/_search?q=age:[20,30]',
+    'http://example.com/a[1,2]',
+    'http://example.com/a?f[a,b]=1',
+    'http://example.com/a?y=[1,2,3]',
   ]) {
     const candidate = recoverJson(`{"before":1,"value":${value},"after":2}`).candidates[0]!;
     expect(candidate.value).toEqual({ before: 1, value, after: 2 });

@@ -49,7 +49,7 @@ export function recoverJson(text: string): JsonRecovery {
     result.errors.push({ offset: MAX_INPUT_LENGTH, message: 'JSON recovery input exceeds one million characters' });
     return result;
   }
-  const fences = [...text.matchAll(/^(?: {0,3})(`{3,}|~{3,})[^\n]*(?:\n|$)/gm)];
+  const fences = [...text.matchAll(/^(?: {0,3})(`{3,}|~{3,})[^\r\n]*(?:\r\n|[\r\n]|$)/gm)];
   if (fences.length > 0) {
     let consumed = 0;
     for (const fence of fences) {
@@ -108,6 +108,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
   if (result.candidates.length >= MAX_CANDIDATES) return;
   let index = start;
   let failures = 0;
+  let ambiguousScalarTail = false;
   while (index < end && /\s/.test(text[index]!)) index++;
   const firstIndex = index;
   const initialParser = new RecoveryParser(text, index, end);
@@ -152,8 +153,12 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
         index = parser.index;
         continue;
       }
+      parser.space();
       if (failures > 0)
         parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'fragment-after-rejected-document' });
+      else if (ambiguousScalarTail)
+        parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'fragment-after-ambiguous-scalar' });
+      ambiguousScalarTail ||= parser.repairs.some((repair) => repair.reason === 'trailing-scalar-content');
       result.candidates.push({
         value: JSON.parse(json),
         json,
@@ -201,7 +206,7 @@ class RecoveryParser {
     this.space();
     if (bullet) return false;
     if (this.text.slice(this.index, regionEnd).trim() === '') return true;
-    if (this.text.slice(valueEnd, this.index).includes('\n')) {
+    if (/[\r\n]/.test(this.text.slice(valueEnd, this.index))) {
       this.repair('ambiguous', 'scalar-before-prose', valueEnd);
       return true;
     }
@@ -356,7 +361,8 @@ class RecoveryParser {
             nextClose > this.index &&
             nextClose < this.end &&
             afterNext !== undefined &&
-            !/[,}:\]]/.test(afterNext) &&
+            (!/[,}:\]]/.test(afterNext) ||
+              (afterNext === ',' && this.continuesStringAfterComma(nextClose + 1, close))) &&
             !/[\\/*:,{}[\]\r\n]/.test(this.text.slice(this.index, nextClose)) &&
             !this.startsKey(nextClose)
           ) {
@@ -406,6 +412,18 @@ class RecoveryParser {
     return JSON.stringify(value);
   }
 
+  private continuesStringAfterComma(start: number, quote: string): boolean {
+    const end = this.text.indexOf(quote, start);
+    if (end < start || end >= this.end) return false;
+    const continuation = this.text.slice(start, end);
+    const after = this.text.slice(end + 1, this.end).trimStart()[0];
+    return (
+      /^\s*,\s*[\p{L}\p{N}]/u.test(continuation) &&
+      !/[\\:"'“”‘’{}[\]]/.test(continuation) &&
+      (after === undefined || /[,}\]]/.test(after))
+    );
+  }
+
   private startsKey(index: number): boolean {
     const parser = new RecoveryParser(this.text, index, this.end);
     parser.string();
@@ -420,7 +438,7 @@ class RecoveryParser {
         this.index++;
       } else if (this.text.startsWith('//', this.index)) {
         this.repair('syntax', 'line-comment');
-        while (this.index < this.end && this.text[this.index] !== '\n') this.index++;
+        while (this.index < this.end && !/[\r\n]/.test(this.text[this.index]!)) this.index++;
       } else if (this.text.startsWith('/*', this.index)) {
         const end = this.text.indexOf('*/', this.index + 2);
         this.repair(end === -1 || end >= this.end ? 'incomplete' : 'syntax', 'block-comment');
@@ -443,7 +461,8 @@ function unquotedUriEnd(text: string, start: number, end: number): number | unde
   if (match === null) return;
   let index = start + match[0].length;
   let brackets = 0;
-  while (index < end && !/[\s,}]/.test(text[index]!)) {
+  while (index < end && !/[\s}]/.test(text[index]!)) {
+    if (text[index] === ',' && brackets === 0) break;
     if (text[index] === '[') brackets++;
     else if (text[index] === ']') {
       if (brackets === 0) break;
