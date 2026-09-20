@@ -24,7 +24,7 @@ const SHORT_UNICODE_ESCAPES: Record<string, string> = {
 interface Context {
   indent: string;
   implicitKey?: boolean;
-  escapedTag?: string;
+  escapedTags?: readonly string[];
 }
 
 /**
@@ -43,17 +43,19 @@ export function serializeForPrompt(value: unknown): string {
  * in every string so that untrusted data cannot close the element and have the rest read as instructions.
  * The caller must wrap the result in the same tag.
  *
- * Only the named element is protected. A block nested inside another tagged element leaves that outer tag open, so
- * a prompt that nests elements needs the data of each one serialized with its own enclosing name.
+ * Only the named elements are protected, so a block nested inside other tagged elements takes every enclosing name.
+ * Escaping the finished block instead is not an option: it would turn a plain scalar holding the escaped notation
+ * into a YAML flow sequence, since the quoting of each scalar is decided as it is written.
  *
  * The escaped notation is the one `escapePromptTag` writes, and text that already holds it is left as it is, so two
  * strings differing only in that notation are written alike. Keys taken from untrusted data can therefore collide
  * into one duplicate key of the emitted mapping.
  */
-export function serializeForPromptInTag(value: unknown, tagName: string): string {
+export function serializeForPromptInTag(value: unknown, tagName: string | readonly string[]): string {
   // Escaping is applied while writing each scalar, so that keys and the contents of Maps, Sets and Errors are covered
-  // too, and so that a value starting with the escaped tag is still quoted as the string it is.
-  return toTildeCodeBlock(`${stringifyValue(toSerializable(value), { indent: '', escapedTag: tagName })}\n`, 'yaml');
+  // too, and so that a value starting with an escaped tag is still quoted as the string it is.
+  const escapedTags = typeof tagName === 'string' ? [tagName] : tagName;
+  return toTildeCodeBlock(`${stringifyValue(toSerializable(value), { indent: '', escapedTags })}\n`, 'yaml');
 }
 
 /**
@@ -76,7 +78,7 @@ export function escapePromptTag(text: string, tagName: string): string {
 const BLOCK_OPENER = /^[ \t]*(~{3,})yaml[ \t]*$/u;
 
 /** A block interpolated after other text on its line, which no rule can tell from prose that ends in `~~~yaml`. */
-const MISPLACED_BLOCK_OPENER = /[^\s~][ \t]*~{3,}yaml[ \t]*$/mu;
+const MISPLACED_BLOCK_OPENER = /[^\s~][ \t]*~{3,}yaml[ \t]*$/u;
 
 /**
  * Strips the indentation that nested template literals add to Markdown markers (headings and code fences) and
@@ -86,30 +88,40 @@ const MISPLACED_BLOCK_OPENER = /[^\s~][ \t]*~{3,}yaml[ \t]*$/mu;
  * is what keeps its contents intact, and after other text an opening fence cannot be told from prose.
  */
 export function formatPrompt(prompt: string): string {
-  if (MISPLACED_BLOCK_OPENER.test(prompt)) {
-    throw new TypeError('Interpolate a serializeForPrompt block at the start of a line');
-  }
   const lines = prompt.split('\n');
   let formatted = '';
   let prose = '';
   for (let index = 0; index < lines.length; index++) {
-    const fence = BLOCK_OPENER.exec(lines[index] ?? '')?.[1];
-    if (fence === undefined) {
-      prose += `${lines[index]}\n`;
+    const line = lines[index] ?? '';
+    const fence = BLOCK_OPENER.exec(line)?.[1];
+    const endIndex = fence === undefined ? -1 : findBlockEnd(lines, index, fence);
+    if (endIndex === -1) {
+      // An opening fence the prompt itself writes and never closes is prose, and so is every line inside a block.
+      if (MISPLACED_BLOCK_OPENER.test(line)) {
+        throw new TypeError('Interpolate a serializeForPrompt block at the start of a line');
+      }
+      prose += `${line}\n`;
       continue;
     }
-    // A shorter run inside the block is content, not its closing fence, as `serializeForPrompt` makes the fence
-    // longer than any `~` run it writes. Dropping the opener's indentation keeps four spaces of it from turning
-    // the fence into an indented code block.
-    const closer = new RegExp(`^${fence}~*[ \t]*$`, 'u');
-    formatted += `${dedentPromptMarkers(prose)}${fence}yaml\n`;
+    // Dropping the opener's indentation keeps four spaces of it from turning the fence into an indented code block.
+    formatted += `${dedentPromptMarkers(prose)}${fence}yaml\n${lines.slice(index + 1, endIndex + 1).join('\n')}\n`;
     prose = '';
-    while (++index < lines.length) {
-      formatted += `${lines[index]}\n`;
-      if (closer.test(lines[index] ?? '')) break;
-    }
+    index = endIndex;
   }
   return (formatted + dedentPromptMarkers(prose)).trim();
+}
+
+/**
+ * Finds the line closing the block opened at `openerIndex`, or -1 when the prompt never closes it.
+ * A `~` run shorter than the fence is content, since `serializeForPrompt` makes the fence longer than any run it
+ * writes, while a run at least as long can only be the closing fence, whatever an interpolation put after it.
+ */
+function findBlockEnd(lines: string[], openerIndex: number, fence: string): number {
+  const closer = new RegExp(`^${fence}~*(?:[ \\t].*)?$`, 'u');
+  for (let index = openerIndex + 1; index < lines.length; index++) {
+    if (closer.test(lines[index] ?? '')) return index;
+  }
+  return -1;
 }
 
 function dedentPromptMarkers(text: string): string {
@@ -153,7 +165,7 @@ function stringifyValue(value: unknown, ctx: Context): string {
       let str = '';
       if (Array.isArray(value)) {
         if (value.length === 0) return '[]';
-        const itemCtx = { indent: ctx.indent + INDENT_STEP, escapedTag: ctx.escapedTag };
+        const itemCtx = { indent: ctx.indent + INDENT_STEP, escapedTags: ctx.escapedTags };
         for (const item of value as unknown[]) {
           str += `${str ? separator : ''}- ${stringifyValue(toSerializable(item), itemCtx)}`;
         }
@@ -182,8 +194,8 @@ function stringifyPair(rawKey: unknown, rawValue: unknown, ctx: Context): string
   const indent = ctx.indent + INDENT_STEP;
   const key = toSerializable(rawKey);
   const value = toSerializable(rawValue);
-  const keyStr = stringifyValue(key, { indent, implicitKey: true, escapedTag: ctx.escapedTag });
-  const valueStr = stringifyValue(value, { indent, escapedTag: ctx.escapedTag });
+  const keyStr = stringifyValue(key, { indent, implicitKey: true, escapedTags: ctx.escapedTags });
+  const valueStr = stringifyValue(value, { indent, escapedTags: ctx.escapedTags });
   if (isCollection(key) || keyStr.length > MAX_IMPLICIT_KEY_LENGTH) return `? ${keyStr}\n${ctx.indent}: ${valueStr}`;
   const isBlockCollection = isCollection(value) && valueStr !== '[]' && valueStr !== '{}';
   return `${keyStr}:${isBlockCollection ? `\n${indent}` : ' '}${valueStr}`;
@@ -225,7 +237,8 @@ function stringifyNumber(value: number): string {
 }
 
 function stringifyString(rawValue: string, ctx: Context): string {
-  const value = ctx.escapedTag ? escapePromptTag(rawValue, ctx.escapedTag) : rawValue;
+  let value = rawValue;
+  for (const tagName of ctx.escapedTags ?? []) value = escapePromptTag(value, tagName);
   // oxlint-disable-next-line no-control-regex -- control characters and lone surrogates can only be written escaped.
   return /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u{D800}-\u{DFFF}]/u.test(value)
     ? doubleQuotedString(value, ctx)

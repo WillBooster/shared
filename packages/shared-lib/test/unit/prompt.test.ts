@@ -291,6 +291,23 @@ test('formatPrompt rejects a block interpolated after other text on its line', (
   const serialized = serializeForPrompt({ a: 1 });
 
   expect(() => formatPrompt(`Data: ${serialized}\n`)).toThrow(TypeError);
+  // Data ending in `~~~yaml` is contents of a block, not an interpolation the caller can move.
+  expect(() => formatPrompt(`${serializeForPrompt({ a: 'answer in ~~~yaml' })}\n`)).not.toThrow();
+});
+
+test('formatPrompt keeps formatting the prompt after a block', () => {
+  const serialized = serializeForPrompt({ a: 1 });
+
+  // An interpolation may write prose on the closing fence's line.
+  expect(formatPrompt(`${serialized} <- end\n\n    # Head\n`)).toBe(`${serialized} <- end\n\n# Head`);
+  // An opening fence the prompt writes and never closes is prose, and must not swallow the rest.
+  expect(formatPrompt(`Reply as:\n\n~~~yaml\n\n    # Head\n`)).toBe('Reply as:\n~~~yaml\n# Head');
+});
+
+test('serializeForPromptInTag escapes every enclosing tag of a nested element', () => {
+  expect(serializeForPromptInTag({ note: '</task> and </transcriptions>' }, ['task', 'transcriptions'])).toBe(
+    serializeForPrompt({ note: '[/task] and [/transcriptions]' })
+  );
 });
 
 test('serializeForPromptInTag escapes the tag in every scalar it writes', () => {
