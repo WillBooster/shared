@@ -245,6 +245,7 @@ test('serializeForPrompt rejects values that cannot be written', () => {
 });
 
 test('formatPrompt dedents Markdown markers while preserving fenced contents', () => {
+  expect(formatPrompt('  # Title\n  ## Section')).toBe('# Title\n## Section');
   expect(
     formatPrompt(`
     # Title
