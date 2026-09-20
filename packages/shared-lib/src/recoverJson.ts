@@ -113,7 +113,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
     let parser = new RecoveryParser(text, index, end);
     try {
       let json = parser.value(0);
-      if (parser.index === end && end < text.length) {
+      if ((text[index] === '{' || text[index] === '[') && parser.index === end && end < text.length) {
         const extended = new RecoveryParser(text, index, text.length);
         try {
           const extendedJson = extended.value(0);

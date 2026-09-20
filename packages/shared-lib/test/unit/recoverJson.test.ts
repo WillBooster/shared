@@ -328,6 +328,14 @@ test('treats ordinary Markdown info strings as metadata for every JSON root type
 });
 
 test('keeps a truncated fenced answer separate from a following complete answer', () => {
+  for (const json of ['{"verdict":"confirmed"}', '{"":"empty key"}', '["answer"]', 'true', '"answer"']) {
+    const separate = recoverJson(`"unfinished\n\`\`\`json\n${json}\n\`\`\``).candidates;
+    expect(separate).toHaveLength(2);
+    expect(separate[0]?.value).toBe('unfinished\n');
+    expect(separate[0]?.requiresConfirmation).toBe(true);
+    expect(separate[1]?.value).toEqual(JSON.parse(json));
+    expect(separate[1]?.repairs).toEqual([]);
+  }
   const input =
     '```json\n{"notes":"unfinished\n```\nSorry, cut off. Full answer:\n```json\n{"verdict":"confirmed"}\n```';
   const { candidates } = recoverJson(input);
