@@ -159,6 +159,9 @@ test('preserves missing array positions and literal invalid escapes for confirma
   const escaped = recoverJson(String.raw`{"summary":"user\'s request"}`).candidates[0]!;
   expect(escaped.value).toEqual({ summary: String.raw`user\'s request` });
   expect(escaped.requiresConfirmation).toBe(true);
+  const key = recoverJson('{notes": "cut off"}').candidates[0]!;
+  expect(key.value).toEqual({ 'notes"': 'cut off' });
+  expect(key.requiresConfirmation).toBe(true);
 });
 
 test('continues after rejected documents without extracting their nested members', () => {

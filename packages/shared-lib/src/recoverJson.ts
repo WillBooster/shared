@@ -234,8 +234,9 @@ class RecoveryParser {
         else {
           while (this.index < this.end && !/[\s:,{}[\]]/.test(this.text[this.index]!) && !this.comment()) this.index++;
           if (this.index === start) throw new Error('Expected an object key');
-          key = JSON.stringify(this.text.slice(start, this.index));
-          this.repair('syntax', 'unquoted-key', start);
+          const rawKey = this.text.slice(start, this.index);
+          key = JSON.stringify(rawKey);
+          this.repair(/["'“”‘’]/.test(rawKey) ? 'ambiguous' : 'syntax', 'unquoted-key', start);
         }
         const decoded: string = JSON.parse(key);
         if (keys.has(decoded)) this.repair('ambiguous', 'duplicate-key', start);
