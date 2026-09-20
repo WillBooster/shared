@@ -476,6 +476,9 @@ test('retains bounded source context when an ambiguous quote boundary hides an a
   expect(large.message).toContain(' (truncated excerpt): ');
   expect(JSON.parse(large.message.slice(large.message.indexOf('): ') + 3))).toBe(tail.slice(0, 256));
   expect(recoverJson('"{literal}" // no ambiguity').errors).toEqual([]);
+  expect(recoverJson('true; explanation').errors).toEqual([]);
+  for (const newline of ['\n', '\r', '\r\n'])
+    expect(recoverJson(`"confirmed"${newline}Explanation of the result.`).errors).toEqual([]);
 });
 
 test('recovers mismatched quotes as ambiguous while preserving valid quoted content', () => {
