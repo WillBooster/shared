@@ -132,7 +132,11 @@ test('keeps fence opener content and fences embedded inside JSON strings', () =>
     expect(candidate.value).toEqual({ explanation: 'Use this:\n```js\nconst a = 1;\n```\nDone' });
     expect(candidate.requiresConfirmation).toBe(true);
   }
-  expect(recoverJson('```json {"verdict":"confirmed"}\n```').candidates[0]?.value).toEqual({ verdict: 'confirmed' });
+  for (const json of ['{"verdict":"confirmed"}', '[1,2]', '"answer"']) {
+    for (const separator of ['', ' ', '\t']) {
+      expect(recoverJson(`\`\`\`json${separator}${json}\n\`\`\``).candidates[0]?.value).toEqual(JSON.parse(json));
+    }
+  }
   for (const value of ['true', '42', '"answer"', '{"v":2}']) {
     const result = recoverJson(`\`\`\`json\n${embedded}\n\`\`\`\n\`\`\`json\n${value}\n\`\`\``);
     expect(result.candidates).toHaveLength(2);
@@ -274,7 +278,20 @@ test('salvages only unconfirmed fragments after a structural rejection', () => {
 });
 
 test('treats ordinary Markdown info strings as metadata for every JSON root type', () => {
-  for (const language of ['jsonc', 'json5', 'json-lines', 'json-ld', 'json-c', 'text', 'javascript', 'true', '42']) {
+  for (const language of [
+    'jsonc',
+    'json5',
+    'json42',
+    'jsontrue',
+    'json+ld',
+    'json-lines',
+    'json-ld',
+    'json-c',
+    'text',
+    'javascript',
+    'true',
+    '42',
+  ]) {
     for (const json of ['true', '42', '"answer"', '{"a":1}']) {
       const result = recoverJson(`\`\`\`${language}\n${json}\n\`\`\``);
       expect(result.candidates).toHaveLength(1);

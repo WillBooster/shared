@@ -63,7 +63,7 @@ export function recoverJson(text: string): JsonRecovery {
       const marker = fence[1]!;
       const markerEnd = fence.index + fence[0].indexOf(marker) + marker.length;
       const lineEnd = fence.index + fence[0].length;
-      const inlinePrefix = /^[ \t]*json[ \t]+/i.exec(text.slice(markerEnd, lineEnd));
+      const inlinePrefix = /^[ \t]*json(?=[ \t{["'“”‘’])[ \t]*/i.exec(text.slice(markerEnd, lineEnd));
       const inlineStart = inlinePrefix === null ? lineEnd : markerEnd + inlinePrefix[0].length;
       const start =
         text[inlineStart] === '{' || text[inlineStart] === '[' || scalarStart(text, inlineStart, lineEnd)
