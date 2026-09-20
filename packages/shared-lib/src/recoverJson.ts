@@ -151,8 +151,7 @@ function skipRejectedCandidate(text: string, start: number, end: number): number
       index = close === -1 ? end : close + 1;
     } else if (char === '{' || char === '[') stack.push(char === '{' ? '}' : ']');
     else if (char === '}' || char === ']') {
-      const matching = stack.lastIndexOf(char);
-      if (matching !== -1) stack.length = matching;
+      if (stack.at(-1) === char) stack.pop();
       if (stack.length === 0) return index + 1;
     }
   }

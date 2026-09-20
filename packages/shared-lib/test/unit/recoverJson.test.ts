@@ -185,7 +185,7 @@ test('preserves missing array positions and literal invalid escapes for confirma
 });
 
 test('continues after rejected documents without extracting their nested members', () => {
-  for (const prefix of ['Candidate 1: {"error": [}\nCandidate 2:', '{] "nested": {"verdict":"wrong"}}']) {
+  for (const prefix of ['Candidate 1: {[]}\nCandidate 2:', '{] "nested": {"verdict":"wrong"}}']) {
     const result = recoverJson(`${prefix} {"verdict":"confirmed"}`);
     expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }]);
     expect(result.errors).toHaveLength(1);
@@ -194,6 +194,16 @@ test('continues after rejected documents without extracting their nested members
   expect(prose.candidates).toHaveLength(2);
   expect(prose.candidates[0]?.requiresConfirmation).toBe(true);
   expect(prose.candidates[1]?.value).toEqual({ verdict: 'confirmed' });
+  for (const input of [
+    '{"a": [} "nested": {"verdict":"wrong"}}',
+    '{"a": [} , "b": {"verdict":"wrong"}} {"verdict":"confirmed"}',
+  ]) {
+    const result = recoverJson(input);
+    expect(result.candidates).toEqual([]);
+    expect(result.errors).toHaveLength(1);
+    const fenced = recoverJson(`${input}\n\`\`\`json\n{"verdict":"confirmed"}\n\`\`\``);
+    expect(fenced.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }]);
+  }
 });
 
 test('keeps a truncated fenced answer separate from a following complete answer', () => {
