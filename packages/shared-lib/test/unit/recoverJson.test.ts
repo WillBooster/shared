@@ -294,6 +294,24 @@ test('keeps trailing comment examples out of candidates and marks ambiguous scal
   expect(recoverJson('true\rExplanation').candidates[0]?.value).toBe(true);
 });
 
+test('does not mine comment examples while scanning prose or mistake URLs for comments', () => {
+  for (const input of [
+    'My notes:\n// earlier the model reported {"verdict":"confirmed"}\nConclusion: it is refuted.',
+    'Before it: // not {"verdict":"refuted"}',
+    'My notes: /* earlier: {"verdict":"confirmed"} */',
+    'My notes:\n/*\n{"verdict":"confirmed"}\n*/',
+  ])
+    expect(recoverJson(input).candidates).toEqual([]);
+  expect(recoverJson('Introduction:\n// ignore {"wrong":1}\r42').candidates[0]?.value).toBe(42);
+  const incomplete = recoverJson('My notes: /* unfinished {"verdict":"confirmed"}');
+  expect(incomplete.candidates).toEqual([]);
+  expect(incomplete.errors.length).toBeGreaterThan(0);
+  const linked = recoverJson('See https://example.com/a//b/*c*/ before {"verdict":"confirmed"}');
+  expect(linked.candidates).toHaveLength(1);
+  expect(linked.candidates[0]?.value).toEqual({ verdict: 'confirmed' });
+  expect(linked.candidates[0]?.repairs).toEqual([]);
+});
+
 test('recovers mismatched quotes as ambiguous while preserving valid quoted content', () => {
   const candidate = recoverJson('{"verdict": "refuted”, "notes": "fine"}').candidates[0]!;
   expect(candidate.value).toEqual({ verdict: 'refuted', notes: 'fine' });

@@ -129,6 +129,24 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
     if (!initialValue || index !== firstIndex) {
       while (index < end && text[index] !== '{' && text[index] !== '[') {
         if (scalarBoundary && scalarStart(text, index, end)) break;
+        const uriEnd =
+          index === start || !/[\w+.-]/.test(text[index - 1]!) ? unquotedUriEnd(text, index, end) : undefined;
+        if (uriEnd !== undefined) {
+          index = uriEnd;
+          scalarBoundary = false;
+          continue;
+        }
+        if (text[index] === '/') {
+          const trivia = new RecoveryParser(text, index, end);
+          trivia.space();
+          if (trivia.index > index) {
+            if (trivia.repairs.some((repair) => repair.kind === 'incomplete') && result.errors.length < MAX_ERRORS)
+              result.errors.push({ offset: index, message: 'Incomplete comment while scanning response' });
+            scalarBoundary ||= /[\r\n]/.test(text.slice(index, trivia.index));
+            index = trivia.index;
+            continue;
+          }
+        }
         if (/[\r\n]/.test(text[index]!)) scalarBoundary = true;
         else if (!/\s/.test(text[index]!)) scalarBoundary = false;
         index++;
