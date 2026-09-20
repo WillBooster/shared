@@ -9,7 +9,7 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
-import { generateAgentCodingStyle, readAgentsExtraContent } from './agents.js';
+import { generateAgentCodingStyle, getDefaultProseLanguage, readAgentsExtraContent } from './agents.js';
 
 const defaultConfig = {
   have_fun: true,
@@ -61,9 +61,10 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
 
     const extraContent = await readAgentsExtraContent(config.dirPath);
     const codingRuleExtraContent = extraContent?.trimStart().startsWith('#') ? undefined : extraContent;
-    const reviewLanguageInstruction = config.isPublicRepo
-      ? 'Review in English based on the following coding standards.'
-      : '以下のコーディング規約を踏まえて、日本語でレビューしてください。';
+    const reviewLanguageInstruction =
+      getDefaultProseLanguage(config) === 'Japanese'
+        ? '以下のコーディング規約を踏まえて、日本語でレビューしてください。'
+        : 'Review in English based on the following coding standards.';
     const styleguideContent = `${reviewLanguageInstruction}\n\n${generateAgentCodingStyle(config, allConfigs)}${
       codingRuleExtraContent ? `\n${codingRuleExtraContent.trimEnd()}` : ''
     }`;

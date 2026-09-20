@@ -18,7 +18,7 @@ const templates = {
   'pull_request_template.md': `
 Close #<IssueNumber>
 
-<!-- Write for a reviewer who has not followed the work. Scale each section to the change: a sentence for a small change, numbered subsections for a large one. Delete this comment and the placeholder comments below. -->
+<!-- Write for a reviewer who has not followed the work, in the repository's default language, keeping the headings as they are. Scale each section to the change: a sentence for a small change, numbered subsections for a large one. Delete this comment and the placeholder comments below. -->
 
 ${renderSectionTemplate(PULL_REQUEST_SECTIONS)}
 `.trim(),
@@ -30,7 +30,7 @@ title: 'fix: '
 labels: 't: fix :bug:'
 ---
 
-<!-- Keep Problem and Proposal; delete Evidence or Impact when they add nothing. Delete these comments. -->
+<!-- Keep Problem and Proposal; delete Evidence or Impact when they add nothing. Write in the repository's default language, keeping the headings as they are. Delete these comments. -->
 
 ${renderSectionTemplate(BUG_ISSUE_SECTIONS)}
 `.trim(),
@@ -42,7 +42,7 @@ title: 'feat: '
 labels: 't: feat :sparkles:'
 ---
 
-<!-- Keep the first three sections for any change and add the others as the change grows; a large change fills all of them (spec-booster reviews against this list). Delete these comments. -->
+<!-- Keep the first three sections for any change and add the others as the change grows; a large change fills all of them (spec-booster reviews against this list). Write in the repository's default language, keeping the headings as they are. Delete these comments. -->
 
 ${renderSectionTemplate(CHANGE_ISSUE_SECTIONS)}
 `.trim(),

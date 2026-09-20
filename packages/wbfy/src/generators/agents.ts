@@ -124,6 +124,15 @@ function generateAgentInstruction(
   const issueTemplateInstruction = rootConfig.isWillBoosterRepo
     ? `\n- When creating an issue:\n${ISSUE_TEMPLATE_RULES.replaceAll(/^/gm, '  ')}`
     : '';
+  // Unknown visibility collapses to English so that an offline run never writes a Japanese default
+  // into a public repository.
+  const proseTargets = 'issues, PRs, review comments, and documentation (e.g., README, `docs/`)';
+  const codeTargets =
+    'code comments (including JSDoc), identifiers, commit messages, and prompts and instructions for AI agents (e.g., `AGENTS_EXTRA.md`, skills)';
+  const languageInstruction =
+    getDefaultProseLanguage(rootConfig) === 'Japanese'
+      ? `\n- Unless instructed otherwise, write ${proseTargets} in Japanese, and ${codeTargets} in English.`
+      : `\n- Unless instructed otherwise, write ${proseTargets} and ${codeTargets} in English.`;
   const runnerInstruction = rootConfig.isWillBoosterRepo
     ? '\n- Private repositories use self-hosted CI runners. Keep OS/size constraints in an explicit self-hosted label array; fix missing runner capabilities instead of switching to GitHub-hosted runners. The sole approved exception is the Windows desktop build in WillBooster/cheerlings.'
     : '';
@@ -137,7 +146,7 @@ function generateAgentInstruction(
 ## General Instructions
 
 - If on \`main\`, create a new branch; otherwise work on the current branch.
-- Run \`git\` commands one at a time to avoid \`index.lock\` conflicts.
+- Run \`git\` commands one at a time to avoid \`index.lock\` conflicts.${languageInstruction}
 ${TEST_WRITING_RULES}
 - When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
 - After making changes, run \`${packageManager} run verify\` (type checking and linting; up to 10 minutes), or \`${packageManager} run verify-full\` (all tests; up to 1 hour) if you changed runtime behavior or tests. Fix errors and re-run until it passes.
@@ -163,6 +172,11 @@ ${generateAgentCodingStyle(rootConfig, allConfigs)}
       : '\n' + extraContent
     : '';
   return baseContent + normalizedExtraContent;
+}
+
+/** The language issues, PRs, review comments, and documentation default to; English unless the repository is confirmed private. */
+export function getDefaultProseLanguage(rootConfig: PackageConfig): 'English' | 'Japanese' {
+  return rootConfig.isRepoVisibilityKnown && !rootConfig.isPublicRepo ? 'Japanese' : 'English';
 }
 
 export function generateAgentCodingStyle(rootConfig: PackageConfig, allConfigs: PackageConfig[]): string {

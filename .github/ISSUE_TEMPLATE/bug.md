@@ -5,7 +5,7 @@ title: 'fix: '
 labels: 't: fix :bug:'
 ---
 
-<!-- Keep Problem and Proposal; delete Evidence or Impact when they add nothing. Delete these comments. -->
+<!-- Keep Problem and Proposal; delete Evidence or Impact when they add nothing. Write in the repository's default language, keeping the headings as they are. Delete these comments. -->
 
 ## Problem
 
