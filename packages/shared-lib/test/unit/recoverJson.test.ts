@@ -359,6 +359,26 @@ test('retains scalar comments and separates standalone answers from later prose'
   }
 });
 
+test('recovers later standalone scalars through the same prose guards', () => {
+  for (const json of ['42', '"confirmed"', 'true', 'None']) {
+    const expected = JSON.parse(json === 'None' ? 'null' : json);
+    for (const newline of ['\n', '\r', '\r\n']) {
+      const multiple = recoverJson(`{"a":1}${newline}${json}`);
+      expect(multiple.candidates.map((candidate) => candidate.value)).toEqual([{ a: 1 }, expected]);
+      expect(recoverJson(`The answer is:${newline}  ${json}`).candidates[0]?.value).toEqual(expected);
+      expect(
+        recoverJson(`\`\`\`json${newline}Here is the answer:${newline}${json}${newline}\`\`\``).candidates[0]?.value
+      ).toEqual(expected);
+    }
+  }
+  expect(recoverJson('{"a":1} "b"').candidates.map((candidate) => candidate.value)).toEqual([{ a: 1 }, 'b']);
+  for (const prefix of ['Result:\n```\n', 'Result:\n~~~\n', 'I ran:\n```bash\nls -la\n']) {
+    expect(recoverJson(`${prefix}\`\`\`json\n42\n\`\`\``).candidates[0]?.value).toBe(42);
+  }
+  expect(recoverJson('Introduction:\n1. numbered prose\n- bullet\ntrue story').candidates).toEqual([]);
+  expect(recoverJson('Introduction:\nordinary "quoted words" here').candidates).toEqual([]);
+});
+
 test('preserves missing array positions and literal invalid escapes for confirmation', () => {
   const candidate = recoverJson('[1,,3]').candidates[0]!;
   expect(candidate.value).toEqual(JSON.parse('[1,null,3]'));

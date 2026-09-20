@@ -109,6 +109,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
   let index = start;
   let failures = 0;
   let ambiguousScalarTail = false;
+  let scalarBoundary = true;
   while (index < end && /\s/.test(text[index]!)) index++;
   const firstIndex = index;
   const initialParser = new RecoveryParser(text, index, end);
@@ -120,13 +121,18 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
     return;
   }
   const first = text[initialValueStart];
-  // Prose is not an unquoted root string: only structured starts are searched within prose.
+  // Within prose, scalar starts need a line boundary; containers may appear inline.
   const rootValue = scalarStart(text, initialValueStart, end);
   const initialValue = rootValue || first === '{' || first === '[';
   if (!initialValue) index = initialValueStart;
   while (index < end && result.candidates.length < MAX_CANDIDATES && failures < MAX_ERRORS) {
     if (!initialValue || index !== firstIndex) {
-      while (index < end && text[index] !== '{' && text[index] !== '[') index++;
+      while (index < end && text[index] !== '{' && text[index] !== '[') {
+        if (scalarBoundary && scalarStart(text, index, end)) break;
+        if (/[\r\n]/.test(text[index]!)) scalarBoundary = true;
+        else if (!/\s/.test(text[index]!)) scalarBoundary = false;
+        index++;
+      }
     }
     if (index >= end) break;
     let parser = initialValue && index === firstIndex ? initialParser : new RecoveryParser(text, index, end);
@@ -149,7 +155,9 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
           // Keep the bounded interpretation when extending it is not a complete JSON document.
         }
       }
-      if (rootValue && index === firstIndex && !parser.finishScalar(end, valueStart)) {
+      const valueEnd = parser.index;
+      if (text[valueStart] !== '{' && text[valueStart] !== '[' && !parser.finishScalar(end, valueStart)) {
+        scalarBoundary = /[\r\n]/.test(text.slice(valueEnd, parser.index));
         index = parser.index;
         continue;
       }
@@ -172,9 +180,11 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
         result.errors.push({ offset: parser.index, message: error instanceof Error ? error.message : String(error) });
       failures++;
       index = valueStart + 1;
+      scalarBoundary = false;
       continue;
     }
     index = Math.max(index + 1, parser.index);
+    scalarBoundary = true;
   }
 }
 
