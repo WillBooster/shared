@@ -272,7 +272,7 @@ class RecoveryParser {
       this.text[start]! in QUOTES || this.repairs.some((repair) => repair.reason === 'unquoted-value');
     this.space();
     if (bullet) return false;
-    if (this.text.slice(this.index, regionEnd).trim() === '') return true;
+    if (this.index >= regionEnd) return true;
     if (/[\r\n]/.test(this.text.slice(valueEnd, this.index))) {
       this.repair('ambiguous', 'scalar-before-prose', valueEnd);
       return true;

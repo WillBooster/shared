@@ -405,7 +405,7 @@ test('retains container answers abutting prose URLs without claiming independent
   }
 });
 
-test('bounds URI lookahead work without losing glued or separated answers', () => {
+test('bounds recovery work for long URI sequences and padded prose', () => {
   const links = 'http://x,'.repeat(100_000);
   const started = performance.now();
   expect(recoverJson(links)).toEqual({ candidates: [], errors: [] });
@@ -416,6 +416,7 @@ test('bounds URI lookahead work without losing glued or separated answers', () =
     expect(result.candidates[0]?.value).toEqual({ verdict: 'refuted' });
     expect(result.candidates[0]?.requiresConfirmation).toBe(separator === '');
   }
+  expect(recoverJson('1 x\n'.repeat(120_000) + ' '.repeat(519_999))).toEqual({ candidates: [], errors: [] });
   expect(performance.now() - started).toBeLessThan(5000);
 });
 
