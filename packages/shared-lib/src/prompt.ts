@@ -92,7 +92,6 @@ const MISPLACED_BLOCK_OPENER = /[^\s~][ \t]*~{3,}yaml[ \t]*$/u;
 
 interface PromptBlock {
   opener: string;
-  fence: string;
   end: number;
 }
 
@@ -100,8 +99,8 @@ interface PromptBlock {
  * Strips template-literal indentation from Markdown headings, code fences, and triple-quote delimiters (`"""` and
  * `'''`), and collapses blank lines.
  * The contents of a fenced block are left untouched, since reindenting them would rewrite the data they carry, such
- * as the YAML of `serializeForPrompt` or the source of `toCodeBlock`. A `serializeForPrompt` block must be
- * interpolated at the start of a line. Recognizable mid-line `~~~yaml` markers throw, including prose mentions;
+ * as the YAML of `serializeForPrompt` or the source of `toCodeBlock`. Every fenced block must be interpolated at
+ * the start of a line. Only recognizable mid-line `~~~yaml` markers throw, including prose mentions;
  * this is not a complete placement validator, since preceding tildes can merge into an indistinguishable fence.
  * Blocks end at the first compatible same-character fence, which may carry trailing prose, unless a longer fence
  * of the same character opens and contains that candidate closing line. Other fence characters have no nesting
@@ -136,46 +135,65 @@ export function formatPrompt(prompt: string): string {
 
 function findBlocks(lines: string[]): (PromptBlock | undefined)[] {
   const blocks: (PromptBlock | undefined)[] = [];
-  const closedBlocks: (PromptBlock & { index: number })[] = [];
-  const nextClosers = new Map<string, { start: number; end: number; pattern: RegExp }>();
+  const nestedFenceLengths = new Map<string, Uint32Array>();
+  const backtickClosers: { length: number; index: number }[] = [];
+  const tildeClosers: { length: number; index: number }[] = [];
   for (let index = lines.length - 1; index >= 0; index--) {
     const match = BLOCK_OPENER.exec(lines[index] ?? '');
     const opener = match?.[1]?.trimEnd();
     const fence = match?.[2];
     if (opener === undefined || fence === undefined) continue;
-    const next = nextClosers.get(fence) ?? {
-      start: lines.length,
-      end: -1,
-      pattern: new RegExp(`^[ \\t]*${fence}${fence[0] ?? ''}*(?:[ \\t].*)?$`, 'u'),
-    };
-    // The previous search already covered the suffix beyond start, including an absent closer.
-    for (let candidate = index + 1; candidate <= next.start && candidate < lines.length; candidate++) {
-      if (next.pattern.test(lines[candidate] ?? '')) {
-        next.end = candidate;
-        break;
-      }
+    const closers = fence[0] === '`' ? backtickClosers : tildeClosers;
+    let low = 0;
+    let high = closers.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if ((closers[middle]?.length ?? 0) >= fence.length) low = middle + 1;
+      else high = middle;
     }
-    next.start = index;
-    nextClosers.set(fence, next);
-    let end = next.end;
-    if (end !== -1) {
-      // Later blocks are resolved first, so nested fences never trigger recursive rescans.
-      for (let nestedIndex = closedBlocks.length - 1; nestedIndex >= 0; nestedIndex--) {
-        const nested = closedBlocks[nestedIndex];
-        if (nested === undefined || nested.index >= end) break;
-        if (nested.fence[0] === fence[0] && nested.fence.length > fence.length && nested.end >= end) {
-          end = -1;
-          break;
-        }
-      }
+    let end = closers[low - 1]?.index ?? -1;
+    if (/^(?:[ \t].*)?$/u.test((match?.[1] ?? '').slice(fence.length))) {
+      // A nearer, longer closer also closes every fence that a shorter one could close.
+      while (closers.length > 0 && (closers.at(-1)?.length ?? 0) <= fence.length) closers.pop();
+      closers.push({ length: fence.length, index });
     }
+    let lengths = nestedFenceLengths.get(fence[0] ?? '');
+    if (end !== -1 && lengths !== undefined && maximumFenceLengthAt(lengths, end) > fence.length) end = -1;
     if (end !== -1) {
-      const block = { opener, fence, end, index };
-      blocks[index] = block;
-      closedBlocks.push(block);
+      blocks[index] = { opener, end };
+      if (lengths === undefined) {
+        lengths = new Uint32Array(lines.length * 2);
+        nestedFenceLengths.set(fence[0] ?? '', lengths);
+      }
+      recordFenceLength(lengths, index + 1, end, fence.length);
     }
   }
   return blocks;
+}
+
+function maximumFenceLengthAt(lengths: Uint32Array, index: number): number {
+  let maximum = 0;
+  for (let node = index + lengths.length / 2; node > 0; node >>>= 1) {
+    maximum = Math.max(maximum, lengths[node] ?? 0);
+  }
+  return maximum;
+}
+
+function recordFenceLength(lengths: Uint32Array, start: number, end: number, length: number): void {
+  let left = start + lengths.length / 2;
+  let right = end + lengths.length / 2;
+  while (left <= right) {
+    if (left % 2 === 1) {
+      lengths[left] = Math.max(lengths[left] ?? 0, length);
+      left++;
+    }
+    if (right % 2 === 0) {
+      lengths[right] = Math.max(lengths[right] ?? 0, length);
+      right--;
+    }
+    left >>>= 1;
+    right >>>= 1;
+  }
 }
 
 function dedentPromptMarkers(text: string): string {
