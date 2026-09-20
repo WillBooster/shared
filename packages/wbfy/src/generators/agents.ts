@@ -170,12 +170,14 @@ ${generateAgentCodingStyle(rootConfig, allConfigs)}
 }
 
 /**
- * The language issues, PRs, review comments, and documentation default to. An unknown visibility
- * (offline run, failed lookup) yields English so that a Japanese default is never written into a
- * public repository.
+ * The language issues, PRs, review comments, and documentation default to: Japanese only in a
+ * WillBooster / WillBoosterLab repository confirmed private. An unknown visibility (offline run,
+ * failed lookup) yields English so that a Japanese default is never written into a public repository.
  */
 export function getDefaultProseLanguage(rootConfig: PackageConfig): 'English' | 'Japanese' {
-  return rootConfig.isRepoVisibilityKnown && !rootConfig.isPublicRepo ? 'Japanese' : 'English';
+  return rootConfig.isWillBoosterRepo && rootConfig.isRepoVisibilityKnown && !rootConfig.isPublicRepo
+    ? 'Japanese'
+    : 'English';
 }
 
 export function generateAgentCodingStyle(rootConfig: PackageConfig, allConfigs: PackageConfig[]): string {
