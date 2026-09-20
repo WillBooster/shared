@@ -43,6 +43,9 @@ export function serializeForPrompt(value: unknown): string {
  * in every string so that untrusted data cannot close the element and have the rest read as instructions.
  * The caller must wrap the result in the same tag.
  *
+ * Only the named element is protected. A block nested inside another tagged element leaves that outer tag open, so
+ * a prompt that nests elements needs the data of each one serialized with its own enclosing name.
+ *
  * The escaped notation is the one `escapePromptTag` writes, and text that already holds it is left as it is, so two
  * strings differing only in that notation are written alike. Keys taken from untrusted data can therefore collide
  * into one duplicate key of the emitted mapping.
@@ -71,8 +74,10 @@ export function escapePromptTag(text: string, tagName: string): string {
 
 /**
  * Matches a block produced by `serializeForPrompt`. The match is bounded by the fences alone, since an interpolation
- * can put a label before the block and prose after it; the fence is by construction longer than any `~` run inside
- * the block, so the first one the lazy body reaches at the start of a line is the closing fence.
+ * can put a label before the block and prose after it. The fence is by construction longer than any `~` run inside
+ * the block, so the closing fence is the first run of that length at the start of a line which does not itself open
+ * another yaml block: a `~~~yaml` written in the prompt's own prose and never closed would otherwise end the match
+ * at the opening fence of the block after it, leaving that block's YAML to be dedented.
  */
 const SERIALIZED_BLOCK = /(~{3,})yaml\n[\s\S]*?\n\1(?!~|yaml(?:\n|$))/gu;
 
