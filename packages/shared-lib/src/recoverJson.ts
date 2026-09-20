@@ -137,7 +137,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
           const tokenEnd = whitespace === -1 ? end : index + whitespace;
           const container = text.slice(index, tokenEnd).search(/[{[]/);
           if (container !== -1) uriBoundaryEnd = Math.max(uriBoundaryEnd, tokenEnd);
-          index = container === -1 ? tokenEnd : index + container;
+          index = Math.min(uriEnd, container === -1 ? tokenEnd : index + container);
           scalarBoundary = false;
           continue;
         }

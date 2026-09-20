@@ -332,6 +332,16 @@ test('retains only unconfirmed fragments from comment-like prose without mistaki
     expect(result.candidates.at(-1)?.value).toEqual({ verdict: 'refuted' });
     expect(result.candidates.every((candidate) => candidate.requiresConfirmation)).toBe(true);
   }
+  for (const boundary of [',', ']', '}', '},', '),']) {
+    for (const comment of ['// note {"verdict":"confirmed"}\n', '/* {"verdict":"confirmed"} */ ']) {
+      const candidates = recoverJson(`See https://x/a${boundary}${comment}{"answer":42}`).candidates;
+      expect(candidates).toHaveLength(2);
+      expect(candidates[0]?.value).toEqual({ verdict: 'confirmed' });
+      expect(candidates[0]?.requiresConfirmation).toBe(true);
+      expect(candidates[1]?.value).toEqual({ answer: 42 });
+      expect(candidates[1]?.requiresConfirmation).toBe(false);
+    }
+  }
 });
 
 test('preserves apostrophes in comma continuations after embedded quoted words', () => {
