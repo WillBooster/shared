@@ -175,7 +175,8 @@ class RecoveryParser {
 
   finishScalar(regionEnd: number, start: number): boolean {
     const valueEnd = this.index;
-    const bullet = this.text.slice(start, valueEnd) === '-' && /\s/.test(this.text[valueEnd] ?? '');
+    const atom = this.text.slice(start, valueEnd);
+    const bullet = atom === '-' && /\s/.test(this.text[valueEnd] ?? '');
     const retainLiteral =
       this.text[start]! in QUOTES || this.repairs.some((repair) => repair.reason === 'unquoted-value');
     this.space();
@@ -185,6 +186,7 @@ class RecoveryParser {
       this.repair('ambiguous', 'scalar-before-prose', valueEnd);
       return true;
     }
+    if (/^\d+[.)]$/.test(atom) && /[ \t]/.test(this.text[valueEnd] ?? '')) return false;
     if (retainLiteral || /^[\p{P}\p{S}]/u.test(this.text.slice(this.index, regionEnd))) {
       this.repair('ambiguous', 'trailing-scalar-content', valueEnd);
       return true;
@@ -204,7 +206,7 @@ class RecoveryParser {
       if (depth >= MAX_DEPTH) throw new Error('JSON nesting exceeds 128 levels');
       return this.container(depth, char === '{');
     }
-    if (char !== undefined && char in QUOTES) return this.string();
+    if (char !== undefined && char in QUOTES) return this.string(depth > 0);
     const start = this.index;
     const uriEnd = unquotedUriEnd(this.text, start, this.end);
     if (uriEnd !== undefined) this.index = uriEnd;
@@ -284,12 +286,13 @@ class RecoveryParser {
     }
   }
 
-  private string(): string {
+  private string(nestedValue = false): string {
     const start = this.index;
     const open = this.text[this.index++]!;
-    const close = QUOTES[open];
+    const close = QUOTES[open]!;
     if (open !== '"') this.repair('syntax', 'non-json-quote', start);
     let value = '';
+    let embeddedQuote = false;
     const family = '"“”'.includes(open) ? '"“”' : "'‘’";
     let alternative: { end: number; value: string; repairCount: number } | undefined;
     while (this.index < this.end) {
@@ -297,8 +300,8 @@ class RecoveryParser {
       if (
         "'‘’".includes(open) &&
         "'’".includes(char) &&
-        /\p{L}/u.test(value.at(-1) ?? '') &&
-        /\p{L}/u.test(this.text[this.index] ?? '')
+        /[\p{L}\p{N}]$/u.test(value) &&
+        /^[\p{L}\p{N}]/u.test(this.text.slice(this.index, this.end))
       ) {
         this.repair('ambiguous', 'literal-apostrophe', this.index - 1);
         value += char;
@@ -308,11 +311,31 @@ class RecoveryParser {
         const after = this.text.slice(this.index, this.end).trimStart()[0];
         const delimited = after === undefined || /[,}\]:"']/.test(after);
         if (char === close) {
+          if (embeddedQuote) {
+            embeddedQuote = false;
+            this.repair('ambiguous', 'unescaped-quote', this.index - 1);
+            value += char;
+            continue;
+          }
           if (alternative !== undefined && !delimited) {
             this.index = alternative.end;
             this.repairs.length = alternative.repairCount;
             this.repair('ambiguous', 'mismatched-quote', this.index - 1);
             return JSON.stringify(alternative.value);
+          }
+          const nextClose = this.text.indexOf(close, this.index);
+          if (
+            nestedValue &&
+            !delimited &&
+            !/\s/.test(this.text[this.index] ?? '') &&
+            nextClose > this.index &&
+            nextClose < this.end &&
+            !/[\\:,{}[\]\r\n]/.test(this.text.slice(this.index, nextClose))
+          ) {
+            embeddedQuote = true;
+            this.repair('ambiguous', 'unescaped-quote', this.index - 1);
+            value += char;
+            continue;
           }
           return JSON.stringify(value);
         }

@@ -47,6 +47,9 @@ test('returns all fenced answers and original response offsets', () => {
 test('does not treat numbered prose or Markdown bullets as root scalar answers', () => {
   for (const prose of [
     '3 issues found. Details:',
+    '3. issues found. Details:',
+    '2) Here is my review',
+    '2024. Summary',
     '- summary',
     '- **High**: crash',
     '- "quoted" thing',
@@ -151,6 +154,8 @@ test('retains contractions inside single-quoted strings without inventing fields
     ["{'note':'it's fine'}", { note: "it's fine" }],
     ["['don't stop']", ["don't stop"]],
     ["{'note':'l'utilisateur'}", { note: "l'utilisateur" }],
+    ["{'note':'version 2's behavior'}", { note: "version 2's behavior" }],
+    ["['R2-D2's reply']", ["R2-D2's reply"]],
   ] as const) {
     const result = recoverJson(input);
     expect(result.candidates).toHaveLength(1);
@@ -171,6 +176,24 @@ test('retains structured answers adjacent to root keyword atoms', () => {
       }
     }
   }
+});
+
+test('retains embedded quoted words without changing valid or missing-comma value boundaries', () => {
+  for (const note of ['He said "hello" today', 'He said "42"', "He said 'hello' today"]) {
+    const quote = note.includes('"') ? '"' : "'";
+    for (const object of [true, false]) {
+      const input = object ? `{${quote}note${quote}:${quote}${note}${quote}}` : `[${quote}${note}${quote}]`;
+      const result = recoverJson(input);
+      expect(result.candidates).toHaveLength(1);
+      expect(result.candidates[0]?.value).toEqual(object ? { note } : [note]);
+      expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+    }
+  }
+  for (const next of ['1', 'true', 'null', '{"b":2}', '[2]', '"b"']) {
+    const result = recoverJson(`["a" ${next}]`);
+    expect(result.candidates[0]?.value).toEqual(['a', JSON.parse(next)]);
+  }
+  expect(recoverJson('{"a":"x" b:2}').candidates[0]?.value).toEqual({ a: 'x', b: 2 });
 });
 
 test('removes adjacent comments without incorporating them into keys or values', () => {
@@ -217,11 +240,14 @@ test('retains scalar comments and separates standalone answers from later prose'
   expect(adjacent.value).toBe('a');
   expect(adjacent.requiresConfirmation).toBe(true);
   for (const token of ['true;', 'false:', 'null!', 'None…', 'True"', '42.']) {
-    for (const text of [token, `${token} explanation`, `\`\`\`json\n${token}\n\`\`\``]) {
+    for (const text of [token, `\`\`\`json\n${token}\n\`\`\``]) {
       const literal = recoverJson(text).candidates[0]!;
       expect(literal.value).toBe(token);
       expect(literal.requiresConfirmation).toBe(true);
     }
+    const explained = recoverJson(`${token} explanation`);
+    if (token === '42.') expect(explained.candidates).toEqual([]);
+    else expect(explained.candidates[0]?.value).toBe(token);
   }
   for (const [input, json] of [
     ['True', 'true'],
