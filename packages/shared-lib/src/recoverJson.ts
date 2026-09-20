@@ -133,9 +133,11 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
         const uriEnd =
           index === start || !/[\w+.-]/.test(text[index - 1]!) ? unquotedUriEnd(text, index, end) : undefined;
         if (uriEnd !== undefined) {
-          const container = text.slice(index, uriEnd).search(/[{[]/);
-          if (container !== -1) uriBoundaryEnd = Math.max(uriBoundaryEnd, uriEnd);
-          index = container === -1 ? uriEnd : index + container;
+          const whitespace = text.slice(index, end).search(/\s/);
+          const tokenEnd = whitespace === -1 ? end : index + whitespace;
+          const container = text.slice(index, tokenEnd).search(/[{[]/);
+          if (container !== -1) uriBoundaryEnd = Math.max(uriBoundaryEnd, tokenEnd);
+          index = container === -1 ? tokenEnd : index + container;
           scalarBoundary = false;
           continue;
         }

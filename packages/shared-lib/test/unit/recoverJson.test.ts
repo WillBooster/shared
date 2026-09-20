@@ -370,6 +370,20 @@ test('retains container answers abutting prose URLs without claiming independent
     expect(candidates.at(-1)?.value).toEqual({ answer: 42 });
     expect(candidates.at(-1)?.requiresConfirmation).toBe(false);
   }
+  for (const uri of [
+    'https://api.example.com/v1/{tenant}/items[2]',
+    'http://x/a{1}[2]',
+    'https://x/{id}?f[1]=a',
+    'https://x/a[1]b{2}c[3]',
+    'http://x/a{"a":1}{"b":2}',
+    'http://x/a},[2]',
+  ]) {
+    const candidates = recoverJson(`See ${uri} then {"answer":42}`).candidates;
+    expect(candidates.length).toBeGreaterThan(1);
+    expect(candidates.slice(0, -1).every((candidate) => candidate.requiresConfirmation)).toBe(true);
+    expect(candidates.at(-1)?.value).toEqual({ answer: 42 });
+    expect(candidates.at(-1)?.requiresConfirmation).toBe(false);
+  }
 });
 
 test('recovers mismatched quotes as ambiguous while preserving valid quoted content', () => {
