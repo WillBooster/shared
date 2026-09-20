@@ -117,10 +117,10 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
       });
     } catch (error) {
       result.errors.push({ offset: parser.index, message: error instanceof Error ? error.message : String(error) });
+      // Never reinterpret a nested member of a rejected document as its final answer.
       index = Math.max(parser.index, skipRejectedCandidate(text, index, end));
       continue;
     }
-    // Never reinterpret a nested member of a rejected document as its final answer.
     index = Math.max(index + 1, parser.index);
   }
 }
@@ -267,7 +267,7 @@ class RecoveryParser {
     while (this.index < this.end) {
       const char = this.text[this.index++]!;
       if (family.includes(char)) {
-        const after = this.text.slice(this.index, this.end).match(/^\s*(.)/s)?.[1];
+        const after = this.text.slice(this.index, this.end).trimStart()[0];
         const delimited = after === undefined || /[,}\]:"']/.test(after);
         if (char === close) {
           if (alternative !== undefined && !delimited) {
@@ -299,7 +299,11 @@ class RecoveryParser {
           this.index += 4;
         } else {
           value += String.raw`\u`;
-          this.repair(this.index + 4 > this.end ? 'incomplete' : 'ambiguous', 'invalid-unicode-escape', escapeOffset);
+          this.repair(
+            /^[\da-fA-F]{0,3}$/.test(hex) ? 'incomplete' : 'ambiguous',
+            'invalid-unicode-escape',
+            escapeOffset
+          );
         }
       } else if (String.raw`"\/bfnrt`.includes(escape)) {
         value += JSON.parse(`"\\${escape}"`) as string;

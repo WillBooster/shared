@@ -94,6 +94,7 @@ test('valid JSON survives truncation at every position without inventing a compl
   expect(recoverJson(text).candidates[0]?.value).toEqual(original);
   for (let end = 1; end < text.length; end++) {
     const result = recoverJson(text.slice(0, end));
+    expect(result.candidates).toHaveLength(1);
     for (const candidate of result.candidates) {
       expect(candidate.requiresConfirmation).toBe(true);
       expect(() => JSON.parse(candidate.json)).not.toThrow();
@@ -138,6 +139,11 @@ test('recovers mismatched quotes as ambiguous while preserving valid quoted cont
   const valid = '{"notes":"He said “hi”, then left"}';
   expect(recoverJson(valid).candidates[0]?.value).toEqual(JSON.parse(valid));
   expect(recoverJson(valid).candidates[0]?.repairs).toEqual([]);
+  for (const value of ['a”', 'The user said “thanks”', 'a “b”, then c']) {
+    const fenced = recoverJson(`\`\`\`json\n${JSON.stringify(value)}\n\n\`\`\``).candidates[0]!;
+    expect(fenced.value).toBe(value);
+    expect(fenced.repairs).toEqual([]);
+  }
 });
 
 test('retains scalar comments and separates standalone answers from later prose', () => {
@@ -198,6 +204,17 @@ test('keeps repair provenance within the retained string interpretation', () => 
     for (const repair of candidate.repairs) {
       expect(repair.offset).toBeGreaterThanOrEqual(candidate.start);
       expect(repair.offset).toBeLessThanOrEqual(candidate.end);
+    }
+  }
+});
+
+test('distinguishes a closed malformed Unicode escape from an exhausted escape', () => {
+  for (const hex of ['', '1', '12', '123']) {
+    for (const closed of [true, false]) {
+      const candidate = recoverJson(`"\\u${hex}${closed ? '"' : ''}`).candidates[0]!;
+      expect(candidate.value).toBe(`\\u${hex}`);
+      expect(candidate.requiresConfirmation).toBe(true);
+      expect(candidate.repairs.some((repair) => repair.kind === 'incomplete')).toBe(!closed);
     }
   }
 });
