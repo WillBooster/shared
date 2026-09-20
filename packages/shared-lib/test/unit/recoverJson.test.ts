@@ -405,6 +405,20 @@ test('retains container answers abutting prose URLs without claiming independent
   }
 });
 
+test('bounds URI lookahead work without losing glued or separated answers', () => {
+  const links = 'http://x,'.repeat(100_000);
+  const started = performance.now();
+  expect(recoverJson(links)).toEqual({ candidates: [], errors: [] });
+  for (const separator of ['', '\n']) {
+    const result = recoverJson(`${links}${separator}{"verdict":"refuted"}`);
+    expect(result.errors).toEqual([]);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]?.value).toEqual({ verdict: 'refuted' });
+    expect(result.candidates[0]?.requiresConfirmation).toBe(separator === '');
+  }
+  expect(performance.now() - started).toBeLessThan(5000);
+});
+
 test('rejects backticks in ordinary fence metadata without rejecting inline JSON payloads', () => {
   const partial = recoverJson('```json "cut off `x`').candidates;
   expect(partial).toHaveLength(1);

@@ -116,6 +116,8 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
   let ambiguousScalarTail = false;
   let scalarBoundary = true;
   let uriBoundaryEnd = start;
+  let uriTokenEnd = start;
+  let uriContainerStart = start;
   while (index < end && /\s/.test(text[index]!)) index++;
   const firstIndex = index;
   const initialParser = new RecoveryParser(text, index, end);
@@ -138,11 +140,17 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
         const uriEnd =
           index === start || !/[\w+.-]/.test(text[index - 1]!) ? unquotedUriEnd(text, index, end) : undefined;
         if (uriEnd !== undefined) {
-          const whitespace = text.slice(index, end).search(/\s/);
-          const tokenEnd = whitespace === -1 ? end : index + whitespace;
-          const container = text.slice(index, tokenEnd).search(/[{[]/);
-          if (container !== -1) uriBoundaryEnd = Math.max(uriBoundaryEnd, tokenEnd);
-          index = Math.min(uriEnd, container === -1 ? tokenEnd : index + container);
+          if (index >= uriTokenEnd) {
+            const whitespace = text.slice(index, end).search(/\s/);
+            uriTokenEnd = whitespace === -1 ? end : index + whitespace;
+            uriContainerStart = index;
+          }
+          if (index >= uriContainerStart) {
+            const container = text.slice(index, uriTokenEnd).search(/[{[]/);
+            uriContainerStart = container === -1 ? uriTokenEnd : index + container;
+          }
+          if (uriContainerStart < uriTokenEnd) uriBoundaryEnd = Math.max(uriBoundaryEnd, uriTokenEnd);
+          index = Math.min(uriEnd, uriContainerStart);
           scalarBoundary = false;
           continue;
         }
