@@ -25,6 +25,7 @@ export interface JsonRecovery {
 const MAX_INPUT_LENGTH = 1_000_000;
 const MAX_DEPTH = 128;
 const MAX_CANDIDATES = 32;
+const MAX_ERRORS = 32;
 const QUOTES: Record<string, string> = { '"': '"', "'": "'", '“': '”', '”': '”', '‘': '’', '’': '’' };
 const KEYWORDS: Record<string, string> = {
   true: 'true',
@@ -39,7 +40,8 @@ const KEYWORDS: Record<string, string> = {
  * Extracts JSON values from a response, repairing common LLM syntax and retaining repair provenance.
  * Offsets refer to the original string. All candidates are returned: choosing among multiple answers,
  * schema validation, and provider truncation signals belong to the caller. No schema values are coerced.
- * Bounded to one million UTF-16 code units, 128 nesting levels, and 32 candidates.
+ * Bounded to one million UTF-16 code units, 128 nesting levels, and 32 candidates/errors each.
+ * A region is abandoned after 32 failed starts; later Markdown regions can still yield candidates.
  */
 export function recoverJson(text: string): JsonRecovery {
   const result: JsonRecovery = { candidates: [], errors: [] };
@@ -61,7 +63,7 @@ export function recoverJson(text: string): JsonRecovery {
       const marker = fence[1]!;
       const markerEnd = fence.index + fence[0].indexOf(marker) + marker.length;
       const lineEnd = fence.index + fence[0].length;
-      const inlinePrefix = /^[ \t]*json\b[ \t]*/i.exec(text.slice(markerEnd, lineEnd));
+      const inlinePrefix = /^[ \t]*json[ \t]+/i.exec(text.slice(markerEnd, lineEnd));
       const inlineStart = inlinePrefix === null ? lineEnd : markerEnd + inlinePrefix[0].length;
       const start =
         text[inlineStart] === '{' || text[inlineStart] === '[' || scalarStart(text, inlineStart, lineEnd)
@@ -96,14 +98,14 @@ export function recoverJson(text: string): JsonRecovery {
 
 function extractRegion(text: string, start: number, end: number, result: JsonRecovery): void {
   let index = start;
-  let fragmentAfterError = false;
+  let failures = 0;
   while (index < end && /\s/.test(text[index]!)) index++;
   const first = text[index];
   const firstIndex = index;
   if (first === undefined) return;
   // Prose is not an unquoted root string: only structured starts are searched within prose.
   const rootValue = scalarStart(text, index, end);
-  while (index < end && result.candidates.length + result.errors.length < MAX_CANDIDATES) {
+  while (index < end && result.candidates.length < MAX_CANDIDATES && failures < MAX_ERRORS) {
     if (!rootValue || index !== firstIndex) {
       while (index < end && text[index] !== '{' && text[index] !== '[') index++;
     }
@@ -131,7 +133,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
         index = parser.index;
         continue;
       }
-      if (fragmentAfterError)
+      if (failures > 0)
         parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'fragment-after-rejected-document' });
       result.candidates.push({
         value: JSON.parse(json),
@@ -142,8 +144,9 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
         requiresConfirmation: parser.repairs.some((repair) => repair.kind !== 'syntax'),
       });
     } catch (error) {
-      result.errors.push({ offset: parser.index, message: error instanceof Error ? error.message : String(error) });
-      fragmentAfterError = true;
+      if (result.errors.length < MAX_ERRORS)
+        result.errors.push({ offset: parser.index, message: error instanceof Error ? error.message : String(error) });
+      failures++;
       index++;
       continue;
     }
@@ -161,7 +164,7 @@ function scalarStart(text: string, start: number, end: number): boolean {
 class RecoveryParser {
   readonly repairs: JsonRepair[] = [];
   readonly text: string;
-  end: number;
+  readonly end: number;
   index: number;
 
   constructor(text: string, index: number, end: number) {
@@ -172,10 +175,11 @@ class RecoveryParser {
 
   finishScalar(regionEnd: number, start: number): boolean {
     const valueEnd = this.index;
+    const bullet = this.text.slice(start, valueEnd) === '-' && /\s/.test(this.text[valueEnd] ?? '');
     const retainLiteral =
-      this.text[start]! in QUOTES ||
-      (this.text.slice(start, valueEnd) !== '-' && this.repairs.some((repair) => repair.reason === 'unquoted-value'));
+      this.text[start]! in QUOTES || this.repairs.some((repair) => repair.reason === 'unquoted-value');
     this.space();
+    if (bullet) return false;
     if (this.text.slice(this.index, regionEnd).trim() === '') return true;
     if (this.text.slice(valueEnd, this.index).includes('\n')) {
       this.repair('ambiguous', 'scalar-before-prose', valueEnd);
@@ -347,25 +351,12 @@ class RecoveryParser {
         this.repair('ambiguous', 'invalid-escape', escapeOffset);
       }
     }
-    if (alternative !== undefined) {
-      this.index = alternative.end;
-      this.repairs.length = alternative.repairCount;
-      this.repair('ambiguous', 'mismatched-quote', this.index - 1);
-      return JSON.stringify(alternative.value);
-    }
     this.repair('incomplete', 'unterminated-string', start);
     return JSON.stringify(value);
   }
 
   private space(): void {
     while (this.index < this.end) {
-      if (
-        (this.text.startsWith('```', this.index) || this.text.startsWith('~~~', this.index)) &&
-        /^ *$/.test(this.text.slice(this.text.lastIndexOf('\n', this.index - 1) + 1, this.index))
-      ) {
-        this.end = this.index;
-        break;
-      }
       if (/\s/.test(this.text[this.index]!)) {
         if (!/[ \t\r\n]/.test(this.text[this.index]!)) this.repair('syntax', 'non-json-whitespace');
         this.index++;

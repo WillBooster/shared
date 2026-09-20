@@ -45,7 +45,13 @@ test('returns all fenced answers and original response offsets', () => {
 });
 
 test('does not treat numbered prose or Markdown bullets as root scalar answers', () => {
-  for (const prose of ['3 issues found. Details:', '- summary', 'true story follows:']) {
+  for (const prose of [
+    '3 issues found. Details:',
+    '- summary',
+    '- **High**: crash',
+    '- "quoted" thing',
+    'true story follows:',
+  ]) {
     const result = recoverJson(`${prose}\n\`\`\`json\n{"verdict":"confirmed"}\n\`\`\``);
     expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }]);
   }
@@ -88,6 +94,10 @@ test('bounds malformed input and never promotes rejected-document fragments to c
   expect(recoverJson('x'.repeat(1_000_001)).errors).toHaveLength(1);
   expect(recoverJson('['.repeat(130)).errors.length).toBeGreaterThan(0);
   expect(recoverJson('{}\n'.repeat(40)).candidates).toHaveLength(32);
+  const repeated = recoverJson(`${'{'.repeat(40)}\n\`\`\`json\n{"verdict":"confirmed"}\n\`\`\``);
+  expect(repeated.errors.length).toBeGreaterThan(0);
+  expect(repeated.errors.length).toBeLessThanOrEqual(32);
+  expect(repeated.candidates.at(-1)?.value).toEqual({ verdict: 'confirmed' });
 });
 
 test('valid JSON survives truncation at every position without inventing a complete answer', () => {
@@ -245,7 +255,6 @@ test('salvages only unconfirmed fragments after a structural rejection', () => {
     '{"a":[}, notes":cut ]}',
     '{"a":[}, "key":"value” ]}',
     '{"a":[}, "v":foo[bar ]}',
-    '[”]',
   ]) {
     const result = recoverJson(`${prefix} {"verdict":"confirmed"}`);
     expect(result.candidates.at(-1)?.value).toEqual({ verdict: 'confirmed' });
@@ -265,7 +274,7 @@ test('salvages only unconfirmed fragments after a structural rejection', () => {
 });
 
 test('treats ordinary Markdown info strings as metadata for every JSON root type', () => {
-  for (const language of ['jsonc', 'json5', 'text', 'javascript', 'true', '42']) {
+  for (const language of ['jsonc', 'json5', 'json-lines', 'json-ld', 'json-c', 'text', 'javascript', 'true', '42']) {
     for (const json of ['true', '42', '"answer"', '{"a":1}']) {
       const result = recoverJson(`\`\`\`${language}\n${json}\n\`\`\``);
       expect(result.candidates).toHaveLength(1);
@@ -288,7 +297,7 @@ test('keeps a truncated fenced answer separate from a following complete answer'
 });
 
 test('keeps repair provenance within the retained string interpretation', () => {
-  for (const input of ['["a”, ]and more\n', '["hi”, ]oops\ntail', 'b["ea  -“n“]rax\nu']) {
+  for (const input of ['["a”, ]and more\n"tail', '["hi”, ]oops\ntail"tail', 'b["ea  -“n“]rax\nu"tail']) {
     const candidate = recoverJson(input).candidates[0]!;
     expect(candidate.requiresConfirmation).toBe(true);
     expect(candidate.repairs.some((repair) => repair.reason === 'unescaped-control-character')).toBe(false);
@@ -296,6 +305,37 @@ test('keeps repair provenance within the retained string interpretation', () => 
       expect(repair.offset).toBeGreaterThanOrEqual(candidate.start);
       expect(repair.offset).toBeLessThanOrEqual(candidate.end);
     }
+  }
+});
+
+test('preserves every emitted character of truncated strings containing smart quotations', () => {
+  for (const quote of ['”', '’']) {
+    const unclosed = recoverJson(`[${quote}] {"verdict":"confirmed"}`).candidates[0]!;
+    expect(unclosed.value).toEqual(['] {"verdict":"confirmed"}']);
+    expect(unclosed.requiresConfirmation).toBe(true);
+  }
+  const notes = 'The user said “I disagree”, and then left';
+  for (let end = 0; end <= notes.length; end++) {
+    for (const prefix of ['', '```json\n']) {
+      const result = recoverJson(`${prefix}{"verdict":"refuted","notes":"${notes.slice(0, end)}`);
+      expect(result.candidates).toHaveLength(1);
+      expect(result.candidates[0]?.value).toEqual({ verdict: 'refuted', notes: notes.slice(0, end) });
+      expect(result.candidates[0]?.repairs.some((repair) => repair.reason === 'unterminated-string')).toBe(true);
+      expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+    }
+  }
+});
+
+test('does not treat unlike, shorter or over-indented fence markers as region boundaries', () => {
+  for (const [fence, marker] of [
+    ['```', '~~~'],
+    ['````', '```'],
+    ['```', '    ```'],
+  ]) {
+    const result = recoverJson(`${fence}json\n{"a":[1,\n${marker}\n{"verdict":"confirmed"}\n],"b":2}\n${fence}`);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]?.value).toEqual({ a: [1, marker!.trim(), { verdict: 'confirmed' }], b: 2 });
+    expect(result.candidates[0]?.requiresConfirmation).toBe(true);
   }
 });
 
