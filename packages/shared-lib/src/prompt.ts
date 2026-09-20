@@ -179,11 +179,19 @@ function findBlocks(lines: string[]): (PromptBlock | undefined)[] {
 }
 
 function dedentPromptMarkers(text: string): string {
-  if (!text) return text;
+  // The whitespace alternative consumes failed marker searches so each run is scanned only once per pass.
   return text
-    .replaceAll(/\n\s+("""|'''|```|~{3,})/gu, '\n$1')
-    .replaceAll(/\n\s+(#+\s)/gu, '\n$1')
-    .replaceAll(/(?:\s*\n){2,}/gu, '\n\n');
+    .replaceAll(/([^\S\n]*\n\s+)("""|'''|```|~{3,})|\s+/gu, replaceIndentedMarker)
+    .replaceAll(/([^\S\n]*\n\s+)(#+\s)|\s+/gu, replaceIndentedMarker)
+    .replaceAll(/\s+/gu, (whitespace) => {
+      const firstNewline = whitespace.indexOf('\n');
+      const lastNewline = whitespace.lastIndexOf('\n');
+      return firstNewline === lastNewline ? whitespace : `\n\n${whitespace.slice(lastNewline + 1)}`;
+    });
+}
+
+function replaceIndentedMarker(match: string, whitespace: string | undefined, marker: string | undefined): string {
+  return whitespace === undefined ? match : `${whitespace.slice(0, whitespace.indexOf('\n'))}\n${marker}`;
 }
 
 /** Cuts text down to `maxLength` characters, marking it so that an LLM reads the rest as missing rather than absent. */
