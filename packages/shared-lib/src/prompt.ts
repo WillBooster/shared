@@ -179,19 +179,15 @@ function findBlocks(lines: string[]): (PromptBlock | undefined)[] {
 }
 
 function dedentPromptMarkers(text: string): string {
-  // The whitespace alternative consumes failed marker searches so each run is scanned only once per pass.
+  // Consume failed marker searches, and start blank-line searches only at whitespace-run boundaries.
   return text
-    .replaceAll(/([^\S\n]*\n\s+)("""|'''|```|~{3,})|\s+/gu, replaceIndentedMarker)
-    .replaceAll(/([^\S\n]*\n\s+)(#+\s)|\s+/gu, replaceIndentedMarker)
-    .replaceAll(/\s+/gu, (whitespace) => {
-      const firstNewline = whitespace.indexOf('\n');
-      const lastNewline = whitespace.lastIndexOf('\n');
-      return firstNewline === lastNewline ? whitespace : `\n\n${whitespace.slice(lastNewline + 1)}`;
-    });
+    .replaceAll(/\n\s+("""|'''|```|~{3,})|\n\s*/gu, replaceIndentedMarker)
+    .replaceAll(/\n\s+(#+\s)|\n\s*/gu, replaceIndentedMarker)
+    .replaceAll(/(?<!\s)\s*\n\s*\n/gu, '\n\n');
 }
 
-function replaceIndentedMarker(match: string, whitespace: string | undefined, marker: string | undefined): string {
-  return whitespace === undefined ? match : `${whitespace.slice(0, whitespace.indexOf('\n'))}\n${marker}`;
+function replaceIndentedMarker(match: string, marker: string | undefined): string {
+  return marker === undefined ? match : `\n${marker}`;
 }
 
 /** Cuts text down to `maxLength` characters, marking it so that an LLM reads the rest as missing rather than absent. */
