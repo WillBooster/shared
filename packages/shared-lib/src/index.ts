@@ -14,11 +14,17 @@ export { errorify, ignoreError, ignoreEnoent, ignoreErrorAsync, ignoreEnoentAsyn
 export { humanizeNumber } from './humanize.js';
 export { mailTemplates } from './mail.js';
 export { parseCommandLineArgs } from './parseCommandLineArgs.js';
-export { serializeForPrompt } from './prompt.js';
+export {
+  escapePromptTag,
+  formatPrompt,
+  serializeForPrompt,
+  serializeForPromptInTag,
+  truncateForPrompt,
+} from './prompt.js';
 export { shuffle } from './shuffle.js';
 export { sleep } from './sleep.js';
 export { getConnectionLevelSqlitePragmas, getPersistentSqlitePragmas } from './sqlite.js';
-export { escapeRegExp, quoteForShell, toTildeCodeBlock } from './text.js';
+export { escapeRegExp, quoteForShell, toCodeBlock, toTildeCodeBlock } from './text.js';
 export { TEST_WRITING_RULES } from './testingRules.js';
 export { zenkakuAlphanumericalsToHankaku } from './zenkaku.js';
 

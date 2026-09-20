@@ -13,14 +13,29 @@ export function quoteForShell(value: string): string {
  * The fence is longer than any run of tildes in the text so that the text cannot close it.
  */
 export function toTildeCodeBlock(text: string, language = ''): string {
+  return toFencedCodeBlock('~', text, language);
+}
+
+/**
+ * Wraps text in a Markdown code block fenced with backticks.
+ * The fence is longer than any run of backticks in the text so that the text cannot close it.
+ */
+export function toCodeBlock(text: string, language = ''): string {
+  return toFencedCodeBlock('`', text, language);
+}
+
+function toFencedCodeBlock(fenceChar: string, text: string, language: string): string {
+  const shortestFence = fenceChar.repeat(3);
   let longestRun = 2;
-  let start = text.indexOf('~~~');
+  let start = text.indexOf(shortestFence);
   while (start !== -1) {
     let end = start + 3;
-    while (text[end] === '~') end++;
+    while (text[end] === fenceChar) end++;
     longestRun = Math.max(longestRun, end - start);
-    start = text.indexOf('~~~', end);
+    start = text.indexOf(shortestFence, end);
   }
-  const fence = '~'.repeat(longestRun + 1);
-  return `${fence}${language}\n${text}${text.endsWith('\n') ? '' : '\n'}${fence}`;
+  let languageStart = 0;
+  while (language[languageStart] === fenceChar) languageStart++;
+  const fence = fenceChar.repeat(longestRun + 1 + languageStart);
+  return `${fence}${language.slice(languageStart)}\n${text}${text.endsWith('\n') ? '' : '\n'}${fence}`;
 }

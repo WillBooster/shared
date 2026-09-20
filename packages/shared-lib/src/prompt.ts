@@ -1,4 +1,4 @@
-import { toTildeCodeBlock } from './text.js';
+import { escapeRegExp, toTildeCodeBlock } from './text.js';
 
 const INDENT_STEP = '  ';
 const MAX_IMPLICIT_KEY_LENGTH = 1024;
@@ -24,6 +24,7 @@ const SHORT_UNICODE_ESCAPES: Record<string, string> = {
 interface Context {
   indent: string;
   implicitKey?: boolean;
+  tagPatterns?: readonly RegExp[];
 }
 
 /**
@@ -35,6 +36,184 @@ interface Context {
  */
 export function serializeForPrompt(value: unknown): string {
   return toTildeCodeBlock(`${stringifyValue(toSerializable(value), { indent: '' })}\n`, 'yaml');
+}
+
+/**
+ * Serializes data with `serializeForPrompt` for embedding inside a `<tagName>` element of a prompt, escaping that tag
+ * in every string so that untrusted data cannot close the element and have the rest read as instructions.
+ * The caller must wrap the result in the same tag.
+ *
+ * Only the named elements are protected, so a block nested inside other tagged elements takes every enclosing name.
+ * Escaping the finished block instead is not an option: it would turn a plain scalar holding the escaped notation
+ * into a YAML flow sequence, since the quoting of each scalar is decided as it is written.
+ *
+ * The escaped notation is the one `escapePromptTag` writes, and text that already holds it is left as it is, so two
+ * strings differing only in that notation are written alike. Keys taken from untrusted data can therefore collide
+ * into one duplicate key of the emitted mapping.
+ */
+export function serializeForPromptInTag(value: unknown, tagName: string | readonly string[]): string {
+  const escapedTags = typeof tagName === 'string' ? [tagName] : tagName;
+  const tagPatterns = escapedTags.flatMap(createTagPatterns);
+  return toTildeCodeBlock(`${stringifyValue(toSerializable(value), { indent: '', tagPatterns })}\n`, 'yaml');
+}
+
+/**
+ * Replaces `<tagName` and `</tagName` not followed by `[\w-]` with a harmless notation such as `[/tagName]`, so that
+ * data embedded in a `<tagName>` element of a prompt cannot close the element and have the rest read as instructions.
+ * A closing `>` is not required, since an HTML reader also closes an element on a tag carrying attribute-like junk,
+ * on a trailing solidus, or on the next `>` anywhere in the prompt; the whitespace between `<` and the name is
+ * dropped along with the brackets. Case is ignored deliberately: `tagName` is expected to be a literal written by
+ * the caller, while the data is not.
+ */
+export function escapePromptTag(text: string, tagName: string): string {
+  return text.includes('<') ? escapeTags(text, createTagPatterns(tagName)) : text;
+}
+
+function createTagPatterns(tagName: string): RegExp[] {
+  const name = escapeRegExp(tagName);
+  // Keep well-formed tags readable while also catching incomplete and malformed tags.
+  return [
+    new RegExp(`<\\s*(?:(/)\\s*)?(${name})\\s*>`, 'giu'),
+    new RegExp(`<\\s*(?:(/)\\s*)?(${name})(?![\\w-])`, 'giu'),
+  ];
+}
+
+function escapeTags(text: string, patterns: readonly RegExp[]): string {
+  if (!text.includes('<')) return text;
+  for (const pattern of patterns) text = text.replaceAll(pattern, '[$1$2]');
+  return text;
+}
+
+/** The line opening a fenced block, with the indentation an interpolation may put before it. */
+const BLOCK_OPENER = /^[ \t]*((`{3,}|~{3,})[^\n]*)$/u;
+
+/** A block interpolated after other text on its line, which no rule can tell from prose that ends in `~~~yaml`. */
+const MISPLACED_BLOCK_OPENER = /[^\s~][ \t]*~{3,}yaml[ \t]*$/u;
+
+interface PromptBlock {
+  opener: string;
+  end: number;
+}
+
+/**
+ * Strips template-literal indentation from Markdown headings, code fences, and triple-quote delimiters (`"""` and
+ * `'''`), and collapses blank lines.
+ * The contents of a fenced block are left untouched, since reindenting them would rewrite the data they carry, such
+ * as the YAML of `serializeForPrompt` or the source of `toCodeBlock`. Every fenced block must be interpolated at
+ * the start of a line. Only recognizable mid-line `~~~yaml` markers throw, including prose mentions;
+ * this is not a complete placement validator, since preceding tildes can merge into an indistinguishable fence.
+ * Blocks end at the first compatible same-character fence, which may carry trailing prose, unless a longer fence
+ * of the same character opens and contains that candidate closing line. Other fence characters have no nesting
+ * significance. Balance authored fences before interpolating blocks: an unmatched sample can consume part of a
+ * later block and leave its tail subject to prose formatting.
+ */
+export function formatPrompt(prompt: string): string {
+  const lines = prompt.split('\n');
+  const blocks = findBlocks(lines);
+  let formatted = '';
+  let prose = '';
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index] ?? '';
+    const block = blocks[index];
+    if (block === undefined) {
+      // An opening fence the prompt itself writes and never closes is prose, and so is every line inside a block.
+      if (MISPLACED_BLOCK_OPENER.test(line)) {
+        throw new TypeError('Interpolate a serializeForPrompt block at the start of a line');
+      }
+      prose += `${line}\n`;
+      continue;
+    }
+    // Dropping the opener's indentation keeps four spaces of it from turning the fence into an indented code block.
+    const blockLines = lines.slice(index + 1, block.end + 1);
+    blockLines[blockLines.length - 1] = blockLines.at(-1)?.trimStart() ?? '';
+    formatted += `${dedentPromptMarkers(prose)}${block.opener}\n${blockLines.join('\n')}`;
+    prose = '\n';
+    index = block.end;
+  }
+  return (formatted + dedentPromptMarkers(prose)).trim();
+}
+
+function findBlocks(lines: string[]): (PromptBlock | undefined)[] {
+  const blocks: (PromptBlock | undefined)[] = [];
+  const nestedFenceLengths = new Map<string, Uint32Array>();
+  const backtickClosers: { length: number; index: number }[] = [];
+  const tildeClosers: { length: number; index: number }[] = [];
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const match = BLOCK_OPENER.exec(lines[index] ?? '');
+    const opener = match?.[1]?.trimEnd();
+    const fence = match?.[2];
+    if (opener === undefined || fence === undefined) continue;
+    const closers = fence[0] === '`' ? backtickClosers : tildeClosers;
+    let low = 0;
+    let high = closers.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if ((closers[middle]?.length ?? 0) >= fence.length) low = middle + 1;
+      else high = middle;
+    }
+    let end = closers[low - 1]?.index ?? -1;
+    if (/^(?:[ \t].*)?$/u.test((match?.[1] ?? '').slice(fence.length))) {
+      // A nearer, longer closer also closes every fence that a shorter one could close.
+      while (closers.length > 0 && (closers.at(-1)?.length ?? 0) <= fence.length) closers.pop();
+      closers.push({ length: fence.length, index });
+    }
+    let lengths = nestedFenceLengths.get(fence[0] ?? '');
+    if (end !== -1 && lengths !== undefined && maximumFenceLengthAt(lengths, end) > fence.length) end = -1;
+    if (end !== -1) {
+      blocks[index] = { opener, end };
+      if (lengths === undefined) {
+        lengths = new Uint32Array(lines.length * 2);
+        nestedFenceLengths.set(fence[0] ?? '', lengths);
+      }
+      recordFenceLength(lengths, index + 1, end, fence.length);
+    }
+  }
+  return blocks;
+}
+
+function maximumFenceLengthAt(lengths: Uint32Array, index: number): number {
+  let maximum = 0;
+  for (let node = index + lengths.length / 2; node > 0; node >>>= 1) {
+    maximum = Math.max(maximum, lengths[node] ?? 0);
+  }
+  return maximum;
+}
+
+function recordFenceLength(lengths: Uint32Array, start: number, end: number, length: number): void {
+  let left = start + lengths.length / 2;
+  let right = end + lengths.length / 2;
+  while (left <= right) {
+    if (left % 2 === 1) {
+      lengths[left] = Math.max(lengths[left] ?? 0, length);
+      left++;
+    }
+    if (right % 2 === 0) {
+      lengths[right] = Math.max(lengths[right] ?? 0, length);
+      right--;
+    }
+    left >>>= 1;
+    right >>>= 1;
+  }
+}
+
+function dedentPromptMarkers(text: string): string {
+  // Consume failed marker searches, and start blank-line searches only at whitespace-run boundaries.
+  return text
+    .replaceAll(/\n\s+("""|'''|```|~{3,})|\n\s*/gu, replaceIndentedMarker)
+    .replaceAll(/\n\s+(#+\s)|\n\s*/gu, replaceIndentedMarker)
+    .replaceAll(/(?<!\s)\s*\n\s*\n/gu, '\n\n');
+}
+
+function replaceIndentedMarker(match: string, marker: string | undefined): string {
+  return marker === undefined ? match : `\n${marker}`;
+}
+
+/** Cuts text down to `maxLength` characters, marking it so that an LLM reads the rest as missing rather than absent. */
+export function truncateForPrompt(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  const kept = text.slice(0, maxLength);
+  // Cutting between the halves of a surrogate pair would leave an unpaired one, which encoders replace with U+FFFD.
+  return `${/[\uD800-\uDBFF]$/u.test(kept) ? kept.slice(0, -1) : kept}\n...<truncated>`;
 }
 
 // The functions below reproduce `stringify(value, { lineWidth: 0, aliasDuplicateObjects: false, blockQuote: 'literal' })`
@@ -63,7 +242,7 @@ function stringifyValue(value: unknown, ctx: Context): string {
       let str = '';
       if (Array.isArray(value)) {
         if (value.length === 0) return '[]';
-        const itemCtx = { indent: ctx.indent + INDENT_STEP };
+        const itemCtx = { indent: ctx.indent + INDENT_STEP, tagPatterns: ctx.tagPatterns };
         for (const item of value as unknown[]) {
           str += `${str ? separator : ''}- ${stringifyValue(toSerializable(item), itemCtx)}`;
         }
@@ -92,8 +271,8 @@ function stringifyPair(rawKey: unknown, rawValue: unknown, ctx: Context): string
   const indent = ctx.indent + INDENT_STEP;
   const key = toSerializable(rawKey);
   const value = toSerializable(rawValue);
-  const keyStr = stringifyValue(key, { indent, implicitKey: true });
-  const valueStr = stringifyValue(value, { indent });
+  const keyStr = stringifyValue(key, { indent, implicitKey: true, tagPatterns: ctx.tagPatterns });
+  const valueStr = stringifyValue(value, { indent, tagPatterns: ctx.tagPatterns });
   if (isCollection(key) || keyStr.length > MAX_IMPLICIT_KEY_LENGTH) return `? ${keyStr}\n${ctx.indent}: ${valueStr}`;
   const isBlockCollection = isCollection(value) && valueStr !== '[]' && valueStr !== '{}';
   return `${keyStr}:${isBlockCollection ? `\n${indent}` : ' '}${valueStr}`;
@@ -134,7 +313,10 @@ function stringifyNumber(value: number): string {
   return Object.is(value, -0) ? '-0' : JSON.stringify(value);
 }
 
-function stringifyString(value: string, ctx: Context): string {
+function stringifyString(rawValue: string, ctx: Context): string {
+  const value = ctx.tagPatterns === undefined ? rawValue : escapeTags(rawValue, ctx.tagPatterns);
+  // A closing quote separates an unfinished tag prefix from the next mapping key.
+  if (ctx.tagPatterns?.length && /<\s*(?:\/\s*)?$/u.test(value)) return doubleQuotedString(value, ctx, false);
   // oxlint-disable-next-line no-control-regex -- control characters and lone surrogates can only be written escaped.
   return /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u{D800}-\u{DFFF}]/u.test(value)
     ? doubleQuotedString(value, ctx)
@@ -193,7 +375,7 @@ function singleQuotedString(value: string, ctx: Context): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
-function doubleQuotedString(value: string, ctx: Context): string {
+function doubleQuotedString(value: string, ctx: Context, foldMultiline = !ctx.implicitKey): string {
   const json = JSON.stringify(value);
   const indent = ctx.indent || (containsDocumentMarker(value) ? INDENT_STEP : '');
   let str = '';
@@ -217,7 +399,7 @@ function doubleQuotedString(value: string, ctx: Context): string {
       start = i + 1;
     } else if (
       json[i + 1] === 'n' &&
-      !ctx.implicitKey &&
+      foldMultiline &&
       json[i + 2] !== '"' &&
       json.length >= MIN_MULTI_LINE_DOUBLE_QUOTED_LENGTH
     ) {
