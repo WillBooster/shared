@@ -315,6 +315,8 @@ function stringifyNumber(value: number): string {
 
 function stringifyString(rawValue: string, ctx: Context): string {
   const value = ctx.tagPatterns === undefined ? rawValue : escapeTags(rawValue, ctx.tagPatterns);
+  // A closing quote separates an unfinished tag prefix from the next mapping key.
+  if (ctx.tagPatterns?.length && /<\s*(?:\/\s*)?$/u.test(value)) return doubleQuotedString(value, ctx);
   // oxlint-disable-next-line no-control-regex -- control characters and lone surrogates can only be written escaped.
   return /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u{D800}-\u{DFFF}]/u.test(value)
     ? doubleQuotedString(value, ctx)
