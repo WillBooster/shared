@@ -198,6 +198,11 @@ test('continues after rejected documents without extracting their nested members
     expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }]);
     expect(result.errors).toHaveLength(1);
   }
+  for (const uri of ['https://example.com', 'https://example.com/a//b/*c*/']) {
+    const result = recoverJson(`{"a":[}, "url":${uri} ]} {"verdict":"confirmed"}`);
+    expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }]);
+    expect(result.errors).toHaveLength(1);
+  }
   const prose = recoverJson('See [PR-12: fix] for details: {"verdict":"confirmed"}');
   expect(prose.candidates).toHaveLength(2);
   expect(prose.candidates[0]?.requiresConfirmation).toBe(true);

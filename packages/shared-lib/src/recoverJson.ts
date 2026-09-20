@@ -153,6 +153,9 @@ function skipRejectedCandidate(text: string, start: number, end: number): number
     else if (char === '}' || char === ']') {
       if (stack.at(-1) === char) stack.pop();
       if (stack.length === 0) return index + 1;
+    } else if (index === start || /[\s:,{[]/.test(text[index - 1]!)) {
+      const uriEnd = unquotedUriEnd(text, index, end);
+      if (uriEnd !== undefined) index = uriEnd - 1;
     }
   }
   return end;
@@ -199,8 +202,9 @@ class RecoveryParser {
     }
     if (char !== undefined && char in QUOTES) return this.string();
     const start = this.index;
-    const uri = /^[A-Za-z][A-Za-z\d+.-]*:\/\//.test(this.text.slice(start, this.end));
-    while (this.index < this.end && !/[\s,}\]]/.test(this.text[this.index]!) && (uri || !this.comment())) this.index++;
+    const uriEnd = unquotedUriEnd(this.text, start, this.end);
+    if (uriEnd !== undefined) this.index = uriEnd;
+    else while (this.index < this.end && !/[\s,}\]]/.test(this.text[this.index]!) && !this.comment()) this.index++;
     if (this.index === start) throw new Error('Expected a JSON value');
     const token = this.text.slice(start, this.index);
     if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(token)) return token;
@@ -366,4 +370,9 @@ class RecoveryParser {
   private comment(): boolean {
     return this.text.startsWith('//', this.index) || this.text.startsWith('/*', this.index);
   }
+}
+
+function unquotedUriEnd(text: string, start: number, end: number): number | undefined {
+  const match = /^[A-Za-z][A-Za-z\d+.-]*:\/\/[^\s,}\]]*/.exec(text.slice(start, end));
+  return match === null ? undefined : start + match[0].length;
 }
