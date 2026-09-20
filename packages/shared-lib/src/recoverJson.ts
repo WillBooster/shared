@@ -45,14 +45,23 @@ export function recoverJson(text: string): JsonRecovery {
     for (const fence of fences) {
       if (fence.index < consumed) continue;
       extractRegion(text, consumed, fence.index, result);
-      const start = fence.index + fence[0].length;
+      const parsedThrough = result.candidates.at(-1)?.end ?? consumed;
+      if (parsedThrough > fence.index) {
+        consumed = parsedThrough;
+        continue;
+      }
       const marker = fence[1]!;
+      const markerEnd = fence.index + fence[0].indexOf(marker) + marker.length;
+      const start = markerEnd + (/^[ \t]*json\b/i.exec(text.slice(markerEnd))?.[0].length ?? 0);
       const close = new RegExp(`^ {0,3}${marker[0]}{${marker.length},}[ \\t]*$`, 'gm');
       close.lastIndex = start;
       const match = close.exec(text);
       const end = match?.index ?? text.length;
       extractRegion(text, start, end, result);
-      consumed = match === null ? text.length : match.index + match[0].length;
+      consumed = Math.max(
+        result.candidates.at(-1)?.end ?? start,
+        match === null ? text.length : match.index + match[0].length
+      );
     }
     extractRegion(text, consumed, text.length, result);
   } else {
@@ -75,7 +84,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
       while (index < end && text[index] !== '{' && text[index] !== '[') index++;
     }
     if (index >= end) break;
-    const parser = new RecoveryParser(text, index, end);
+    const parser = new RecoveryParser(text, index, text.length);
     try {
       const json = parser.value(0);
       if (rootValue && index === firstIndex && text.slice(parser.index, end).trim() !== '') {
@@ -102,7 +111,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
 class RecoveryParser {
   readonly repairs: JsonRepair[] = [];
   readonly text: string;
-  readonly end: number;
+  end: number;
   index: number;
 
   constructor(text: string, index: number, end: number) {
@@ -119,10 +128,13 @@ class RecoveryParser {
       this.repair('incomplete', 'missing-value');
       return 'null';
     }
-    if (char === '{' || char === '[') return this.container(depth, char === '{');
+    if (char === '{' || char === '[') {
+      if (depth >= MAX_DEPTH) throw new Error('JSON nesting exceeds 128 levels');
+      return this.container(depth, char === '{');
+    }
     if (char !== undefined && char in QUOTES) return this.string();
     const start = this.index;
-    while (this.index < this.end && !/[\s,}\]:]/.test(this.text[this.index]!)) this.index++;
+    while (this.index < this.end && !/[\s,}\]:]/.test(this.text[this.index]!) && !this.comment()) this.index++;
     if (this.index === start) throw new Error('Expected a JSON value');
     const token = this.text.slice(start, this.index);
     if (/^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)$/.test(token)) return token;
@@ -141,12 +153,13 @@ class RecoveryParser {
     const items: string[] = [];
     const keys = new Set<string>();
     let afterComma = false;
+    let commaOffset = this.index;
     for (;;) {
       this.space();
       if (this.index >= this.end || this.text[this.index] === close) {
         if (this.index >= this.end) this.repair('incomplete', `missing-${close}`);
         else this.index++;
-        if (afterComma) this.repair('syntax', 'trailing-comma', this.index - 1);
+        if (afterComma) this.repair('syntax', 'trailing-comma', commaOffset);
         return (object ? '{' : '[') + items.join(',') + close;
       }
       if (this.text[this.index] === '}' || this.text[this.index] === ']') throw new Error('Mismatched closing bracket');
@@ -160,7 +173,7 @@ class RecoveryParser {
         const start = this.index;
         if (this.text[this.index]! in QUOTES) key = this.string();
         else {
-          while (this.index < this.end && !/[\s:,{}[\]]/.test(this.text[this.index]!)) this.index++;
+          while (this.index < this.end && !/[\s:,{}[\]]/.test(this.text[this.index]!) && !this.comment()) this.index++;
           if (this.index === start) throw new Error('Expected an object key');
           key = JSON.stringify(this.text.slice(start, this.index));
           this.repair('syntax', 'unquoted-key', start);
@@ -176,8 +189,10 @@ class RecoveryParser {
       items.push(key === undefined ? value : `${key}:${value}`);
       this.space();
       afterComma = this.text[this.index] === ',';
-      if (afterComma) this.index++;
-      else if (this.index < this.end && this.text[this.index] !== close) this.repair('syntax', 'missing-comma');
+      if (afterComma) {
+        commaOffset = this.index;
+        this.index++;
+      } else if (this.index < this.end && this.text[this.index] !== close) this.repair('syntax', 'missing-comma');
     }
   }
 
@@ -187,9 +202,23 @@ class RecoveryParser {
     const close = QUOTES[open];
     if (open !== '"') this.repair('syntax', 'non-json-quote', start);
     let value = '';
+    const family = open === '"' || open === '“' ? '"“”' : "'‘’";
+    let alternative: { end: number; value: string } | undefined;
     while (this.index < this.end) {
       const char = this.text[this.index++]!;
-      if (char === close) return JSON.stringify(value);
+      if (family.includes(char)) {
+        const after = this.text.slice(this.index, this.end).match(/^\s*(.)/s)?.[1];
+        const delimited = after === undefined || /[,}\]:"']/.test(after);
+        if (char === close) {
+          if (alternative !== undefined && !delimited) {
+            this.index = alternative.end;
+            this.repair('ambiguous', 'mismatched-quote', this.index - 1);
+            return JSON.stringify(alternative.value);
+          }
+          return JSON.stringify(value);
+        }
+        if (delimited) alternative ??= { end: this.index, value };
+      }
       if (char !== '\\') {
         if (char.codePointAt(0)! < 32) this.repair('syntax', 'unescaped-control-character', this.index - 1);
         value += char;
@@ -219,12 +248,24 @@ class RecoveryParser {
         this.repair('ambiguous', 'invalid-escape', escapeOffset);
       }
     }
+    if (alternative !== undefined) {
+      this.index = alternative.end;
+      this.repair('ambiguous', 'mismatched-quote', this.index - 1);
+      return JSON.stringify(alternative.value);
+    }
     this.repair('incomplete', 'unterminated-string', start);
     return JSON.stringify(value);
   }
 
   private space(): void {
     while (this.index < this.end) {
+      if (
+        (this.text.startsWith('```', this.index) || this.text.startsWith('~~~', this.index)) &&
+        /^ *$/.test(this.text.slice(this.text.lastIndexOf('\n', this.index - 1) + 1, this.index))
+      ) {
+        this.end = this.index;
+        break;
+      }
       if (/\s/.test(this.text[this.index]!)) {
         if (!/[ \t\r\n]/.test(this.text[this.index]!)) this.repair('syntax', 'non-json-whitespace');
         this.index++;
@@ -241,5 +282,9 @@ class RecoveryParser {
 
   private repair(kind: JsonRepair['kind'], reason: string, offset = this.index): void {
     this.repairs.push({ offset, kind, reason });
+  }
+
+  private comment(): boolean {
+    return this.text.startsWith('//', this.index) || this.text.startsWith('/*', this.index);
   }
 }

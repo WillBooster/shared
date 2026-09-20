@@ -76,7 +76,7 @@ test('exposes ambiguity and never translates domain values', () => {
   expect(recoverJson('{"__proto__":{"polluted":true}}').candidates[0]?.value).toEqual(
     JSON.parse('{"__proto__":{"polluted":true}}')
   );
-  expect(Object.hasOwn({}, 'polluted')).toBe(false);
+  expect('polluted' in {}).toBe(false);
 });
 
 test('bounds malformed input and does not mine a rejected outer document for a verdict', () => {
@@ -97,4 +97,43 @@ test('valid JSON survives truncation at every position without inventing a compl
       expect(() => JSON.parse(candidate.json)).not.toThrow();
     }
   }
+});
+
+test('reports the original trailing comma and enforces container depth consistently', () => {
+  for (const input of ['[1, ]', '{"a":1, \n }']) {
+    const repair = recoverJson(input).candidates[0]?.repairs.find((item) => item.reason === 'trailing-comma');
+    expect(repair?.offset).toBe(input.indexOf(','));
+  }
+  for (const middle of ['', '1']) {
+    expect(recoverJson('['.repeat(128) + middle + ']'.repeat(128)).errors).toEqual([]);
+    expect(recoverJson('['.repeat(129) + middle + ']'.repeat(129)).errors).toHaveLength(1);
+  }
+});
+
+test('keeps fence opener content and fences embedded inside JSON strings', () => {
+  const embedded = '{"explanation":"Use this:\n```js\nconst a = 1;\n```\nDone"}';
+  for (const input of [embedded, `\`\`\`json\n${embedded}\n\`\`\``]) {
+    const candidate = recoverJson(input).candidates[0]!;
+    expect(candidate.value).toEqual({ explanation: 'Use this:\n```js\nconst a = 1;\n```\nDone' });
+    expect(candidate.requiresConfirmation).toBe(false);
+  }
+  expect(recoverJson('```json {"verdict":"confirmed"}\n```').candidates[0]?.value).toEqual({ verdict: 'confirmed' });
+});
+
+test('removes adjacent comments without incorporating them into keys or values', () => {
+  for (const input of ['{a/*comment*/:1}', '{"a":1/*comment*/}', '{a//comment\n:1}', '{"a":1//comment\n}']) {
+    const candidate = recoverJson(input).candidates[0]!;
+    expect(candidate.value).toEqual({ a: 1 });
+    expect(candidate.requiresConfirmation).toBe(false);
+  }
+});
+
+test('recovers mismatched quotes as ambiguous while preserving valid quoted content', () => {
+  const candidate = recoverJson('{"verdict": "refuted”, "notes": "fine"}').candidates[0]!;
+  expect(candidate.value).toEqual({ verdict: 'refuted', notes: 'fine' });
+  expect(candidate.requiresConfirmation).toBe(true);
+  expect(candidate.repairs.some((repair) => repair.reason === 'mismatched-quote')).toBe(true);
+  const valid = '{"notes":"He said “hi”, then left"}';
+  expect(recoverJson(valid).candidates[0]?.value).toEqual(JSON.parse(valid));
+  expect(recoverJson(valid).candidates[0]?.repairs).toEqual([]);
 });
