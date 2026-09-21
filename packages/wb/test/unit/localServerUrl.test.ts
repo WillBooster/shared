@@ -101,7 +101,7 @@ async function publishRunningServerUrl(wbEnv: string, packageName: string): Prom
 }
 
 function runScript(env: NodeJS.ProcessEnv = {}, cwd = projectDirPath): string {
-  const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', 'print-base-url.js'], {
+  const result = childProcess.spawnSync('node', [binIndexPath, 'run', 'print-base-url.js'], {
     cwd,
     encoding: 'utf8',
     env: { PATH: process.env.PATH, WB_ENV: 'development', ...env },

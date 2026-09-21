@@ -185,7 +185,6 @@
         "oxfmt": "0.67.0",
         "oxlint": "1.82.0",
         "oxlint-tsgolint": "7.0.2001",
-        "rolldown": "1.2.8",
         "sort-package-json": "4.0.0",
         "textlint-rule-no-hankaku-kana": "2.0.1",
         "type-fest": "5.9.0",
