@@ -15,7 +15,7 @@ const nodePath = Bun.which('node');
 if (!nodePath) throw new Error('node must be on PATH.');
 
 beforeAll(buildWb, 120_000);
-// Every test runs the CLI in one or more node child processes.
+// Every test runs the CLI in child processes.
 setDefaultTimeout(30_000);
 
 function isFnoxAvailable(): boolean {
