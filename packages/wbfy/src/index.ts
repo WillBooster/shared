@@ -143,8 +143,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
   // happens to be skipped would surface it only later.
   const bunVersion = Bun.version;
   if (Bun.semver.order(bunVersion, minimumBunVersion) < 0) {
-    console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${bunVersion}). Upgrade Bun and re-run.`);
-    return true;
+    return !runWithSupportedBun();
   }
 
   // A `-dirty-local` label identifies an edited checkout, whose next build produces different files
@@ -379,7 +378,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       if (config.doesContainVscodeSettingsJson) {
         promises.push(generateVscodeSettings(config));
       }
-      if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
+      if (doesContainJsOrTs(config)) {
         promises.push(generateTsconfig(config));
       }
       if (doesContainJsOrTs(config)) {
@@ -423,6 +422,36 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     spawnSync('bun', ['cleanup'], rootDirPath);
   }
   return hasInvalidPackageConfig;
+}
+
+function runWithSupportedBun(): boolean {
+  const cwd = process.cwd();
+  const latestBunVersion = spawnSyncAndReturnStdout('mise', ['--no-config', 'latest', 'bun'], cwd);
+  if (!latestBunVersion || Bun.semver.order(latestBunVersion, minimumBunVersion) < 0) {
+    console.error(
+      `wbfy requires Bun >= ${minimumBunVersion} (found ${Bun.version}), but mise could not resolve a supported version.`
+    );
+    return false;
+  }
+
+  const entryPoint = process.argv[1];
+  if (!entryPoint) {
+    console.error(
+      `wbfy requires Bun >= ${minimumBunVersion} (found ${Bun.version}), but its entry point is unavailable.`
+    );
+    return false;
+  }
+
+  // Use a config-free mise environment so a repository's old Bun pin cannot prevent wbfy from
+  // updating that same pin. The relaunched process then performs the complete operation once.
+  console.info(`Restart wbfy with Bun ${latestBunVersion} (current: ${Bun.version}).`);
+  return (
+    spawnSyncAndReturnStatus(
+      'mise',
+      ['--no-config', 'x', `bun@${latestBunVersion}`, '--', 'bun', entryPoint, ...process.argv.slice(2)],
+      cwd
+    ) === 0
+  );
 }
 
 /**

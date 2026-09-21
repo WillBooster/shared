@@ -18,7 +18,7 @@ test(
       writeSmallProjectFixture(tempDirPath);
 
       runCommand('git', ['init'], tempDirPath);
-      runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
+      runCommand('mise', ['--no-config', 'x', 'bun@1.3.14', '--', 'bun', distIndexPath, tempDirPath], packageDirPath);
 
       runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
       runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
@@ -84,7 +84,6 @@ function writeSmallProjectFixture(dirPath: string): void {
       {
         private: true,
         name: 'small-project',
-        type: 'module',
         description: 'Temporary fixture for wbfy cleanup idempotency tests',
         repository: 'github:example/small-project',
       },
@@ -93,7 +92,8 @@ function writeSmallProjectFixture(dirPath: string): void {
     )}\n`
   );
   fs.writeFileSync(path.join(dirPath, 'README.md'), '# Small Project\n');
-  fs.writeFileSync(path.join(dirPath, 'src', 'index.ts'), 'export const answer = 42;\n');
+  fs.writeFileSync(path.join(dirPath, 'mise.toml'), '[tools]\nbun = "1.3.14"\n');
+  fs.writeFileSync(path.join(dirPath, 'src', 'index.cjs'), 'module.exports = { answer: 42 };\n');
 }
 
 function runCommand(
