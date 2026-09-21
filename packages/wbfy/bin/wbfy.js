@@ -10,27 +10,38 @@ await import('../dist/index.js');
 
 function runWithSupportedBun() {
   const cwd = process.cwd();
-  const latestResult = Bun.spawnSync(['mise', '--no-config', 'latest', 'bun'], {
-    cwd,
-    stdout: 'pipe',
-    stderr: 'inherit',
-  });
+  let latestResult;
+  try {
+    latestResult = Bun.spawnSync(['mise', '--no-config', 'latest', 'bun'], {
+      cwd,
+      stdout: 'pipe',
+      stderr: 'inherit',
+    });
+  } catch {
+    return reportBootstrapFailure('mise could not resolve a supported version');
+  }
   const latestBunVersion = latestResult.stdout.toString().trim();
   if (latestResult.exitCode !== 0 || !isSupportedBunVersion(latestBunVersion)) {
-    console.error(
-      `wbfy requires Bun >= ${minimumBunVersion} (found ${Bun.version}), but mise could not resolve a supported version.`
-    );
-    return 1;
+    return reportBootstrapFailure('mise could not resolve a supported version');
   }
 
   // Use a config-free mise environment so a repository's old Bun pin cannot prevent wbfy from
   // updating that same pin. The relaunched process then performs the complete operation once.
   console.info(`Restart wbfy with Bun ${latestBunVersion} (current: ${Bun.version}).`);
-  const result = Bun.spawnSync(
-    ['mise', '--no-config', 'x', `bun@${latestBunVersion}`, '--', 'bun', process.argv[1], ...process.argv.slice(2)],
-    { cwd, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit' }
-  );
-  return result.exitCode ?? 1;
+  try {
+    const result = Bun.spawnSync(
+      ['mise', '--no-config', 'x', `bun@${latestBunVersion}`, '--', 'bun', process.argv[1], ...process.argv.slice(2)],
+      { cwd, stdin: 'inherit', stdout: 'inherit', stderr: 'inherit' }
+    );
+    return result.exitCode ?? 1;
+  } catch {
+    return reportBootstrapFailure(`mise could not start Bun ${latestBunVersion}`);
+  }
+}
+
+function reportBootstrapFailure(reason) {
+  console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${Bun.version}), but ${reason}.`);
+  return 1;
 }
 
 function isSupportedBunVersion(version) {

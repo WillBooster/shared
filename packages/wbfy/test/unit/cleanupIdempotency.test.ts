@@ -85,6 +85,21 @@ for (const fixture of smallProjectFixtures) {
   );
 }
 
+test('an outdated runtime reports a clear error when mise is unavailable', () => {
+  ensureBuiltCli();
+  runCommand('mise', ['--no-config', 'install', 'bun@1.0.0'], packageDirPath);
+  const oldBunDir = runCommand('mise', ['--no-config', 'where', 'bun@1.0.0'], packageDirPath).stdout.trim();
+  const result = child_process.spawnSync(path.join(oldBunDir, 'bin', 'bun'), [binPath, '--help'], {
+    cwd: packageDirPath,
+    encoding: 'utf8',
+    env: { PATH: '/usr/bin:/bin' },
+  });
+
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain('wbfy requires Bun >= 1.4.0 (found 1.0.0)');
+  expect(result.stderr).not.toContain('TypeError');
+});
+
 function ensureBuiltCli(): void {
   if (isDistUpToDate()) return;
 
