@@ -6,7 +6,9 @@ import { describe, expect, it } from 'bun:test';
 
 import { buildIfNeeded } from '../../src/commands/buildIfNeeded.js';
 
-import { initializeProjectDirectory, tempDir } from '../helpers/shared.js';
+import { createTempDir, initializeProjectDirectory } from '../helpers/shared.js';
+
+const tempDir = createTempDir();
 
 describe('buildIfNeeded', () => {
   it('app', async () => {

@@ -13,7 +13,9 @@ import {
 } from '../../src/project.js';
 
 import { usesBunRuntime } from '../../src/utils/runtime.js';
-import { initializeProjectDirectory, tempDir } from '../helpers/shared.js';
+import { createTempDir, initializeProjectDirectory } from '../helpers/shared.js';
+
+const tempDir = createTempDir();
 
 describe('project', () => {
   it.each([

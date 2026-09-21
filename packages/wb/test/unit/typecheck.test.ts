@@ -4,7 +4,9 @@ import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
-import { initializeProjectDirectory, tempDir } from '../helpers/shared.js';
+import { createTempDir, initializeProjectDirectory } from '../helpers/shared.js';
+
+const tempDir = createTempDir();
 
 beforeAll(buildWb, 120_000);
 

@@ -7,12 +7,19 @@ import { removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-no
 
 import { clearProjectCaches } from '../../src/project.js';
 
-// Per test file: parallel test workers would otherwise copy fixtures over each other's directories.
-export const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-test-'));
-// Registered at import time, so it runs after the importing test file's tests.
-afterAll(() => {
-  fs.rmSync(tempDir, { force: true, recursive: true });
-});
+/**
+ * Creates a fixture directory that the calling test file removes in `afterAll`, so concurrent test
+ * files never copy fixtures over each other's directories. Call it at the test file's top level: the
+ * hook attaches to the scope being collected, and without --parallel all test files share this
+ * module, so a hook registered here at import time would run after the first importing file only.
+ */
+export function createTempDir(): string {
+  const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-test-'));
+  afterAll(() => {
+    fs.rmSync(dirPath, { force: true, recursive: true });
+  });
+  return dirPath;
+}
 
 export async function initializeProjectDirectory(dirPath: string): Promise<void> {
   // The process-global Project caches would otherwise serve instances built from a previous
