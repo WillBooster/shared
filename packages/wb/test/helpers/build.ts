@@ -26,32 +26,20 @@ export async function buildWb(): Promise<void> {
 
 async function acquireLock(): Promise<void> {
   fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  // Waiters never remove the lock: a stale-lock takeover cannot be made atomic, so two waiters could
+  // both take over and build concurrently. A build takes seconds, so a lock held this long is one
+  // left by a killed test run.
+  const deadline = Date.now() + 90_000;
   for (;;) {
     try {
-      fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
+      fs.writeFileSync(lockPath, '', { flag: 'wx' });
       return;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     }
-    // A lock left by a killed test run would otherwise block every later run.
-    const ownerPid = Number(
-      await Bun.file(lockPath)
-        .text()
-        .catch(() => '')
-    );
-    if (ownerPid && !isProcessRunning(ownerPid)) {
-      fs.rmSync(lockPath, { force: true });
-      continue;
+    if (Date.now() > deadline) {
+      throw new Error(`${lockPath} is still locked; delete it if no other test run is building wb.`);
     }
     await Bun.sleep(100);
-  }
-}
-
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
   }
 }

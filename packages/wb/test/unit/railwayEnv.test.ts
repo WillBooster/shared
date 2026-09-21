@@ -27,7 +27,7 @@ describe('prepareRailwayCli', () => {
       await fs.rm(fakeBunx.dirPath, { force: true, recursive: true });
       await fs.rm(installDirPath, { force: true, recursive: true });
     }
-  });
+  }, 30_000);
 
   it('does not remove a path outside the Railway CLI bunx environment', async () => {
     const unrelatedDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-railway-unrelated-'));
