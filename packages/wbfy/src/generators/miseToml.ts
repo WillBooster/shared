@@ -1,3 +1,4 @@
+import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -10,42 +11,66 @@ import { spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 
 interface MiseToml {
   tools?: Record<string, unknown>;
-  [key: string]: unknown;
 }
 
 // The oldest Bun runtime wbfy supports.
 export const minimumBunVersion = '1.4.0';
 
 /**
- * Pins Node.js and the latest Bun and (when fnox.toml exists) fnox versions while preserving
- * unrelated mise settings.
+ * Pins Node.js and the latest Bun and (when fnox.toml exists) fnox versions. Only the changed pin
+ * lines are edited in place: re-serializing the parsed TOML would drop every comment and collapse
+ * multi-line strings (e.g. mise task scripts) in the rest of the file.
  */
 export async function generateMiseToml(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateMiseToml', async () => {
     const miseTomlPath = path.resolve(config.dirPath, 'mise.toml');
-    // A parse failure must abort instead of falling back to {}: regenerating from an empty object
-    // would silently replace the user's existing (albeit broken) mise.toml.
-    const settings = parseMiseToml(miseTomlPath);
-    const tools = { ...settings.tools };
+    const content = readMiseToml(miseTomlPath);
+    // A parse failure must abort: editing pins in a broken mise.toml would hide the breakage.
+    const tools = (Bun.TOML.parse(content) as MiseToml).tools ?? {};
 
-    // Ensure Node.js is always pinned: generated hooks and CI run `mise install`, and an unpinned
-    // Node would come from whatever happens to be on PATH.
-    // Lift-then-pin: the lift only touches exact pins and the pin only touches selectors, so
-    // ordering the lift first avoids resolving `mise latest node@lts` twice for unpinned repos.
-    tools.node = pinConcreteToolVersion(
-      'node',
-      liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
-      config.dirPath
-    );
-    tools.bun = pinLatestToolVersion('bun', tools.bun, config.dirPath);
+    const pins: Record<string, unknown> = {
+      // Ensure Node.js is always pinned: generated hooks and CI run `mise install`, and an unpinned
+      // Node would come from whatever happens to be on PATH.
+      // Lift-then-pin: the lift only touches exact pins and the pin only touches selectors, so
+      // ordering the lift first avoids resolving `mise latest node@lts` twice for unpinned repos.
+      node: pinConcreteToolVersion(
+        'node',
+        liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
+        config.dirPath
+      ),
+      bun: pinLatestToolVersion('bun', tools.bun, config.dirPath),
+    };
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
-      tools.fnox = pinLatestToolVersion('fnox', tools.fnox, config.dirPath);
+      pins.fnox = pinLatestToolVersion('fnox', tools.fnox, config.dirPath);
     }
-    settings.tools = tools;
 
-    // @ts-expect-error -- Bun 1.4 provides TOML.stringify before the age-gated @types/bun version declares it.
-    await fsUtil.generateFile(miseTomlPath, Bun.TOML.stringify(settings));
+    let newContent = content;
+    for (const [tool, version] of Object.entries(pins)) {
+      if (version === tools[tool]) continue;
+      assert.ok(typeof version === 'string', `The resolved ${tool} pin must be a version string.`);
+      newContent = setToolVersion(newContent, tool, version, tool in tools);
+    }
+    await fsUtil.generateFile(miseTomlPath, newContent);
   });
+}
+
+function setToolVersion(content: string, tool: string, version: string, exists: boolean): string {
+  const pin = `${tool} = "${version}"`;
+  const section = /^\[tools\]\n(?:(?!\[).*(?:\n|$))*/mu.exec(content)?.[0];
+  if (section === undefined) return `${content && `${content.trimEnd()}\n\n`}[tools]\n${pin}\n`;
+
+  let newSection: string;
+  if (exists) {
+    newSection = section.replace(new RegExp(`^${tool} = .*$`, 'mu'), pin);
+    assert.ok(
+      newSection !== section,
+      `Write the ${tool} pin in mise.toml as one \`${tool} = ...\` line under [tools].`
+    );
+  } else {
+    const body = section.trimEnd();
+    newSection = `${body}\n${pin}\n${section.slice(body.length + 1)}`;
+  }
+  return content.replace(section, () => newSection);
 }
 
 /** Updates to the latest release across major versions without downgrading existing exact pins. */
@@ -101,15 +126,13 @@ function pinConcreteToolVersion(tool: string, version: unknown, cwd: string): un
   return semver.valid(resolvedVersion) ? resolvedVersion : (version ?? 'latest');
 }
 
-function parseMiseToml(miseTomlPath: string): MiseToml {
-  let content: string;
+function readMiseToml(miseTomlPath: string): string {
   try {
-    content = fs.readFileSync(miseTomlPath, 'utf8');
+    return fs.readFileSync(miseTomlPath, 'utf8');
   } catch (error) {
     // Only a repository without mise.toml starts from an empty configuration; an unreadable file
     // (e.g. permissions) must abort instead of being overwritten with generated settings.
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '';
     throw error;
   }
-  return Bun.TOML.parse(content) as MiseToml;
 }

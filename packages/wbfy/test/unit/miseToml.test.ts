@@ -32,6 +32,10 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
   }
 }
 
+function miseToml(bun: string, fnoxLine: string): string {
+  return `# Toolchain\n[tools]\nnode = "22.0.0"\nbun = "${bun}"\npython = "3.12.0"\n${fnoxLine}\n[tasks.hello]\n# Multi-line on purpose.\nrun = """\necho hello\n"""\n`;
+}
+
 test('pins the concrete version behind an lts/* mise selector and adds a concrete Bun pin', async () => {
   const content = await generateFrom({ 'mise.toml': '[tools]\nnode = "lts/*"\n' });
 
@@ -40,20 +44,13 @@ test('pins the concrete version behind an lts/* mise selector and adds a concret
   expect(content).toMatch(/bun = "\d+\.\d+\.\d+"/u);
 }, 60_000);
 
-test('updates Bun and fnox without downgrading newer pins or changing unrelated settings', async () => {
+test('updates Bun and fnox without downgrading newer pins or rewriting the rest of the file', async () => {
   // Require successful live lookups: accepting original pins would let a broken updater pass.
   const latestBun = Bun.spawnSync(['mise', '--no-config', 'latest', 'bun']).stdout.toString().trim();
   const latestFnox = Bun.spawnSync(['mise', '--no-config', 'latest', 'fnox']).stdout.toString().trim();
-  const content = await generateFrom({
-    'mise.toml':
-      '[tools]\nnode = "22.0.0"\nbun = "0.1.0"\nfnox = "0.1.0"\npython = "3.12.0"\n[settings]\nexperimental = true\n',
-    'fnox.toml': '',
-  });
+  const content = await generateFrom({ 'mise.toml': miseToml('0.1.0', ''), 'fnox.toml': '' });
 
-  expect(Bun.TOML.parse(content)).toEqual({
-    tools: { node: '22.0.0', bun: latestBun, fnox: latestFnox, python: '3.12.0' },
-    settings: { experimental: true },
-  });
+  expect(content).toBe(miseToml(latestBun, `fnox = "${latestFnox}"\n`));
 
   const newerBun = semver.inc(latestBun, 'patch');
   const newerFnox = semver.inc(latestFnox, 'patch');
