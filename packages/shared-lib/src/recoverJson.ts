@@ -264,7 +264,14 @@ function scalarStart(text: string, start: number, end: number): boolean {
   const first = text[start];
   if (first === undefined) return false;
   const keyword = /^([A-Za-z]+)/.exec(text.slice(start, end))?.[1];
-  return first in QUOTES || /[-\d]/.test(first) || (keyword !== undefined && Object.hasOwn(KEYWORDS, keyword));
+  return (
+    first in QUOTES ||
+    /[-\d]/.test(first) ||
+    (keyword !== undefined &&
+      (Object.hasOwn(KEYWORDS, keyword) ||
+        (Object.keys(KEYWORDS).some((word) => word.startsWith(keyword)) &&
+          /^[^\S\r\n]*(?:[\r\n]|$)/.test(text.slice(start + keyword.length, end)))))
+  );
 }
 
 class RecoveryParser {

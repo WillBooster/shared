@@ -250,6 +250,28 @@ test('does not treat numbered prose or Markdown bullets as root scalar answers',
   expect(recoverJson('```json\n"answer"\n```').candidates[0]?.value).toBe('answer');
 });
 
+test('retains standalone truncated keyword answers without guessing their values', () => {
+  for (const token of ['tru', 'fals', 'nul', 'Non']) {
+    for (const input of [token, `${token}\n`, `Answer:\n\`\`\`json\n${token}\n\`\`\``]) {
+      const result = recoverJson(input);
+      expect(result.candidates).toHaveLength(1);
+      const candidate = result.candidates[0]!;
+      expect(candidate.value).toBe(token);
+      expect(JSON.parse(candidate.json)).toBe(token);
+      expect(candidate.requiresConfirmation).toBe(true);
+      expect(candidate.repairs.some((repair) => repair.kind !== 'syntax')).toBe(true);
+    }
+  }
+  for (const input of ['nul\ntrue', 'true\nnul']) {
+    const result = recoverJson(input);
+    expect(result.candidates.map((candidate) => candidate.value)).toEqual(
+      input.startsWith('nul') ? ['nul', true] : [true, 'nul']
+    );
+    expect(result.candidates.find((candidate) => candidate.value === 'nul')?.requiresConfirmation).toBe(true);
+  }
+  for (const input of ['Tru here', 'true story follows:', 'answer']) expect(recoverJson(input).candidates).toEqual([]);
+});
+
 test('rescues partial explanations without presenting them as complete answers', () => {
   for (const suffix of ['unfinished', 'unfinished\\', String.raw`unfinished\u12`]) {
     const text = `Here is the result:\n\`\`\`json\n{"verdict":"refuted","notes":"${suffix}`;
