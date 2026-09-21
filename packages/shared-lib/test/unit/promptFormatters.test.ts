@@ -35,8 +35,8 @@ test('formatMessagesForPrompt escapes roles absent from the conversation', () =>
 });
 
 test('formatFilesForPrompt preserves Markdown-significant file names when read back', () => {
-  const paths = ['a`b`c.ts', 'name #', '`quoted`.ts', '1.py', '2.py'];
-  const files = paths.map((path) => ({ path, data: `contents of ${path}` }));
+  const paths = ['a`b`c.ts', 'name #', '`quoted`.ts', '1.py', '2.py', 'foo.ts', ' foo.ts', 'foo.ts '];
+  const files = paths.map((path) => ({ path, data: `contents of ${path}.` }));
   const sections = extractSections(formatFilesForPrompt(files), paths);
   for (const file of files) {
     expect(extractIfSingleOutermostCodeBlock(sections[file.path] ?? '')).toBe(file.data);

@@ -29,7 +29,7 @@ test('extractCodeBlocks strips the opening fence indentation and reports an uncl
 });
 
 test('extractCodeBlocks ignores inline code and indented code', () => {
-  expect(extractCodeBlocks('Run ```npm test``` now.\n\n    ```\n    indented\n    ```')).toEqual([]);
+  expect(extractCodeBlocks('Run ```npm test``` now.\n```npm test```\n\n    ```\n    indented\n    ```')).toEqual([]);
 });
 
 test('extractIfSingleOutermostCodeBlock keeps fences nested without lengthening the outer fence', () => {
@@ -151,4 +151,11 @@ test('extractSections distinguishes numeric file names and decimal titles from n
     '2.py': 'second',
   });
   expect(extractSections('# 2.1\nother section', ['1.1'])).toEqual({});
+});
+
+test('extractSections reads a Markdown-wrapped answer followed by prose', () => {
+  for (const language of ['markdown', 'md', '']) {
+    const markdown = `\`\`\`${language}\n# Answer\n42\n\`\`\`\nHope this helps!`;
+    expect(extractSections(markdown, ['Answer'])).toEqual({ Answer: '42' });
+  }
 });

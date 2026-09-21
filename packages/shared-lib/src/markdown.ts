@@ -41,7 +41,8 @@ export function extractCodeBlocks(markdown: string): CodeBlock[] {
 
 /**
  * Returns the contents of the code block that an LLM wrapped its whole response in, or `text` itself when the
- * response does not start with a fence or the fence's language is not one of `languages` (compared case-insensitively).
+ * response does not start with a fence or the fence's language is not one of a nonempty `languages` list
+ * (compared case-insensitively). An omitted or empty list allows any language.
  * When the response also ends with a matching closing fence, everything between its first and last lines is returned,
  * so fences the LLM nested without lengthening the outer fence stay in the contents. Otherwise the first block is
  * returned and text after it is dropped; an unclosed block runs to the end of the text.
@@ -104,13 +105,13 @@ export function extractSections<const Name extends string>(
 /**
  * Returns every ATX heading of Markdown text in order, with the source text under it.
  * Only headings starting at the beginning of a line outside fenced code blocks count; setext headings (underlined
- * with `=` or `-`) are ignored. When the whole text is wrapped in a `markdown`, `md`, or unlabeled code block, as
+ * with `=` or `-`) are ignored. When the text starts with a `markdown`, `md`, or unlabeled code block, as
  * `extractIfSingleOutermostCodeBlock` finds it (so fences nested inside stay in the contents), the headings inside
- * that block are used if there are any.
+ * that block are used if there are any, dropping any trailing prose.
  */
 export function parseMarkdownSections(markdown: string): MarkdownSection[] {
   const block = findOutermostCodeBlock(markdown);
-  if (block?.isWhole && WRAPPED_MARKDOWN_LANGUAGES.has(block.language)) {
+  if (block && WRAPPED_MARKDOWN_LANGUAGES.has(block.language)) {
     const sections = splitSections(block.code);
     if (sections.length > 0) return sections;
   }
@@ -145,7 +146,7 @@ function splitSections(markdown: string): MarkdownSection[] {
   });
 }
 
-function findOutermostCodeBlock(text: string): { language: string; code: string; isWhole: boolean } | undefined {
+function findOutermostCodeBlock(text: string): { language: string; code: string } | undefined {
   // Keep the opening fence's indentation, which is stripped from the contents.
   const lines = splitLines(text.replace(/^\s*\n/u, '').trimEnd());
   const fence = parseOpeningFence(lines[0] ?? '');
@@ -159,7 +160,6 @@ function findOutermostCodeBlock(text: string): { language: string; code: string;
       .slice(1, end)
       .map((line) => stripIndent(line, fence.indent))
       .join('\n'),
-    isWhole: end >= lastIndex,
   };
 }
 
@@ -177,8 +177,10 @@ function findHeadings(lines: readonly string[]): { index: number; depth: number;
     const text = (match[2] ?? '')
       // The closing sequence of an ATX heading needs a space before it, so `# C#` keeps its `#`.
       .replace(/(?:^|[ \t]+)#+[ \t]*$/u, '')
-      .replaceAll(/(`+)(.+?)\1/gu, '$2')
-      .trim();
+      .trim()
+      .replaceAll(/(`+)(.+?)\1/gu, (_match, _delimiter: string, content: string) =>
+        content.startsWith(' ') && content.endsWith(' ') ? content.slice(1, -1) : content
+      );
     headings.push({ index, depth: match[1]?.length ?? 1, text });
   }
   return headings;
