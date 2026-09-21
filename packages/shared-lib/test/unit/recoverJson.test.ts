@@ -184,6 +184,9 @@ test('does not treat numbered prose or Markdown bullets as root scalar answers',
     const unfinished = recoverJson(`${prefix}-5x`).candidates[0]!;
     expect(unfinished.value).toBe('-5x');
     expect(unfinished.requiresConfirmation).toBe(true);
+    expect(unfinished.repairs).toContainEqual(
+      expect.objectContaining({ reason: 'unquoted-value', kind: 'incomplete' })
+    );
   }
   expect(recoverJson('```json\n"answer"\n```').candidates[0]?.value).toBe('answer');
 });
@@ -194,12 +197,24 @@ test('rescues partial explanations without presenting them as complete answers',
     const candidate = recoverJson(text).candidates[0]!;
     expect(candidate.value).toEqual({ verdict: 'refuted', notes: suffix });
     expect(candidate.requiresConfirmation).toBe(true);
-    expect(candidate.repairs.some((repair) => repair.kind === 'incomplete')).toBe(true);
+    expect(candidate.repairs).toContainEqual(
+      expect.objectContaining({ reason: 'unterminated-string', kind: 'incomplete' })
+    );
+    if (suffix.endsWith('\\'))
+      expect(candidate.repairs).toContainEqual(
+        expect.objectContaining({ reason: 'truncated-escape', kind: 'incomplete' })
+      );
   }
-  for (const text of ['{"verdict":"refuted"', '{"verdict":"refuted","notes":', '[1,2,']) {
+  for (const [text, value, reasons] of [
+    ['{"verdict":"refuted"', '{"verdict":"refuted"}', ['missing-}']],
+    ['{"verdict":"refuted","notes":', '{"verdict":"refuted","notes":null}', ['missing-value', 'missing-}']],
+    ['[1,2,', '[1,2]', ['missing-]']],
+  ] as const) {
     const candidate = recoverJson(text).candidates[0]!;
     expect(candidate.requiresConfirmation).toBe(true);
-    expect(() => JSON.parse(candidate.json)).not.toThrow();
+    expect(JSON.parse(candidate.json)).toEqual(JSON.parse(value));
+    for (const reason of reasons)
+      expect(candidate.repairs).toContainEqual(expect.objectContaining({ reason, kind: 'incomplete' }));
   }
 });
 
