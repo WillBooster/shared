@@ -47,6 +47,16 @@ test('returns all fenced answers and original response offsets', () => {
   expect(repaired.repairs.some((repair) => text.slice(repair.offset).startsWith('verdict'))).toBe(true);
 });
 
+test('preserves standard JSON escapes in structured explanations without repairs', () => {
+  const input = String.raw`{"url":"https:\/\/example.com","pattern":"\\d+","notes":"\"quoted\"\nline\r\n\ttab\bbackspace\fformfeed"}`;
+  const result = recoverJson(input);
+  expect(result.errors).toEqual([]);
+  expect(result.candidates).toHaveLength(1);
+  expect(result.candidates[0]?.value).toEqual(JSON.parse(input));
+  expect(result.candidates[0]?.repairs).toEqual([]);
+  expect(result.candidates[0]?.requiresConfirmation).toBe(false);
+});
+
 test('does not treat numbered prose or Markdown bullets as root scalar answers', () => {
   for (const prose of [
     '3 issues found. Details:',
@@ -313,6 +323,16 @@ test('consumes leading comments before root detection and retains their provenan
 });
 
 test('keeps trailing comment examples out of candidates and marks ambiguous scalar-tail fragments', () => {
+  const chain = recoverJson('42, tail\n{"a":1}\n{"b":2}\n{"c":3}');
+  expect(chain.candidates.map((candidate) => candidate.value)).toEqual([42, { a: 1 }, { b: 2 }, { c: 3 }]);
+  expect(chain.candidates.every((candidate) => candidate.requiresConfirmation)).toBe(true);
+  for (const candidate of chain.candidates.slice(1)) {
+    expect(candidate.repairs.some((repair) => repair.reason === 'fragment-after-ambiguous-scalar')).toBe(true);
+  }
+  const reset = recoverJson('42, tail\n{"a":1}\n```json\n{"b":2}\n```');
+  expect(reset.candidates.map((candidate) => candidate.value)).toEqual([42, { a: 1 }, { b: 2 }]);
+  expect(reset.candidates.at(-1)?.repairs).toEqual([]);
+  expect(reset.candidates.at(-1)?.requiresConfirmation).toBe(false);
   for (const suffix of [' // not {"verdict":"refuted"}', ' /* {"verdict":"refuted"} */']) {
     const text = '{"verdict":"confirmed"}' + suffix;
     const result = recoverJson(text);
