@@ -129,11 +129,25 @@ test('exposes surplus root closers and their continuation without guessing paren
     const diagnostic = result.errors[0]!;
     expect(JSON.parse(diagnostic.message.split('): ')[1]!)).toContain('"c":2');
   }
-  for (const input of ['```json\n{} } /* extra brace */ ]\n```', '```json\n[1]\n}\n```']) {
+  for (const [body, reasons] of [
+    ['{} } /* extra brace */ ]\n', ['surplus-closing-bracket', 'block-comment', 'surplus-closing-bracket']],
+    ['[1]\n}\n', ['surplus-closing-bracket']],
+    ['{"a":1}} } }', ['surplus-closing-bracket', 'surplus-closing-bracket', 'surplus-closing-bracket']],
+    ['{"a":1}} // tail {"b":2}\n', ['surplus-closing-bracket', 'line-comment']],
+  ] as const) {
+    const input = `\`\`\`json\n${body}\n\`\`\``;
     const result = recoverJson(input);
     expect(result.candidates).toHaveLength(1);
-    expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+    const candidate = result.candidates[0]!;
+    expect(candidate.requiresConfirmation).toBe(true);
+    expect(input.slice(candidate.start, candidate.end)).toBe(`${body}\n`);
+    expect(candidate.repairs.map((repair) => repair.reason)).toEqual(reasons);
     expect(result.errors).toHaveLength(1);
+    const diagnostic = result.errors[0]!;
+    expect(diagnostic.message).toContain('(excerpt): ');
+    expect(JSON.parse(diagnostic.message.split('): ')[1]!)).toBe(
+      input.slice(diagnostic.offset, input.lastIndexOf('```'))
+    );
   }
   const input = '{"a":1}}' + 'x'.repeat(1000);
   const result = recoverJson(input);
@@ -662,6 +676,12 @@ test('retains bounded source context when an ambiguous quote boundary hides an a
   const short = recoverJson(wrapped).errors[0]!;
   expect(short.message).toContain(' (excerpt): ');
   expect(JSON.parse(short.message.slice(short.message.indexOf('): ') + 3))).toBe(wrapped.slice(3));
+  const regions = recoverJson('```json\n"verdict": "x"}\n```\n```json\n{"b":2}\n```');
+  expect(regions.candidates.map((candidate) => candidate.value)).toEqual(['verdict', { b: 2 }]);
+  expect(regions.errors).toHaveLength(1);
+  const bounded = regions.errors[0]!;
+  expect(bounded.message).toContain(' (excerpt): ');
+  expect(JSON.parse(bounded.message.split('): ')[1]!)).toBe(': "x"}\n');
   const tail = 'line\n'.repeat(1000);
   const large = recoverJson(`"{"${tail}`).errors[0]!;
   expect(large.message).toContain(' (truncated excerpt): ');
