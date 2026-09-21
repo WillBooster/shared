@@ -59,7 +59,7 @@
     "@willbooster/oxlint-config": "1.4.8",
     "@willbooster/shared-lib": "workspace:*",
     "@willbooster/wb": "workspace:*",
-    "build-ts": "21.0.14",
+    "build-ts": "21.0.16",
     "lefthook": "2.1.12",
     "oxfmt": "0.67.0",
     "oxlint": "1.82.0",
