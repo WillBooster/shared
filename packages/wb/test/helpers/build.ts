@@ -12,10 +12,12 @@ import { expect } from 'bun:test';
  */
 export async function buildWb(): Promise<void> {
   // Only workers of one parallel run race each other, so the lock is named after that run's
-  // coordinator (the workers' parent): a lock left by a force-killed run is never consulted again.
-  // No waiter ever removes a lock, since deciding it is stale and removing it cannot be atomic.
+  // coordinator (the workers' parent), by PID plus start time since a PID alone is reused: a lock left
+  // by a force-killed run then never matches a later run. No waiter ever removes a lock, since
+  // deciding it is stale and removing it cannot be atomic.
   const lockPath =
-    process.env.BUN_TEST_WORKER_ID && path.resolve('node_modules', '.cache', `wb-test-build-${process.ppid}.lock`);
+    process.env.BUN_TEST_WORKER_ID &&
+    path.resolve('node_modules', '.cache', `wb-test-build-${process.ppid}-${readStartTime(process.ppid)}.lock`);
   if (lockPath) await acquireLock(lockPath);
   try {
     // buildIfNeeded hashes the environment, so the per-worker IDs would make every worker rebuild.
@@ -41,4 +43,13 @@ async function acquireLock(lockPath: string): Promise<void> {
     if (Date.now() > deadline) throw new Error(`Timed out waiting for another test worker to build wb (${lockPath}).`);
     await Bun.sleep(100);
   }
+}
+
+function readStartTime(pid: number): string {
+  const result = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], {
+    encoding: 'utf8',
+    env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+  });
+  expect(result.status, result.stderr).toBe(0);
+  return result.stdout.trim().replaceAll(/\W+/g, '-');
 }
