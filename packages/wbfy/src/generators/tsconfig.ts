@@ -331,7 +331,8 @@ function addUndiciTypesPathMapping(settings: TsConfigJson, config: PackageConfig
   // Map undici-types only when bun-types actually loads: an explicit `types` list loads it iff it
   // contains "bun" (even on React Native, whose projects may opt in by hand); with `types`
   // omitted, TypeScript's automatic @types inclusion loads it because wbfy installs @types/bun
-  // for every TypeScript project except React Native, which uses @tsconfig/react-native instead.
+  // for every JavaScript or TypeScript project except React Native, which uses
+  // @tsconfig/react-native instead.
   const types = settings.compilerOptions?.types;
   if (types ? !types.includes('bun') : config.depending.reactNative) return;
   const correctMapping = `${getRootDir(config)}/node_modules/undici-types/index.d.ts`;
