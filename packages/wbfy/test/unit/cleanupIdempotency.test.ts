@@ -115,6 +115,14 @@ test('an outdated runtime reports a clear error when mise is unavailable', () =>
     expect(gateResult.status).toBe(0);
     expect(fs.readFileSync(path.join(tempHomePath, '.bunfig.toml'), 'utf8')).toContain('minimumReleaseAge');
 
+    const pathResult = child_process.spawnSync(oldBunPath, [copiedBinPath, '.', 'apply-release-age-gate'], {
+      cwd: packageDirPath,
+      encoding: 'utf8',
+      env,
+    });
+    expect(pathResult.status).toBe(1);
+    expect(pathResult.stderr).toContain('mise could not resolve a supported version');
+
     const result = child_process.spawnSync(oldBunPath, [copiedBinPath, '--help'], {
       cwd: packageDirPath,
       encoding: 'utf8',

@@ -4,10 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 const minimumBunVersion = '1.4.0';
 const applyReleaseAgeGateCommand = 'apply-release-age-gate';
+const globalBooleanOptionNames = new Set(['--force', '--skipDeps', '--skip-deps', '--verbose']);
 
 if (!isSupportedBunVersion(Bun.version)) {
   const releaseAgeGateApplied = applyReleaseAgeGate();
-  if (process.argv.slice(2).includes(applyReleaseAgeGateCommand)) {
+  if (isApplyReleaseAgeGateInvocation(process.argv.slice(2))) {
     process.exit(releaseAgeGateApplied ? 0 : 1);
   }
   process.exit(runWithSupportedBun());
@@ -61,6 +62,22 @@ function applyReleaseAgeGate() {
 function reportBootstrapFailure(reason) {
   console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${Bun.version}), but ${reason}.`);
   return 1;
+}
+
+function isApplyReleaseAgeGateInvocation(args) {
+  for (const argument of args) {
+    if (isGlobalBooleanOption(argument)) continue;
+    return argument === applyReleaseAgeGateCommand;
+  }
+  return false;
+}
+
+function isGlobalBooleanOption(argument) {
+  if (/^-[fdv]+$/.test(argument)) return true;
+
+  const optionName = argument.split('=', 1)[0];
+  if (globalBooleanOptionNames.has(optionName)) return true;
+  return optionName.startsWith('--no-') && globalBooleanOptionNames.has(`--${optionName.slice(5)}`);
 }
 
 function isSupportedBunVersion(version) {
