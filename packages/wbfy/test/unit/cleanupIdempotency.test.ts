@@ -15,6 +15,7 @@ interface SmallProjectFixture {
   sourceFileName: string;
   source: string;
   outdatedBun: boolean;
+  dependencies?: Record<string, string>;
 }
 
 const smallProjectFixtures: SmallProjectFixture[] = [
@@ -31,6 +32,14 @@ const smallProjectFixtures: SmallProjectFixture[] = [
     sourceFileName: 'index.cjs',
     source: 'module.exports = { answer: 42 };\n',
     outdatedBun: true,
+  },
+  {
+    name: 'React Native CommonJS JavaScript',
+    isEsm: false,
+    sourceFileName: 'index.cjs',
+    source: 'module.exports = { answer: 42 };\n',
+    outdatedBun: false,
+    dependencies: { 'react-native': '0.87.1' },
   },
 ];
 
@@ -119,6 +128,7 @@ function writeSmallProjectFixture(dirPath: string, fixture: SmallProjectFixture)
         ...(fixture.isEsm ? { type: 'module' } : {}),
         description: 'Temporary fixture for wbfy cleanup idempotency tests',
         repository: 'github:example/small-project',
+        ...(fixture.dependencies ? { dependencies: fixture.dependencies } : {}),
       },
       undefined,
       2

@@ -48,7 +48,12 @@ const oxfmtConfig = require('${oxfmtBaseConfigModule}');
 const oxfmtResolvedConfig: OxfmtConfig = oxfmtConfig.default ?? oxfmtConfig;`
     )}
 
-${managedConfigBlocks.getBlock('export', 'module.exports = oxfmtResolvedConfig;')}
+${managedConfigBlocks.getBlock(
+  'export',
+  config.depending.reactNative
+    ? 'declare const module: { exports: OxfmtConfig };\n\nmodule.exports = oxfmtResolvedConfig;'
+    : 'module.exports = oxfmtResolvedConfig;'
+)}
 `;
   }
 

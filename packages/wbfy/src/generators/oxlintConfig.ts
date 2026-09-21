@@ -57,13 +57,19 @@ function getConfigContent(config: PackageConfig): string {
       'base',
       `import type { OxlintConfig } from 'oxlint';
 
+${config.depending.reactNative ? 'declare function structuredClone<T>(value: T): T;\n' : ''}
 // oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids ESM package loading issues.
 const oxlintBaseConfig = require('${oxlintBaseConfigModule}');
 
 ${getResolvedConfigContent('oxlintBaseConfig.default ?? oxlintBaseConfig', isRootConfig)}`
     )}
 
-${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;')}
+${managedConfigBlocks.getBlock(
+  'export',
+  config.depending.reactNative
+    ? 'declare const module: { exports: OxlintConfig };\n\nmodule.exports = oxlintResolvedConfig;'
+    : 'module.exports = oxlintResolvedConfig;'
+)}
 `;
   }
 
