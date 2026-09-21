@@ -379,10 +379,8 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       if (config.doesContainVscodeSettingsJson) {
         promises.push(generateVscodeSettings(config));
       }
-      if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
-        promises.push(generateTsconfig(config));
-      }
       if (doesContainJsOrTs(config)) {
+        promises.push(generateTsconfig(config));
         promises.push(generateOxfmtConfig(config));
         promises.push(generateOxlintConfig(config, rootConfig));
       } else if (!config.isRoot && config.doesContainPackageJson && doesContainJsOrTs(rootConfig)) {

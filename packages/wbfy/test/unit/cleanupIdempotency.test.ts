@@ -8,14 +8,24 @@ import { expect, test } from 'bun:test';
 const packageDirPath = path.resolve(import.meta.dirname, '..', '..');
 const distIndexPath = path.join(packageDirPath, 'dist', 'index.js');
 
-test(
-  'applying wbfy keeps a small project clean after rerunning cleanup',
-  () => {
+const smallProjectFixtures = [
+  { name: 'ESM TypeScript', isEsm: true, sourceFileName: 'index.ts', source: 'export const answer = 42;\n' },
+  {
+    name: 'CommonJS JavaScript',
+    isEsm: false,
+    sourceFileName: 'index.cjs',
+    source: 'module.exports = { answer: 42 };\n',
+  },
+];
+
+test.each(smallProjectFixtures)(
+  'applying wbfy keeps a small $name project clean after rerunning cleanup',
+  (fixture) => {
     ensureBuiltCli();
 
     const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-cleanup-idempotency-'));
     try {
-      writeSmallProjectFixture(tempDirPath);
+      writeSmallProjectFixture(tempDirPath, fixture);
 
       runCommand('git', ['init'], tempDirPath);
       runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
@@ -76,7 +86,7 @@ function getLatestMtimeMs(entryPath: string): number {
   return maxMtimeMs;
 }
 
-function writeSmallProjectFixture(dirPath: string): void {
+function writeSmallProjectFixture(dirPath: string, fixture: (typeof smallProjectFixtures)[number]): void {
   fs.mkdirSync(path.join(dirPath, 'src'), { recursive: true });
   fs.writeFileSync(
     path.join(dirPath, 'package.json'),
@@ -84,7 +94,7 @@ function writeSmallProjectFixture(dirPath: string): void {
       {
         private: true,
         name: 'small-project',
-        type: 'module',
+        ...(fixture.isEsm ? { type: 'module' } : {}),
         description: 'Temporary fixture for wbfy cleanup idempotency tests',
         repository: 'github:example/small-project',
       },
@@ -93,7 +103,7 @@ function writeSmallProjectFixture(dirPath: string): void {
     )}\n`
   );
   fs.writeFileSync(path.join(dirPath, 'README.md'), '# Small Project\n');
-  fs.writeFileSync(path.join(dirPath, 'src', 'index.ts'), 'export const answer = 42;\n');
+  fs.writeFileSync(path.join(dirPath, 'src', fixture.sourceFileName), fixture.source);
 }
 
 function runCommand(
