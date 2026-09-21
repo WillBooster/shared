@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { findTestStructureViolations, reportTestStructureViolations } from '../../src/utils/testStructure.js';
 
@@ -73,7 +73,7 @@ describe('reportTestStructureViolations', () => {
   it('reports every violating project and passes a clean one', async () => {
     const cleanDirPath = await createProjectDir([], ['test/unit/example.test.ts']);
     const violatingDirPath = await createProjectDir([], ['test/example.test.ts']);
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {});
     try {
       expect(
         reportTestStructureViolations([
@@ -81,7 +81,7 @@ describe('reportTestStructureViolations', () => {
           { dirPath: violatingDirPath, name: 'violating', packageJson: {} },
         ])
       ).toBe(true);
-      expect(consoleError).toHaveBeenCalledOnce();
+      expect(consoleError).toHaveBeenCalledTimes(1);
       expect(consoleError.mock.calls[0]?.[0]).toContain('violating');
     } finally {
       consoleError.mockRestore();

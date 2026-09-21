@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 import { spawnAsync } from '../../src/spawn.js';
 
@@ -6,7 +6,7 @@ describe('spawn', () => {
   it.each([['ls'], ['ls -al']])('spawn "%s" successfully', async (commandWithArgs) => {
     const [command, ...args] = commandWithArgs.split(' ') as [string, ...string[]];
     const ret = await spawnAsync(command, args);
-    expect(ret.pid).to.greaterThan(0);
+    expect(ret.pid).toBeGreaterThan(0);
     expect(ret.stdout).toBeTruthy();
     expect(ret.stderr).toBeFalsy();
     expect(ret.signal).toBeNull();
@@ -15,7 +15,7 @@ describe('spawn', () => {
 
   it.each([['echo'], ['echo 1']])('spawn "%s" without args successfully', async (command) => {
     const ret = await spawnAsync(command, undefined, { shell: true });
-    expect(ret.pid).to.greaterThan(0);
+    expect(ret.pid).toBeGreaterThan(0);
     expect(ret.stdout).toBeTruthy();
     expect(ret.stderr).toBeFalsy();
     expect(ret.signal).toBeNull();
@@ -25,7 +25,7 @@ describe('spawn', () => {
   it.each([['ls ----']])('get non-zero code from "%s"', async (commandWithArgs) => {
     const [command, ...args] = commandWithArgs.split(' ') as [string, ...string[]];
     const ret = await spawnAsync(command, args);
-    expect(ret.pid).to.greaterThan(0);
+    expect(ret.pid).toBeGreaterThan(0);
     expect(ret.stdout).toBeFalsy();
     expect(ret.stderr).toBeTruthy();
     expect(ret.signal).toBeNull();
@@ -33,6 +33,6 @@ describe('spawn', () => {
   });
 
   it('failed to spawn "lll"', async () => {
-    await expect(spawnAsync('lll')).rejects.toThrow();
+    expect(spawnAsync('lll')).rejects.toThrow();
   });
 });

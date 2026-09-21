@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 
-import { expect, test } from 'vitest';
+import { expect, test } from 'bun:test';
 
 import { parseIsoDate } from '../../src/index.js';
 
@@ -30,7 +30,7 @@ test.each(['UTC', 'Asia/Tokyo', 'America/New_York'])('parses independently of th
 });
 
 test('normalizes equivalent instants across date and year boundaries', () => {
-  const expected = { kind: 'datetime', value: '2025-12-31T23:30:00Z' };
+  const expected = { kind: 'datetime', value: '2025-12-31T23:30:00Z' } as const;
   for (const value of ['2026-01-01T08:30+09:00', '2025-12-31T18:30:00-0500', '2025-12-31T23:30:00Z']) {
     expect(parseIsoDate(value)).toEqual(expected);
   }

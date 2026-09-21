@@ -4,10 +4,19 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test';
+
+import { buildWb } from '../helpers/build.js';
 
 const binIndexPath = fileURLToPath(new URL('../../bin/index.js', import.meta.url));
 const sourceIndexPath = fileURLToPath(new URL('../../src/index.ts', import.meta.url));
+// The released CLI runs under node (bin/index.js's shebang), not the bun test runner's runtime.
+const nodePath = Bun.which('node');
+if (!nodePath) throw new Error('node must be on PATH.');
+
+beforeAll(buildWb, 120_000);
+// Every test runs the CLI in child processes.
+setDefaultTimeout(30_000);
 
 function isFnoxAvailable(): boolean {
   return childProcess.spawnSync('fnox', ['--version'], { stdio: 'ignore' }).status === 0;
@@ -34,7 +43,7 @@ describe('bin/index.js dotenv fast path', () => {
     const probePath = path.join(binDirPath, 'review-probe');
     await fs.writeFile(probePath, '#!/bin/sh\necho probe-ok\n', { mode: 0o755 });
 
-    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'dotenv', '--', 'review-probe'], {
+    const result = childProcess.spawnSync(nodePath, [binIndexPath, 'dotenv', '--', 'review-probe'], {
       cwd: projectDirPath,
       encoding: 'utf8',
       // A yarn-like environment: the temporary bin folder is the only PATH entry yarn adds,
@@ -48,7 +57,7 @@ describe('bin/index.js dotenv fast path', () => {
 
   it('does not rewrite dotenv child arguments containing run', async () => {
     const result = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, 'dotenv', '--', 'node', '-e', 'console.log(process.argv.slice(1).join(","))', 'run', 'first'],
       {
         cwd: projectDirPath,
@@ -60,7 +69,7 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('loads fnox-provided environment variables', async () => {
+  it.if(isFnoxAvailable())('loads fnox-provided environment variables', async () => {
     // The released `wb dotenv` routes through bin/dotenv.js (not dist), so fnox loading must be
     // exercised through bin/index.js to catch drift from the TypeScript implementation.
     await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
@@ -70,7 +79,7 @@ describe('bin/index.js dotenv fast path', () => {
     );
 
     const result = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$ENV" "$FNOX_ONLY"'],
       {
         cwd: projectDirPath,
@@ -83,7 +92,7 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('loads development-profile fnox secrets when WB_ENV is unset', async () => {
+  it.if(isFnoxAvailable())('loads development-profile fnox secrets when WB_ENV is unset', async () => {
     // An unset WB_ENV must select the development profile (like wb's main loader), not the base
     // `[secrets]` table alone: a repo keeping dev-only secrets in `[profiles.development.secrets]`
     // would otherwise silently miss them.
@@ -94,7 +103,7 @@ describe('bin/index.js dotenv fast path', () => {
     );
 
     const result = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$BASE_ONLY" "$DEV_ONLY"'],
       {
         cwd: projectDirPath,
@@ -108,7 +117,7 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('honors an explicit FNOX_PROFILE when WB_ENV is unset', async () => {
+  it.if(isFnoxAvailable())('honors an explicit FNOX_PROFILE when WB_ENV is unset', async () => {
     // Defaulting to development must not override an explicitly selected FNOX_PROFILE: fnox honors it,
     // so `wb dotenv` without WB_ENV must too (the profile still folds into the `--profile` it passes).
     await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
@@ -117,21 +126,17 @@ describe('bin/index.js dotenv fast path', () => {
       '[secrets]\nSELECTED = { default = "base" }\n\n[profiles.development.secrets]\nSELECTED = { default = "development" }\n\n[profiles.test.secrets]\nSELECTED = { default = "test" }\n'
     );
 
-    const result = childProcess.spawnSync(
-      process.execPath,
-      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$SELECTED"'],
-      {
-        cwd: projectDirPath,
-        encoding: 'utf8',
-        env: { PATH: process.env.PATH, FNOX_PROFILE: 'test' },
-      }
-    );
+    const result = childProcess.spawnSync(nodePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$SELECTED"'], {
+      cwd: projectDirPath,
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, FNOX_PROFILE: 'test' },
+    });
     expect(result.stderr).toBe('');
     expect(result.stdout).toBe('test\n');
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('overrides an inherited value with a profile key repeating the base value', async () => {
+  it.if(isFnoxAvailable())('overrides an inherited value with a profile key repeating the base value', async () => {
     // The forced mode must win over the parent shell for every key the profile itself declares,
     // including one whose value coincides with the base value
     // (https://github.com/WillBooster/shared/issues/1080).
@@ -141,20 +146,16 @@ describe('bin/index.js dotenv fast path', () => {
       '[secrets]\nPORT = { default = "3000" }\n\n[profiles.test.secrets]\nPORT = { default = "3000" }\n'
     );
 
-    const result = childProcess.spawnSync(
-      process.execPath,
-      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$PORT"'],
-      {
-        cwd: projectDirPath,
-        encoding: 'utf8',
-        env: { PATH: process.env.PATH, WB_ENV: 'test', PORT: '9999' },
-      }
-    );
+    const result = childProcess.spawnSync(nodePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$PORT"'], {
+      cwd: projectDirPath,
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, WB_ENV: 'test', PORT: '9999' },
+    });
     expect(result.stdout).toBe('3000\n');
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('overrides an inherited value derived from a profile-overridden key', async () => {
+  it.if(isFnoxAvailable())('overrides an inherited value derived from a profile-overridden key', async () => {
     // DATABASE_URL is declared only in the base table, so it is absent from the profile's own
     // declarations, yet the profile's DB_HOST makes its exported value profile-specific: the value
     // comparison must keep covering that shape (https://github.com/WillBooster/shared/issues/930).
@@ -165,7 +166,7 @@ describe('bin/index.js dotenv fast path', () => {
     );
 
     const result = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$DATABASE_URL"'],
       {
         cwd: projectDirPath,
@@ -177,7 +178,7 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('warns when a profile default references a base secret', async () => {
+  it.if(isFnoxAvailable())('warns when a profile default references a base secret', async () => {
     // Such a reference is forbidden (docs/expected-repository-rules.md) because it makes the
     // profile-only export fail, leaving only the value comparison: a profile value equal to the
     // base value silently stops overriding, so the lost precision must be reported.
@@ -187,22 +188,18 @@ describe('bin/index.js dotenv fast path', () => {
       '[secrets]\nHOST = { default = "example.com" }\nPORT = { default = "3000" }\n\n[profiles.test.secrets]\nPORT = { default = "6002" }\nURL = { default = "https://${HOST}/x" }\n'
     );
 
-    const result = childProcess.spawnSync(
-      process.execPath,
-      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$PORT"'],
-      {
-        cwd: projectDirPath,
-        encoding: 'utf8',
-        env: { PATH: process.env.PATH, WB_ENV: 'test', PORT: '9999' },
-      }
-    );
+    const result = childProcess.spawnSync(nodePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$PORT"'], {
+      cwd: projectDirPath,
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, WB_ENV: 'test', PORT: '9999' },
+    });
     expect(result.stderr).toContain('[profiles.test.secrets]');
     // The value comparison still overrides PORT, whose profile value differs from the base one.
     expect(result.stdout).toBe('6002\n');
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())(
+  it.if(isFnoxAvailable())(
     'rejects an env source whose WB_ENV disagrees with the default development cascade',
     async () => {
       // The development profile is selected even when WB_ENV is unset (the cascade defaults to
@@ -216,7 +213,7 @@ describe('bin/index.js dotenv fast path', () => {
       );
 
       const result = childProcess.spawnSync(
-        process.execPath,
+        nodePath,
         [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo should-not-run'],
         {
           cwd: projectDirPath,
@@ -230,7 +227,7 @@ describe('bin/index.js dotenv fast path', () => {
     }
   );
 
-  it.runIf(isFnoxAvailable())('allows a non-standard profile (NODE_ENV=qa) to carry a standard WB_ENV', async () => {
+  it.if(isFnoxAvailable())('allows a non-standard profile (NODE_ENV=qa) to carry a standard WB_ENV', async () => {
     // `NODE_ENV=qa` selects the `qa` fnox profile while WB_ENV stays a standard mode — a supported
     // selection the mismatch guard must not reject (it enforces only standard cascades, like the
     // main loader).
@@ -241,7 +238,7 @@ describe('bin/index.js dotenv fast path', () => {
     );
 
     const result = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$WB_ENV" "$SELECTED"'],
       {
         cwd: projectDirPath,
@@ -262,7 +259,7 @@ describe('bin/index.js dotenv fast path', () => {
     await fs.mkdir(berryBinDirPath, { recursive: true });
     await fs.writeFile(path.join(berryBinDirPath, 'review-probe'), '#!/bin/sh\necho pnp-ok\n', { mode: 0o755 });
 
-    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'dotenv', '--', 'review-probe'], {
+    const result = childProcess.spawnSync(nodePath, [binIndexPath, 'dotenv', '--', 'review-probe'], {
       cwd: projectDirPath,
       encoding: 'utf8',
       env: { PATH: `${berryBinDirPath}:/usr/bin:/bin`, BERRY_BIN_FOLDER: berryBinDirPath },
@@ -285,38 +282,35 @@ describe('bin/index.js run command', () => {
     await fs.rm(projectDirPath, { force: true, recursive: true });
   });
 
-  it.runIf(isFnoxAvailable())(
-    'runs TypeScript with Node and forwards environment variables and arguments',
-    async () => {
-      await fs.writeFile(
-        path.join(projectDirPath, 'fnox.toml'),
-        '[secrets]\nLOADED_BY_WB = { default = "from-fnox" }\n\n[profiles.development]\n'
-      );
-      await fs.writeFile(
-        path.join(projectDirPath, 'probe.ts'),
-        "const value: string = `${process.env.LOADED_BY_WB}:${process.argv.slice(2).join(',')}`;\nconsole.log(value);\n"
-      );
+  it.if(isFnoxAvailable())('runs TypeScript with Node and forwards environment variables and arguments', async () => {
+    await fs.writeFile(
+      path.join(projectDirPath, 'fnox.toml'),
+      '[secrets]\nLOADED_BY_WB = { default = "from-fnox" }\n\n[profiles.development]\n'
+    );
+    await fs.writeFile(
+      path.join(projectDirPath, 'probe.ts'),
+      "const value: string = `${process.env.LOADED_BY_WB}:${process.argv.slice(2).join(',')}`;\nconsole.log(value);\n"
+    );
 
-      const result = childProcess.spawnSync(
-        process.execPath,
-        [binIndexPath, 'run', '--quiet-env', 'probe.ts', 'first', '--', '--second'],
-        {
-          cwd: projectDirPath,
-          encoding: 'utf8',
-          env: { PATH: process.env.PATH },
-        }
-      );
-      expect(result.stderr).toBe('');
-      expect(result.stdout).toBe('from-fnox:first,--,--second\n');
-      expect(result.status).toBe(0);
-    }
-  );
+    const result = childProcess.spawnSync(
+      nodePath,
+      [binIndexPath, 'run', '--quiet-env', 'probe.ts', 'first', '--', '--second'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('from-fnox:first,--,--second\n');
+    expect(result.status).toBe(0);
+  });
 
   it('distinguishes a global option value named like a command from the run command', async () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
     const result = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       // "test" is both a wb command name and a standard mode: the option must consume it as its
       // value, leaving the following "run" as the command.
       [binIndexPath, '--working-dir', projectDirPath, '--quiet-env', '--cascade-env', 'test', 'run', 'probe.js'],
@@ -330,7 +324,7 @@ describe('bin/index.js run command', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('enforces the project environment contract on the default path', async () => {
+  it.if(isFnoxAvailable())('enforces the project environment contract on the default path', async () => {
     await fs.writeFile(path.join(projectDirPath, 'package.json'), '{}');
     await fs.writeFile(
       path.join(projectDirPath, 'fnox.toml'),
@@ -338,7 +332,7 @@ describe('bin/index.js run command', () => {
     );
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
-    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', 'probe.js'], {
+    const result = childProcess.spawnSync(nodePath, [binIndexPath, 'run', 'probe.js'], {
       cwd: projectDirPath,
       encoding: 'utf8',
       env: { PATH: process.env.PATH, CI: 'true' },
@@ -355,7 +349,7 @@ describe('bin/index.js run command', () => {
     );
 
     const dryRunResult = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, 'run', '--quiet-env', '--dry-run', 'probe.js'],
       {
         cwd: projectDirPath,
@@ -368,7 +362,7 @@ describe('bin/index.js run command', () => {
     expect(dryRunResult.status).toBe(0);
 
     const forwardedResult = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, 'run', '--quiet-env', 'probe.js', '--dry-run'],
       {
         cwd: projectDirPath,
@@ -380,7 +374,7 @@ describe('bin/index.js run command', () => {
     expect(forwardedResult.status).toBe(0);
 
     const separatedResult = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, 'run', '--quiet-env', 'probe.js', '--dry-run', '--', '--child'],
       {
         cwd: projectDirPath,
@@ -396,7 +390,7 @@ describe('bin/index.js run command', () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
     const negatedResult = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, 'run', '--no-auto-cascade-env', '--quiet-env', 'probe.js'],
       {
         cwd: projectDirPath,
@@ -407,7 +401,7 @@ describe('bin/index.js run command', () => {
     expect(negatedResult.stdout).toBe('executed\n');
     expect(negatedResult.status).toBe(0);
 
-    const groupedResult = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '-dv', 'probe.js'], {
+    const groupedResult = childProcess.spawnSync(nodePath, [binIndexPath, 'run', '-dv', 'probe.js'], {
       cwd: projectDirPath,
       encoding: 'utf8',
       env: { PATH: process.env.PATH },
@@ -417,7 +411,7 @@ describe('bin/index.js run command', () => {
     expect(groupedResult.status).toBe(0);
 
     const attachedValueResult = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, 'run', `-w${projectDirPath}`, '--quiet-env', 'probe.js'],
       {
         encoding: 'utf8',
@@ -432,15 +426,11 @@ describe('bin/index.js run command', () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
     for (const optionArgs of [['--dry-run', 'false'], ['-d=false'], ['-d', 'false']]) {
-      const result = childProcess.spawnSync(
-        process.execPath,
-        [binIndexPath, 'run', '--quiet-env', ...optionArgs, 'probe.js'],
-        {
-          cwd: projectDirPath,
-          encoding: 'utf8',
-          env: { PATH: process.env.PATH },
-        }
-      );
+      const result = childProcess.spawnSync(nodePath, [binIndexPath, 'run', '--quiet-env', ...optionArgs, 'probe.js'], {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      });
       expect(result.stderr).toBe('');
       expect(result.stdout).toBe('executed\n');
       expect(result.status).toBe(0);
@@ -451,7 +441,7 @@ describe('bin/index.js run command', () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(process.argv.slice(2).join(","));\n');
 
     const result = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, 'run', '--quiet-env', 'probe.js', '--', '__WB_RUN_SCRIPT_ARGS__', 'omega'],
       {
         cwd: projectDirPath,
@@ -463,14 +453,14 @@ describe('bin/index.js run command', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('rejects an invalid WB_ENV in a standalone script directory', async () => {
+  it.if(isFnoxAvailable())('rejects an invalid WB_ENV in a standalone script directory', async () => {
     await fs.writeFile(
       path.join(projectDirPath, 'fnox.toml'),
       '[secrets]\nWB_ENV = { default = "prodcution" }\n\n[profiles.development]\n'
     );
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
-    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
+    const result = childProcess.spawnSync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
       cwd: projectDirPath,
       encoding: 'utf8',
       env: { PATH: process.env.PATH },
@@ -484,7 +474,7 @@ describe('bin/index.js run command', () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(process.env.WB_ENV);\n');
 
     const result = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, 'run', '--quiet-env', '--cascade-env', 'production', 'probe.js'],
       {
         cwd: projectDirPath,
@@ -501,7 +491,7 @@ describe('bin/index.js run command', () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(JSON.stringify(process.argv.slice(2)));\n');
 
     const result = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, 'run', '--quiet-env', 'probe.js', '001', '1e3', '0x10'],
       {
         cwd: projectDirPath,
@@ -522,7 +512,7 @@ describe('bin/index.js run command', () => {
       "import { execFileSync } from 'node:child_process';\nprocess.stdout.write(execFileSync('run-probe'));\n"
     );
 
-    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
+    const result = childProcess.spawnSync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
       cwd: projectDirPath,
       encoding: 'utf8',
       env: { PATH: `${berryBinDirPath}:${process.env.PATH}`, BERRY_BIN_FOLDER: berryBinDirPath },
@@ -534,12 +524,12 @@ describe('bin/index.js run command', () => {
 
   it('warns when a bun-node shim wins node resolution on PATH', async () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
-    // The shim delegates to the current runtime so child processes still work under the test.
+    // The shim delegates to node so child processes still work under the test.
     const shimDirPath = path.join(projectDirPath, 'bun-node-review');
     await fs.mkdir(shimDirPath);
-    await fs.writeFile(path.join(shimDirPath, 'node'), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
+    await fs.writeFile(path.join(shimDirPath, 'node'), `#!/bin/sh\nexec "${nodePath}" "$@"\n`, { mode: 0o755 });
 
-    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
+    const result = childProcess.spawnSync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
       cwd: projectDirPath,
       encoding: 'utf8',
       env: { PATH: `${shimDirPath}:${process.env.PATH}` },
@@ -556,14 +546,14 @@ describe('bin/index.js run command', () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
     const realNodeDirPath = path.join(projectDirPath, 'real-node-bin');
     await fs.mkdir(realNodeDirPath);
-    await fs.writeFile(path.join(realNodeDirPath, 'node'), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, {
+    await fs.writeFile(path.join(realNodeDirPath, 'node'), `#!/bin/sh\nexec "${nodePath}" "$@"\n`, {
       mode: 0o755,
     });
     const fallbackDirPath = path.join(projectDirPath, 'bun-node-fallback-bin');
     await fs.mkdir(fallbackDirPath);
-    await fs.symlink(process.execPath, path.join(fallbackDirPath, 'node'));
+    await fs.symlink(nodePath, path.join(fallbackDirPath, 'node'));
 
-    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
+    const result = childProcess.spawnSync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
       cwd: projectDirPath,
       encoding: 'utf8',
       env: { PATH: `${realNodeDirPath}:${process.env.PATH}:${fallbackDirPath}` },
@@ -613,7 +603,7 @@ describe('bin/index.js run command', () => {
       "console.log(`bun-script:${process.argv.slice(2).join(',')}`);\n"
     );
 
-    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe', 'argument'], {
+    const result = childProcess.spawnSync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe', 'argument'], {
       cwd: projectDirPath,
       encoding: 'utf8',
       env: { PATH: process.env.PATH },
@@ -633,7 +623,7 @@ describe('bin/index.js run command', () => {
     await fs.mkdir(binDirPath, { recursive: true });
     await fs.writeFile(path.join(binDirPath, 'probe'), '#!/bin/sh\necho "bin:$@"\n', { mode: 0o755 });
 
-    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe', 'argument'], {
+    const result = childProcess.spawnSync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe', 'argument'], {
       cwd: projectDirPath,
       encoding: 'utf8',
       // Simulate being spawned from the "probe" package script, where `bun run probe` would
@@ -658,7 +648,7 @@ describe('bin/index.js run command', () => {
     await fs.writeFile(path.join(binDirPath, 'probe'), '#!/bin/sh\necho "bin:$@"\n', { mode: 0o755 });
 
     const result = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, '--working-dir', subDirPath, '--quiet-env', 'run', 'probe', 'argument'],
       {
         cwd: projectDirPath,
@@ -686,7 +676,7 @@ describe('bin/index.js run command', () => {
     );
 
     const result = childProcess.spawnSync(
-      process.execPath,
+      nodePath,
       [binIndexPath, '--working-dir', childDirPath, '--quiet-env', 'run', 'probe'],
       {
         cwd: projectDirPath,
@@ -705,7 +695,7 @@ describe('bin/index.js run command', () => {
   });
 
   it('prints usage instead of starting a runtime without a script', () => {
-    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run'], {
+    const result = childProcess.spawnSync(nodePath, [binIndexPath, 'run'], {
       cwd: projectDirPath,
       encoding: 'utf8',
       env: { PATH: process.env.PATH },

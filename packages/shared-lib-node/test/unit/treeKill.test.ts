@@ -2,7 +2,7 @@ import type { ChildProcessByStdio } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import type { Readable } from 'node:stream';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 import {
   createTreeScript,

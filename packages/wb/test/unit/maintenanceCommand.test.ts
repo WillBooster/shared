@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 import { getMaintenancePidFilePath } from '../../src/commands/maintenance.js';
 
@@ -33,7 +33,7 @@ describe('wb maintenance', () => {
       expect(result.status).toBe(0);
       expect(result.stdout).toContain(`Stopped maintenance server on port ${port}.`);
       await waitForExit(maintenance);
-      await expect(fetchStatus(port)).resolves.toBeUndefined();
+      expect(fetchStatus(port)).resolves.toBeUndefined();
     } finally {
       terminateProcessGroup(maintenance);
     }
@@ -50,7 +50,7 @@ describe('wb maintenance', () => {
       server = spawnNodeServer(port);
       await waitForHttpStatus(port, 200);
       await waitForExit(maintenance);
-      await expect(fetchStatus(port)).resolves.toBe(200);
+      expect(fetchStatus(port)).resolves.toBe(200);
     } finally {
       terminateProcessGroup(maintenance);
       if (server) {

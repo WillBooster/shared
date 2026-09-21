@@ -2,11 +2,13 @@ import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 import { buildIfNeeded } from '../../src/commands/buildIfNeeded.js';
 
-import { initializeProjectDirectory, tempDir } from '../helpers/shared.js';
+import { createTempDir, initializeProjectDirectory } from '../helpers/shared.js';
+
+const tempDir = createTempDir();
 
 describe('buildIfNeeded', () => {
   it('app', async () => {
@@ -42,7 +44,7 @@ describe('buildIfNeeded', () => {
       )
     );
     expect(await buildIfNeeded({ command }, dirPath)).toBe(true);
-  });
+  }, 30_000);
 
   it('rebuilds when a recorded build output directory is missing', async () => {
     const dirPath = path.join(tempDir, 'outputs', 'app');
@@ -63,5 +65,5 @@ describe('buildIfNeeded', () => {
     await fs.promises.rm(path.join(dirPath, 'dist'), { recursive: true, force: true });
     expect(await buildIfNeeded({ command }, dirPath)).toBe(true);
     expect(await buildIfNeeded({ command }, dirPath)).toBe(false);
-  });
-}, 30_000);
+  }, 30_000);
+});

@@ -2,14 +2,13 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { beforeAll, expect, it } from 'vitest';
+import { beforeAll, expect, it } from 'bun:test';
+
+import { buildWb } from '../helpers/build.js';
 
 const cliPath = path.resolve('bin/index.js');
 
-beforeAll(() => {
-  const build = spawnSync('bun', ['run', 'build'], { encoding: 'utf8', timeout: 30_000 });
-  expect(build.status, build.stdout + build.stderr).toBe(0);
-});
+beforeAll(buildWb, 120_000);
 
 it.each([0, 1, 2])('checks only selected decks with -- after %i paths', async (separatorIndex) => {
   const tmp = path.resolve('.tmp');

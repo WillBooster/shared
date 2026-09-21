@@ -5,19 +5,34 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 
 import { isProcessRunning, wait, waitForProcessStopped } from '../../../../test/helpers/processUtils.js';
 import { spawnAsync } from '../../src/spawn.js';
 import { treeKill } from '../../src/treeKill.js';
 
-const fixturePath = path.resolve('test-fixtures/spawnAsyncKillOnExitHarness.mjs');
+// The harness runs under node, the runtime this signal handling targets: under bun, the SIGQUIT case
+// failed on Linux CI. Bundling it keeps dist/ untouched for envDist.test.ts's concurrent build.
+const bundleDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-kill-on-exit-harness-'));
+const bundlePath = path.join(bundleDirPath, 'spawnAsyncKillOnExitHarness.js');
 
 describe('spawnAsync killOnExit with a termination signal', () => {
+  beforeAll(async () => {
+    const result = await Bun.build({
+      entrypoints: [path.resolve('test-fixtures/spawnAsyncKillOnExitHarness.ts')],
+      outdir: bundleDirPath,
+      target: 'node',
+    });
+    expect(result.logs).toEqual([]);
+    expect(result.success).toBe(true);
+  });
+
+  afterAll(() => {
+    fs.rmSync(bundleDirPath, { force: true, recursive: true });
+  });
+
   const pidsToCleanUp = new Set<number>();
   const pidFilePaths = new Set<string>();
-
-  // dist/ is built once for the whole run by the globalSetup in vitest.config.ts.
 
   afterEach(async () => {
     for (const pid of pidsToCleanUp) {
@@ -36,7 +51,7 @@ describe('spawnAsync killOnExit with a termination signal', () => {
   function startHarness(...args: string[]): { harness: ChildProcess & { pid: number }; pidFilePath: string } {
     const pidFilePath = path.join(os.tmpdir(), `spawn-kill-on-exit-${randomUUID()}.pid`);
     pidFilePaths.add(pidFilePath);
-    const harness = spawn(process.execPath, [fixturePath, pidFilePath, ...args], { stdio: 'ignore' });
+    const harness = spawn('node', [bundlePath, pidFilePath, ...args], { stdio: 'ignore' });
     if (!harness.pid) {
       throw new Error('harness.pid is undefined');
     }

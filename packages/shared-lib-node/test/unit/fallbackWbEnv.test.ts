@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import { readEnvironmentVariables, resolveFallbackWbEnv } from '../../src/env.js';
 import { isFnoxAvailable } from '../helpers/commandAvailability.js';
@@ -48,7 +48,7 @@ describe('readEnvironmentVariables with expandFallbackWbEnv', () => {
     }
   });
 
-  it.runIf(isFnoxAvailable())('re-expands dependent references when the expansion empties WB_ENV', () => {
+  it.if(isFnoxAvailable())('re-expands dependent references when the expansion empties WB_ENV', () => {
     delete process.env.WB_ENV;
     const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'shared-lib-node-wbenv-'));
     try {
@@ -71,7 +71,7 @@ describe('readEnvironmentVariables with expandFallbackWbEnv', () => {
     }
   });
 
-  it.runIf(isFnoxAvailable())('re-expands with the exported value when a forced mode profile empties WB_ENV', () => {
+  it.if(isFnoxAvailable())('re-expands with the exported value when a forced mode profile empties WB_ENV', () => {
     // A forced mode's fnox profile overrides the export locally, so the loaded key masks the
     // ambient value even when it expands to empty; CI is cleared because that override is local-only.
     const originalCi = process.env.CI;

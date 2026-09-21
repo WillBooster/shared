@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { expect, test } from 'bun:test';
 
 import { errorify, withRetry } from '../../src/error.js';
 
@@ -23,7 +23,7 @@ test('errorify converts instead of throwing when no representation works', () =>
 test('withRetry waits as long as getSleepMilliseconds decides while advancing its own backoff', async () => {
   const decided: number[] = [];
   const startedAt = Date.now();
-  await expect(
+  expect(
     withRetry(
       () => {
         throw new Error('fail');

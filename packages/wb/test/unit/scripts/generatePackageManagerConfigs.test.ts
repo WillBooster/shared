@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { expect, it } from 'vitest';
+import { expect, it } from 'bun:test';
 
 const scriptPath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -34,7 +34,7 @@ it('drops the [test] sections and forces globalStore off', async () => {
     const ret = childProcess.spawnSync('bash', [scriptPath], { cwd: workDirPath, stdio: 'inherit' });
     expect(ret.status).toBe(0);
 
-    await expect(fs.readFile(path.join(workDirPath, 'bunfig.toml'), 'utf8')).resolves.toBe(
+    expect(fs.readFile(path.join(workDirPath, 'bunfig.toml'), 'utf8')).resolves.toBe(
       `env = false
 telemetry = false
 

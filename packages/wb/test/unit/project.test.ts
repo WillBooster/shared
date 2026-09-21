@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import childProcess from 'node:child_process';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 import {
   findDescendantProjects,
@@ -13,7 +13,9 @@ import {
 } from '../../src/project.js';
 
 import { usesBunRuntime } from '../../src/utils/runtime.js';
-import { initializeProjectDirectory, tempDir } from '../helpers/shared.js';
+import { createTempDir, initializeProjectDirectory } from '../helpers/shared.js';
+
+const tempDir = createTempDir();
 
 describe('project', () => {
   it.each([
@@ -49,11 +51,11 @@ describe('project', () => {
       const packageJson = JSON.parse(await fs.promises.readFile(path.join(dirPath, 'package.json'), 'utf8')) as {
         workspaces: string[];
       };
-      await expect(findWorkspacePackageDirs({ dirPath, packageJson, usesBunPackageManager: false })).resolves.toEqual([
+      expect(findWorkspacePackageDirs({ dirPath, packageJson, usesBunPackageManager: false })).resolves.toEqual([
         path.join(dirPath, 'packages', 'a'),
       ]);
       // Yarn also links lone-`?` patterns, which fast-glob's file globs cannot match on their own.
-      await expect(
+      expect(
         findWorkspacePackageDirs({ dirPath, packageJson: { workspaces: ['packages/?'] }, usesBunPackageManager: false })
       ).resolves.toEqual([path.join(dirPath, 'packages', 'a')]);
     } finally {
@@ -178,26 +180,23 @@ describe('project', () => {
     expect(getAbsoluteFileDatabaseUrlPath(project)).toBe('/app/drizzle/mount/prod.sqlite3');
   });
 
-  it.runIf(isMiseAvailable())(
-    'lets mise env override an already-activated shell env for project commands',
-    async () => {
-      const dirPath = path.join('..', 'shared-lib-node', 'test', 'fixtures', 'app3');
-      const originalPort = process.env.PORT;
-      try {
-        process.env.PORT = '9999';
-        const project = findSelfProject({ cascadeEnv: 'test' }, true, dirPath);
+  it.if(isMiseAvailable())('lets mise env override an already-activated shell env for project commands', async () => {
+    const dirPath = path.join('..', 'shared-lib-node', 'test', 'fixtures', 'app3');
+    const originalPort = process.env.PORT;
+    try {
+      process.env.PORT = '9999';
+      const project = findSelfProject({ cascadeEnv: 'test' }, true, dirPath);
 
-        expect(project?.env.PORT).toBe('5002');
-        expect(project?.env.MISE_ENV).toBe('test');
-      } finally {
-        if (originalPort === undefined) {
-          delete process.env.PORT;
-        } else {
-          process.env.PORT = originalPort;
-        }
+      expect(project?.env.PORT).toBe('5002');
+      expect(project?.env.MISE_ENV).toBe('test');
+    } finally {
+      if (originalPort === undefined) {
+        delete process.env.PORT;
+      } else {
+        process.env.PORT = originalPort;
       }
     }
-  );
+  });
 });
 
 function isMiseAvailable(): boolean {

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 
 import {
   isPrivateRegistryDependency,
@@ -16,7 +16,7 @@ import {
 const tempDirPaths: string[] = [];
 
 afterEach(async () => {
-  vi.restoreAllMocks();
+  mock.restore();
   delete process.env.VERDACCIO_TOKEN;
   await Promise.all(tempDirPaths.splice(0).map((dirPath) => fs.promises.rm(dirPath, { recursive: true, force: true })));
 });
@@ -126,7 +126,7 @@ legacy-peer-deps=true
 describe('resolvePrivateRegistryAuth', () => {
   it('combines the project registry mapping with the home token during local development', async () => {
     const { homeDirPath, rootDirPath } = await makeNpmrcFixture();
-    vi.spyOn(os, 'homedir').mockReturnValue(homeDirPath);
+    spyOn(os, 'homedir').mockReturnValue(homeDirPath);
 
     expect(resolvePrivateRegistryAuth(rootDirPath)).toEqual({
       registryUrl: 'https://project.example.test',
@@ -136,7 +136,7 @@ describe('resolvePrivateRegistryAuth', () => {
 
   it('prefers the project npmrc token over the home token', async () => {
     const { homeDirPath, rootDirPath } = await makeNpmrcFixture();
-    vi.spyOn(os, 'homedir').mockReturnValue(homeDirPath);
+    spyOn(os, 'homedir').mockReturnValue(homeDirPath);
     await fs.promises.appendFile(
       path.join(rootDirPath, '.npmrc'),
       '//project.example.test/:_authToken=project-token\n'
@@ -150,7 +150,7 @@ describe('resolvePrivateRegistryAuth', () => {
 
   it('falls back to VERDACCIO_TOKEN when the npmrc files contain no token', async () => {
     const { homeDirPath, rootDirPath } = await makeNpmrcFixture();
-    vi.spyOn(os, 'homedir').mockReturnValue(homeDirPath);
+    spyOn(os, 'homedir').mockReturnValue(homeDirPath);
     await fs.promises.writeFile(path.join(homeDirPath, '.npmrc'), '');
     process.env.VERDACCIO_TOKEN = 'environment-token';
 

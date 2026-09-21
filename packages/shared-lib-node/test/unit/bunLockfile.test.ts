@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from 'vitest';
+import { expect, test } from 'bun:test';
 
 import { normalizeBunLockfile } from '../../src/bunLockfile.js';
 

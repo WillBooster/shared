@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { expect, test } from 'bun:test';
 
 import { toCodeBlock, toTildeCodeBlock } from '../../src/text.js';
 

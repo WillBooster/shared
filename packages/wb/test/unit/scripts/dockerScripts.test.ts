@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 import { Project } from '../../../src/project.js';
 import { dockerScripts, selectContainerEnvKeys } from '../../../src/scripts/dockerScripts.js';
@@ -22,7 +22,7 @@ describe('selectContainerEnvKeys', () => {
   });
 });
 
-describe.runIf(isDockerAvailable())('dockerScripts', () => {
+describe.if(isDockerAvailable())('dockerScripts', () => {
   it('removes a non-running container before reuse', async () => {
     const projectDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-docker-scripts-'));
     const containerName = `wb-cleanup-test-${randomUUID()}`;

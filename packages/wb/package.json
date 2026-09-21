@@ -50,14 +50,10 @@
     "yargs": "18.1.0"
   },
   "devDependencies": {
-    "@babel/core": "8.0.5",
-    "@babel/plugin-proposal-decorators": "8.0.2",
-    "@rolldown/plugin-babel": "0.2.4",
     "@slidev/parser": "52.19.1",
     "@tsconfig/bun": "1.0.11",
     "@tsconfig/node-lts": "24.0.1",
     "@tsconfig/node-ts": "23.6.4",
-    "@types/babel__core": "7.20.5",
     "@types/bun": "1.4.2",
     "@types/node": "26.5.1",
     "@types/semver": "7.8.0",
@@ -69,12 +65,10 @@
     "oxfmt": "0.67.0",
     "oxlint": "1.82.0",
     "oxlint-tsgolint": "7.0.2001",
-    "rolldown": "1.2.8",
     "sort-package-json": "4.0.0",
     "textlint-rule-no-hankaku-kana": "2.0.1",
     "type-fest": "5.9.0",
-    "typescript": "7.0.2",
-    "vitest": "5.0.0"
+    "typescript": "7.0.2"
   },
   "engines": {
     "node": ">= 22.18.0"

@@ -6,7 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+
+import { buildWb } from '../helpers/build.js';
 
 const binIndexPath = fileURLToPath(new URL('../../bin/index.js', import.meta.url));
 const ROOT_PACKAGE_NAME = 'local-server-url-fixture';
@@ -14,6 +16,8 @@ const APP_PACKAGE_NAME = '@fixtures/app';
 const ADMIN_PACKAGE_NAME = '@fixtures/admin';
 const APP_DIR_NAME = 'packages/app';
 const ADMIN_DIR_NAME = 'packages/admin';
+
+beforeAll(buildWb, 120_000);
 
 let projectDirPath: string;
 const servers: Server[] = [];
@@ -97,7 +101,7 @@ async function publishRunningServerUrl(wbEnv: string, packageName: string): Prom
 }
 
 function runScript(env: NodeJS.ProcessEnv = {}, cwd = projectDirPath): string {
-  const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', 'print-base-url.js'], {
+  const result = childProcess.spawnSync('node', [binIndexPath, 'run', 'print-base-url.js'], {
     cwd,
     encoding: 'utf8',
     env: { PATH: process.env.PATH, WB_ENV: 'development', ...env },
@@ -255,7 +259,7 @@ describe('wb run', () => {
     await closeServers();
 
     expect(runScript()).toBe('null');
-    await expect(fs.access(filePath)).resolves.toBeUndefined();
+    expect(await Bun.file(filePath).exists()).toBe(true);
   });
 
   it('ignores a URL published outside the repository', async () => {

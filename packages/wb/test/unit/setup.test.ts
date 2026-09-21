@@ -1,11 +1,13 @@
 import child_process from 'node:child_process';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 import { setup } from '../../src/commands/setup.js';
 
-import { initializeProjectDirectory, tempDir } from '../helpers/shared.js';
+import { createTempDir, initializeProjectDirectory } from '../helpers/shared.js';
+
+const tempDir = createTempDir();
 
 describe('setup', () => {
   it(

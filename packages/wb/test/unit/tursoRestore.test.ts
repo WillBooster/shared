@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import { getTursoDumpUrl, isTursoDatabaseUrl, restoreTursoDatabase } from '../../src/scripts/tursoRestore.js';
 
@@ -80,7 +80,7 @@ COMMIT;
     const outputPath = await createOutputPath();
     await fs.promises.writeFile(outputPath, 'previous database');
 
-    await expect(
+    expect(
       restoreTursoDatabase({
         authToken: 'test-database-token',
         databaseUrl: getServerUrl(server),

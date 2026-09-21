@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, mock, spyOn } from 'bun:test';
 import yargs from 'yargs';
 
 import type { TestArgv } from '../../../../src/commands/test.js';
@@ -6,11 +6,13 @@ import type { Project } from '../../../../src/project.js';
 import { normalizeArgs } from '../../../../src/scripts/builder.js';
 import { httpServerScripts } from '../../../../src/scripts/execution/httpServerScripts.js';
 import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/sharedOptionsBuilder.js';
+import * as portUtils from '../../../../src/utils/port.js';
 import { buildShellCommand } from '../../../../src/utils/shell.js';
 
-vi.mock('../../../../src/utils/port.js', () => ({
-  ensurePort: vi.fn().mockResolvedValue(3000),
-}));
+spyOn(portUtils, 'ensurePort').mockResolvedValue(3000);
+afterAll(() => {
+  mock.restore();
+});
 
 describe('HttpServerScripts.testE2E', () => {
   it('uses vitest when playwright config is missing', async () => {
@@ -21,7 +23,7 @@ describe('HttpServerScripts.testE2E', () => {
       hasVitest: true,
       hasPrisma: false,
       buildCommand: 'echo "no build"',
-      findFile: vi.fn().mockImplementation(() => {
+      findFile: mock().mockImplementation(() => {
         throw new Error('File not found');
       }),
     } as unknown as Project;
@@ -38,7 +40,7 @@ describe('HttpServerScripts.testE2E', () => {
       skipLaunchingServerForPlaywright: true,
       hasPrisma: false,
       buildCommand: 'echo "no build"',
-      findFile: vi.fn().mockImplementation(() => {
+      findFile: mock().mockImplementation(() => {
         throw new Error('File not found');
       }),
     } as unknown as Project;
@@ -55,7 +57,7 @@ describe('HttpServerScripts.testE2E', () => {
       hasVitest: true,
       hasPrisma: false,
       buildCommand: 'echo "no build"',
-      findFile: vi.fn().mockImplementation(() => {
+      findFile: mock().mockImplementation(() => {
         throw new Error('File not found');
       }),
     } as unknown as Project;
@@ -98,7 +100,7 @@ describe('HttpServerScripts.testE2E', () => {
       hasPlaywrightConfig: false,
       hasPrisma: false,
       buildCommand: 'echo "no build"',
-      findFile: vi.fn().mockImplementation(() => {
+      findFile: mock().mockImplementation(() => {
         throw new Error('File not found');
       }),
     } as unknown as Project;

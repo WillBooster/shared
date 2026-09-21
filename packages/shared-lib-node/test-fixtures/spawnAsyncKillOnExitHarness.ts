@@ -1,4 +1,4 @@
-import { spawnAsync } from '../dist/spawn.js';
+import { spawnAsync } from '../src/spawn.js';
 
 const pidFilePath = process.argv[2];
 if (!pidFilePath) {

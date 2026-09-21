@@ -1,6 +1,6 @@
 import child_process from 'node:child_process';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import yargs from 'yargs';
 
 import { extractUnknownOptions } from '../../src/commands/prisma.js';
