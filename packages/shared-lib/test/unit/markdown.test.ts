@@ -32,6 +32,11 @@ test('extractIfSingleOutermostCodeBlock keeps fences nested without lengthening 
   expect(extractIfSingleOutermostCodeBlock('~~~\nhello\n~~~')).toBe('hello');
 });
 
+test('extractIfSingleOutermostCodeBlock strips the indentation of an indented outer fence', () => {
+  expect(extractIfSingleOutermostCodeBlock('  ```md\n  # A\n    b\n  ```')).toBe('# A\n  b');
+  expect(extractTopLevelHeadings('\n  ```md\n  # A\n  x\n  ```\n')).toEqual({ A: 'x' });
+});
+
 test('extractIfSingleOutermostCodeBlock drops text after the first block and reads an unclosed block to the end', () => {
   expect(extractIfSingleOutermostCodeBlock('```json\n{"a":1}\n```\nThat is the answer.')).toBe('{"a":1}');
   expect(extractIfSingleOutermostCodeBlock('```html\n<html>\n<body>')).toBe('<html>\n<body>');

@@ -92,7 +92,8 @@ function splitByTopLevelHeadings(markdown: string): Record<string, string> {
 }
 
 function findOutermostCodeBlock(text: string): { language: string; code: string; isWhole: boolean } | undefined {
-  const lines = splitLines(text.trim());
+  // Keep the opening fence's indentation, which is stripped from the contents.
+  const lines = splitLines(text.replace(/^\s*\n/u, '').trimEnd());
   const fence = parseOpeningFence(lines[0] ?? '');
   if (!fence) return;
   const lastIndex = lines.length - 1;
@@ -100,7 +101,10 @@ function findOutermostCodeBlock(text: string): { language: string; code: string;
     lastIndex > 0 && isClosingFence(lines[lastIndex] ?? '', fence) ? lastIndex : findClosingFence(lines, 1, fence);
   return {
     language: fence.language,
-    code: lines.slice(1, end).join('\n'),
+    code: lines
+      .slice(1, end)
+      .map((line) => stripIndent(line, fence.indent))
+      .join('\n'),
     isWhole: end >= lastIndex,
   };
 }
