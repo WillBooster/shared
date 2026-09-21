@@ -62,6 +62,12 @@ export interface RetryOptions {
   retryCount?: number;
   retryLogger?: (message: string) => void;
   shouldRetry?: (error: unknown) => boolean;
+  /**
+   * Decides how long to wait before retrying after `error`, given the backoff `sleepMilliseconds` it would otherwise wait,
+   * e.g. `(error, ms) => Math.max(ms, retryAtOf(error) - Date.now())` to honor a retry time sent by a server.
+   * It does not affect the backoff that `updateSleepMilliseconds` advances.
+   */
+  getSleepMilliseconds?: (error: unknown, sleepMilliseconds: number) => number;
   sleepMilliseconds?: number;
   updateSleepMilliseconds?: (sleepMilliseconds: number) => number;
 }
@@ -84,6 +90,7 @@ export async function withRetry<T>(
     retryCount = 3,
     retryLogger,
     shouldRetry,
+    getSleepMilliseconds,
     sleepMilliseconds = 0,
     updateSleepMilliseconds,
   }: RetryOptions = {}
@@ -101,8 +108,9 @@ export async function withRetry<T>(
       if (shouldRetry && !shouldRetry(error)) {
         throw error;
       }
-      if (sleepMilliseconds > 0) {
-        await sleep(sleepMilliseconds);
+      const currentSleepMilliseconds = getSleepMilliseconds?.(error, sleepMilliseconds) ?? sleepMilliseconds;
+      if (currentSleepMilliseconds > 0) {
+        await sleep(currentSleepMilliseconds);
       }
       if (updateSleepMilliseconds) {
         sleepMilliseconds = updateSleepMilliseconds(sleepMilliseconds);

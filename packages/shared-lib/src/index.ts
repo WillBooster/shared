@@ -13,6 +13,7 @@ export {
 export { errorify, ignoreError, ignoreEnoent, ignoreErrorAsync, ignoreEnoentAsync, withRetry } from './error.js';
 export { humanizeNumber } from './humanize.js';
 export { mailTemplates } from './mail.js';
+export { extractCodeBlocks, extractIfSingleOutermostCodeBlock, extractTopLevelHeadings } from './markdown.js';
 export { parseCommandLineArgs } from './parseCommandLineArgs.js';
 export {
   escapePromptTag,
@@ -21,6 +22,7 @@ export {
   serializeForPromptInTag,
   truncateForPrompt,
 } from './prompt.js';
+export { formatFilesForPrompt, formatMessagesForPrompt } from './promptFormatters.js';
 export { shuffle } from './shuffle.js';
 export { sleep } from './sleep.js';
 export { getConnectionLevelSqlitePragmas, getPersistentSqlitePragmas } from './sqlite.js';
@@ -30,4 +32,5 @@ export { zenkakuAlphanumericalsToHankaku } from './zenkaku.js';
 
 export type { AppEnv } from './appEnv.js';
 export type { RetryOptions } from './error.js';
+export type { CodeBlock } from './markdown.js';
 export type { TemplateSection } from './githubTemplates.js';
