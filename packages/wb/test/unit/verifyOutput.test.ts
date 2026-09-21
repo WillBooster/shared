@@ -166,17 +166,22 @@ it.each([0, 7])('saves and flushes complete CI output with exit code %s', async 
     `import fs from 'node:fs';
 import { test } from 'bun:test';
 test('large output', () => {
-  fs.writeFileSync(1, 'CI_STDOUT_α😀\\n'.repeat(20_000));
-  fs.writeFileSync(2, 'CI_STDERR_α😀\\n'.repeat(20_000));
+  fs.writeFileSync(1, 'CI_STDOUT_α');
+  fs.writeFileSync(2, 'CI_STDERR_β🚀\\n'.repeat(20_000));
+  fs.writeFileSync(1, '😀\\n' + 'CI_STDOUT_α😀\\n'.repeat(19_999));
   ${exitCode ? `process.exit(${exitCode});` : ''}
 });`
   );
   const result = runCli(dir, ['test-on-ci']);
   expect(result.status, result.stderr).toBe(exitCode);
   const log = await fs.readFile(logPath, 'utf8');
+  expect(result.stdout.match(/CI_STDOUT_α😀/g)).toHaveLength(20_000);
+  expect(result.stderr.match(/CI_STDERR_β🚀/g)).toHaveLength(20_000);
+  // Chunks from stderr can split a stdout record in the combined log without losing data.
+  for (const marker of ['α', '😀', 'β', '🚀']) {
+    expect(log.split(marker)).toHaveLength(20_001);
+  }
   for (const output of [log, result.stdout + result.stderr]) {
-    expect(output.match(/CI_STDOUT_α😀/g)).toHaveLength(20_000);
-    expect(output.match(/CI_STDERR_α😀/g)).toHaveLength(20_000);
     expect(output).not.toContain('PREVIOUS_RUN');
   }
   expect(result.stdout).toContain(logPath);
