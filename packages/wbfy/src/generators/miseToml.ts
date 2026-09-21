@@ -48,29 +48,37 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
     for (const [tool, version] of Object.entries(pins)) {
       if (version === tools[tool]) continue;
       assert.ok(typeof version === 'string', `The resolved ${tool} pin must be a version string.`);
-      newContent = setToolVersion(newContent, tool, version, tool in tools);
+      newContent = setToolVersion(newContent, tool, version);
+      // A line edit breaks pins written in any other form (a multi-line value, a `tools.bun`
+      // dotted key, a `[tools.bun]` sub-table), so never write a result the parser disagrees with.
+      assert.ok(
+        parseTools(newContent)?.[tool] === version,
+        `Write the ${tool} pin in mise.toml as one \`${tool} = ...\` line under [tools].`
+      );
     }
     await fsUtil.generateFile(miseTomlPath, newContent);
   });
 }
 
-function setToolVersion(content: string, tool: string, version: string, exists: boolean): string {
+function setToolVersion(content: string, tool: string, version: string): string {
   const pin = `${tool} = "${version}"`;
   const section = /^\[tools\]\n(?:(?!\[).*(?:\n|$))*/mu.exec(content)?.[0];
   if (section === undefined) return `${content && `${content.trimEnd()}\n\n`}[tools]\n${pin}\n`;
 
-  let newSection: string;
-  if (exists) {
-    newSection = section.replace(new RegExp(`^${tool} = .*$`, 'mu'), pin);
-    assert.ok(
-      newSection !== section,
-      `Write the ${tool} pin in mise.toml as one \`${tool} = ...\` line under [tools].`
-    );
-  } else {
-    const body = section.trimEnd();
-    newSection = `${body}\n${pin}\n${section.slice(body.length + 1)}`;
-  }
+  const pinPattern = new RegExp(`^${tool} = .*$`, 'mu');
+  const body = section.trimEnd();
+  const newSection = pinPattern.test(section)
+    ? section.replace(pinPattern, pin)
+    : `${body}\n${pin}\n${section.slice(body.length + 1)}`;
   return content.replace(section, () => newSection);
+}
+
+function parseTools(content: string): Record<string, unknown> | undefined {
+  try {
+    return (Bun.TOML.parse(content) as MiseToml).tools;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Updates to the latest release across major versions without downgrading existing exact pins. */
