@@ -353,6 +353,10 @@ test('retains only unconfirmed fragments from comment-like prose without mistaki
     expect(result.candidates.at(-1)?.value).toEqual({ verdict: 'refuted' });
     expect(result.candidates.every((candidate) => candidate.requiresConfirmation)).toBe(true);
   }
+  const globPaths = recoverJson('Check packages/*/index.ts and src/*/*.json then:\n```\n{"v":1}\n```');
+  expect(globPaths.errors).toEqual([]);
+  expect(globPaths.candidates).toHaveLength(1);
+  expect(globPaths.candidates[0]?.value).toEqual({ v: 1 });
   for (const boundary of [',', ']', '}', '},', '),']) {
     for (const comment of ['// note {"verdict":"confirmed"}\n', '/* {"verdict":"confirmed"} */ ']) {
       const candidates = recoverJson(`See https://x/a${boundary}${comment}{"answer":42}`).candidates;
@@ -374,6 +378,14 @@ test('preserves apostrophes in comma continuations after embedded quoted words',
   const single = recoverJson("{'summary':'He said 'hi', then it's over'}");
   expect(single.candidates[0]?.value).toEqual({ summary: "He said 'hi', then it's over" });
   expect(single.candidates[0]?.requiresConfirmation).toBe(true);
+  for (const continuation of ['and {then} left', '-- then left']) {
+    const candidate = recoverJson(`{"summary":"He said "hi", ${continuation}","verdict":"confirmed"}`).candidates[0]!;
+    expect(candidate.value).toMatchObject({ summary: 'He said ', verdict: 'confirmed' });
+    expect(candidate.requiresConfirmation).toBe(true);
+  }
+  const extraQuote = recoverJson('{"a":"He said "hi", then left"","v":1}').candidates[0]!;
+  expect(extraQuote.value).toMatchObject({ a: 'He said ', v: 1 });
+  expect(extraQuote.requiresConfirmation).toBe(true);
 });
 
 test('retains container answers abutting prose URLs without claiming independent boundaries', () => {
