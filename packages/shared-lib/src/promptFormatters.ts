@@ -2,16 +2,27 @@ import { escapePromptTag } from './prompt.js';
 import { toCodeBlock } from './text.js';
 
 /**
- * Renders files as Markdown sections for an LLM prompt: a heading holding the path, followed by the file contents in a
- * code block whose fence the contents cannot close. Line endings are normalized to LF and trailing whitespace is removed.
+ * Renders files as Markdown sections for an LLM prompt: a heading holding the single-line path in inline code,
+ * followed by the file contents in a code block whose fence the contents cannot close. Line endings are normalized
+ * to LF and trailing whitespace is removed.
  * The output reads back with `extractSections` (keyed by path) and `extractIfSingleOutermostCodeBlock`, so an
  * LLM can be asked to answer in the same format.
  */
 export function formatFilesForPrompt(files: readonly { path: string; data: string }[], headingLevel = 1): string {
   const headingMarker = '#'.repeat(headingLevel);
   return files
-    .map((file) => `${headingMarker} ${file.path}\n\n${toCodeBlock(file.data.replaceAll(/\r\n?/gu, '\n').trimEnd())}`)
+    .map(
+      (file) =>
+        `${headingMarker} ${formatPath(file.path)}\n\n${toCodeBlock(file.data.replaceAll(/\r\n?/gu, '\n').trimEnd())}`
+    )
     .join('\n\n');
+}
+
+function formatPath(path: string): string {
+  let length = 1;
+  for (const match of path.matchAll(/`+/gu)) length = Math.max(length, match[0].length + 1);
+  const delimiter = '`'.repeat(length);
+  return `${delimiter} ${path} ${delimiter}`;
 }
 
 /**

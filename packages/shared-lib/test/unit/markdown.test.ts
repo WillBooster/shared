@@ -144,3 +144,11 @@ test('extractSections supports arbitrary keys and missing-key validation', () =>
   expect(sections['__proto__']).toBe('content');
   expect(names.filter((name) => !sections[name])).toEqual(['constructor', 'toString']);
 });
+
+test('extractSections distinguishes numeric file names and decimal titles from numbering', () => {
+  expect(extractSections('# 1. 1.py\nfirst\n# 2. **2.py**\nsecond', ['1.py', '2.py'])).toEqual({
+    '1.py': 'first',
+    '2.py': 'second',
+  });
+  expect(extractSections('# 2.1\nother section', ['1.1'])).toEqual({});
+});

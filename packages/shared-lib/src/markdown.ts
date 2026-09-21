@@ -118,7 +118,7 @@ export function parseMarkdownSections(markdown: string): MarkdownSection[] {
 }
 
 function normalizeHeading(heading: string): string {
-  return stripHeadingEdges(stripHeadingEdges(heading).replace(/^\d+(?:\.\d+)*(?:[.)]\s*|\s+)/u, ''))
+  return stripHeadingEdges(stripHeadingEdges(heading).replace(/^\d+(?:\.\d+)*(?:\.\s+|\)\s*|\s+)/u, ''))
     .replaceAll(/\s+/gu, ' ')
     .toLowerCase();
 }
