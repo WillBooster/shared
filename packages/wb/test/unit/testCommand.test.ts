@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'bun:test';
 import yargs from 'yargs';
 
 import { retryCommand } from '../../src/commands/retry.js';
@@ -157,14 +157,14 @@ describe('withDefaultTestCascadeEnv', () => {
   // Explicit env flags keep their cascade selection, but the command-level WB_ENV default
   // must still make the spawned tests run as `test` when nothing defines WB_ENV.
   it('keeps explicit cascade env and adds the command default', () => {
-    expect(withDefaultTestCascadeEnv({ cascadeEnv: 'staging' } as TestCommandArgv)).toEqual({
+    expect(withDefaultTestCascadeEnv({ cascadeEnv: 'staging' } as TestCommandArgv)).toEqual<unknown>({
       cascadeEnv: 'staging',
       commandDefaultWbEnv: 'test',
     });
   });
 
   it('keeps disabled auto cascade env and adds the command default', () => {
-    expect(withDefaultTestCascadeEnv({ autoCascadeEnv: false } as TestCommandArgv)).toEqual({
+    expect(withDefaultTestCascadeEnv({ autoCascadeEnv: false } as TestCommandArgv)).toEqual<unknown>({
       autoCascadeEnv: false,
       commandDefaultWbEnv: 'test',
     });

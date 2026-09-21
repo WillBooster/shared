@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { readAndApplyEnvironmentVariables, readEnvironmentVariables } from '../../src/env.js';
 import { isFnoxAvailable, isMiseAvailable } from '../helpers/commandAvailability.js';
@@ -30,34 +30,34 @@ afterEach(() => {
 });
 
 describe('readAndApplyEnvironmentVariables()', () => {
-  it.runIf(isFnoxAvailable())('should load base fnox values without any cascade option', () => {
+  it.if(isFnoxAvailable())('should load base fnox values without any cascade option', () => {
     const envVars = readAndApplyEnvironmentVariables({}, 'test/fixtures/app1');
     expect(withoutPath(envVars)).toEqual({ NAME: 'app1', PORT: '3000' });
   });
 
-  it.runIf(isFnoxAvailable())('should load env vars with --auto-cascade-env', () => {
+  it.if(isFnoxAvailable())('should load env vars with --auto-cascade-env', () => {
     const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
     expect(withoutPath(envVars)).toEqual({ ENV: 'development1', PORT: '3001', NAME: 'app1' });
   });
 
-  it.runIf(isFnoxAvailable())('should load env vars with --cascade-env=production', () => {
+  it.if(isFnoxAvailable())('should load env vars with --cascade-env=production', () => {
     const envVars = readAndApplyEnvironmentVariables({ cascadeEnv: 'production' }, 'test/fixtures/app1');
     expect(withoutPath(envVars)).toEqual({ ENV: 'production1', PORT: '3003', NAME: 'app1' });
   });
 
-  it.runIf(isFnoxAvailable())('should load env vars with --cascade-node-env and NODE_ENV=""', () => {
+  it.if(isFnoxAvailable())('should load env vars with --cascade-node-env and NODE_ENV=""', () => {
     process.env.NODE_ENV = '';
     const envVars = readAndApplyEnvironmentVariables({ cascadeNodeEnv: true }, 'test/fixtures/app1');
     expect(withoutPath(envVars)).toEqual({ ENV: 'development1', PORT: '3001', NAME: 'app1' });
   });
 
-  it.runIf(isFnoxAvailable())('should load env vars with --cascade-node-env and NODE_ENV=test', () => {
+  it.if(isFnoxAvailable())('should load env vars with --cascade-node-env and NODE_ENV=test', () => {
     process.env.NODE_ENV = 'test';
     const envVars = readAndApplyEnvironmentVariables({ cascadeNodeEnv: true }, 'test/fixtures/app1');
     expect(withoutPath(envVars)).toEqual({ ENV: 'test1', PORT: '3002', NAME: 'app1' });
   });
 
-  it.runIf(isFnoxAvailable())('should not overwrite existing process.env values', () => {
+  it.if(isFnoxAvailable())('should not overwrite existing process.env values', () => {
     process.env.PORT = '9999';
     process.env.NAME = 'override';
     const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
@@ -67,17 +67,17 @@ describe('readAndApplyEnvironmentVariables()', () => {
     expect(process.env.NAME).toBe('override');
   });
 
-  it.runIf(isMiseAvailable())('should load env vars from mise toml with --auto-cascade-env', () => {
+  it.if(isMiseAvailable())('should load env vars from mise toml with --auto-cascade-env', () => {
     const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app3');
     expect(envVars).toMatchObject({ ENV: 'development3', MISE_ONLY: 'base3', NAME: 'app3', PORT: '5001' });
   });
 
-  it.runIf(isMiseAvailable())('should load env vars from mise environment toml with --cascade-env=test', () => {
+  it.if(isMiseAvailable())('should load env vars from mise environment toml with --cascade-env=test', () => {
     const envVars = readAndApplyEnvironmentVariables({ cascadeEnv: 'test' }, 'test/fixtures/app3');
     expect(envVars).toMatchObject({ ENV: 'test3', MISE_ONLY: 'base3', NAME: 'app3', PORT: '5002' });
   });
 
-  it.runIf(isMiseAvailable())('should not apply mise env vars over existing process.env values', () => {
+  it.if(isMiseAvailable())('should not apply mise env vars over existing process.env values', () => {
     process.env.PORT = '9999';
     const envVars = readAndApplyEnvironmentVariables({ cascadeEnv: 'test' }, 'test/fixtures/app3');
     expect(envVars).toMatchObject({ ENV: 'test3', MISE_ONLY: 'base3', NAME: 'app3', PORT: '5002' });
@@ -96,14 +96,14 @@ describe('readAndApplyEnvironmentVariables()', () => {
     });
   });
 
-  it.runIf(isFnoxAvailable())('should not overwrite existing process.env values with fnox base values', () => {
+  it.if(isFnoxAvailable())('should not overwrite existing process.env values with fnox base values', () => {
     process.env.PORT = '9999';
     const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app-fnox');
     expect(envVars.PORT).toBeUndefined();
     expect(process.env.PORT).toBe('9999');
   });
 
-  it.runIf(isFnoxAvailable())(
+  it.if(isFnoxAvailable())(
     'should let fnox profile values override inherited process.env when the mode is forced (non-CI)',
     () => {
       delete process.env.CI;
@@ -121,7 +121,7 @@ describe('readAndApplyEnvironmentVariables()', () => {
     }
   );
 
-  it.runIf(isFnoxAvailable())(
+  it.if(isFnoxAvailable())(
     'should override inherited process.env with a profile key whose value equals the base value',
     () => {
       delete process.env.CI;
@@ -135,7 +135,7 @@ describe('readAndApplyEnvironmentVariables()', () => {
     }
   );
 
-  it.runIf(isFnoxAvailable())('should load env vars from a fnox profile with --cascade-env=test', () => {
+  it.if(isFnoxAvailable())('should load env vars from a fnox profile with --cascade-env=test', () => {
     const envVars = readAndApplyEnvironmentVariables({ cascadeEnv: 'test' }, 'test/fixtures/app-fnox');
     expect(envVars).toMatchObject({
       ENV: 'fnox-test',
@@ -146,7 +146,7 @@ describe('readAndApplyEnvironmentVariables()', () => {
     });
   });
 
-  it.runIf(isFnoxAvailable())(
+  it.if(isFnoxAvailable())(
     'should skip undecryptable fnox secrets under WB_ALLOW_MISSING_SECRETS instead of failing',
     () => {
       // Force a keyless fnox by pointing its config dir at an empty directory, so the fixture's
@@ -172,7 +172,7 @@ describe('readAndApplyEnvironmentVariables()', () => {
 });
 
 describe('readEnvironmentVariables()', () => {
-  it.runIf(isFnoxAvailable())('should skip existing process.env values and still report the fnox source', () => {
+  it.if(isFnoxAvailable())('should skip existing process.env values and still report the fnox source', () => {
     process.env.PORT = '9999';
     process.env.NAME = 'override';
     const [envVars, envPathAndLoadedEnvVarNames] = readEnvironmentVariables(
@@ -187,7 +187,7 @@ describe('readEnvironmentVariables()', () => {
     expect(process.env.NAME).toBe('override');
   });
 
-  it.runIf(isFnoxAvailable())(
+  it.if(isFnoxAvailable())(
     'should let fnox profile values override inherited process.env when the mode is forced (non-CI)',
     () => {
       delete process.env.CI;
@@ -200,7 +200,7 @@ describe('readEnvironmentVariables()', () => {
     }
   );
 
-  it.runIf(isFnoxAvailable())('should keep inherited process.env values on CI even when the mode is forced', () => {
+  it.if(isFnoxAvailable())('should keep inherited process.env values on CI even when the mode is forced', () => {
     process.env.CI = 'true';
     process.env.WB_ENV = 'test';
     process.env.PORT = '9999';
@@ -209,7 +209,7 @@ describe('readEnvironmentVariables()', () => {
     expect(process.env.PORT).toBe('9999');
   });
 
-  it.runIf(isFnoxAvailable())(
+  it.if(isFnoxAvailable())(
     'should not override inherited process.env values that only the base secrets define even when the mode is forced',
     () => {
       delete process.env.CI;
@@ -221,7 +221,7 @@ describe('readEnvironmentVariables()', () => {
     }
   );
 
-  it.runIf(isFnoxAvailable())('should expand references to exported variables literally', () => {
+  it.if(isFnoxAvailable())('should expand references to exported variables literally', () => {
     // Values referencing exported keys must resolve to the effective value without the
     // exported content being recursively re-expanded (pa$word must stay pa$word).
     process.env.EXPORTED_SECRET = 'pa$word';

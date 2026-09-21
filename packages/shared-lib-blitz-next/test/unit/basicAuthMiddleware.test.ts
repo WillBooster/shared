@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import type { MiddlewareNext } from 'blitz';
-import { beforeEach, describe, expect, test, vitest } from 'vitest';
+import { beforeEach, describe, expect, test, mock } from 'bun:test';
 
 import { BasicAuthMiddleware } from '../../src/index.js';
 
@@ -10,17 +10,17 @@ describe('BasicAuthMiddleware', () => {
 
   let mockRequest: Partial<IncomingMessage> = {};
   let mockResponse: Partial<ServerResponse> = {};
-  let mockNext: MiddlewareNext = vitest.fn();
+  let mockNext: MiddlewareNext = mock();
 
   beforeEach(() => {
     mockRequest = {
       headers: {},
     };
     mockResponse = {
-      setHeader: vitest.fn(),
-      end: vitest.fn(() => mockResponse as ServerResponse),
+      setHeader: mock(),
+      end: mock(() => mockResponse as ServerResponse),
     };
-    mockNext = vitest.fn();
+    mockNext = mock();
   });
 
   test('authorized', async () => {

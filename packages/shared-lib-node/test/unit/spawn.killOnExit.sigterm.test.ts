@@ -5,19 +5,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import { isProcessRunning, wait, waitForProcessStopped } from '../../../../test/helpers/processUtils.js';
 import { spawnAsync } from '../../src/spawn.js';
 import { treeKill } from '../../src/treeKill.js';
 
-const fixturePath = path.resolve('test-fixtures/spawnAsyncKillOnExitHarness.mjs');
+const fixturePath = path.resolve('test-fixtures/spawnAsyncKillOnExitHarness.ts');
 
 describe('spawnAsync killOnExit with a termination signal', () => {
   const pidsToCleanUp = new Set<number>();
   const pidFilePaths = new Set<string>();
-
-  // dist/ is built once for the whole run by the globalSetup in vitest.config.ts.
 
   afterEach(async () => {
     for (const pid of pidsToCleanUp) {

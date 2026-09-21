@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import type { PackageJson } from 'type-fest';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
   buildCredentialFreeEnv,
@@ -86,7 +86,7 @@ describe('releasePublishesToNpm', () => {
 
   it('keeps the npm preparation when no plugin list is configured (default plugins include npm)', async () => {
     const project = await createProject({ 'package.json': { name: 'app' } });
-    await expect(releasePublishesToNpm(project)).resolves.toBe(true);
+    expect(releasePublishesToNpm(project)).resolves.toBe(true);
   });
 
   it('skips when .releaserc.json explicitly configures plugins without @semantic-release/npm', async () => {
@@ -96,7 +96,7 @@ describe('releasePublishesToNpm', () => {
         plugins: ['@semantic-release/commit-analyzer', ['@semantic-release/github', { successComment: false }]],
       },
     });
-    await expect(releasePublishesToNpm(project)).resolves.toBe(false);
+    expect(releasePublishesToNpm(project)).resolves.toBe(false);
   });
 
   it('keeps the npm preparation when the plugin list includes @semantic-release/npm in tuple form', async () => {
@@ -106,14 +106,14 @@ describe('releasePublishesToNpm', () => {
         plugins: ['@semantic-release/commit-analyzer', ['@semantic-release/npm', { npmPublish: true }]],
       },
     });
-    await expect(releasePublishesToNpm(project)).resolves.toBe(true);
+    expect(releasePublishesToNpm(project)).resolves.toBe(true);
   });
 
   it('reads the plugin list from package.json#release', async () => {
     const project = await createProject({
       'package.json': { name: 'app', release: { plugins: ['@semantic-release/github'] } },
     });
-    await expect(releasePublishesToNpm(project)).resolves.toBe(false);
+    expect(releasePublishesToNpm(project)).resolves.toBe(false);
   });
 
   it('lets an explicit plugin list win over an extends preset', async () => {
@@ -122,7 +122,7 @@ describe('releasePublishesToNpm', () => {
       '.releaserc.json': { extends: 'some-shared-config', plugins: ['@semantic-release/github'] },
     });
     // `plugins` is explicit, so it wins over the preset per semantic-release's option merging.
-    await expect(releasePublishesToNpm(project)).resolves.toBe(false);
+    expect(releasePublishesToNpm(project)).resolves.toBe(false);
   });
 
   it('keeps the npm preparation for an extends preset without an explicit plugin list', async () => {
@@ -130,13 +130,13 @@ describe('releasePublishesToNpm', () => {
       'package.json': { name: 'app' },
       '.releaserc.json': { extends: 'some-shared-config' },
     });
-    await expect(releasePublishesToNpm(project)).resolves.toBe(true);
+    expect(releasePublishesToNpm(project)).resolves.toBe(true);
   });
 
   it('keeps the npm preparation when a non-JSON configuration file exists', async () => {
     const project = await createProject({ 'package.json': { name: 'app' } });
     await fs.promises.writeFile(path.join(project.dirPath, 'release.config.js'), 'module.exports = {};', 'utf8');
-    await expect(releasePublishesToNpm(project)).resolves.toBe(true);
+    expect(releasePublishesToNpm(project)).resolves.toBe(true);
   });
 
   it('keeps the npm preparation when a workspace package configures @semantic-release/npm', async () => {
@@ -147,7 +147,7 @@ describe('releasePublishesToNpm', () => {
       'packages/lib/package.json': { name: 'lib' },
       'packages/lib/.releaserc.json': { plugins: ['@semantic-release/npm'] },
     });
-    await expect(releasePublishesToNpm(project)).resolves.toBe(true);
+    expect(releasePublishesToNpm(project)).resolves.toBe(true);
   });
 
   it('sees a pinned workspace (positive kept despite a matching negation) like Bun does', async () => {
@@ -159,7 +159,7 @@ describe('releasePublishesToNpm', () => {
       'packages/lib/package.json': { name: 'lib' },
       'packages/lib/.releaserc.json': { plugins: ['@semantic-release/npm'] },
     });
-    await expect(releasePublishesToNpm(project)).resolves.toBe(true);
+    expect(releasePublishesToNpm(project)).resolves.toBe(true);
   });
 
   it('sees workspaces linked by a baseline-seeding negation like Bun does', async () => {
@@ -173,7 +173,7 @@ describe('releasePublishesToNpm', () => {
       'packages/lib/package.json': { name: 'lib' },
       'packages/lib/.releaserc.json': { plugins: ['@semantic-release/npm'] },
     });
-    await expect(releasePublishesToNpm(project)).resolves.toBe(true);
+    expect(releasePublishesToNpm(project)).resolves.toBe(true);
     // …and the negated other/x alone must NOT trigger it: it is not a workspace to Bun.
     const negatedOnlyProject = await createProject({
       'package.json': { name: 'root', workspaces: ['!other/*'] },
@@ -181,7 +181,7 @@ describe('releasePublishesToNpm', () => {
       'other/x/package.json': { name: 'x' },
       'other/x/.releaserc.json': { plugins: ['@semantic-release/npm'] },
     });
-    await expect(releasePublishesToNpm(negatedOnlyProject)).resolves.toBe(false);
+    expect(releasePublishesToNpm(negatedOnlyProject)).resolves.toBe(false);
   });
 
   it('does not apply Bun-only baseline seeding to a Yarn project', async () => {
@@ -195,7 +195,7 @@ describe('releasePublishesToNpm', () => {
       },
       false
     );
-    await expect(releasePublishesToNpm(project)).resolves.toBe(false);
+    expect(releasePublishesToNpm(project)).resolves.toBe(false);
   });
 
   it('skips when the root and every workspace package configure npm-free plugins', async () => {
@@ -206,7 +206,7 @@ describe('releasePublishesToNpm', () => {
       'packages/lib/package.json': { name: 'lib' },
       'packages/lib/.releaserc.json': { plugins: ['@semantic-release/exec'] },
     });
-    await expect(releasePublishesToNpm(project)).resolves.toBe(false);
+    expect(releasePublishesToNpm(project)).resolves.toBe(false);
   });
 });
 

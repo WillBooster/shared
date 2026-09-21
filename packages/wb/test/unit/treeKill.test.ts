@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import type { ArgumentsCamelCase } from 'yargs';
 
 import { isProcessRunning, waitForProcessStopped } from '../../../../test/helpers/processUtils.js';

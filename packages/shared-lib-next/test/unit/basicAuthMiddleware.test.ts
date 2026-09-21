@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server.js';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'bun:test';
 
 import { BasicAuthMiddleware } from '../../src/index.js';
 

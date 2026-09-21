@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it, afterEach, vi } from 'vitest';
+import { describe, expect, it, afterEach, mock, spyOn } from 'bun:test';
 import yargs from 'yargs';
 
 import { concurrentlyCommand, runConcurrently } from '../../src/commands/concurrently.js';
@@ -14,7 +14,7 @@ describe('runConcurrently', () => {
   const project = new Project(cwd, {} as never, false);
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    mock.restore();
   });
 
   it('returns success when all commands succeed', async () => {
@@ -175,7 +175,7 @@ describe('runConcurrently', () => {
       process.emit('SIGINT', 'SIGINT');
     }, 50);
 
-    await expect(concurrentRun).resolves.toBe(130);
+    expect(concurrentRun).resolves.toBe(130);
   });
 
   it('normalizes placeholder commands before spawning children', async () => {
@@ -216,7 +216,7 @@ describe('runConcurrently', () => {
   });
 
   it('returns failure when a child process emits an error', async () => {
-    vi.spyOn(child_process, 'spawn').mockImplementation(() => {
+    spyOn(child_process, 'spawn').mockImplementation((() => {
       const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
       const child = {
         once(event: string, listener: (...args: unknown[]) => void) {
@@ -231,9 +231,9 @@ describe('runConcurrently', () => {
         }
       });
       return child;
-    });
+    }) as typeof child_process.spawn);
 
-    await expect(
+    expect(
       runConcurrently({
         commands: ['ignored'],
         project,
@@ -250,7 +250,7 @@ describe('concurrentlyCommand', () => {
     // The real handler would run the commands, so parsing alone is what this exercises.
     const command = {
       ...concurrentlyCommand,
-      handler: vi.fn(),
+      handler: mock(),
     };
     const argv = yargs()
       .scriptName('wb')

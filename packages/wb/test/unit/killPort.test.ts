@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 import { waitForProcessStopped } from '../../../../test/helpers/processUtils.js';
 import { killPorts } from '../../src/commands/killPort.js';
@@ -54,7 +54,7 @@ function startListeningProcess(): Promise<[number, number]> {
   return new Promise((resolve, reject) => {
     child.once('error', reject);
     // Without this, a child that dies before printing its port would stall the whole suite until
-    // vitest's 10-minute timeout. Rejecting a resolved promise later (on the test's own kill) is a no-op.
+    // the 10-minute test timeout. Rejecting a resolved promise later (on the test's own kill) is a no-op.
     child.once('exit', (code) => reject(new Error(`The listening process exited early with code ${code}.`)));
     child.stdout.once('data', (data: Buffer) => {
       resolve([pid, Number(data.toString().trim())]);

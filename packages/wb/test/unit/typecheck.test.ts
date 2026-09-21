@@ -1,9 +1,12 @@
 import child_process from 'node:child_process';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'bun:test';
 
+import { buildWb } from '../helpers/build.js';
 import { initializeProjectDirectory, tempDir } from '../helpers/shared.js';
+
+beforeAll(buildWb, 120_000);
 
 describe('typecheck', () => {
   it(
@@ -17,10 +20,6 @@ describe('typecheck', () => {
         cwd: dirPath,
       });
 
-      child_process.spawnSync('bun run build', {
-        shell: true,
-        stdio: 'inherit',
-      });
       const ret = child_process.spawnSync(`node dist/index.js typecheck -w ${dirPath}`, {
         shell: true,
         stdio: 'inherit',

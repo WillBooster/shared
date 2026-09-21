@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 import type { Project } from '../../../src/project.js';
 import { drizzleScripts } from '../../../src/scripts/drizzleScripts.js';

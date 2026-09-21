@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, mock, spyOn } from 'bun:test';
 import yargs from 'yargs';
 
 import type { TestArgv } from '../../../../src/commands/test.js';
@@ -15,18 +15,16 @@ import {
   buildWaitOnLoopbackCommand,
 } from '../../../../src/scripts/execution/baseScripts.js';
 import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/sharedOptionsBuilder.js';
-import type * as processUtils from '../../../../src/utils/process.js';
+import * as portUtils from '../../../../src/utils/port.js';
+import * as processUtils from '../../../../src/utils/process.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../../../src/utils/shell.js';
 import { buildD1MigrationsApplyCommands } from '../../../../src/utils/wrangler.js';
 
-vi.mock('../../../../src/utils/port.js', () => ({
-  ensurePort: vi.fn().mockResolvedValue(3000),
-}));
-
-vi.mock('../../../../src/utils/process.js', async (importOriginal: () => Promise<typeof processUtils>) => ({
-  ...(await importOriginal()),
-  spawnSyncOnExit: vi.fn(),
-}));
+spyOn(portUtils, 'ensurePort').mockResolvedValue(3000);
+spyOn(processUtils, 'spawnSyncOnExit').mockImplementation(() => {});
+afterAll(() => {
+  mock.restore();
+});
 
 describe('buildWaitOnLoopbackCommand', () => {
   it('fails before generating an invalid command when the port is missing', () => {
@@ -343,7 +341,7 @@ describe('BaseScripts D1 migration selection', () => {
       );
       await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'postgresql' };`);
       const project = buildD1Project(dirPath);
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warn = spyOn(console, 'warn').mockImplementation(() => {});
 
       const migrationCommand = scripts.getMigrationCommands(project).join(' && ');
       expect(migrationCommand).toContain('YARN drizzle-kit migrate');

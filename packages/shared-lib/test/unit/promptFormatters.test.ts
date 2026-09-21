@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { expect, test } from 'bun:test';
 
 import { extractIfSingleOutermostCodeBlock, extractSections } from '../../src/markdown.js';
 import { formatFilesForPrompt, formatMessagesForPrompt } from '../../src/promptFormatters.js';

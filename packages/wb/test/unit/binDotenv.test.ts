@@ -4,10 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+
+import { buildWb } from '../helpers/build.js';
 
 const binIndexPath = fileURLToPath(new URL('../../bin/index.js', import.meta.url));
 const sourceIndexPath = fileURLToPath(new URL('../../src/index.ts', import.meta.url));
+
+beforeAll(buildWb, 120_000);
 
 function isFnoxAvailable(): boolean {
   return childProcess.spawnSync('fnox', ['--version'], { stdio: 'ignore' }).status === 0;
@@ -60,7 +64,7 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('loads fnox-provided environment variables', async () => {
+  it.if(isFnoxAvailable())('loads fnox-provided environment variables', async () => {
     // The released `wb dotenv` routes through bin/dotenv.js (not dist), so fnox loading must be
     // exercised through bin/index.js to catch drift from the TypeScript implementation.
     await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
@@ -83,7 +87,7 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('loads development-profile fnox secrets when WB_ENV is unset', async () => {
+  it.if(isFnoxAvailable())('loads development-profile fnox secrets when WB_ENV is unset', async () => {
     // An unset WB_ENV must select the development profile (like wb's main loader), not the base
     // `[secrets]` table alone: a repo keeping dev-only secrets in `[profiles.development.secrets]`
     // would otherwise silently miss them.
@@ -108,7 +112,7 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('honors an explicit FNOX_PROFILE when WB_ENV is unset', async () => {
+  it.if(isFnoxAvailable())('honors an explicit FNOX_PROFILE when WB_ENV is unset', async () => {
     // Defaulting to development must not override an explicitly selected FNOX_PROFILE: fnox honors it,
     // so `wb dotenv` without WB_ENV must too (the profile still folds into the `--profile` it passes).
     await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
@@ -131,7 +135,7 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('overrides an inherited value with a profile key repeating the base value', async () => {
+  it.if(isFnoxAvailable())('overrides an inherited value with a profile key repeating the base value', async () => {
     // The forced mode must win over the parent shell for every key the profile itself declares,
     // including one whose value coincides with the base value
     // (https://github.com/WillBooster/shared/issues/1080).
@@ -154,7 +158,7 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('overrides an inherited value derived from a profile-overridden key', async () => {
+  it.if(isFnoxAvailable())('overrides an inherited value derived from a profile-overridden key', async () => {
     // DATABASE_URL is declared only in the base table, so it is absent from the profile's own
     // declarations, yet the profile's DB_HOST makes its exported value profile-specific: the value
     // comparison must keep covering that shape (https://github.com/WillBooster/shared/issues/930).
@@ -177,7 +181,7 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('warns when a profile default references a base secret', async () => {
+  it.if(isFnoxAvailable())('warns when a profile default references a base secret', async () => {
     // Such a reference is forbidden (docs/expected-repository-rules.md) because it makes the
     // profile-only export fail, leaving only the value comparison: a profile value equal to the
     // base value silently stops overriding, so the lost precision must be reported.
@@ -202,7 +206,7 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())(
+  it.if(isFnoxAvailable())(
     'rejects an env source whose WB_ENV disagrees with the default development cascade',
     async () => {
       // The development profile is selected even when WB_ENV is unset (the cascade defaults to
@@ -230,7 +234,7 @@ describe('bin/index.js dotenv fast path', () => {
     }
   );
 
-  it.runIf(isFnoxAvailable())('allows a non-standard profile (NODE_ENV=qa) to carry a standard WB_ENV', async () => {
+  it.if(isFnoxAvailable())('allows a non-standard profile (NODE_ENV=qa) to carry a standard WB_ENV', async () => {
     // `NODE_ENV=qa` selects the `qa` fnox profile while WB_ENV stays a standard mode — a supported
     // selection the mismatch guard must not reject (it enforces only standard cascades, like the
     // main loader).
@@ -285,32 +289,29 @@ describe('bin/index.js run command', () => {
     await fs.rm(projectDirPath, { force: true, recursive: true });
   });
 
-  it.runIf(isFnoxAvailable())(
-    'runs TypeScript with Node and forwards environment variables and arguments',
-    async () => {
-      await fs.writeFile(
-        path.join(projectDirPath, 'fnox.toml'),
-        '[secrets]\nLOADED_BY_WB = { default = "from-fnox" }\n\n[profiles.development]\n'
-      );
-      await fs.writeFile(
-        path.join(projectDirPath, 'probe.ts'),
-        "const value: string = `${process.env.LOADED_BY_WB}:${process.argv.slice(2).join(',')}`;\nconsole.log(value);\n"
-      );
+  it.if(isFnoxAvailable())('runs TypeScript with Node and forwards environment variables and arguments', async () => {
+    await fs.writeFile(
+      path.join(projectDirPath, 'fnox.toml'),
+      '[secrets]\nLOADED_BY_WB = { default = "from-fnox" }\n\n[profiles.development]\n'
+    );
+    await fs.writeFile(
+      path.join(projectDirPath, 'probe.ts'),
+      "const value: string = `${process.env.LOADED_BY_WB}:${process.argv.slice(2).join(',')}`;\nconsole.log(value);\n"
+    );
 
-      const result = childProcess.spawnSync(
-        process.execPath,
-        [binIndexPath, 'run', '--quiet-env', 'probe.ts', 'first', '--', '--second'],
-        {
-          cwd: projectDirPath,
-          encoding: 'utf8',
-          env: { PATH: process.env.PATH },
-        }
-      );
-      expect(result.stderr).toBe('');
-      expect(result.stdout).toBe('from-fnox:first,--,--second\n');
-      expect(result.status).toBe(0);
-    }
-  );
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'run', '--quiet-env', 'probe.ts', 'first', '--', '--second'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('from-fnox:first,--,--second\n');
+    expect(result.status).toBe(0);
+  });
 
   it('distinguishes a global option value named like a command from the run command', async () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
@@ -330,7 +331,7 @@ describe('bin/index.js run command', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('enforces the project environment contract on the default path', async () => {
+  it.if(isFnoxAvailable())('enforces the project environment contract on the default path', async () => {
     await fs.writeFile(path.join(projectDirPath, 'package.json'), '{}');
     await fs.writeFile(
       path.join(projectDirPath, 'fnox.toml'),
@@ -463,7 +464,7 @@ describe('bin/index.js run command', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('rejects an invalid WB_ENV in a standalone script directory', async () => {
+  it.if(isFnoxAvailable())('rejects an invalid WB_ENV in a standalone script directory', async () => {
     await fs.writeFile(
       path.join(projectDirPath, 'fnox.toml'),
       '[secrets]\nWB_ENV = { default = "prodcution" }\n\n[profiles.development]\n'

@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 import {
   buildDartFormatCommand,
@@ -102,7 +102,7 @@ describe('lint', () => {
   it('treats explicit directories as lint targets', async () => {
     const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-lint-dir-'));
 
-    await expect(getLintTargetFileKind(dirPath)).resolves.toBe('directory');
+    expect(getLintTargetFileKind(dirPath)).resolves.toBe('directory');
   });
 
   it('does not treat regular files as directories', async () => {
@@ -111,7 +111,7 @@ describe('lint', () => {
 
     await fs.writeFile(filePath, '# test\n');
 
-    await expect(getLintTargetFileKind(filePath)).resolves.toBe('other');
+    expect(getLintTargetFileKind(filePath)).resolves.toBe('other');
   });
 
   it('keeps prettier formatting only for prettier-only files without oxfmt', () => {
@@ -172,7 +172,7 @@ describe('lint', () => {
         '/repo/packages',
         'directory'
       )
-    ).toEqual([
+    ).toEqual<unknown>([
       { lintPath: '/repo/packages/a', project: { dirPath: '/repo/packages/a', preferredLinter: 'oxlint' } },
       { lintPath: '/repo/packages/b', project: { dirPath: '/repo/packages/b', preferredLinter: 'oxlint' } },
     ]);

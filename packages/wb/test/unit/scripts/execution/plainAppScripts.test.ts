@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 import type { TestArgv } from '../../../../src/commands/test.js';
 import type { Project } from '../../../../src/project.js';

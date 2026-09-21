@@ -6,7 +6,8 @@ import { removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-no
 
 import { clearProjectCaches } from '../../src/project.js';
 
-export const tempDir = path.join(os.tmpdir(), 'shared');
+// Per test file: parallel test workers would otherwise copy fixtures over each other's directories.
+export const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-test-'));
 
 export async function initializeProjectDirectory(dirPath: string): Promise<void> {
   // The process-global Project caches would otherwise serve instances built from a previous

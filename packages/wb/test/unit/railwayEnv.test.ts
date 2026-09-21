@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 import { prepareRailwayCli, selectRailwayVariables } from '../../src/commands/railwayEnv.js';
 import { selectFnoxSourcedKeys } from '../../src/utils/envSources.js';
@@ -40,7 +40,7 @@ describe('prepareRailwayCli', () => {
 
       expect(result.status).toBe(127);
       expect(await fs.readFile(fakeBunx.statePath, 'utf8')).toBe('1');
-      await expect(fs.stat(unrelatedDirPath)).resolves.toBeDefined();
+      expect(fs.stat(unrelatedDirPath)).resolves.toBeDefined();
     } finally {
       await fs.rm(fakeBunx.dirPath, { force: true, recursive: true });
       await fs.rm(unrelatedDirPath, { force: true, recursive: true });

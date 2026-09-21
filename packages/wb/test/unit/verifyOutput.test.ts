@@ -4,21 +4,20 @@ import path from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { stripVTControlCharacters } from 'node:util';
 
-import { afterEach, beforeAll, expect, it } from 'vitest';
+import { afterEach, beforeAll, expect, it } from 'bun:test';
+
+import { buildWb } from '../helpers/build.js';
 
 const cliPath = path.resolve('bin/index.js');
 const fixturePaths: string[] = [];
 
-beforeAll(() => {
-  const build = spawnSync('bun', ['run', 'build'], { encoding: 'utf8', timeout: 30_000 });
-  expect(build.status, build.stdout + build.stderr).toBe(0);
-});
+beforeAll(buildWb, 120_000);
 
 afterEach(async () => {
   await Promise.all(fixturePaths.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
-it.each([false, true])('keeps successful output concise and saves raw output (full=%s)', async (full) => {
+it.each([false, true])('keeps successful output concise and saves raw output (full=%p)', async (full) => {
   const dir = await createFixture();
   const logPath = path.join(dir, '.wb', full ? 'verify-full.log' : 'verify.log');
   await fs.mkdir(path.dirname(logPath), { recursive: true });
@@ -121,10 +120,11 @@ while (!(await Bun.file('release').exists())) await Bun.sleep(10);`
     child.once('exit', () => resolve());
   });
   try {
-    await expect
-      .poll(() => fs.readFile(logPath, 'utf8').catch(() => ''), { timeout: 10_000 })
-      .toContain('RAW_ERROR_BEFORE_FINISH');
-    await expect.poll(() => output).toContain(`Full log: ${logPath}`);
+    await waitUntil(async () => {
+      const log = await fs.readFile(logPath, 'utf8').catch(() => '');
+      return log.includes('RAW_ERROR_BEFORE_FINISH');
+    });
+    await waitUntil(() => output.includes(`Full log: ${logPath}`));
     expect(output).not.toContain('RAW_BEFORE_FINISH');
     process.kill(-child.pid!, 'SIGKILL');
     await exited;
@@ -153,7 +153,7 @@ it('preserves the previous log during dry-run and keeps standalone tests verbose
   expect(result.stdout).toContain('RAW_TEST_STDOUT');
 });
 
-it.each([0, 7])('saves and flushes complete CI output with exit code %s', async (exitCode) => {
+it.each([0, 7])('saves and flushes complete CI output with exit code %i', async (exitCode) => {
   const dir = await createFixture();
   const logPath = path.join(dir, '.wb/test-ci.log');
   await fs.mkdir(path.dirname(logPath), { recursive: true });
@@ -205,7 +205,7 @@ test('stdin', () => {
   expect(await fs.readFile(path.join(dir, '.wb/test-ci.log'), 'utf8')).toContain('E2E_STDIN_CLOSED');
 });
 
-it.each([0, 7])('reports a full log device without interrupting the command with exit code %s', async (exitCode) => {
+it.each([0, 7])('reports a full log device without interrupting the command with exit code %i', async (exitCode) => {
   const dir = await createFixture();
   await fs.writeFile(
     path.join(dir, 'test/unit/example.test.ts'),
@@ -317,4 +317,12 @@ function runCli(dir: string, args: string[]): SpawnSyncReturns<string> {
     timeout: 30_000,
     maxBuffer: 4 * 1024 * 1024,
   });
+}
+
+async function waitUntil(condition: () => boolean | Promise<boolean>): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (!(await condition())) {
+    if (Date.now() > deadline) throw new Error('Timed out waiting for the condition.');
+    await Bun.sleep(50);
+  }
 }

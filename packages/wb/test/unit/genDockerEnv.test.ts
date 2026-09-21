@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 
 import { serializeDockerEnvLine } from '../../src/commands/genDockerEnv.js';
 import { collectPlaintextFnoxValues } from '../../src/utils/fnoxToml.js';

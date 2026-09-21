@@ -4,21 +4,23 @@ import { createServer } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, mock, spyOn } from 'bun:test';
 
 import type { Project } from '../../src/project.js';
 import { computePreferredPort, ensurePort, getEnsuredPort } from '../../src/utils/port.js';
+import * as processUtils from '../../src/utils/process.js';
 
-vi.mock('../../src/utils/process.js', () => ({
-  killPortProcessImmediatelyAndOnExit: vi.fn().mockResolvedValue(undefined),
-}));
+spyOn(processUtils, 'killPortProcessImmediatelyAndOnExit').mockResolvedValue(undefined);
 
 const AUTO_PORT_RANGE_START = 20_000;
 const AUTO_PORT_RANGE_END_EXCLUSIVE = 32_768;
 
 // A real directory is required because ensurePort publishes the resolved URL under `<rootDirPath>/.wb`.
 const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-port-selection-test-'));
-afterAll(() => fs.rmSync(dirPath, { force: true, recursive: true }));
+afterAll(() => {
+  mock.restore();
+  fs.rmSync(dirPath, { force: true, recursive: true });
+});
 
 function createFakeProject(env: Record<string, string | undefined> = {}): Project {
   return {
@@ -41,7 +43,7 @@ async function occupyPort(port: number): Promise<Server> {
 describe('ensurePort', () => {
   it('respects an explicitly configured PORT and derives NEXT_PUBLIC_BASE_URL from it', async () => {
     const project = createFakeProject({ PORT: '3456' });
-    await expect(ensurePort(project)).resolves.toBe(3456);
+    expect(ensurePort(project)).resolves.toBe(3456);
     expect(project.env.NEXT_PUBLIC_BASE_URL).toBe('http://localhost:3456');
   });
 
@@ -54,7 +56,7 @@ describe('ensurePort', () => {
     expect(project.env.NEXT_PUBLIC_BASE_URL).toBe(`http://localhost:${port}`);
     expect(getEnsuredPort(project)).toBe(String(port));
 
-    await expect(ensurePort(createFakeProject())).resolves.toBe(port);
+    expect(ensurePort(createFakeProject())).resolves.toBe(port);
   });
 
   it('fails fast on a NEXT_PUBLIC_BASE_URL pinning its port without a matching PORT', async () => {
@@ -70,7 +72,7 @@ describe('ensurePort', () => {
     ];
     for (const baseUrl of pinnedBaseUrls) {
       const project = createFakeProject({ NEXT_PUBLIC_BASE_URL: baseUrl });
-      await expect(ensurePort(project)).rejects.toThrow('pins its port while PORT is undefined');
+      expect(ensurePort(project)).rejects.toThrow('pins its port while PORT is undefined');
     }
   });
 
