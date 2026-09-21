@@ -41,6 +41,14 @@ const smallProjectFixtures: SmallProjectFixture[] = [
     outdatedBun: false,
     dependencies: { 'react-native': '0.87.1' },
   },
+  {
+    name: 'React Native ESM JavaScript',
+    isEsm: true,
+    sourceFileName: 'index.js',
+    source: 'export const answer = 42;\n',
+    outdatedBun: false,
+    dependencies: { 'react-native': '0.87.1' },
+  },
 ];
 
 for (const fixture of smallProjectFixtures) {
@@ -89,15 +97,29 @@ test('an outdated runtime reports a clear error when mise is unavailable', () =>
   ensureBuiltCli();
   runCommand('mise', ['--no-config', 'install', 'bun@1.0.0'], packageDirPath);
   const oldBunDir = runCommand('mise', ['--no-config', 'where', 'bun@1.0.0'], packageDirPath).stdout.trim();
-  const result = child_process.spawnSync(path.join(oldBunDir, 'bin', 'bun'), [binPath, '--help'], {
-    cwd: packageDirPath,
-    encoding: 'utf8',
-    env: { PATH: '/usr/bin:/bin' },
-  });
+  const oldBunPath = path.join(oldBunDir, 'bin', 'bun');
+  const tempHomePath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-missing-mise-'));
+  try {
+    const env = { HOME: tempHomePath, PATH: '/usr/bin:/bin' };
+    const gateResult = child_process.spawnSync(oldBunPath, [binPath, 'apply-release-age-gate'], {
+      cwd: packageDirPath,
+      encoding: 'utf8',
+      env,
+    });
+    expect(gateResult.status).toBe(0);
+    expect(fs.readFileSync(path.join(tempHomePath, '.bunfig.toml'), 'utf8')).toContain('minimumReleaseAge');
 
-  expect(result.status).toBe(1);
-  expect(result.stderr).toContain('wbfy requires Bun >= 1.4.0 (found 1.0.0)');
-  expect(result.stderr).not.toContain('TypeError');
+    const result = child_process.spawnSync(oldBunPath, [binPath, '--help'], {
+      cwd: packageDirPath,
+      encoding: 'utf8',
+      env,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('wbfy requires Bun >= 1.4.0 (found 1.0.0)');
+    expect(result.stderr).not.toContain('TypeError');
+  } finally {
+    fs.rmSync(tempHomePath, { force: true, recursive: true });
+  }
 });
 
 function ensureBuiltCli(): void {

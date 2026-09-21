@@ -34,9 +34,9 @@ function getConfigContent(config: PackageConfig): string {
 
   // CommonJS packages need require/module.exports here: oxfmt config files are
   // only auto-discovered as .ts, and the shared config package is ESM-only.
-  // No /// <reference types> line: the wbfy-generated tsconfig already covers *.config.ts with
-  // types ["bun"], which types require/module.exports, while a "node" reference breaks under
-  // Bun's isolated linker where the undeclared @types/node is unresolvable (TS2688).
+  // No /// <reference types> line: the generated tsconfig covers *.config.ts; standard projects
+  // get CommonJS globals from Bun's types, while React Native declares its one missing global
+  // locally. A "node" reference breaks under the isolated linker without @types/node (TS2688).
   if (!config.isEsmPackage) {
     return `${managedConfigBlocks.getBlock(
       'base',

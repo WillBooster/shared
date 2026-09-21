@@ -1,8 +1,13 @@
 #!/usr/bin/env bun
 
 const minimumBunVersion = '1.4.0';
+const applyReleaseAgeGateCommand = 'apply-release-age-gate';
 
 if (!isSupportedBunVersion(Bun.version)) {
+  const releaseAgeGateApplied = applyReleaseAgeGate();
+  if (process.argv[2] === applyReleaseAgeGateCommand) {
+    process.exit(releaseAgeGateApplied ? 0 : 1);
+  }
   process.exit(runWithSupportedBun());
 }
 
@@ -37,6 +42,18 @@ function runWithSupportedBun() {
   } catch {
     return reportBootstrapFailure(`mise could not start Bun ${latestBunVersion}`);
   }
+}
+
+function applyReleaseAgeGate() {
+  const scriptPath = new URL('../configs/applyReleaseAgeGate.sh', import.meta.url).pathname;
+  try {
+    const result = Bun.spawnSync(['bash', scriptPath], { stdin: 'inherit', stdout: 'inherit', stderr: 'inherit' });
+    if (result.exitCode === 0) return true;
+  } catch {
+    // The warning below is the stable command-level diagnostic for either spawn or script failure.
+  }
+  console.warn('Failed to apply the minimum-release-age policy to the global package-manager configs.');
+  return false;
 }
 
 function reportBootstrapFailure(reason) {
