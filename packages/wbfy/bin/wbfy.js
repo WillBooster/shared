@@ -5,7 +5,7 @@ const applyReleaseAgeGateCommand = 'apply-release-age-gate';
 
 if (!isSupportedBunVersion(Bun.version)) {
   const releaseAgeGateApplied = applyReleaseAgeGate();
-  if (process.argv[2] === applyReleaseAgeGateCommand) {
+  if (process.argv.slice(2).includes(applyReleaseAgeGateCommand)) {
     process.exit(releaseAgeGateApplied ? 0 : 1);
   }
   process.exit(runWithSupportedBun());

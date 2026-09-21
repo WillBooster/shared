@@ -101,7 +101,7 @@ test('an outdated runtime reports a clear error when mise is unavailable', () =>
   const tempHomePath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-missing-mise-'));
   try {
     const env = { HOME: tempHomePath, PATH: '/usr/bin:/bin' };
-    const gateResult = child_process.spawnSync(oldBunPath, [binPath, 'apply-release-age-gate'], {
+    const gateResult = child_process.spawnSync(oldBunPath, [binPath, '--verbose', 'apply-release-age-gate'], {
       cwd: packageDirPath,
       encoding: 'utf8',
       env,
