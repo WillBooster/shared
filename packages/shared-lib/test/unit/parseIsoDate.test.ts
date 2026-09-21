@@ -14,21 +14,19 @@ test.each(['UTC', 'Asia/Tokyo', 'America/New_York'])('parses independently of th
       console.log(JSON.stringify([
         parseIsoDate('2026-01-01T08:30:00.123456789+09:00'),
         parseIsoDate('2024-02-29'),
-        parseIsoDate('9999-12-31T23:59:59-01:00'),
-        parseIsoDate('0000-01-01T00:00:00+01:00'),
+        parseIsoDate('9999-12-31T23:59:59-01:00') === undefined,
+        parseIsoDate('0000-01-01T00:00:00+01:00') === undefined,
       ]));
     `,
     ],
     { env: { ...process.env, TZ: tz }, encoding: 'utf8' }
   );
-  expect(output.trim()).toBe(
-    JSON.stringify([
-      { kind: 'datetime', value: '2025-12-31T23:30:00.123456789Z' },
-      { kind: 'date', value: '2024-02-29' },
-      undefined,
-      undefined,
-    ])
-  );
+  expect(JSON.parse(output)).toEqual([
+    { kind: 'datetime', value: '2025-12-31T23:30:00.123456789Z' },
+    { kind: 'date', value: '2024-02-29' },
+    true,
+    true,
+  ]);
 });
 
 test('normalizes equivalent instants across date and year boundaries', () => {
