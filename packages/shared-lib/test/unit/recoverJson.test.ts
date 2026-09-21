@@ -11,6 +11,8 @@ test('recovers complete LLM answers without changing their data', () => {
       { a: 2.3e100, b: 'str', c: null, d: false, e: [1, 2, 3] },
     ],
     ["{name: 'John',}", { name: 'John' }],
+    [String.raw`{'summary': 'it\'s complete'}`, { summary: "it's complete" }],
+    [String.raw`['don\'t stop']`, ["don't stop"]],
     ['{“name”: “John”}', { name: 'John' }],
     ['{”name”: ”John”}', { name: 'John' }],
     ['{’name’: ’John’}', { name: 'John' }],
@@ -60,6 +62,16 @@ test('does not treat numbered prose or Markdown bullets as root scalar answers',
     expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'confirmed' }]);
   }
   expect(recoverJson(' 42 ').candidates[0]?.value).toBe(42);
+  for (const prefix of ['', 'Score:\n']) {
+    const negative = recoverJson(`${prefix}-5`);
+    expect(negative.errors).toEqual([]);
+    expect(negative.candidates).toHaveLength(1);
+    expect(negative.candidates[0]?.value).toBe(-5);
+    expect(negative.candidates[0]?.requiresConfirmation).toBe(false);
+    const unfinished = recoverJson(`${prefix}-5x`).candidates[0]!;
+    expect(unfinished.value).toBe('-5x');
+    expect(unfinished.requiresConfirmation).toBe(true);
+  }
   expect(recoverJson('```json\n"answer"\n```').candidates[0]?.value).toBe('answer');
 });
 
@@ -592,6 +604,15 @@ test('retains scalar comments and separates standalone answers from later prose'
   const adjacent = recoverJson('"a", "b"').candidates[0]!;
   expect(adjacent.value).toBe('a');
   expect(adjacent.requiresConfirmation).toBe(true);
+  for (const [text, value] of [
+    ['42 ✓', 42],
+    ['true +1', true],
+  ] as const) {
+    const symbolic = recoverJson(text).candidates[0]!;
+    expect(symbolic.value).toBe(value);
+    expect(symbolic.requiresConfirmation).toBe(true);
+    expect(symbolic.repairs.some((repair) => repair.reason === 'trailing-scalar-content')).toBe(true);
+  }
   for (const token of ['true;', 'false:', 'null!', 'None…', 'True"', '42.']) {
     for (const text of [token, `\`\`\`json\n${token}\n\`\`\``]) {
       const literal = recoverJson(text).candidates[0]!;
