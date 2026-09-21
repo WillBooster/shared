@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 
+import { fileURLToPath } from 'node:url';
+
 const minimumBunVersion = '1.4.0';
 const applyReleaseAgeGateCommand = 'apply-release-age-gate';
 
@@ -45,7 +47,7 @@ function runWithSupportedBun() {
 }
 
 function applyReleaseAgeGate() {
-  const scriptPath = new URL('../configs/applyReleaseAgeGate.sh', import.meta.url).pathname;
+  const scriptPath = fileURLToPath(new URL('../configs/applyReleaseAgeGate.sh', import.meta.url));
   try {
     const result = Bun.spawnSync(['bash', scriptPath], { stdin: 'inherit', stdout: 'inherit', stderr: 'inherit' });
     if (result.exitCode === 0) return true;

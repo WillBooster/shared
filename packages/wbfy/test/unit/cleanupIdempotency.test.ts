@@ -98,10 +98,16 @@ test('an outdated runtime reports a clear error when mise is unavailable', () =>
   runCommand('mise', ['--no-config', 'install', 'bun@1.0.0'], packageDirPath);
   const oldBunDir = runCommand('mise', ['--no-config', 'where', 'bun@1.0.0'], packageDirPath).stdout.trim();
   const oldBunPath = path.join(oldBunDir, 'bin', 'bun');
-  const tempHomePath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-missing-mise-'));
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy missing mise '));
+  const tempHomePath = path.join(tempDirPath, 'home');
+  const tempPackagePath = path.join(tempDirPath, 'wbfy package');
+  const copiedBinPath = path.join(tempPackagePath, 'bin', 'wbfy.js');
   try {
+    fs.mkdirSync(tempHomePath);
+    fs.cpSync(path.join(packageDirPath, 'bin'), path.join(tempPackagePath, 'bin'), { recursive: true });
+    fs.cpSync(path.join(packageDirPath, 'configs'), path.join(tempPackagePath, 'configs'), { recursive: true });
     const env = { HOME: tempHomePath, PATH: '/usr/bin:/bin' };
-    const gateResult = child_process.spawnSync(oldBunPath, [binPath, '--verbose', 'apply-release-age-gate'], {
+    const gateResult = child_process.spawnSync(oldBunPath, [copiedBinPath, '--verbose', 'apply-release-age-gate'], {
       cwd: packageDirPath,
       encoding: 'utf8',
       env,
@@ -109,7 +115,7 @@ test('an outdated runtime reports a clear error when mise is unavailable', () =>
     expect(gateResult.status).toBe(0);
     expect(fs.readFileSync(path.join(tempHomePath, '.bunfig.toml'), 'utf8')).toContain('minimumReleaseAge');
 
-    const result = child_process.spawnSync(oldBunPath, [binPath, '--help'], {
+    const result = child_process.spawnSync(oldBunPath, [copiedBinPath, '--help'], {
       cwd: packageDirPath,
       encoding: 'utf8',
       env,
@@ -118,7 +124,7 @@ test('an outdated runtime reports a clear error when mise is unavailable', () =>
     expect(result.stderr).toContain('wbfy requires Bun >= 1.4.0 (found 1.0.0)');
     expect(result.stderr).not.toContain('TypeError');
   } finally {
-    fs.rmSync(tempHomePath, { force: true, recursive: true });
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
 });
 
