@@ -19,6 +19,8 @@ export {
   extractSections,
   parseMarkdownSections,
 } from './markdown.js';
+export { parseIsoDate } from './parseIsoDate.js';
+export type { ParsedIsoDate } from './parseIsoDate.js';
 export { parseCommandLineArgs } from './parseCommandLineArgs.js';
 export {
   escapePromptTag,
