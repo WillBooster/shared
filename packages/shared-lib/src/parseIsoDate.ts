@@ -7,7 +7,8 @@ export type ParsedIsoDate = { kind: 'date'; value: string } | { kind: 'datetime'
  * Accepts YYYY-MM-DD and YYYY-MM-DDTHH:mm[:ss[.fraction]] followed by Z or ±HH:mm
  * (±HHmm also works). Surrounding whitespace is ignored. Date-only values stay date-only;
  * timestamps become UTC strings, retaining all fractional digits. Local timestamps, unknown
- * offsets (-00:00/-0000), leap seconds, and years outside 0000–9999 are unsupported.
+ * offsets (-00:00/-0000), leap seconds, and input or normalized UTC years outside 0000–9999
+ * are unsupported.
  */
 export function parseIsoDate(input: unknown): ParsedIsoDate | undefined {
   if (typeof input !== 'string') return undefined;
