@@ -1,6 +1,52 @@
 /*! Selected cases adapted from jsonrepair, Copyright (c) 2020-2026 Jos de Jong (ISC). See NOTICE. */
 import { expect, test } from 'vitest';
-import { recoverJson } from '../../src/index.js';
+import { type JsonRecovery, recoverJson as recoverJsonUnchecked } from '../../src/index.js';
+
+test('locates repairs in the original response and distinguishes their uncertainty', () => {
+  for (const [marked, reason, kind] of [
+    ['{"a": ¦True}', 'python-keyword', 'syntax'],
+    ['{¦“name”: "John"}', 'non-json-quote', 'syntax'],
+    ['{"a":1 ¦"b":2}', 'missing-comma', 'syntax'],
+    ['{"a":"x¦\ny"}', 'unescaped-control-character', 'syntax'],
+    ['{"a":¦\u00A01}', 'non-json-whitespace', 'syntax'],
+    ['{¦name:1}', 'unquoted-key', 'syntax'],
+    ['{¦notes":1}', 'unquoted-key', 'ambiguous'],
+    ['{"a":1,¦"a":2}', 'duplicate-key', 'ambiguous'],
+    ['{"a" ¦1}', 'missing-colon', 'ambiguous'],
+    ['{¦,"a":1}', 'extra-comma', 'ambiguous'],
+    ['{"a":¦word}', 'unquoted-value', 'ambiguous'],
+    ['{"a":¦word', 'unquoted-value', 'incomplete'],
+    ["{'a':'it¦'s fine'}", 'literal-apostrophe', 'ambiguous'],
+    ['{"a":"word¦”, "b":1}', 'mismatched-quote', 'ambiguous'],
+    [String.raw`{"a":"x¦\q"}`, 'invalid-escape', 'ambiguous'],
+    ['{"a":"x¦\\', 'truncated-escape', 'incomplete'],
+    [String.raw`{"a":"x¦\u1`, 'invalid-unicode-escape', 'incomplete'],
+    [String.raw`{"a":"x¦\u1"}`, 'invalid-unicode-escape', 'ambiguous'],
+    ['{"a":¦"cut', 'unterminated-string', 'incomplete'],
+    ['{"a":¦', 'missing-value', 'incomplete'],
+    ['[1,¦,3]', 'missing-value', 'incomplete'],
+    ['{"a":1¦', 'missing-}', 'incomplete'],
+    ['[1¦', 'missing-]', 'incomplete'],
+    ['42¦\nExplanation', 'scalar-before-prose', 'ambiguous'],
+    ['"answer"¦  explanation', 'trailing-scalar-content', 'ambiguous'],
+    ['{"a":1}¦}', 'surplus-closing-bracket', 'ambiguous'],
+    ['Notes: // ¦{"a":1}', 'fragment-in-comment-like-prose', 'ambiguous'],
+    ['{] ¦{"a":1}', 'fragment-after-rejected-document', 'ambiguous'],
+    ['"answer" extra ¦{"a":1}', 'fragment-after-ambiguous-scalar', 'ambiguous'],
+    ['See https://x/¦{"a":1}', 'ambiguous-uri-boundary', 'ambiguous'],
+    ['{"notes":"Use:\n¦```js\nx\n```\nDone"}', 'literal-fence-in-string', 'ambiguous'],
+  ] as const) {
+    for (const prefix of ['', 'Context 🦊:\n']) {
+      const input = prefix + marked.replace('¦', '');
+      const result = recoverJson(input);
+      expect(result.candidates.flatMap((candidate) => candidate.repairs)).toContainEqual({
+        offset: prefix.length + marked.indexOf('¦'),
+        reason,
+        kind,
+      });
+    }
+  }
+});
 
 test('recovers complete LLM answers without changing their data', () => {
   const astralCharacter = '😀';
@@ -192,12 +238,14 @@ test('does not treat numbered prose or Markdown bullets as root scalar answers',
     expect(negative.candidates).toHaveLength(1);
     expect(negative.candidates[0]?.value).toBe(-5);
     expect(negative.candidates[0]?.requiresConfirmation).toBe(false);
-    const unfinished = recoverJson(`${prefix}-5x`).candidates[0]!;
-    expect(unfinished.value).toBe('-5x');
-    expect(unfinished.requiresConfirmation).toBe(true);
-    expect(unfinished.repairs).toContainEqual(
-      expect.objectContaining({ reason: 'unquoted-value', kind: 'incomplete' })
-    );
+    for (const token of ['-5x', '-']) {
+      const unfinished = recoverJson(prefix + token).candidates[0]!;
+      expect(unfinished.value).toBe(token);
+      expect(unfinished.requiresConfirmation).toBe(true);
+      expect(unfinished.repairs).toContainEqual(
+        expect.objectContaining({ reason: 'unquoted-value', kind: 'incomplete' })
+      );
+    }
   }
   expect(recoverJson('```json\n"answer"\n```').candidates[0]?.value).toBe('answer');
 });
@@ -908,10 +956,6 @@ test('keeps repair provenance within the retained string interpretation', () => 
     const candidate = recoverJson(input).candidates[0]!;
     expect(candidate.requiresConfirmation).toBe(true);
     expect(candidate.repairs.some((repair) => repair.reason === 'unescaped-control-character')).toBe(false);
-    for (const repair of candidate.repairs) {
-      expect(repair.offset).toBeGreaterThanOrEqual(candidate.start);
-      expect(repair.offset).toBeLessThanOrEqual(candidate.end);
-    }
   }
 });
 
@@ -978,3 +1022,20 @@ test('retains unquoted URL and time values without losing surrounding fields', (
     expect(recoverJson(`[${value}]`).candidates[0]?.value).toEqual([value]);
   }
 });
+
+function recoverJson(input: string): JsonRecovery {
+  const result = recoverJsonUnchecked(input);
+  let previousEnd = 0;
+  for (const candidate of result.candidates) {
+    expect(candidate.start).toBeGreaterThanOrEqual(previousEnd);
+    expect(candidate.end).toBeGreaterThanOrEqual(candidate.start);
+    expect(candidate.end).toBeLessThanOrEqual(input.length);
+    for (const repair of candidate.repairs) {
+      expect(Number.isInteger(repair.offset)).toBe(true);
+      expect(repair.offset).toBeGreaterThanOrEqual(candidate.start);
+      expect(repair.offset).toBeLessThanOrEqual(candidate.end);
+    }
+    previousEnd = candidate.end;
+  }
+  return result;
+}
