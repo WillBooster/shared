@@ -5,7 +5,7 @@ import merge from 'deepmerge';
 import type { PackageJson, TsConfigJson } from 'type-fest';
 
 import { logger } from '../logger.js';
-import type { PackageConfig } from '../packageConfig.js';
+import { generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
@@ -62,6 +62,11 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       // Prisma seeds and migration helper scripts often live outside src, but
       // type-aware linting still needs them covered by the project config.
       addIncludePath(newSettings, 'prisma/**/*');
+    }
+    // Keep wbfy's generated config from becoming an opt-out signal on the next run. Existing
+    // source-only configs remain untouched because generatesWorkerTypes is false for those.
+    if (generatesWorkerTypes(config)) {
+      addIncludePath(newSettings, 'worker-configuration.d.ts');
     }
 
     const filePath = path.resolve(config.dirPath, 'tsconfig.json');

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { expect, test } from 'bun:test';
 
 import { generateTsconfig } from '../../src/generators/tsconfig.js';
-import type { PackageConfig } from '../../src/packageConfig.js';
+import { consumesGeneratedWorkerTypes, type PackageConfig } from '../../src/packageConfig.js';
 import { promisePool } from '../../src/utils/promisePool.js';
 
 import { createConfig } from '../helpers/testConfig.js';
@@ -115,6 +115,28 @@ test('initializes a comment-only tsconfig with the generated settings', async ()
     const generated = JSON.parse(fs.readFileSync(filePath, 'utf8')) as { compilerOptions?: object };
     expect(generated.compilerOptions).toBeDefined();
   });
+});
+
+test('keeps generated Cloudflare worker types in the managed TypeScript project', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-worker-'));
+  try {
+    const config = createConfig({
+      dirPath: tempDirPath,
+      isRoot: true,
+      doesContainJavaScript: true,
+      doesContainWranglerConfig: true,
+      packageJson: { devDependencies: { wrangler: '4.114.0' } },
+    });
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    const generated = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
+      include?: string[];
+    };
+    expect(generated.include).toContain('worker-configuration.d.ts');
+    expect(consumesGeneratedWorkerTypes(config)).toBe(true);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
 });
 
 test('keeps a commented tsconfig byte-identical when the settings are already up to date', async () => {
