@@ -102,6 +102,22 @@ test('recovers quoted ratios without absorbing separate numbers or comment trivi
 });
 
 test('exposes surplus root closers and their continuation without guessing parentage', () => {
+  for (const input of ['Notes: // {"a":1}} done', 'Notes: /* {"a":1}} done */']) {
+    const result = recoverJson(input);
+    expect(result.errors).toEqual([]);
+    expect(result.candidates).toHaveLength(1);
+    const candidate = result.candidates[0]!;
+    expect(candidate.value).toEqual({ a: 1 });
+    expect(input.slice(candidate.start, candidate.end)).toBe('{"a":1}');
+    expect(candidate.repairs.map((repair) => repair.reason)).toEqual(['fragment-in-comment-like-prose']);
+    expect(candidate.requiresConfirmation).toBe(true);
+  }
+  const capped = recoverJson('{]\n'.repeat(33) + '```json\n{"a":1}}\n```');
+  expect(capped.errors).toHaveLength(32);
+  expect(capped.errors.some((error) => error.message.startsWith('Surplus closing brackets'))).toBe(false);
+  expect(capped.candidates).toHaveLength(1);
+  expect(capped.candidates[0]?.value).toEqual({ a: 1 });
+  expect(capped.candidates[0]?.requiresConfirmation).toBe(true);
   for (const input of ['{"a":{"b":1}}},"c":2}', '```json\n{"a":{"b":1}}},"c":2}\n```']) {
     const result = recoverJson(input);
     expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ a: { b: 1 } }, 'c']);
