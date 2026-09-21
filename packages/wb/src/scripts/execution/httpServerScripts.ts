@@ -35,7 +35,7 @@ export class HttpServerScripts extends BaseScripts {
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const targets = argv.targets?.map(String);
     const normalizedTargets = targets?.length ? targets : ['test/e2e/'];
-    const testCommand = this.testUnit(project, { ...argv, targets: normalizedTargets });
+    const testCommand = this.buildUnitRunnerCommand(project, { ...argv, targets: normalizedTargets });
     return buildShellCommand([
       'YARN',
       'wb',
