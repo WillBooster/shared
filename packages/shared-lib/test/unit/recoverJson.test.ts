@@ -357,6 +357,15 @@ test('retains only unconfirmed fragments from comment-like prose without mistaki
   expect(globPaths.errors).toEqual([]);
   expect(globPaths.candidates).toHaveLength(1);
   expect(globPaths.candidates[0]?.value).toEqual({ v: 1 });
+  for (const newline of ['\n', '\r', '\r\n']) {
+    for (const value of [42, 'confirmed', true]) {
+      const result = recoverJson(`Answer:${newline}/* stale */ ${JSON.stringify(value)}`);
+      expect(result.errors).toEqual([]);
+      expect(result.candidates).toHaveLength(1);
+      expect(result.candidates[0]?.value).toEqual(value);
+      expect(result.candidates[0]?.requiresConfirmation).toBe(false);
+    }
+  }
   for (const prefix of ['- ', 'Verdict options:\n- ', '{"a":1}\n- ']) {
     for (const close of ['', '\n*/']) {
       const result = recoverJson(`${prefix}/* note\n{"verdict":"confirmed"}${close}`);
@@ -404,6 +413,13 @@ test('preserves apostrophes in comma continuations after embedded quoted words',
 });
 
 test('retains container answers abutting prose URLs without claiming independent boundaries', () => {
+  const rootUri = recoverJson('https://x/{"a":1} tail {"b":2}');
+  expect(rootUri.errors).toEqual([]);
+  expect(rootUri.candidates.map((candidate) => candidate.value)).toEqual([{ a: 1 }, { b: 2 }]);
+  expect(rootUri.candidates[0]?.repairs.some((repair) => repair.reason === 'ambiguous-uri-boundary')).toBe(true);
+  expect(rootUri.candidates[0]?.requiresConfirmation).toBe(true);
+  expect(rootUri.candidates[1]?.repairs).toEqual([]);
+  expect(rootUri.candidates[1]?.requiresConfirmation).toBe(false);
   for (const prefix of ['See http://x/a', 'Link <https://x/a>', 'Link (https://x/a)']) {
     for (const fenced of [false, true]) {
       for (const json of ['{"a":1}', '[{"a":1}]']) {
