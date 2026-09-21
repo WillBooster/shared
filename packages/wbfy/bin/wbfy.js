@@ -4,7 +4,15 @@ import { fileURLToPath } from 'node:url';
 
 const minimumBunVersion = '1.4.0';
 const applyReleaseAgeGateCommand = 'apply-release-age-gate';
-const globalBooleanOptionNames = new Set(['--force', '--skipDeps', '--skip-deps', '--verbose']);
+const globalBooleanOptionNames = new Set([
+  '--force',
+  '--skipDeps',
+  '--skip-deps',
+  '--verbose',
+  '--f',
+  '--d',
+  '--v',
+]);
 
 if (!isSupportedBunVersion(Bun.version)) {
   const releaseAgeGateApplied = applyReleaseAgeGate();
@@ -65,19 +73,27 @@ function reportBootstrapFailure(reason) {
 }
 
 function isApplyReleaseAgeGateInvocation(args) {
-  for (const argument of args) {
-    if (isGlobalBooleanOption(argument)) continue;
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (isPositiveGlobalBooleanOption(argument)) {
+      if (!argument.includes('=') && ['true', 'false'].includes(args[index + 1])) index += 1;
+      continue;
+    }
+    if (isNegatedGlobalBooleanOption(argument)) continue;
     return argument === applyReleaseAgeGateCommand;
   }
   return false;
 }
 
-function isGlobalBooleanOption(argument) {
-  if (/^-[fdv]+$/.test(argument)) return true;
+function isPositiveGlobalBooleanOption(argument) {
+  if (/^-[fdv]+(?:=.*)?$/.test(argument)) return true;
 
   const optionName = argument.split('=', 1)[0];
-  if (globalBooleanOptionNames.has(optionName)) return true;
-  return optionName.startsWith('--no-') && globalBooleanOptionNames.has(`--${optionName.slice(5)}`);
+  return globalBooleanOptionNames.has(optionName);
+}
+
+function isNegatedGlobalBooleanOption(argument) {
+  return argument.startsWith('--no-') && globalBooleanOptionNames.has(`--${argument.slice(5)}`);
 }
 
 function isSupportedBunVersion(version) {
