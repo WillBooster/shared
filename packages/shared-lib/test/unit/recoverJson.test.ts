@@ -9,22 +9,25 @@ test('recovers complete LLM answers without changing their data', () => {
       '{"a":2.3e100,"b":"str","c":null,"d":false,"e":[1,2,3]}',
       // oxlint-disable-next-line unicorn/no-null -- JSON null must survive recovery unchanged.
       { a: 2.3e100, b: 'str', c: null, d: false, e: [1, 2, 3] },
+      [],
     ],
-    ["{name: 'John',}", { name: 'John' }],
-    [String.raw`{'summary': 'it\'s complete'}`, { summary: "it's complete" }],
-    [String.raw`['don\'t stop']`, ["don't stop"]],
-    ['{“name”: “John”}', { name: 'John' }],
-    ['{”name”: ”John”}', { name: 'John' }],
-    ['{’name’: ’John’}', { name: 'John' }],
-    ['{"a": 1 /* comment */ , "b": True}', { a: 1, b: true }],
-    ['{"a": "hi\nthere"}', { a: 'hi\nthere' }],
+    ["{name: 'John',}", { name: 'John' }, ['unquoted-key', 'non-json-quote', 'trailing-comma']],
+    [String.raw`{'summary': 'it\'s complete'}`, { summary: "it's complete" }, ['non-json-quote', 'non-json-quote']],
+    [String.raw`['don\'t stop']`, ["don't stop"], ['non-json-quote']],
+    ['{“name”: “John”}', { name: 'John' }, ['non-json-quote', 'non-json-quote']],
+    ['{”name”: ”John”}', { name: 'John' }, ['non-json-quote', 'non-json-quote']],
+    ['{’name’: ’John’}', { name: 'John' }, ['non-json-quote', 'non-json-quote']],
+    ['{"a": 1 /* comment */ , "b": True}', { a: 1, b: true }, ['block-comment', 'python-keyword']],
+    ['{"a": "hi\nthere"}', { a: 'hi\nthere' }, ['unescaped-control-character']],
+    ['{"a":\u00A01}', { a: 1 }, ['non-json-whitespace']],
     [
       String.raw`{"a": "\u2605", "b": "${astralCharacter}", "c": "https://example.com/*text*/"}`,
       { a: '★', b: '😀', c: 'https://example.com/*text*/' },
+      [],
     ],
-    ['{"a": 1 "b": 2}', { a: 1, b: 2 }],
+    ['{"a": 1 "b": 2}', { a: 1, b: 2 }, ['missing-comma']],
   ] as const;
-  for (const [input, value] of cases) {
+  for (const [input, value, reasons] of cases) {
     const result = recoverJson(input);
     expect(result.errors).toEqual([]);
     expect(result.candidates).toHaveLength(1);
@@ -32,6 +35,8 @@ test('recovers complete LLM answers without changing their data', () => {
     expect(candidate.value).toEqual(value);
     expect(JSON.parse(candidate.json)).toEqual(value);
     expect(candidate.requiresConfirmation).toBe(false);
+    expect(candidate.repairs.map((repair) => repair.reason)).toEqual(reasons);
+    expect(candidate.repairs.every((repair) => repair.kind === 'syntax')).toBe(true);
     expect(recoverJson(candidate.json).candidates[0]?.repairs).toEqual([]);
   }
 });
@@ -83,11 +88,17 @@ test('recovers quoted ratios without absorbing separate numbers or comment trivi
   }
   for (const phrase of ['985/211', '2.3', '2fa', '3.0.1']) {
     const summary = `includes "${phrase}" items`;
-    const result = recoverJson(`{"summary":"${summary}","verdict":"refuted"}`);
+    const input = `{"summary":"${summary}","verdict":"refuted"}`;
+    const result = recoverJson(input);
     expect(result.errors).toEqual([]);
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0]?.value).toEqual({ summary, verdict: 'refuted' });
     expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+    const quoteStart = input.indexOf(`"${phrase}"`);
+    expect(result.candidates[0]?.repairs).toEqual([
+      { offset: quoteStart, kind: 'ambiguous', reason: 'unescaped-quote' },
+      { offset: quoteStart + phrase.length + 1, kind: 'ambiguous', reason: 'unescaped-quote' },
+    ]);
   }
   for (const number of ['2', '2.5', '2e10']) {
     const candidate = recoverJson(`["a" ${number}]`).candidates[0]!;
@@ -942,6 +953,9 @@ test('distinguishes a closed malformed Unicode escape from an exhausted escape',
       expect(candidate.value).toBe(`\\u${hex}`);
       expect(candidate.requiresConfirmation).toBe(true);
       expect(candidate.repairs.some((repair) => repair.kind === 'incomplete')).toBe(!closed);
+      expect(candidate.repairs).toContainEqual(
+        expect.objectContaining({ reason: 'invalid-unicode-escape', kind: closed ? 'ambiguous' : 'incomplete' })
+      );
     }
   }
 });
