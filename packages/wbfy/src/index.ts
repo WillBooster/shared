@@ -138,9 +138,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
 
   // wbfy manages repositories through Bun + mise and uses Bun 1.4 runtime APIs. The version floor
   // also ensures the generated bunfig.toml options produce the install layout wbfy validates. It
-  // stays unconditional even though the already-applied check below can make a run a no-op: an
-  // outdated Bun is a broken environment wbfy must report, and hiding it whenever every path
-  // happens to be skipped would surface it only later.
+  // stays unconditional even though the already-applied check below can make a run a no-op: the
+  // config-free relaunch lets wbfy upgrade the target's old pin instead of silently leaving it for
+  // a later run.
   const bunVersion = Bun.version;
   if (Bun.semver.order(bunVersion, minimumBunVersion) < 0) {
     return !runWithSupportedBun();
