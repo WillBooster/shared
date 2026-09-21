@@ -509,11 +509,17 @@ test('retains only unconfirmed fragments from comment-like prose without mistaki
   expect(globPaths.candidates[0]?.value).toEqual({ v: 1 });
   for (const newline of ['\n', '\r', '\r\n']) {
     for (const value of [42, 'confirmed', true]) {
-      const result = recoverJson(`Answer:${newline}/* stale */ ${JSON.stringify(value)}`);
-      expect(result.errors).toEqual([]);
-      expect(result.candidates).toHaveLength(1);
-      expect(result.candidates[0]?.value).toEqual(value);
-      expect(result.candidates[0]?.requiresConfirmation).toBe(false);
+      for (const prefix of [`Answer:${newline}/* stale */ `, `Answer: /* stale${newline}*/ `, `x // y${newline}`]) {
+        const input = prefix + JSON.stringify(value);
+        const result = recoverJson(input);
+        expect(result.errors).toEqual([]);
+        expect(result.candidates).toHaveLength(1);
+        const candidate = result.candidates[0]!;
+        expect(candidate.value).toEqual(value);
+        expect(candidate.repairs).toEqual([]);
+        expect(candidate.requiresConfirmation).toBe(false);
+        expect(input.slice(candidate.start, candidate.end)).toBe(JSON.stringify(value));
+      }
     }
   }
   for (const prefix of ['- ', 'Verdict options:\n- ', '{"a":1}\n- ']) {
