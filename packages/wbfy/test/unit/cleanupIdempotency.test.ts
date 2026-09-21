@@ -8,41 +8,76 @@ import { expect, test } from 'bun:test';
 const packageDirPath = path.resolve(import.meta.dirname, '..', '..');
 const distIndexPath = path.join(packageDirPath, 'dist', 'index.js');
 
-test(
-  'applying wbfy keeps a small project clean after rerunning cleanup',
-  () => {
-    ensureBuiltCli();
+interface SmallProjectFixture {
+  name: string;
+  isEsm: boolean;
+  sourceFileName: string;
+  source: string;
+  outdatedBun: boolean;
+}
 
-    const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-cleanup-idempotency-'));
-    try {
-      writeSmallProjectFixture(tempDirPath);
-
-      runCommand('git', ['init'], tempDirPath);
-      runCommand('mise', ['--no-config', 'x', 'bun@1.3.14', '--', 'bun', distIndexPath, tempDirPath], packageDirPath);
-
-      runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
-      runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
-      runCommand('git', ['add', '-A'], tempDirPath);
-      runCommand('git', ['commit', '--no-verify', '-m', 'test: baseline'], tempDirPath, {
-        LEFTHOOK: '0',
-      });
-
-      runCommand('bun', ['run', 'cleanup'], tempDirPath, {
-        LEFTHOOK: '0',
-      });
-
-      const statusResult = child_process.spawnSync('git', ['status', '--short'], {
-        cwd: tempDirPath,
-        encoding: 'utf8',
-      });
-      expect(statusResult.status).toBe(0);
-      expect(statusResult.stdout.trim()).toBe('');
-    } finally {
-      fs.rmSync(tempDirPath, { force: true, recursive: true });
-    }
+const smallProjectFixtures: SmallProjectFixture[] = [
+  {
+    name: 'ESM TypeScript',
+    isEsm: true,
+    sourceFileName: 'index.ts',
+    source: 'export const answer = 42;\n',
+    outdatedBun: false,
   },
-  300 * 1000
-);
+  {
+    name: 'CommonJS JavaScript under an outdated Bun',
+    isEsm: false,
+    sourceFileName: 'index.cjs',
+    source: 'module.exports = { answer: 42 };\n',
+    outdatedBun: true,
+  },
+];
+
+for (const fixture of smallProjectFixtures) {
+  test(
+    `applying wbfy keeps a small ${fixture.name} project clean after rerunning cleanup`,
+    () => {
+      ensureBuiltCli();
+
+      const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-cleanup-idempotency-'));
+      try {
+        writeSmallProjectFixture(tempDirPath, fixture);
+
+        runCommand('git', ['init'], tempDirPath);
+        if (fixture.outdatedBun) {
+          runCommand(
+            'mise',
+            ['--no-config', 'x', 'bun@1.3.14', '--', 'bun', distIndexPath, tempDirPath],
+            packageDirPath
+          );
+        } else {
+          runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
+        }
+
+        runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
+        runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
+        runCommand('git', ['add', '-A'], tempDirPath);
+        runCommand('git', ['commit', '--no-verify', '-m', 'test: baseline'], tempDirPath, {
+          LEFTHOOK: '0',
+        });
+
+        runCommand('bun', ['run', 'cleanup'], tempDirPath, {
+          LEFTHOOK: '0',
+        });
+
+        const statusResult = child_process.spawnSync('git', ['status', '--short'], {
+          cwd: tempDirPath,
+          encoding: 'utf8',
+        });
+        expect(statusResult.status).toBe(0);
+        expect(statusResult.stdout.trim()).toBe('');
+      } finally {
+        fs.rmSync(tempDirPath, { force: true, recursive: true });
+      }
+    },
+    300 * 1000
+  );
+}
 
 function ensureBuiltCli(): void {
   if (isDistUpToDate()) return;
@@ -76,7 +111,7 @@ function getLatestMtimeMs(entryPath: string): number {
   return maxMtimeMs;
 }
 
-function writeSmallProjectFixture(dirPath: string): void {
+function writeSmallProjectFixture(dirPath: string, fixture: SmallProjectFixture): void {
   fs.mkdirSync(path.join(dirPath, 'src'), { recursive: true });
   fs.writeFileSync(
     path.join(dirPath, 'package.json'),
@@ -84,6 +119,7 @@ function writeSmallProjectFixture(dirPath: string): void {
       {
         private: true,
         name: 'small-project',
+        ...(fixture.isEsm ? { type: 'module' } : {}),
         description: 'Temporary fixture for wbfy cleanup idempotency tests',
         repository: 'github:example/small-project',
       },
@@ -92,8 +128,10 @@ function writeSmallProjectFixture(dirPath: string): void {
     )}\n`
   );
   fs.writeFileSync(path.join(dirPath, 'README.md'), '# Small Project\n');
-  fs.writeFileSync(path.join(dirPath, 'mise.toml'), '[tools]\nbun = "1.3.14"\n');
-  fs.writeFileSync(path.join(dirPath, 'src', 'index.cjs'), 'module.exports = { answer: 42 };\n');
+  if (fixture.outdatedBun) {
+    fs.writeFileSync(path.join(dirPath, 'mise.toml'), '[tools]\nbun = "1.3.14"\n');
+  }
+  fs.writeFileSync(path.join(dirPath, 'src', fixture.sourceFileName), fixture.source);
 }
 
 function runCommand(

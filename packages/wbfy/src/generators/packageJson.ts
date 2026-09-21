@@ -367,6 +367,7 @@ async function applyPackageJsonConventions(
     devDependencies.push(...oxlintDeps);
     // The generated *.config.ts files are part of the lint project even in JavaScript-only
     // repositories, so their Bun globals must resolve under the isolated linker.
+    // React Native relies on @tsconfig/react-native's ambient types instead of @types/bun.
     if (!config.depending.reactNative) {
       devDependencies.push('@types/bun');
     }
