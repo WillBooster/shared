@@ -805,6 +805,7 @@ test('preserves missing array positions and literal invalid escapes for confirma
   const candidate = recoverJson('[1,,3]').candidates[0]!;
   expect(candidate.value).toEqual(JSON.parse('[1,null,3]'));
   expect(candidate.requiresConfirmation).toBe(true);
+  expect(candidate.repairs).toContainEqual(expect.objectContaining({ reason: 'missing-value', kind: 'incomplete' }));
   const escaped = recoverJson(String.raw`{"summary":"user\'s request"}`).candidates[0]!;
   expect(escaped.value).toEqual({ summary: String.raw`user\'s request` });
   expect(escaped.requiresConfirmation).toBe(true);
