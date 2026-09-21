@@ -13,7 +13,7 @@ describe('kill-port command', () => {
     killPorts([String(port)]);
 
     await waitForProcessStopped(pid, 10_000);
-  });
+  }, 30_000);
 
   it('kills no port when another port is invalid', async () => {
     const [pid, port] = await startListeningProcess();
@@ -25,7 +25,7 @@ describe('kill-port command', () => {
       process.kill(pid, 'SIGKILL');
     }
     await waitForProcessStopped(pid, 10_000);
-  });
+  }, 30_000);
 
   it('kills nothing on a dry run', async () => {
     const [pid, port] = await startListeningProcess();
@@ -37,7 +37,7 @@ describe('kill-port command', () => {
       process.kill(pid, 'SIGKILL');
     }
     await waitForProcessStopped(pid, 10_000);
-  });
+  }, 30_000);
 });
 
 /** Starts a process listening on an OS-assigned port and returns its pid and that port. */

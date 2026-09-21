@@ -17,26 +17,30 @@ afterEach(async () => {
   await Promise.all(fixturePaths.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
-it.each([false, true])('keeps successful output concise and saves raw output (full=%p)', async (full) => {
-  const dir = await createFixture();
-  const logPath = path.join(dir, '.wb', full ? 'verify-full.log' : 'verify.log');
-  await fs.mkdir(path.dirname(logPath), { recursive: true });
-  await fs.writeFile(logPath, 'PREVIOUS_RUN');
-  const result = runCli(dir, ['verify', ...(full ? ['--full'] : [])]);
-  expect(result.status, result.stdout + result.stderr).toBe(0);
-  expect(result.stdout).toContain('Verified in');
-  expect(result.stdout).toContain(logPath);
-  expect(result.stdout).not.toContain('RAW_GENERATOR');
-  expect(result.stdout).not.toContain('RAW_TEST');
-  const log = await fs.readFile(logPath, 'utf8');
-  expect(log).toContain('RAW_GENERATOR_STDOUT');
-  expect(log).toContain('RAW_GENERATOR_STDERR');
-  expect(log).not.toContain('PREVIOUS_RUN');
-  expect(log).toContain('Verified in');
-  expect(stripVTControlCharacters(log)).toMatch(/✔ typecheck/);
-  if (full) expect(log).toContain('RAW_TEST_STDOUT');
-  else expect(log).not.toContain('RAW_TEST_STDOUT');
-});
+it.each([false, true])(
+  'keeps successful output concise and saves raw output (full=%p)',
+  async (full) => {
+    const dir = await createFixture();
+    const logPath = path.join(dir, '.wb', full ? 'verify-full.log' : 'verify.log');
+    await fs.mkdir(path.dirname(logPath), { recursive: true });
+    await fs.writeFile(logPath, 'PREVIOUS_RUN');
+    const result = runCli(dir, ['verify', ...(full ? ['--full'] : [])]);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toContain('Verified in');
+    expect(result.stdout).toContain(logPath);
+    expect(result.stdout).not.toContain('RAW_GENERATOR');
+    expect(result.stdout).not.toContain('RAW_TEST');
+    const log = await fs.readFile(logPath, 'utf8');
+    expect(log).toContain('RAW_GENERATOR_STDOUT');
+    expect(log).toContain('RAW_GENERATOR_STDERR');
+    expect(log).not.toContain('PREVIOUS_RUN');
+    expect(log).toContain('Verified in');
+    expect(stripVTControlCharacters(log)).toMatch(/✔ typecheck/);
+    if (full) expect(log).toContain('RAW_TEST_STDOUT');
+    else expect(log).not.toContain('RAW_TEST_STDOUT');
+  },
+  60_000
+);
 
 it('fails full verification on slide text errors and saves their source locations', async () => {
   const dir = await createFixture();
@@ -49,7 +53,7 @@ it('fails full verification on slide text errors and saves their source location
   expect(log).toContain(`${deckPath}:3:3:`);
   expect(log).toContain('(no-hankaku-kana)');
   expect(log).not.toContain('RAW_TEST_STDOUT');
-});
+}, 60_000);
 
 it('shows the failed test step without earlier successful steps', async () => {
   const dir = await createFixture();
@@ -73,33 +77,37 @@ test('failure', () => {
   expect(result.stdout).toContain('Failed step: test (exit code 1)');
   expect(result.stdout).not.toContain('RAW_GENERATOR');
   expect(log).toContain('RAW_GENERATOR_STDOUT');
-});
+}, 60_000);
 
-it.each(['bytes', 'lines'])('bounds failure output by %s and preserves the full log and exit code', async (limit) => {
-  const dir = await createFixture();
-  await fs.writeFile(
-    path.join(dir, 'generate.ts'),
-    `console.log(${JSON.stringify(limit === 'bytes' ? 'LARGE_MARKER'.repeat(20_000) : Array.from({ length: 200 }, (_, i) => `FAILURE_LINE_${i}`).join('\n'))});
+it.each(['bytes', 'lines'])(
+  'bounds failure output by %s and preserves the full log and exit code',
+  async (limit) => {
+    const dir = await createFixture();
+    await fs.writeFile(
+      path.join(dir, 'generate.ts'),
+      `console.log(${JSON.stringify(limit === 'bytes' ? 'LARGE_MARKER'.repeat(20_000) : Array.from({ length: 200 }, (_, i) => `FAILURE_LINE_${i}`).join('\n'))});
 console.error('LAST_FAILURE_MARKER');
 process.exit(7);`
-  );
-  const result = runCli(dir, ['verify']);
-  expect(result.status).toBe(7);
-  expect(result.stdout).toContain('Failed step: gen-code (exit code 7)');
-  expect(result.stdout).toContain('Output truncated');
-  expect(Buffer.byteLength(result.stdout)).toBeLessThan(17 * 1024);
-  expect(result.stdout).toContain('LAST_FAILURE_MARKER');
-  expect(result.stdout).toContain('Verification failed. Full log:');
-  const log = await fs.readFile(path.join(dir, '.wb/verify.log'), 'utf8');
-  if (limit === 'bytes') {
-    expect(log.match(/LARGE_MARKER/g)).toHaveLength(20_000);
-  } else {
-    expect(log).toContain('FAILURE_LINE_0\n');
-    expect(result.stdout).not.toContain('FAILURE_LINE_0\n');
-    expect(result.stdout).toContain('FAILURE_LINE_199');
-    expect(result.stdout.match(/FAILURE_LINE_/g)!.length).toBeLessThanOrEqual(100);
-  }
-});
+    );
+    const result = runCli(dir, ['verify']);
+    expect(result.status).toBe(7);
+    expect(result.stdout).toContain('Failed step: gen-code (exit code 7)');
+    expect(result.stdout).toContain('Output truncated');
+    expect(Buffer.byteLength(result.stdout)).toBeLessThan(17 * 1024);
+    expect(result.stdout).toContain('LAST_FAILURE_MARKER');
+    expect(result.stdout).toContain('Verification failed. Full log:');
+    const log = await fs.readFile(path.join(dir, '.wb/verify.log'), 'utf8');
+    if (limit === 'bytes') {
+      expect(log.match(/LARGE_MARKER/g)).toHaveLength(20_000);
+    } else {
+      expect(log).toContain('FAILURE_LINE_0\n');
+      expect(result.stdout).not.toContain('FAILURE_LINE_0\n');
+      expect(result.stdout).toContain('FAILURE_LINE_199');
+      expect(result.stdout.match(/FAILURE_LINE_/g)!.length).toBeLessThanOrEqual(100);
+    }
+  },
+  60_000
+);
 
 it('saves raw output before completion, including when verification is killed', async () => {
   const dir = await createFixture();
@@ -137,7 +145,7 @@ while (!(await Bun.file('release').exists())) await Bun.sleep(10);`
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     await exited;
   }
-});
+}, 60_000);
 
 it('preserves the previous log during dry-run and keeps standalone tests verbose', async () => {
   const dir = await createFixture();
@@ -151,19 +159,21 @@ it('preserves the previous log during dry-run and keeps standalone tests verbose
   const result = runCli(dir, ['test']);
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toContain('RAW_TEST_STDOUT');
-});
+}, 60_000);
 
-it.each([0, 7])('saves and flushes complete CI output with exit code %i', async (exitCode) => {
-  const dir = await createFixture();
-  const logPath = path.join(dir, '.wb/test-ci.log');
-  await fs.mkdir(path.dirname(logPath), { recursive: true });
-  await fs.writeFile(logPath, 'PREVIOUS_RUN');
-  const dryRun = runCli(dir, ['test-on-ci', '--dry-run']);
-  expect(dryRun.status, dryRun.stderr).toBe(0);
-  expect(await fs.readFile(logPath, 'utf8')).toBe('PREVIOUS_RUN');
-  await fs.writeFile(
-    path.join(dir, 'test/unit/example.test.ts'),
-    `import fs from 'node:fs';
+it.each([0, 7])(
+  'saves and flushes complete CI output with exit code %i',
+  async (exitCode) => {
+    const dir = await createFixture();
+    const logPath = path.join(dir, '.wb/test-ci.log');
+    await fs.mkdir(path.dirname(logPath), { recursive: true });
+    await fs.writeFile(logPath, 'PREVIOUS_RUN');
+    const dryRun = runCli(dir, ['test-on-ci', '--dry-run']);
+    expect(dryRun.status, dryRun.stderr).toBe(0);
+    expect(await fs.readFile(logPath, 'utf8')).toBe('PREVIOUS_RUN');
+    await fs.writeFile(
+      path.join(dir, 'test/unit/example.test.ts'),
+      `import fs from 'node:fs';
 import { test } from 'bun:test';
 test('large output', () => {
   fs.writeFileSync(1, 'CI_STDOUT_α');
@@ -171,21 +181,23 @@ test('large output', () => {
   fs.writeFileSync(1, '😀\\n' + 'CI_STDOUT_α😀\\n'.repeat(19_999));
   ${exitCode ? `process.exit(${exitCode});` : ''}
 });`
-  );
-  const result = runCli(dir, ['test-on-ci']);
-  expect(result.status, result.stderr).toBe(exitCode);
-  const log = await fs.readFile(logPath, 'utf8');
-  expect(result.stdout.match(/CI_STDOUT_α😀/g)).toHaveLength(20_000);
-  expect(result.stderr.match(/CI_STDERR_β🚀/g)).toHaveLength(20_000);
-  // Chunks from stderr can split a stdout record in the combined log without losing data.
-  for (const marker of ['α', '😀', 'β', '🚀']) {
-    expect(log.split(marker)).toHaveLength(20_001);
-  }
-  for (const output of [log, result.stdout + result.stderr]) {
-    expect(output).not.toContain('PREVIOUS_RUN');
-  }
-  expect(result.stdout).toContain(logPath);
-});
+    );
+    const result = runCli(dir, ['test-on-ci']);
+    expect(result.status, result.stderr).toBe(exitCode);
+    const log = await fs.readFile(logPath, 'utf8');
+    expect(result.stdout.match(/CI_STDOUT_α😀/g)).toHaveLength(20_000);
+    expect(result.stderr.match(/CI_STDERR_β🚀/g)).toHaveLength(20_000);
+    // Chunks from stderr can split a stdout record in the combined log without losing data.
+    for (const marker of ['α', '😀', 'β', '🚀']) {
+      expect(log.split(marker)).toHaveLength(20_001);
+    }
+    for (const output of [log, result.stdout + result.stderr]) {
+      expect(output).not.toContain('PREVIOUS_RUN');
+    }
+    expect(result.stdout).toContain(logPath);
+  },
+  60_000
+);
 
 it('preserves stdin EOF for CI E2E commands while capturing output', async () => {
   const dir = await createFixture();
@@ -203,29 +215,37 @@ test('stdin', () => {
   expect(result.status, result.stdout + result.stderr).toBe(0);
   expect(result.stdout).toContain('E2E_STDIN_CLOSED');
   expect(await fs.readFile(path.join(dir, '.wb/test-ci.log'), 'utf8')).toContain('E2E_STDIN_CLOSED');
-});
+}, 60_000);
 
-it.each([0, 7])('reports a full log device without interrupting the command with exit code %i', async (exitCode) => {
-  const dir = await createFixture();
-  await fs.writeFile(
-    path.join(dir, 'test/unit/example.test.ts'),
-    `import fs from 'node:fs';
+it.each([0, 7])(
+  'reports a full log device without interrupting the command with exit code %i',
+  async (exitCode) => {
+    const dir = await createFixture();
+    await fs.writeFile(
+      path.join(dir, 'test/unit/example.test.ts'),
+      `import fs from 'node:fs';
 import { test } from 'bun:test';
 test('output', () => {
   fs.writeFileSync(1, 'DISK_LIMIT_OUTPUT\\n'.repeat(20_000));
   ${exitCode ? `process.exit(${exitCode});` : ''}
 });`
-  );
-  const result = spawnSync('bash', ['-c', 'trap \'\' XFSZ; ulimit -f 1; exec node "$1" test-on-ci', 'bash', cliPath], {
-    cwd: dir,
-    encoding: 'utf8',
-    maxBuffer: 2 * 1024 * 1024,
-    timeout: 30_000,
-  });
-  expect(result.status, result.stderr).toBe(exitCode || 1);
-  expect(result.stdout.split('DISK_LIMIT_OUTPUT')).toHaveLength(20_001);
-  expect(result.stdout).toContain('Log incomplete:');
-});
+    );
+    const result = spawnSync(
+      'bash',
+      ['-c', 'trap \'\' XFSZ; ulimit -f 1; exec node "$1" test-on-ci', 'bash', cliPath],
+      {
+        cwd: dir,
+        encoding: 'utf8',
+        maxBuffer: 2 * 1024 * 1024,
+        timeout: 30_000,
+      }
+    );
+    expect(result.status, result.stderr).toBe(exitCode || 1);
+    expect(result.stdout.split('DISK_LIMIT_OUTPUT')).toHaveLength(20_001);
+    expect(result.stdout).toContain('Log incomplete:');
+  },
+  60_000
+);
 
 it('streams failing verification output when its log is full', async () => {
   const dir = await createFixture();
@@ -247,7 +267,7 @@ it('streams failing verification output when its log is full', async () => {
   expect(result.status, result.stdout + result.stderr).toBe(1);
   expect(result.stdout + result.stderr).toContain('ASSERTION_AFTER_LOG_FAILURE');
   expect(result.stdout).toContain('Log incomplete:');
-});
+}, 60_000);
 
 it('streams CI output larger than the wrapper heap without retaining it in memory', async () => {
   const dir = await createFixture();
@@ -283,7 +303,7 @@ test('large stream', () => {
   expect(bytes).toBeGreaterThanOrEqual(160 * 1024 * 1024);
   const log = await fs.stat(path.join(dir, '.wb/test-ci.log'));
   expect(log.size).toBeGreaterThanOrEqual(160 * 1024 * 1024);
-});
+}, 60_000);
 
 async function createFixture(): Promise<string> {
   const tmp = path.resolve('.tmp');

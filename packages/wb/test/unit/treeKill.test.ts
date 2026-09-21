@@ -22,7 +22,7 @@ describe('tree-kill command', () => {
     runTreeKillHandler(pid, 'SIGTERM');
 
     await waitForProcessStopped(pid, 10_000);
-  });
+  }, 30_000);
 
   it('kills target process with custom signal', async () => {
     const proc = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000);'], {
@@ -37,7 +37,7 @@ describe('tree-kill command', () => {
     runTreeKillHandler(pid, 'SIGKILL');
 
     await waitForProcessStopped(pid, 10_000);
-  });
+  }, 30_000);
 });
 
 function runTreeKillHandler(pid: number, signal: NodeJS.Signals): void {

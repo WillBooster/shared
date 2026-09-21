@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
 
@@ -15,6 +15,8 @@ const nodePath = Bun.which('node');
 if (!nodePath) throw new Error('node must be on PATH.');
 
 beforeAll(buildWb, 120_000);
+// Every test runs the CLI in one or more node child processes.
+setDefaultTimeout(30_000);
 
 function isFnoxAvailable(): boolean {
   return childProcess.spawnSync('fnox', ['--version'], { stdio: 'ignore' }).status === 0;
