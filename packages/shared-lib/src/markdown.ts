@@ -53,42 +53,94 @@ export function extractIfSingleOutermostCodeBlock(text: string, languages?: read
   return block.code;
 }
 
+export interface MarkdownSection {
+  depth: number;
+  /** The heading text with the closing `#` sequence and inline-code backticks removed. */
+  heading: string;
+  /** The source text up to the next heading at the same or a shallower depth, trimmed; subsections are included. */
+  content: string;
+}
+
 const WRAPPED_MARKDOWN_LANGUAGES = new Set(['', 'markdown', 'md']);
 
 /**
- * Splits Markdown text such as an LLM response into sections at its shallowest ATX heading level, mapping each
- * heading's text (with inline-code backticks removed) to the source text under it, trimmed. Sections without
- * content are omitted, and a later duplicate heading overwrites an earlier one.
+ * Returns every ATX heading of Markdown text in order, with the source text under it.
  * Only headings starting at the beginning of a line outside fenced code blocks count; setext headings (underlined
  * with `=` or `-`) are ignored. When the whole text is wrapped in a `markdown`, `md`, or unlabeled code block, as
  * `extractIfSingleOutermostCodeBlock` finds it (so fences nested inside stay in the contents), the headings inside
  * that block are used if there are any.
  */
-export function extractTopLevelHeadings(markdown: string): Record<string, string> {
+export function parseMarkdownSections(markdown: string): MarkdownSection[] {
   const block = findOutermostCodeBlock(markdown);
   if (block?.isWhole && WRAPPED_MARKDOWN_LANGUAGES.has(block.language)) {
-    const headingToContent = splitByTopLevelHeadings(block.code);
-    if (Object.keys(headingToContent).length > 0) return headingToContent;
+    const sections = splitSections(block.code);
+    if (sections.length > 0) return sections;
   }
-  return splitByTopLevelHeadings(markdown);
+  return splitSections(markdown);
 }
 
-function splitByTopLevelHeadings(markdown: string): Record<string, string> {
+/**
+ * Extracts the content of the section headed by each of `names` from Markdown text such as an LLM response, keyed by
+ * the given names. A heading matches a name when both are equal after removing decorations at their edges (such as
+ * `**bold**`, backticks, and quotes), a leading number like `1.`, and a trailing colon, ignoring case and spacing;
+ * headings at any depth are candidates.
+ * Among matching headings, the shallowest wins, then one equal to the name as written, then the first; each heading
+ * serves at most one name. A name whose section is missing or empty is absent from the result.
+ */
+export function extractSections<const Name extends string>(
+  markdown: string,
+  names: readonly Name[]
+): Partial<Record<Name, string>> {
+  const candidates = parseMarkdownSections(markdown).map((section) => ({
+    ...section,
+    key: normalizeHeading(section.heading),
+  }));
+  const sections: Partial<Record<Name, string>> = {};
+  for (const name of names) {
+    const key = normalizeHeading(name);
+    let best: (typeof candidates)[number] | undefined;
+    for (const candidate of candidates) {
+      if (candidate.key !== key) continue;
+      if (
+        !best ||
+        candidate.depth < best.depth ||
+        (candidate.depth === best.depth && candidate.heading === name && best.heading !== name)
+      ) {
+        best = candidate;
+      }
+    }
+    if (!best) continue;
+    candidates.splice(candidates.indexOf(best), 1);
+    if (best.content) sections[name] = best.content;
+  }
+  return sections;
+}
+
+function normalizeHeading(heading: string): string {
+  return stripHeadingEdges(stripHeadingEdges(heading).replace(/^\d+[.)]\s*/u, ''))
+    .replaceAll(/\s+/gu, ' ')
+    .toLowerCase();
+}
+
+function stripHeadingEdges(text: string): string {
+  // Only the edges: `_` and `*` inside a heading belong to names such as `my_file.py`.
+  return text.replaceAll(/^[\s*_`~"'「」]+|[\s*_`~"'「」:：]+$/gu, '');
+}
+
+function splitSections(markdown: string): MarkdownSection[] {
   const lines = splitLines(markdown);
   const headings = findHeadings(lines);
-  if (headings.length === 0) return {};
-
-  const minDepth = Math.min(...headings.map((heading) => heading.depth));
-  const topLevelHeadings = headings.filter((heading) => heading.depth === minDepth);
-  const headingToContent: Record<string, string> = {};
-  for (const [index, heading] of topLevelHeadings.entries()) {
-    const content = lines
-      .slice(heading.index + 1, topLevelHeadings[index + 1]?.index)
-      .join('\n')
-      .trim();
-    if (content) headingToContent[heading.text] = content;
-  }
-  return headingToContent;
+  return headings.map((heading, index) => {
+    const next = headings.slice(index + 1).find((other) => other.depth <= heading.depth);
+    return {
+      depth: heading.depth,
+      heading: heading.text,
+      content: lines
+        .slice(heading.index + 1, next?.index)
+        .join('\n')
+        .trim(),
+    };
+  });
 }
 
 function findOutermostCodeBlock(text: string): { language: string; code: string; isWhole: boolean } | undefined {

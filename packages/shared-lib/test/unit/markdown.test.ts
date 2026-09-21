@@ -1,6 +1,11 @@
 import { expect, test } from 'vitest';
 
-import { extractCodeBlocks, extractIfSingleOutermostCodeBlock, extractTopLevelHeadings } from '../../src/markdown.js';
+import {
+  extractCodeBlocks,
+  extractIfSingleOutermostCodeBlock,
+  extractSections,
+  parseMarkdownSections,
+} from '../../src/markdown.js';
 
 test('extractCodeBlocks reads backtick and tilde fences of any length', () => {
   expect(
@@ -34,7 +39,7 @@ test('extractIfSingleOutermostCodeBlock keeps fences nested without lengthening 
 
 test('extractIfSingleOutermostCodeBlock strips the indentation of an indented outer fence', () => {
   expect(extractIfSingleOutermostCodeBlock('  ```md\n  # A\n    b\n  ```')).toBe('# A\n  b');
-  expect(extractTopLevelHeadings('\n  ```md\n  # A\n  x\n  ```\n')).toEqual({ A: 'x' });
+  expect(extractSections('\n  ```md\n  # A\n  x\n  ```\n', ['A'])).toEqual({ A: 'x' });
 });
 
 test('extractIfSingleOutermostCodeBlock drops text after the first block and reads an unclosed block to the end', () => {
@@ -49,34 +54,17 @@ test('extractIfSingleOutermostCodeBlock returns the text unless it starts with a
   expect(extractIfSingleOutermostCodeBlock('```Markdown\n# A\n```', ['md', 'markdown'])).toBe('# A');
 });
 
-test('extractTopLevelHeadings splits at the shallowest heading level and keeps the source of each section', () => {
+test('parseMarkdownSections returns every ATX heading at the start of a line outside fences, with its source', () => {
   const markdown = `
-## Introduction
+# \`src/main.py\` File ##
 
 - item
-- [x] done
 
-### Details
+## Details
 
 \`\`\`python
 # not a heading
-print(1)
 \`\`\`
-
-## Empty
-
-## \`src/main.py\` File ##
-
-Final content.
-`;
-  expect(extractTopLevelHeadings(markdown)).toEqual({
-    Introduction: '- item\n- [x] done\n\n### Details\n\n```python\n# not a heading\nprint(1)\n```',
-    'src/main.py File': 'Final content.',
-  });
-});
-
-test('extractTopLevelHeadings ignores headings that are not ATX headings at the start of a line', () => {
-  const markdown = `# Valid
 
 #Invalid heading without space
 
@@ -86,18 +74,54 @@ Setext
 - # In a list item
 
 # C#
+`;
+  expect(parseMarkdownSections(markdown)).toEqual([
+    {
+      depth: 1,
+      heading: 'src/main.py File',
+      content:
+        '- item\n\n## Details\n\n```python\n# not a heading\n```\n\n#Invalid heading without space\n\nSetext\n---\n\n- # In a list item',
+    },
+    {
+      depth: 2,
+      heading: 'Details',
+      content: '```python\n# not a heading\n```\n\n#Invalid heading without space\n\nSetext\n---\n\n- # In a list item',
+    },
+    { depth: 1, heading: 'C#', content: '' },
+  ]);
+});
 
-Content.`;
-  expect(extractTopLevelHeadings(markdown)).toEqual({
-    Valid: '#Invalid heading without space\n\nSetext\n---\n\n- # In a list item',
-    'C#': 'Content.',
+test('parseMarkdownSections reads the headings of a response wrapped in a Markdown code block', () => {
+  expect(parseMarkdownSections('```markdown\n# Answer\n\n```js\nx\n```\n\n# Reason\n\nBecause.\n```')).toEqual([
+    { depth: 1, heading: 'Answer', content: '```js\nx\n```' },
+    { depth: 1, heading: 'Reason', content: 'Because.' },
+  ]);
+  expect(parseMarkdownSections('```python\n# comment\nx = 1\n```')).toEqual([]);
+});
+
+test('extractSections matches headings despite decorations, numbering, and depth', () => {
+  const markdown = `# Hint
+
+## 1. **Mistakes**:
+
+The loop never ends.
+
+## \`How to Fix\`
+
+Increment \`i\`.
+
+## Explanation
+`;
+  expect(extractSections(markdown, ['Mistakes', 'How to Fix', 'Explanation', 'Summary'])).toEqual({
+    Mistakes: 'The loop never ends.',
+    'How to Fix': 'Increment `i`.',
   });
 });
 
-test('extractTopLevelHeadings reads the headings of a response wrapped in a Markdown code block', () => {
-  const markdown = '```markdown\n# Answer\n\n```js\nx\n```\n\n# Reason\n\nBecause.\n```';
-  expect(extractTopLevelHeadings(markdown)).toEqual({ Answer: '```js\nx\n```', Reason: 'Because.' });
-  expect(extractTopLevelHeadings('```python\n# comment\nx = 1\n```')).toEqual({});
-  expect(extractTopLevelHeadings('```md\n# A\nx\n```\n# B\ny')).toEqual({ B: 'y' });
-  expect(extractTopLevelHeadings('No headings.')).toEqual({});
+test('extractSections prefers the shallowest heading, then the one written as the name', () => {
+  expect(extractSections('## Mistakes\n\nnested\n\n# **Mistakes**\n\ntop', ['Mistakes'])).toEqual({ Mistakes: 'top' });
+  expect(extractSections('# A.py\n\nupper\n\n# a.py\n\nlower', ['a.py', 'A.py'])).toEqual({
+    'a.py': 'lower',
+    'A.py': 'upper',
+  });
 });

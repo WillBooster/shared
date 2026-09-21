@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 
-import { extractIfSingleOutermostCodeBlock, extractTopLevelHeadings } from '../../src/markdown.js';
+import { extractIfSingleOutermostCodeBlock, extractSections } from '../../src/markdown.js';
 import { formatFilesForPrompt, formatMessagesForPrompt } from '../../src/promptFormatters.js';
 
 test('formatFilesForPrompt output reads back by path', () => {
@@ -12,7 +12,7 @@ test('formatFilesForPrompt output reads back by path', () => {
   expect(formatted).toBe(
     '## src/main.py\n\n```\ndef f():\n    return 1\n```\n\n## README.md\n\n````\n# Title\n\n```sh\nrun\n```\n````'
   );
-  const readBack = extractTopLevelHeadings(formatted);
+  const readBack = extractSections(formatted, ['src/main.py', 'README.md']);
   expect(extractIfSingleOutermostCodeBlock(readBack['src/main.py'] ?? '')).toBe('def f():\n    return 1');
   expect(extractIfSingleOutermostCodeBlock(readBack['README.md'] ?? '')).toBe('# Title\n\n```sh\nrun\n```');
 });

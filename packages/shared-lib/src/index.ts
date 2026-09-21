@@ -13,7 +13,12 @@ export {
 export { errorify, ignoreError, ignoreEnoent, ignoreErrorAsync, ignoreEnoentAsync, withRetry } from './error.js';
 export { humanizeNumber } from './humanize.js';
 export { mailTemplates } from './mail.js';
-export { extractCodeBlocks, extractIfSingleOutermostCodeBlock, extractTopLevelHeadings } from './markdown.js';
+export {
+  extractCodeBlocks,
+  extractIfSingleOutermostCodeBlock,
+  extractSections,
+  parseMarkdownSections,
+} from './markdown.js';
 export { parseCommandLineArgs } from './parseCommandLineArgs.js';
 export {
   escapePromptTag,
@@ -32,5 +37,5 @@ export { zenkakuAlphanumericalsToHankaku } from './zenkaku.js';
 
 export type { AppEnv } from './appEnv.js';
 export type { RetryOptions } from './error.js';
-export type { CodeBlock } from './markdown.js';
+export type { CodeBlock, MarkdownSection } from './markdown.js';
 export type { TemplateSection } from './githubTemplates.js';

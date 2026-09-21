@@ -4,7 +4,7 @@ import { toCodeBlock } from './text.js';
 /**
  * Renders files as Markdown sections for an LLM prompt: a heading holding the path, followed by the file contents in a
  * code block whose fence the contents cannot close. Line endings are normalized to LF and trailing whitespace is removed.
- * The output reads back with `extractTopLevelHeadings` (keyed by path) and `extractIfSingleOutermostCodeBlock`, so an
+ * The output reads back with `extractSections` (keyed by path) and `extractIfSingleOutermostCodeBlock`, so an
  * LLM can be asked to answer in the same format.
  */
 export function formatFilesForPrompt(files: readonly { path: string; data: string }[], headingLevel = 1): string {
