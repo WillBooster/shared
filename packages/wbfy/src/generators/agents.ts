@@ -119,7 +119,7 @@ function generateAgentInstruction(
     : '';
   // Gated like prTemplateInstruction: the section it names exists only where the template is generated.
   const requirementsExemption = rootConfig.isWillBoosterRepo
-    ? ", and so is the PR body's Requirements section, which records what was asked for rather than what the code contains"
+    ? ", and so is the PR body's Requirements section, which states what is currently asked for rather than what the code contains"
     : '';
   const issueTemplateInstruction = rootConfig.isWillBoosterRepo
     ? `\n- When creating an issue:\n${ISSUE_TEMPLATE_RULES.replaceAll(/^/gm, '  ')}`
