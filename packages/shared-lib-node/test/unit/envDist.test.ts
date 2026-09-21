@@ -32,7 +32,7 @@ describe('bundled env cascade', () => {
       delete env.ENV;
       delete env.PORT;
       delete env.NAME;
-      const result = childProcess.spawnSync(process.execPath, ['-e', script], {
+      const result = childProcess.spawnSync('node', ['--input-type=module', '-e', script], {
         encoding: 'utf8',
         env,
       });

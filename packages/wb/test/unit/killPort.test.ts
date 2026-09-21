@@ -53,8 +53,8 @@ function startListeningProcess(): Promise<[number, number]> {
 
   return new Promise((resolve, reject) => {
     child.once('error', reject);
-    // Without this, a child that dies before printing its port would stall the whole suite until
-    // the 10-minute test timeout. Rejecting a resolved promise later (on the test's own kill) is a no-op.
+    // Without this, a child that dies before printing its port would stall the test until it times
+    // out. Rejecting a resolved promise later (on the test's own kill) is a no-op.
     child.once('exit', (code) => reject(new Error(`The listening process exited early with code ${code}.`)));
     child.stdout.once('data', (data: Buffer) => {
       resolve([pid, Number(data.toString().trim())]);
