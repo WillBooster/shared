@@ -93,73 +93,77 @@ for (const fixture of smallProjectFixtures) {
   );
 }
 
-test('an outdated runtime reports a clear error when mise is unavailable', () => {
-  ensureBuiltCli();
-  runCommand('mise', ['--no-config', 'install', 'bun@1.0.0'], packageDirPath);
-  const oldBunDir = runCommand('mise', ['--no-config', 'where', 'bun@1.0.0'], packageDirPath).stdout.trim();
-  const oldBunPath = path.join(oldBunDir, 'bin', 'bun');
-  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy missing mise '));
-  const tempHomePath = path.join(tempDirPath, 'home');
-  const tempPackagePath = path.join(tempDirPath, 'wbfy package');
-  const copiedBinPath = path.join(tempPackagePath, 'bin', 'wbfy.js');
-  try {
-    fs.mkdirSync(tempHomePath);
-    fs.cpSync(path.join(packageDirPath, 'bin'), path.join(tempPackagePath, 'bin'), { recursive: true });
-    fs.cpSync(path.join(packageDirPath, 'configs'), path.join(tempPackagePath, 'configs'), { recursive: true });
-    const env = { HOME: tempHomePath, PATH: '/usr/bin:/bin' };
-    for (const args of [
-      ['--verbose', 'apply-release-age-gate'],
-      ['--no-v', 'apply-release-age-gate'],
-      ['-v=false', 'apply-release-age-gate'],
-      ['-v=0', 'apply-release-age-gate'],
-      ['--verbose', 'false', 'apply-release-age-gate'],
-      ['apply-release-age-gate', '--verbose'],
-    ]) {
-      const gateResult = child_process.spawnSync(oldBunPath, [copiedBinPath, ...args], {
+test(
+  'an outdated runtime reports a clear error when mise is unavailable',
+  () => {
+    ensureBuiltCli();
+    runCommand('mise', ['--no-config', 'install', 'bun@1.0.0'], packageDirPath);
+    const oldBunDir = runCommand('mise', ['--no-config', 'where', 'bun@1.0.0'], packageDirPath).stdout.trim();
+    const oldBunPath = path.join(oldBunDir, 'bin', 'bun');
+    const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy missing mise '));
+    const tempHomePath = path.join(tempDirPath, 'home');
+    const tempPackagePath = path.join(tempDirPath, 'wbfy package');
+    const copiedBinPath = path.join(tempPackagePath, 'bin', 'wbfy.js');
+    try {
+      fs.mkdirSync(tempHomePath);
+      fs.cpSync(path.join(packageDirPath, 'bin'), path.join(tempPackagePath, 'bin'), { recursive: true });
+      fs.cpSync(path.join(packageDirPath, 'configs'), path.join(tempPackagePath, 'configs'), { recursive: true });
+      const env = { HOME: tempHomePath, PATH: '/usr/bin:/bin' };
+      for (const args of [
+        ['--verbose', 'apply-release-age-gate'],
+        ['--no-v', 'apply-release-age-gate'],
+        ['-v=false', 'apply-release-age-gate'],
+        ['-v=0', 'apply-release-age-gate'],
+        ['--verbose', 'false', 'apply-release-age-gate'],
+        ['apply-release-age-gate', '--verbose'],
+      ]) {
+        const gateResult = child_process.spawnSync(oldBunPath, [copiedBinPath, ...args], {
+          cwd: packageDirPath,
+          encoding: 'utf8',
+          env,
+        });
+        expect(gateResult.status).toBe(0);
+      }
+      expect(fs.readFileSync(path.join(tempHomePath, '.bunfig.toml'), 'utf8')).toContain('minimumReleaseAge');
+
+      const pathResult = child_process.spawnSync(oldBunPath, [copiedBinPath, '.', 'apply-release-age-gate'], {
         cwd: packageDirPath,
         encoding: 'utf8',
         env,
       });
-      expect(gateResult.status).toBe(0);
+      expect(pathResult.status).toBe(1);
+      expect(pathResult.stderr).toContain('mise could not resolve a supported version');
+
+      const negatedOptionPathResult = child_process.spawnSync(
+        oldBunPath,
+        [copiedBinPath, '--no-v', 'false', 'apply-release-age-gate'],
+        { cwd: packageDirPath, encoding: 'utf8', env }
+      );
+      expect(negatedOptionPathResult.status).toBe(1);
+      expect(negatedOptionPathResult.stderr).toContain('mise could not resolve a supported version');
+
+      const trailingPathResult = child_process.spawnSync(oldBunPath, [copiedBinPath, 'apply-release-age-gate', '.'], {
+        cwd: packageDirPath,
+        encoding: 'utf8',
+        env,
+      });
+      expect(trailingPathResult.status).toBe(1);
+      expect(trailingPathResult.stderr).toContain('mise could not resolve a supported version');
+
+      const result = child_process.spawnSync(oldBunPath, [copiedBinPath, '--help'], {
+        cwd: packageDirPath,
+        encoding: 'utf8',
+        env,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('wbfy requires Bun >= 1.4.0 (found 1.0.0)');
+      expect(result.stderr).not.toContain('TypeError');
+    } finally {
+      fs.rmSync(tempDirPath, { force: true, recursive: true });
     }
-    expect(fs.readFileSync(path.join(tempHomePath, '.bunfig.toml'), 'utf8')).toContain('minimumReleaseAge');
-
-    const pathResult = child_process.spawnSync(oldBunPath, [copiedBinPath, '.', 'apply-release-age-gate'], {
-      cwd: packageDirPath,
-      encoding: 'utf8',
-      env,
-    });
-    expect(pathResult.status).toBe(1);
-    expect(pathResult.stderr).toContain('mise could not resolve a supported version');
-
-    const negatedOptionPathResult = child_process.spawnSync(
-      oldBunPath,
-      [copiedBinPath, '--no-v', 'false', 'apply-release-age-gate'],
-      { cwd: packageDirPath, encoding: 'utf8', env }
-    );
-    expect(negatedOptionPathResult.status).toBe(1);
-    expect(negatedOptionPathResult.stderr).toContain('mise could not resolve a supported version');
-
-    const trailingPathResult = child_process.spawnSync(oldBunPath, [copiedBinPath, 'apply-release-age-gate', '.'], {
-      cwd: packageDirPath,
-      encoding: 'utf8',
-      env,
-    });
-    expect(trailingPathResult.status).toBe(1);
-    expect(trailingPathResult.stderr).toContain('mise could not resolve a supported version');
-
-    const result = child_process.spawnSync(oldBunPath, [copiedBinPath, '--help'], {
-      cwd: packageDirPath,
-      encoding: 'utf8',
-      env,
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain('wbfy requires Bun >= 1.4.0 (found 1.0.0)');
-    expect(result.stderr).not.toContain('TypeError');
-  } finally {
-    fs.rmSync(tempDirPath, { force: true, recursive: true });
-  }
-});
+  },
+  300 * 1000
+);
 
 function ensureBuiltCli(): void {
   if (isDistUpToDate()) return;
