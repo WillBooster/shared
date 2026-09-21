@@ -65,7 +65,7 @@ function setToolVersion(content: string, tool: string, version: string): string 
   const section = /^\[tools\](?:\n(?!\[).*)*/mu.exec(content)?.[0];
   if (section === undefined) return `${content && `${content.trimEnd()}\n\n`}[tools]\n${pin}\n`;
 
-  const pinPattern = new RegExp(`^${tool} = .*?(\\s+#.*)?$`, 'mu');
+  const pinPattern = new RegExp(`^${tool} = .*?(\\s*#.*)?$`, 'mu');
   // Blank lines and comments that end the section lead the next table, so a new pin goes above them.
   const pinsEnd = /(?:\n[\t ]*(?:#.*)?)*$/u.exec(section)?.index ?? section.length;
   const newSection = pinPattern.test(section)
