@@ -16,11 +16,14 @@ export function formatFilesForPrompt(files: readonly { path: string; data: strin
 
 /**
  * Renders chat messages as `<role>` elements separated by blank lines, e.g. to embed a conversation log in a prompt.
- * Every role's tag is escaped in every message, so a message cannot close its element and pose as another role.
+ * Escapes system, developer, user, assistant, tool, and every supplied role's tags in message contents.
+ * Roles must be trusted literal tag names supplied by the caller. This preserves delimiters, not instruction priority.
  * To wrap the result in another element, escape that tag in the result with `escapePromptTag`.
  */
 export function formatMessagesForPrompt(messages: readonly { role: string; content: string }[]): string {
-  const roles = [...new Set(messages.map((message) => message.role))];
+  const roles = [
+    ...new Set(['system', 'developer', 'user', 'assistant', 'tool', ...messages.map((message) => message.role)]),
+  ];
   return messages
     .map((message) => {
       let content = message.content;

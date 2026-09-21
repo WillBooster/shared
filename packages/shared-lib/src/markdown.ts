@@ -69,7 +69,8 @@ const WRAPPED_MARKDOWN_LANGUAGES = new Set(['', 'markdown', 'md']);
  * `**bold**`, backticks, and quotes), a leading number like `1.` or `2.1`, and a trailing colon, ignoring case and spacing;
  * headings at any depth are candidates.
  * Among matching headings, the shallowest wins, then one equal to the name as written, then the first; each heading
- * serves at most one name. A name whose section is missing or empty is absent from the result.
+ * serves at most one name. When distinct requested names normalize alike, only exact matches at the shallowest
+ * matching depth are returned. Missing, empty, or ambiguous sections are absent from the prototype-free result.
  */
 export function extractSections<const Name extends string>(
   markdown: string,
@@ -79,9 +80,9 @@ export function extractSections<const Name extends string>(
     ...section,
     key: normalizeHeading(section.heading),
   }));
-  const sections: Partial<Record<Name, string>> = {};
-  for (const name of names) {
-    const key = normalizeHeading(name);
+  const requested = [...new Set(names)].map((name) => ({ name, key: normalizeHeading(name) }));
+  const sections: Partial<Record<Name, string>> = Object.create(null);
+  for (const { name, key } of requested) {
     let best: (typeof candidates)[number] | undefined;
     for (const candidate of candidates) {
       if (candidate.key !== key) continue;
@@ -94,7 +95,7 @@ export function extractSections<const Name extends string>(
       }
     }
     if (!best) continue;
-    candidates.splice(candidates.indexOf(best), 1);
+    if (best.heading !== name && requested.some((other) => other.name !== name && other.key === key)) continue;
     if (best.content) sections[name] = best.content;
   }
   return sections;
@@ -131,12 +132,13 @@ function splitSections(markdown: string): MarkdownSection[] {
   const lines = splitLines(markdown);
   const headings = findHeadings(lines);
   return headings.map((heading, index) => {
-    const next = headings.slice(index + 1).find((other) => other.depth <= heading.depth);
+    let nextIndex = index + 1;
+    while (nextIndex < headings.length && (headings[nextIndex]?.depth ?? 0) > heading.depth) nextIndex++;
     return {
       depth: heading.depth,
       heading: heading.text,
       content: lines
-        .slice(heading.index + 1, next?.index)
+        .slice(heading.index + 1, headings[nextIndex]?.index)
         .join('\n')
         .trim(),
     };

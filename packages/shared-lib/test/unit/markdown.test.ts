@@ -125,3 +125,22 @@ test('extractSections prefers the shallowest heading, then the one written as th
     'A.py': 'upper',
   });
 });
+
+test('extractSections leaves colliding file names missing instead of assigning another file', () => {
+  for (const names of [
+    ['a.py', 'A.py'],
+    ['A.py', 'a.py'],
+  ]) {
+    expect(extractSections('# A.py\nupper', names)).toEqual({ 'A.py': 'upper' });
+    expect(extractSections('# **A.py**\nambiguous', names)).toEqual({});
+    expect(extractSections('# **A.py**\nambiguous\n## A.py\nnested', names)).toEqual({});
+  }
+});
+
+test('extractSections supports arbitrary keys and missing-key validation', () => {
+  const names = ['__proto__', 'constructor', 'toString'];
+  const sections = extractSections('# __proto__\ncontent', names);
+  expect(Object.keys(sections)).toEqual(['__proto__']);
+  expect(sections['__proto__']).toBe('content');
+  expect(names.filter((name) => !sections[name])).toEqual(['constructor', 'toString']);
+});
