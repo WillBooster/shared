@@ -120,6 +120,9 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     delete newSettings.compilerOptions?.baseUrl;
     if (config.depending.reactNative) {
       delete newSettings.compilerOptions?.verbatimModuleSyntax;
+      // The current @tsconfig/react-native base still selects the node10 resolver removed by
+      // TypeScript 7. Bundler resolution matches Metro and keeps the managed lint project valid.
+      newSettings.compilerOptions.moduleResolution = 'bundler';
     }
     // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
     // already-up-to-date tsconfig.json survive wbfy runs.

@@ -380,8 +380,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       }
       if (doesContainJsOrTs(config)) {
         promises.push(generateTsconfig(config));
-      }
-      if (doesContainJsOrTs(config)) {
         promises.push(generateOxfmtConfig(config));
         promises.push(generateOxlintConfig(config, rootConfig));
       } else if (!config.isRoot && config.doesContainPackageJson && doesContainJsOrTs(rootConfig)) {
