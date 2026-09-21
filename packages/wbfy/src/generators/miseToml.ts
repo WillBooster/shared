@@ -62,7 +62,7 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
 
 function setToolVersion(content: string, tool: string, version: string): string {
   const pin = `${tool} = "${version}"`;
-  const section = /^\[tools\](?:\n(?!\[).*)*/mu.exec(content)?.[0];
+  const section = /^\[tools\](?![^\n])(?:\n(?!\[).*)*/mu.exec(content)?.[0];
   if (section === undefined) return `${content && `${content.trimEnd()}\n\n`}[tools]\n${pin}\n`;
 
   const pinPattern = new RegExp(`^${tool} = .*?(\\s*#.*)?$`, 'mu');
