@@ -256,6 +256,14 @@ export abstract class BaseScripts {
   }
 
   testUnit(project: Project, argv: TestArgv): string {
+    return this.buildUnitRunnerCommand(project, argv, ['--parallel']);
+  }
+
+  /**
+   * `bunOptions` apply only to `bun test`. The e2e callers pass none: their files share one live
+   * server or real external services, so they must not run in parallel worker processes.
+   */
+  protected buildUnitRunnerCommand(project: Project, argv: TestArgv, bunOptions: string[] = []): string {
     const targets = argv.targets?.map(String);
     if (project.hasVitest) {
       // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
@@ -275,6 +283,7 @@ export abstract class BaseScripts {
         'test',
         ...(targets?.length ? targets : ['test/unit/']),
         ...(argv.bail ? ['--bail'] : []),
+        ...bunOptions,
       ]);
     }
     return 'echo "No tests."';

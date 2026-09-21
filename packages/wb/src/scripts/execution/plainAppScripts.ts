@@ -85,7 +85,7 @@ class PlainAppScripts extends BaseScripts {
     }
     const explicitTargets = [...(argv.targets ?? []), ...forwarded.targets];
     const targets = explicitTargets.length > 0 ? explicitTargets : ['test/e2e/'];
-    const unitRunnerCommand = this.testUnit(project, { ...argv, targets });
+    const unitRunnerCommand = this.buildUnitRunnerCommand(project, { ...argv, targets });
     return forwarded.flags.length > 0
       ? `${unitRunnerCommand} ${buildShellCommand(forwarded.flags)}`
       : unitRunnerCommand;

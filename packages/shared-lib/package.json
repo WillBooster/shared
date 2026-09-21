@@ -27,6 +27,7 @@
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
+    "NOTICE",
     "bin/",
     "dist/"
   ],
