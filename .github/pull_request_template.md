@@ -8,7 +8,7 @@ Close #<IssueNumber>
 
 ## Requirements
 
-<!-- The requirements the change must satisfy and the guarantees it must keep as they stand now, one per line, each marked `required` (asked for by the requester, or an existing contract callers depend on) or `chosen` (the implementer's own decision with the reason that decided it, which a simpler design may replace); state the requester's instructions in the requester's terms, whether they came from an issue or a conversation, and when a later instruction overrides an earlier one, rewrite the earlier line instead of adding one beside it, and replace or remove a `chosen` line whose decision changed; keep every other line as it is when the body is later rewritten. -->
+<!-- The requirements the change must satisfy and the guarantees it must keep as they stand now, one per line, each marked `required` (asked for by the requester, or an existing contract callers depend on) or `chosen` (the implementer's own decision with the reason that decided it, which a simpler design may replace); state the requester's instructions in the requester's terms, whether they came from an issue or a conversation, and when a later instruction overrides or withdraws an earlier one, rewrite or remove the earlier line instead of adding one beside it, and replace or remove a `chosen` line whose decision changed; keep every other line as it is when the body is later rewritten. -->
 
 ## Customer Summary
 
