@@ -96,6 +96,13 @@ test('bounds malformed input and never promotes rejected-document fragments to c
   expect(nested.value).toEqual({ verdict: 'refuted' });
   expect(nested.requiresConfirmation).toBe(true);
   expect(recoverJson('x'.repeat(1_000_001)).errors).toHaveLength(1);
+  const maximumValue = 'x'.repeat(999_998);
+  const maximum = recoverJson(JSON.stringify(maximumValue));
+  expect(maximum.errors).toEqual([]);
+  expect(maximum.candidates).toHaveLength(1);
+  expect(maximum.candidates[0]?.value).toBe(maximumValue);
+  expect(maximum.candidates[0]?.repairs).toEqual([]);
+  expect(maximum.candidates[0]?.requiresConfirmation).toBe(false);
   expect(recoverJson('['.repeat(130)).errors.length).toBeGreaterThan(0);
   expect(recoverJson('{}\n'.repeat(40)).candidates).toHaveLength(32);
   const capped = recoverJson(`${'{}\n'.repeat(40)}\`\`\`json\n{"verdict":"confirmed"}\n\`\`\``);
