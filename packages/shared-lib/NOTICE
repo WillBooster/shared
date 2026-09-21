@@ -16,9 +16,6 @@ limitations under the License.
 
 JSON recovery implementation and selected test cases informed by jsonrepair:
 https://github.com/josdejong/jsonrepair
-Source revision: 4a80ed87fb1155db064945bc2aa4f6b4f4e89c27
-Files: src/regular/jsonrepair.ts and src/index.test.ts
-The implementation is adapted to report repair provenance and incomplete or ambiguous input.
 
 The ISC License
 

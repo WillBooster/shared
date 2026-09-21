@@ -57,6 +57,69 @@ test('preserves standard JSON escapes in structured explanations without repairs
   expect(result.candidates[0]?.requiresConfirmation).toBe(false);
 });
 
+test('recovers quoted ratios without absorbing separate numbers or comment trivia', () => {
+  for (const fragment of ['hi, there', 'hi*there', 'hi{there', 'hi\rthere', 'hi\nthere']) {
+    const result = recoverJson(`{"v":"He said "${fragment}" ok"}\n\`\`\`json\n{"verdict":"refuted"}\n\`\`\``);
+    expect(result.candidates).toHaveLength(2);
+    expect(result.candidates[0]?.value).toMatchObject({ v: 'He said ' });
+    expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+    expect(result.candidates[1]?.value).toEqual({ verdict: 'refuted' });
+    expect(result.candidates[1]?.requiresConfirmation).toBe(false);
+  }
+  for (const fragment of ['hi[there', 'hi]there']) {
+    const result = recoverJson(`{"v":"He said "${fragment}" ok"}\n\`\`\`json\n{"verdict":"refuted"}\n\`\`\``);
+    expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ verdict: 'refuted' }]);
+    expect(result.errors.some((error) => error.message === 'Mismatched closing bracket')).toBe(true);
+  }
+  for (const phrase of ['985/211', '2.3', '2fa', '3.0.1']) {
+    const summary = `includes "${phrase}" items`;
+    const result = recoverJson(`{"summary":"${summary}","verdict":"refuted"}`);
+    expect(result.errors).toEqual([]);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]?.value).toEqual({ summary, verdict: 'refuted' });
+    expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+  }
+  for (const number of ['2', '2.5', '2e10']) {
+    const candidate = recoverJson(`["a" ${number}]`).candidates[0]!;
+    expect(candidate.value).toEqual(['a', Number(number)]);
+    expect(candidate.requiresConfirmation).toBe(false);
+  }
+  for (const comment of ['/* note */', '// note\n']) {
+    const candidate = recoverJson(`["a"${comment},"b"]`).candidates[0]!;
+    expect(candidate.value).toEqual(['a', 'b']);
+    expect(candidate.repairs.some((repair) => repair.reason === 'unescaped-quote')).toBe(false);
+  }
+});
+
+test('exposes surplus root closers and their continuation without guessing parentage', () => {
+  for (const input of ['{"a":{"b":1}}},"c":2}', '```json\n{"a":{"b":1}}},"c":2}\n```']) {
+    const result = recoverJson(input);
+    expect(result.candidates.map((candidate) => candidate.value)).toEqual([{ a: { b: 1 } }, 'c']);
+    expect(result.candidates[0]?.value).toEqual({ a: { b: 1 } });
+    expect(result.candidates.every((candidate) => candidate.requiresConfirmation)).toBe(true);
+    const repair = result.candidates[0]?.repairs.find((item) => item.reason === 'surplus-closing-bracket');
+    expect(input[repair!.offset]).toBe('}');
+    expect(result.errors).toHaveLength(2);
+    const diagnostic = result.errors[0]!;
+    expect(JSON.parse(diagnostic.message.split('): ')[1]!)).toContain('"c":2');
+  }
+  for (const input of ['```json\n{} } /* extra brace */ ]\n```', '```json\n[1]\n}\n```']) {
+    const result = recoverJson(input);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]?.requiresConfirmation).toBe(true);
+    expect(result.errors).toHaveLength(1);
+  }
+  const input = '{"a":1}}' + 'x'.repeat(1000);
+  const result = recoverJson(input);
+  const diagnostic = result.errors[0]!;
+  expect(diagnostic.message).toContain('(truncated excerpt): ');
+  expect(JSON.parse(diagnostic.message.split('): ')[1]!)).toBe(input.slice(diagnostic.offset, diagnostic.offset + 256));
+  const fragments = recoverJson('[{"a":{"b":1}}},"c":2}]');
+  expect(fragments.candidates[0]?.value).toEqual({ a: { b: 1 } });
+  expect(fragments.candidates[0]?.requiresConfirmation).toBe(true);
+  expect(fragments.errors[0]?.message).toBe('Mismatched closing bracket');
+});
+
 test('does not treat numbered prose or Markdown bullets as root scalar answers', () => {
   for (const prose of [
     '3 issues found. Details:',

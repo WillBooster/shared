@@ -204,6 +204,21 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
         continue;
       }
       parser.space();
+      if (!commentFragment && failures === 0 && parser.index < end && /[}\]]/.test(text[parser.index]!)) {
+        const surplusStart = parser.index;
+        while (parser.index < end && /[}\]]/.test(text[parser.index]!)) {
+          parser.repairs.push({ offset: parser.index, kind: 'ambiguous', reason: 'surplus-closing-bracket' });
+          parser.index++;
+          parser.space();
+        }
+        if (result.errors.length < MAX_ERRORS) {
+          const excerptEnd = Math.min(end, surplusStart + MAX_DIAGNOSTIC_EXCERPT);
+          result.errors.push({
+            offset: surplusStart,
+            message: `Surplus closing brackets and possible continuation (${excerptEnd < end ? 'truncated excerpt' : 'excerpt'}): ${JSON.stringify(text.slice(surplusStart, excerptEnd))}`,
+          });
+        }
+      }
       if (
         text[valueStart]! in QUOTES &&
         parser.repairs.some((repair) => repair.reason === 'trailing-scalar-content') &&
@@ -430,7 +445,7 @@ class RecoveryParser {
             afterNext !== undefined &&
             (!/[,}:\]]/.test(afterNext) ||
               (afterNext === ',' && this.continuesStringAfterComma(nextClose + 1, close))) &&
-            !/[\\/*:,{}[\]\r\n]/.test(this.text.slice(this.index, nextClose)) &&
+            !/[\\*:,{}[\]\r\n]|\/\//.test(this.text.slice(this.index, nextClose)) &&
             !this.startsKey(nextClose)
           ) {
             embeddedQuote = true;
