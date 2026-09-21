@@ -17,7 +17,7 @@ export const PULL_REQUEST_SECTIONS: readonly TemplateSection[] = [
   {
     heading: 'Requirements',
     requirement:
-      "the requirements the change must satisfy and the guarantees it must keep as they stand now, one per line, each marked `required` (asked for by the requester, or an existing contract callers depend on) or `chosen` (the implementer's own decision with the reason that decided it, which a simpler design may replace); state the requester's instructions in the requester's terms, whether they came from an issue or a conversation, and keep each line as it is while the instruction, contract, or decision behind it stands: when the requester overrides or withdraws an instruction, or a decision changes, rewrite or remove its line instead of adding one beside it",
+      "the requirements the change must satisfy and the guarantees it must keep as they stand now, one per line, each marked `required` (asked for by the requester, or an existing contract callers depend on) or `chosen` (the implementer's own decision with the reason that decided it, which a simpler design may replace); state the requester's instructions in the requester's terms, whether they came from an issue or a conversation, and keep each line as it is while the instruction, contract, or decision behind it stands, and once it no longer does (the requester overrode or withdrew the instruction, the caller contract changed, or the decision changed), rewrite or remove that line instead of adding one beside it",
   },
   {
     heading: 'Customer Summary',
