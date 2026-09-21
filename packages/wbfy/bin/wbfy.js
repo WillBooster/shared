@@ -73,6 +73,7 @@ function reportBootstrapFailure(reason) {
 }
 
 function isApplyReleaseAgeGateInvocation(args) {
+  let hasCommand = false;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (isPositiveGlobalBooleanOption(argument)) {
@@ -80,9 +81,13 @@ function isApplyReleaseAgeGateInvocation(args) {
       continue;
     }
     if (isNegatedGlobalBooleanOption(argument)) continue;
-    return argument === applyReleaseAgeGateCommand;
+    if (!hasCommand && argument === applyReleaseAgeGateCommand) {
+      hasCommand = true;
+      continue;
+    }
+    return false;
   }
-  return false;
+  return hasCommand;
 }
 
 function isPositiveGlobalBooleanOption(argument) {

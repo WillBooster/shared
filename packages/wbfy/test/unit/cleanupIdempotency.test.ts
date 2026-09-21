@@ -107,8 +107,15 @@ test('an outdated runtime reports a clear error when mise is unavailable', () =>
     fs.cpSync(path.join(packageDirPath, 'bin'), path.join(tempPackagePath, 'bin'), { recursive: true });
     fs.cpSync(path.join(packageDirPath, 'configs'), path.join(tempPackagePath, 'configs'), { recursive: true });
     const env = { HOME: tempHomePath, PATH: '/usr/bin:/bin' };
-    for (const options of [['--verbose'], ['--no-v'], ['-v=false'], ['-v=0'], ['--verbose', 'false']]) {
-      const gateResult = child_process.spawnSync(oldBunPath, [copiedBinPath, ...options, 'apply-release-age-gate'], {
+    for (const args of [
+      ['--verbose', 'apply-release-age-gate'],
+      ['--no-v', 'apply-release-age-gate'],
+      ['-v=false', 'apply-release-age-gate'],
+      ['-v=0', 'apply-release-age-gate'],
+      ['--verbose', 'false', 'apply-release-age-gate'],
+      ['apply-release-age-gate', '--verbose'],
+    ]) {
+      const gateResult = child_process.spawnSync(oldBunPath, [copiedBinPath, ...args], {
         cwd: packageDirPath,
         encoding: 'utf8',
         env,
@@ -132,6 +139,14 @@ test('an outdated runtime reports a clear error when mise is unavailable', () =>
     );
     expect(negatedOptionPathResult.status).toBe(1);
     expect(negatedOptionPathResult.stderr).toContain('mise could not resolve a supported version');
+
+    const trailingPathResult = child_process.spawnSync(oldBunPath, [copiedBinPath, 'apply-release-age-gate', '.'], {
+      cwd: packageDirPath,
+      encoding: 'utf8',
+      env,
+    });
+    expect(trailingPathResult.status).toBe(1);
+    expect(trailingPathResult.stderr).toContain('mise could not resolve a supported version');
 
     const result = child_process.spawnSync(oldBunPath, [copiedBinPath, '--help'], {
       cwd: packageDirPath,
