@@ -159,3 +159,13 @@ test('extractSections reads a Markdown-wrapped answer followed by prose', () => 
     expect(extractSections(markdown, ['Answer'])).toEqual({ Answer: '42' });
   }
 });
+
+test('parseMarkdownSections prefers document headings over a leading code example', () => {
+  for (const language of ['', 'md', 'markdown']) {
+    const markdown = `\`\`\`${language}\n# Example\nsample\n\`\`\`\n# Usage\nRun it.\n# Notes\nNone.`;
+    expect(parseMarkdownSections(markdown)).toEqual([
+      { depth: 1, heading: 'Usage', content: 'Run it.' },
+      { depth: 1, heading: 'Notes', content: 'None.' },
+    ]);
+  }
+});

@@ -105,17 +105,16 @@ export function extractSections<const Name extends string>(
 /**
  * Returns every ATX heading of Markdown text in order, with the source text under it.
  * Only headings starting at the beginning of a line outside fenced code blocks count; setext headings (underlined
- * with `=` or `-`) are ignored. When the text starts with a `markdown`, `md`, or unlabeled code block, as
- * `extractIfSingleOutermostCodeBlock` finds it (so fences nested inside stay in the contents), the headings inside
- * that block are used if there are any, dropping any trailing prose.
+ * with `=` or `-`) are ignored. A whole-response `markdown`, `md`, or unlabeled wrapper is read inside as
+ * `extractIfSingleOutermostCodeBlock` finds it, preserving nested fences. A leading wrapper followed by prose is
+ * also read inside, but only when there are no headings outside fences.
  */
 export function parseMarkdownSections(markdown: string): MarkdownSection[] {
   const block = findOutermostCodeBlock(markdown);
-  if (block && WRAPPED_MARKDOWN_LANGUAGES.has(block.language)) {
-    const sections = splitSections(block.code);
-    if (sections.length > 0) return sections;
-  }
-  return splitSections(markdown);
+  const wrapper = block && WRAPPED_MARKDOWN_LANGUAGES.has(block.language) ? block : undefined;
+  if (wrapper?.isWhole) return splitSections(wrapper.code);
+  const sections = splitSections(markdown);
+  return sections.length === 0 && wrapper ? splitSections(wrapper.code) : sections;
 }
 
 function normalizeHeading(heading: string): string {
@@ -146,7 +145,7 @@ function splitSections(markdown: string): MarkdownSection[] {
   });
 }
 
-function findOutermostCodeBlock(text: string): { language: string; code: string } | undefined {
+function findOutermostCodeBlock(text: string): { language: string; code: string; isWhole: boolean } | undefined {
   // Keep the opening fence's indentation, which is stripped from the contents.
   const lines = splitLines(text.replace(/^\s*\n/u, '').trimEnd());
   const fence = parseOpeningFence(lines[0] ?? '');
@@ -160,6 +159,7 @@ function findOutermostCodeBlock(text: string): { language: string; code: string 
       .slice(1, end)
       .map((line) => stripIndent(line, fence.indent))
       .join('\n'),
+    isWhole: end >= lastIndex,
   };
 }
 
