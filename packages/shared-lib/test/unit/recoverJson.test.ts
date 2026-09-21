@@ -58,7 +58,17 @@ test('preserves standard JSON escapes in structured explanations without repairs
 });
 
 test('recovers quoted ratios without absorbing separate numbers or comment trivia', () => {
-  for (const fragment of ['hi, there', 'hi*there', 'hi{there', 'hi\rthere', 'hi\nthere']) {
+  for (const fragment of [
+    'hi, there',
+    'hi*there',
+    'hi{there',
+    'hi\rthere',
+    'hi\nthere',
+    'hi//there',
+    'hi:there',
+    'hi}there',
+    String.raw`hi\there`,
+  ]) {
     const result = recoverJson(`{"v":"He said "${fragment}" ok"}\n\`\`\`json\n{"verdict":"refuted"}\n\`\`\``);
     expect(result.candidates).toHaveLength(2);
     expect(result.candidates[0]?.value).toMatchObject({ v: 'He said ' });
