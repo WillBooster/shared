@@ -35,7 +35,7 @@ import { generateVscodeSettings } from './generators/vscodeSettings.js';
 import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
 import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
-import { generateMiseToml, minimumBunVersion } from './generators/miseToml.js';
+import { generateMiseToml } from './generators/miseToml.js';
 import { generateRepositoryNpmrc } from './generators/npmrc.js';
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
@@ -105,8 +105,6 @@ async function main(): Promise<void> {
     .strict().argv;
   options.isVerbose = argv.verbose;
 
-  // Deliberately before the Bun check in willboosterifyPaths(): the gate must be appliable on a
-  // machine whose Bun is outdated, which is exactly a machine that still needs gating.
   if (argv._[0] === applyReleaseAgeGateCommand) {
     if (!ensureGlobalReleaseAgeGates()) process.exitCode = 1;
     return;
@@ -130,21 +128,10 @@ async function main(): Promise<void> {
 }
 
 async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: boolean): Promise<boolean> {
-  // Before anything else — even the Bun check below: the developer machine's global
-  // package-manager configs must receive the org's minimum-release-age policy on EVERY run,
-  // because they are what guards brand-new local projects that have no wbfy-generated repository
-  // config yet, and that protection must work before the supported-version check.
+  // Before any repository work, the developer machine's global package-manager configs must
+  // receive the org's minimum-release-age policy on EVERY run because they are what guards
+  // brand-new local projects that have no wbfy-generated repository config yet.
   ensureGlobalReleaseAgeGates();
-
-  // wbfy manages repositories through Bun + mise and uses Bun 1.4 runtime APIs. The version floor
-  // also ensures the generated bunfig.toml options produce the install layout wbfy validates. It
-  // stays unconditional even though the already-applied check below can make a run a no-op: the
-  // config-free relaunch lets wbfy upgrade the target's old pin instead of silently leaving it for
-  // a later run.
-  const bunVersion = Bun.version;
-  if (Bun.semver.order(bunVersion, minimumBunVersion) < 0) {
-    return !runWithSupportedBun();
-  }
 
   // A `-dirty-local` label identifies an edited checkout, whose next build produces different files
   // under the same label, so such a run is never treated as already applied.
@@ -420,36 +407,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     spawnSync('bun', ['cleanup'], rootDirPath);
   }
   return hasInvalidPackageConfig;
-}
-
-function runWithSupportedBun(): boolean {
-  const cwd = process.cwd();
-  const latestBunVersion = spawnSyncAndReturnStdout('mise', ['--no-config', 'latest', 'bun'], cwd);
-  if (!latestBunVersion || Bun.semver.order(latestBunVersion, minimumBunVersion) < 0) {
-    console.error(
-      `wbfy requires Bun >= ${minimumBunVersion} (found ${Bun.version}), but mise could not resolve a supported version.`
-    );
-    return false;
-  }
-
-  const entryPoint = process.argv[1];
-  if (!entryPoint) {
-    console.error(
-      `wbfy requires Bun >= ${minimumBunVersion} (found ${Bun.version}), but its entry point is unavailable.`
-    );
-    return false;
-  }
-
-  // Use a config-free mise environment so a repository's old Bun pin cannot prevent wbfy from
-  // updating that same pin. The relaunched process then performs the complete operation once.
-  console.info(`Restart wbfy with Bun ${latestBunVersion} (current: ${Bun.version}).`);
-  return (
-    spawnSyncAndReturnStatus(
-      'mise',
-      ['--no-config', 'x', `bun@${latestBunVersion}`, '--', 'bun', entryPoint, ...process.argv.slice(2)],
-      cwd
-    ) === 0
-  );
 }
 
 /**

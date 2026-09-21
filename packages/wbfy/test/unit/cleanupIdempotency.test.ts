@@ -7,6 +7,7 @@ import { expect, test } from 'bun:test';
 
 const packageDirPath = path.resolve(import.meta.dirname, '..', '..');
 const distIndexPath = path.join(packageDirPath, 'dist', 'index.js');
+const binPath = path.join(packageDirPath, 'bin', 'wbfy.js');
 
 interface SmallProjectFixture {
   name: string;
@@ -45,11 +46,7 @@ for (const fixture of smallProjectFixtures) {
 
         runCommand('git', ['init'], tempDirPath);
         if (fixture.outdatedBun) {
-          runCommand(
-            'mise',
-            ['--no-config', 'x', 'bun@1.3.14', '--', 'bun', distIndexPath, tempDirPath],
-            packageDirPath
-          );
+          runCommand('mise', ['--no-config', 'x', 'bun@1.0.0', '--', 'bun', binPath, tempDirPath], packageDirPath);
         } else {
           runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
         }
