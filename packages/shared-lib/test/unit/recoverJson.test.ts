@@ -1,5 +1,5 @@
 /*! Selected cases adapted from jsonrepair, Copyright (c) 2020-2026 Jos de Jong (ISC). See NOTICE. */
-import { expect, test } from 'vitest';
+import { expect, test } from 'bun:test';
 import { type JsonRecovery, recoverJson as recoverJsonUnchecked } from '../../src/index.js';
 
 test('locates repairs in the original response and distinguishes their uncertainty', () => {
@@ -18,10 +18,12 @@ test('locates repairs in the original response and distinguishes their uncertain
     ['{"a":¦word', 'unquoted-value', 'incomplete'],
     ["{'a':'it¦'s fine'}", 'literal-apostrophe', 'ambiguous'],
     ['{"a":"word¦”, "b":1}', 'mismatched-quote', 'ambiguous'],
-    [String.raw`{"a":"x¦\q"}`, 'invalid-escape', 'ambiguous'],
+    // oxlint-disable unicorn/prefer-string-raw -- bun's transpiler rewrites a non-ASCII character in String.raw to its \u escape, so the ¦ marker would vanish.
+    ['{"a":"x¦\\q"}', 'invalid-escape', 'ambiguous'],
     ['{"a":"x¦\\', 'truncated-escape', 'incomplete'],
-    [String.raw`{"a":"x¦\u1`, 'invalid-unicode-escape', 'incomplete'],
-    [String.raw`{"a":"x¦\u1"}`, 'invalid-unicode-escape', 'ambiguous'],
+    ['{"a":"x¦\\u1', 'invalid-unicode-escape', 'incomplete'],
+    ['{"a":"x¦\\u1"}', 'invalid-unicode-escape', 'ambiguous'],
+    // oxlint-enable unicorn/prefer-string-raw
     ['{"a":¦"cut', 'unterminated-string', 'incomplete'],
     ['{"a":¦', 'missing-value', 'incomplete'],
     ['[1,¦,3]', 'missing-value', 'incomplete'],
@@ -81,7 +83,7 @@ test('recovers complete LLM answers without changing their data', () => {
     expect(candidate.value).toEqual(value);
     expect(JSON.parse(candidate.json)).toEqual(value);
     expect(candidate.requiresConfirmation).toBe(false);
-    expect(candidate.repairs.map((repair) => repair.reason)).toEqual(reasons);
+    expect(candidate.repairs.map((repair) => repair.reason)).toEqual([...reasons]);
     expect(candidate.repairs.every((repair) => repair.kind === 'syntax')).toBe(true);
     expect(recoverJson(candidate.json).candidates[0]?.repairs).toEqual([]);
   }
@@ -198,7 +200,7 @@ test('exposes surplus root closers and their continuation without guessing paren
     const candidate = result.candidates[0]!;
     expect(candidate.requiresConfirmation).toBe(true);
     expect(input.slice(candidate.start, candidate.end)).toBe(`${body}\n`);
-    expect(candidate.repairs.map((repair) => repair.reason)).toEqual(reasons);
+    expect(candidate.repairs.map((repair) => repair.reason)).toEqual([...reasons]);
     expect(result.errors).toHaveLength(1);
     const diagnostic = result.errors[0]!;
     expect(diagnostic.message).toContain('(excerpt): ');
@@ -756,7 +758,7 @@ test('salvages comma-separated scalars without reopening a scalar window inside 
     [', 42', [42]],
   ] as const) {
     const candidates = recoverJson(input).candidates;
-    expect(candidates.map((candidate) => candidate.value)).toEqual(values);
+    expect(candidates.map((candidate) => candidate.value)).toEqual([...values]);
     if (!input.startsWith('{') && !input.startsWith(','))
       expect(candidates.every((candidate) => candidate.requiresConfirmation)).toBe(true);
   }
