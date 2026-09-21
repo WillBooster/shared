@@ -33,7 +33,7 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
 }
 
 function miseToml(bun: string, fnoxLine: string): string {
-  return `# Toolchain\n[tools]\nnode = "22.0.0"\nbun = "${bun}"\npython = "3.12.0"\n${fnoxLine}\n[tasks.hello]\n# Multi-line on purpose.\nrun = """\necho hello\n"""\n`;
+  return `# Toolchain\n[tools]\nnode = "22.0.0"\nbun = "${bun}" # inline\npython = "3.12.0"\n${fnoxLine}\n# Tasks\n[tasks.hello]\n# Multi-line on purpose.\nrun = """\necho hello\n"""\n`;
 }
 
 test('pins the concrete version behind an lts/* mise selector and adds a concrete Bun pin', async () => {

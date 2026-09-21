@@ -62,14 +62,15 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
 
 function setToolVersion(content: string, tool: string, version: string): string {
   const pin = `${tool} = "${version}"`;
-  const section = /^\[tools\]\n(?:(?!\[).*(?:\n|$))*/mu.exec(content)?.[0];
+  const section = /^\[tools\](?:\n(?!\[).*)*/mu.exec(content)?.[0];
   if (section === undefined) return `${content && `${content.trimEnd()}\n\n`}[tools]\n${pin}\n`;
 
-  const pinPattern = new RegExp(`^${tool} = .*$`, 'mu');
-  const body = section.trimEnd();
+  const pinPattern = new RegExp(`^${tool} = .*?(\\s+#.*)?$`, 'mu');
+  // Blank lines and comments that end the section lead the next table, so a new pin goes above them.
+  const pinsEnd = /(?:\n[\t ]*(?:#.*)?)*$/u.exec(section)?.index ?? section.length;
   const newSection = pinPattern.test(section)
-    ? section.replace(pinPattern, pin)
-    : `${body}\n${pin}\n${section.slice(body.length + 1)}`;
+    ? section.replace(pinPattern, `${pin}$1`)
+    : `${section.slice(0, pinsEnd)}\n${pin}${section.slice(pinsEnd)}`;
   return content.replace(section, () => newSection);
 }
 
