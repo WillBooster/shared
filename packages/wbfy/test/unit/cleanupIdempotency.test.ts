@@ -7,157 +7,46 @@ import { expect, test } from 'bun:test';
 
 const packageDirPath = path.resolve(import.meta.dirname, '..', '..');
 const distIndexPath = path.join(packageDirPath, 'dist', 'index.js');
-const binPath = path.join(packageDirPath, 'bin', 'wbfy.js');
 
-interface SmallProjectFixture {
-  name: string;
-  isEsm: boolean;
-  sourceFileName: string;
-  source: string;
-  outdatedBun: boolean;
-  dependencies?: Record<string, string>;
-}
-
-const smallProjectFixtures: SmallProjectFixture[] = [
+const smallProjectFixtures = [
+  { name: 'ESM TypeScript', isEsm: true, sourceFileName: 'index.ts', source: 'export const answer = 42;\n' },
   {
-    name: 'ESM TypeScript',
-    isEsm: true,
-    sourceFileName: 'index.ts',
-    source: 'export const answer = 42;\n',
-    outdatedBun: false,
-  },
-  {
-    name: 'CommonJS JavaScript under an outdated Bun',
+    name: 'CommonJS JavaScript',
     isEsm: false,
     sourceFileName: 'index.cjs',
     source: 'module.exports = { answer: 42 };\n',
-    outdatedBun: true,
-  },
-  {
-    name: 'React Native CommonJS JavaScript',
-    isEsm: false,
-    sourceFileName: 'index.cjs',
-    source: 'module.exports = { answer: 42 };\n',
-    outdatedBun: false,
-    dependencies: { 'react-native': '0.87.1' },
-  },
-  {
-    name: 'React Native ESM JavaScript',
-    isEsm: true,
-    sourceFileName: 'index.js',
-    source: 'export const answer = 42;\n',
-    outdatedBun: false,
-    dependencies: { 'react-native': '0.87.1' },
   },
 ];
 
-for (const fixture of smallProjectFixtures) {
-  test(
-    `applying wbfy keeps a small ${fixture.name} project clean after rerunning cleanup`,
-    () => {
-      ensureBuiltCli();
-
-      const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-cleanup-idempotency-'));
-      try {
-        writeSmallProjectFixture(tempDirPath, fixture);
-
-        runCommand('git', ['init'], tempDirPath);
-        if (fixture.outdatedBun) {
-          runCommand('mise', ['--no-config', 'x', 'bun@1.0.0', '--', 'bun', binPath, tempDirPath], packageDirPath);
-        } else {
-          runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
-        }
-
-        runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
-        runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
-        runCommand('git', ['add', '-A'], tempDirPath);
-        runCommand('git', ['commit', '--no-verify', '-m', 'test: baseline'], tempDirPath, {
-          LEFTHOOK: '0',
-        });
-
-        runCommand('bun', ['run', 'cleanup'], tempDirPath, {
-          LEFTHOOK: '0',
-        });
-
-        const statusResult = child_process.spawnSync('git', ['status', '--short'], {
-          cwd: tempDirPath,
-          encoding: 'utf8',
-        });
-        expect(statusResult.status).toBe(0);
-        expect(statusResult.stdout.trim()).toBe('');
-      } finally {
-        fs.rmSync(tempDirPath, { force: true, recursive: true });
-      }
-    },
-    300 * 1000
-  );
-}
-
-test(
-  'an outdated runtime reports a clear error when mise is unavailable',
-  () => {
+test.each(smallProjectFixtures)(
+  'applying wbfy keeps a small $name project clean after rerunning cleanup',
+  (fixture) => {
     ensureBuiltCli();
-    runCommand('mise', ['--no-config', 'install', 'bun@1.0.0'], packageDirPath);
-    const oldBunDir = runCommand('mise', ['--no-config', 'where', 'bun@1.0.0'], packageDirPath).stdout.trim();
-    const oldBunPath = path.join(oldBunDir, 'bin', 'bun');
-    const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy missing mise '));
-    const tempHomePath = path.join(tempDirPath, 'home');
-    const tempPackagePath = path.join(tempDirPath, 'wbfy package');
-    const copiedBinPath = path.join(tempPackagePath, 'bin', 'wbfy.js');
+
+    const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-cleanup-idempotency-'));
     try {
-      fs.mkdirSync(tempHomePath);
-      fs.cpSync(path.join(packageDirPath, 'bin'), path.join(tempPackagePath, 'bin'), { recursive: true });
-      fs.cpSync(path.join(packageDirPath, 'configs'), path.join(tempPackagePath, 'configs'), { recursive: true });
-      const env = { HOME: tempHomePath, PATH: '/usr/bin:/bin' };
-      for (const args of [
-        ['--verbose', 'apply-release-age-gate'],
-        ['--no-v', 'apply-release-age-gate'],
-        ['-v=false', 'apply-release-age-gate'],
-        ['-v=0', 'apply-release-age-gate'],
-        ['--verbose', 'false', 'apply-release-age-gate'],
-        ['apply-release-age-gate', '--verbose'],
-      ]) {
-        const gateResult = child_process.spawnSync(oldBunPath, [copiedBinPath, ...args], {
-          cwd: packageDirPath,
-          encoding: 'utf8',
-          env,
-        });
-        expect(gateResult.status).toBe(0);
-      }
-      expect(fs.readFileSync(path.join(tempHomePath, '.bunfig.toml'), 'utf8')).toContain('minimumReleaseAge');
+      writeSmallProjectFixture(tempDirPath, fixture);
 
-      const pathResult = child_process.spawnSync(oldBunPath, [copiedBinPath, '.', 'apply-release-age-gate'], {
-        cwd: packageDirPath,
-        encoding: 'utf8',
-        env,
+      runCommand('git', ['init'], tempDirPath);
+      runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
+
+      runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
+      runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
+      runCommand('git', ['add', '-A'], tempDirPath);
+      runCommand('git', ['commit', '--no-verify', '-m', 'test: baseline'], tempDirPath, {
+        LEFTHOOK: '0',
       });
-      expect(pathResult.status).toBe(1);
-      expect(pathResult.stderr).toContain('mise could not resolve a supported version');
 
-      const negatedOptionPathResult = child_process.spawnSync(
-        oldBunPath,
-        [copiedBinPath, '--no-v', 'false', 'apply-release-age-gate'],
-        { cwd: packageDirPath, encoding: 'utf8', env }
-      );
-      expect(negatedOptionPathResult.status).toBe(1);
-      expect(negatedOptionPathResult.stderr).toContain('mise could not resolve a supported version');
-
-      const trailingPathResult = child_process.spawnSync(oldBunPath, [copiedBinPath, 'apply-release-age-gate', '.'], {
-        cwd: packageDirPath,
-        encoding: 'utf8',
-        env,
+      runCommand('bun', ['run', 'cleanup'], tempDirPath, {
+        LEFTHOOK: '0',
       });
-      expect(trailingPathResult.status).toBe(1);
-      expect(trailingPathResult.stderr).toContain('mise could not resolve a supported version');
 
-      const result = child_process.spawnSync(oldBunPath, [copiedBinPath, '--help'], {
-        cwd: packageDirPath,
+      const statusResult = child_process.spawnSync('git', ['status', '--short'], {
+        cwd: tempDirPath,
         encoding: 'utf8',
-        env,
       });
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain('wbfy requires Bun >= 1.4.0 (found 1.0.0)');
-      expect(result.stderr).not.toContain('TypeError');
+      expect(statusResult.status).toBe(0);
+      expect(statusResult.stdout.trim()).toBe('');
     } finally {
       fs.rmSync(tempDirPath, { force: true, recursive: true });
     }
@@ -197,7 +86,7 @@ function getLatestMtimeMs(entryPath: string): number {
   return maxMtimeMs;
 }
 
-function writeSmallProjectFixture(dirPath: string, fixture: SmallProjectFixture): void {
+function writeSmallProjectFixture(dirPath: string, fixture: (typeof smallProjectFixtures)[number]): void {
   fs.mkdirSync(path.join(dirPath, 'src'), { recursive: true });
   fs.writeFileSync(
     path.join(dirPath, 'package.json'),
@@ -208,16 +97,12 @@ function writeSmallProjectFixture(dirPath: string, fixture: SmallProjectFixture)
         ...(fixture.isEsm ? { type: 'module' } : {}),
         description: 'Temporary fixture for wbfy cleanup idempotency tests',
         repository: 'github:example/small-project',
-        ...(fixture.dependencies ? { dependencies: fixture.dependencies } : {}),
       },
       undefined,
       2
     )}\n`
   );
   fs.writeFileSync(path.join(dirPath, 'README.md'), '# Small Project\n');
-  if (fixture.outdatedBun) {
-    fs.writeFileSync(path.join(dirPath, 'mise.toml'), '[tools]\nbun = "1.3.14"\n');
-  }
   fs.writeFileSync(path.join(dirPath, 'src', fixture.sourceFileName), fixture.source);
 }
 

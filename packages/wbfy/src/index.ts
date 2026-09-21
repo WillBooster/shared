@@ -35,7 +35,7 @@ import { generateVscodeSettings } from './generators/vscodeSettings.js';
 import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
 import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
-import { generateMiseToml } from './generators/miseToml.js';
+import { generateMiseToml, minimumBunVersion } from './generators/miseToml.js';
 import { generateRepositoryNpmrc } from './generators/npmrc.js';
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
@@ -105,6 +105,8 @@ async function main(): Promise<void> {
     .strict().argv;
   options.isVerbose = argv.verbose;
 
+  // Deliberately before the Bun check in willboosterifyPaths(): the gate must be appliable on a
+  // machine whose Bun is outdated, which is exactly a machine that still needs gating.
   if (argv._[0] === applyReleaseAgeGateCommand) {
     if (!ensureGlobalReleaseAgeGates()) process.exitCode = 1;
     return;
@@ -128,10 +130,22 @@ async function main(): Promise<void> {
 }
 
 async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: boolean): Promise<boolean> {
-  // Before any repository work, the developer machine's global package-manager configs must
-  // receive the org's minimum-release-age policy on EVERY run because they are what guards
-  // brand-new local projects that have no wbfy-generated repository config yet.
+  // Before anything else — even the Bun check below: the developer machine's global
+  // package-manager configs must receive the org's minimum-release-age policy on EVERY run,
+  // because they are what guards brand-new local projects that have no wbfy-generated repository
+  // config yet, and that protection must work before the supported-version check.
   ensureGlobalReleaseAgeGates();
+
+  // wbfy manages repositories through Bun + mise and uses Bun 1.4 runtime APIs. The version floor
+  // also ensures the generated bunfig.toml options produce the install layout wbfy validates. It
+  // stays unconditional even though the already-applied check below can make a run a no-op: an
+  // outdated Bun is a broken environment wbfy must report, and hiding it whenever every path
+  // happens to be skipped would surface it only later.
+  const bunVersion = Bun.version;
+  if (Bun.semver.order(bunVersion, minimumBunVersion) < 0) {
+    console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${bunVersion}). Upgrade Bun and re-run.`);
+    return true;
+  }
 
   // A `-dirty-local` label identifies an edited checkout, whose next build produces different files
   // under the same label, so such a run is never treated as already applied.

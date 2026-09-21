@@ -365,13 +365,9 @@ async function applyPackageJsonConventions(
   }
   if (doesContainJsOrTs(config)) {
     devDependencies.push(...oxlintDeps);
-    // The generated *.config.ts files are part of the lint project even in JavaScript-only
-    // repositories, so their runtime globals need ambient types under the isolated linker.
-    // Standard projects use Bun's types. React Native relies on @tsconfig/react-native instead,
-    // and that base config explicitly loads Jest's types even in JavaScript-only projects.
-    if (config.depending.reactNative) {
-      devDependencies.push('@types/jest');
-    } else {
+    // The generated *.config.ts files are type-checked by the lint project even in JavaScript-only
+    // repositories. React Native relies on @tsconfig/react-native's ambient types instead.
+    if (!config.depending.reactNative) {
       devDependencies.push('@types/bun');
     }
   }

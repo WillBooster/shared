@@ -13,6 +13,9 @@ interface MiseToml {
   [key: string]: unknown;
 }
 
+// The oldest Bun runtime wbfy supports.
+export const minimumBunVersion = '1.4.0';
+
 /**
  * Pins Node.js and the latest Bun and (when fnox.toml exists) fnox versions while preserving
  * unrelated mise settings.

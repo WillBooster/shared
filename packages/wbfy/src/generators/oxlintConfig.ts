@@ -49,27 +49,21 @@ function getConfigContent(config: PackageConfig): string {
   // type-check auto-discovered oxlint.config.ts as CommonJS, so importing the ESM
   // @willbooster/oxlint-config package triggers TS1479. Keep this in sync with
   // literacy-test's generated config pattern.
-  // No /// <reference types> line: the generated tsconfig covers *.config.ts; standard projects
-  // get runtime globals from Bun's types, while React Native declares its missing globals locally.
-  // A "node" reference breaks under the isolated linker without @types/node (TS2688).
+  // No /// <reference types> line: the wbfy-generated tsconfig already covers *.config.ts with
+  // types ["bun"], which types require/module.exports, while a "node" reference breaks under
+  // Bun's isolated linker where the undeclared @types/node is unresolvable (TS2688).
   if (!config.isEsmPackage) {
     return `${managedConfigBlocks.getBlock(
       'base',
       `import type { OxlintConfig } from 'oxlint';
 
-${getStructuredCloneDeclaration(config)}
 // oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids ESM package loading issues.
 const oxlintBaseConfig = require('${oxlintBaseConfigModule}');
 
 ${getResolvedConfigContent('oxlintBaseConfig.default ?? oxlintBaseConfig', isRootConfig)}`
     )}
 
-${managedConfigBlocks.getBlock(
-  'export',
-  config.depending.reactNative
-    ? 'declare const module: { exports: OxlintConfig };\n\nmodule.exports = oxlintResolvedConfig;'
-    : 'module.exports = oxlintResolvedConfig;'
-)}
+${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;')}
 `;
   }
 
@@ -77,7 +71,6 @@ ${managedConfigBlocks.getBlock(
     'base',
     `import type { OxlintConfig } from 'oxlint';
 
-${getStructuredCloneDeclaration(config)}
 import oxlintBaseConfig from '${oxlintBaseConfigModule}';
 
 ${getResolvedConfigContent('oxlintBaseConfig', isRootConfig)}`
@@ -85,10 +78,6 @@ ${getResolvedConfigContent('oxlintBaseConfig', isRootConfig)}`
 
 ${managedConfigBlocks.getBlock('export', 'export default oxlintResolvedConfig;')}
 `;
-}
-
-function getStructuredCloneDeclaration(config: PackageConfig): string {
-  return config.depending.reactNative ? 'declare function structuredClone<T>(value: T): T;\n' : '';
 }
 
 // structuredClone keeps a package-local copy so repositories can add settings outside managed
