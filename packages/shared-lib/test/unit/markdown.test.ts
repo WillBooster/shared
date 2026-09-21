@@ -106,7 +106,7 @@ test('extractSections matches headings despite decorations, numbering, and depth
 
 The loop never ends.
 
-## \`How to Fix\`
+## 2.1 \`How to Fix\`
 
 Increment \`i\`.
 

@@ -64,25 +64,9 @@ export interface MarkdownSection {
 const WRAPPED_MARKDOWN_LANGUAGES = new Set(['', 'markdown', 'md']);
 
 /**
- * Returns every ATX heading of Markdown text in order, with the source text under it.
- * Only headings starting at the beginning of a line outside fenced code blocks count; setext headings (underlined
- * with `=` or `-`) are ignored. When the whole text is wrapped in a `markdown`, `md`, or unlabeled code block, as
- * `extractIfSingleOutermostCodeBlock` finds it (so fences nested inside stay in the contents), the headings inside
- * that block are used if there are any.
- */
-export function parseMarkdownSections(markdown: string): MarkdownSection[] {
-  const block = findOutermostCodeBlock(markdown);
-  if (block?.isWhole && WRAPPED_MARKDOWN_LANGUAGES.has(block.language)) {
-    const sections = splitSections(block.code);
-    if (sections.length > 0) return sections;
-  }
-  return splitSections(markdown);
-}
-
-/**
  * Extracts the content of the section headed by each of `names` from Markdown text such as an LLM response, keyed by
  * the given names. A heading matches a name when both are equal after removing decorations at their edges (such as
- * `**bold**`, backticks, and quotes), a leading number like `1.`, and a trailing colon, ignoring case and spacing;
+ * `**bold**`, backticks, and quotes), a leading number like `1.` or `2.1`, and a trailing colon, ignoring case and spacing;
  * headings at any depth are candidates.
  * Among matching headings, the shallowest wins, then one equal to the name as written, then the first; each heading
  * serves at most one name. A name whose section is missing or empty is absent from the result.
@@ -116,8 +100,24 @@ export function extractSections<const Name extends string>(
   return sections;
 }
 
+/**
+ * Returns every ATX heading of Markdown text in order, with the source text under it.
+ * Only headings starting at the beginning of a line outside fenced code blocks count; setext headings (underlined
+ * with `=` or `-`) are ignored. When the whole text is wrapped in a `markdown`, `md`, or unlabeled code block, as
+ * `extractIfSingleOutermostCodeBlock` finds it (so fences nested inside stay in the contents), the headings inside
+ * that block are used if there are any.
+ */
+export function parseMarkdownSections(markdown: string): MarkdownSection[] {
+  const block = findOutermostCodeBlock(markdown);
+  if (block?.isWhole && WRAPPED_MARKDOWN_LANGUAGES.has(block.language)) {
+    const sections = splitSections(block.code);
+    if (sections.length > 0) return sections;
+  }
+  return splitSections(markdown);
+}
+
 function normalizeHeading(heading: string): string {
-  return stripHeadingEdges(stripHeadingEdges(heading).replace(/^\d+[.)]\s*/u, ''))
+  return stripHeadingEdges(stripHeadingEdges(heading).replace(/^\d+(?:\.\d+)*(?:[.)]\s*|\s+)/u, ''))
     .replaceAll(/\s+/gu, ' ')
     .toLowerCase();
 }
