@@ -357,6 +357,21 @@ test('retains only unconfirmed fragments from comment-like prose without mistaki
   expect(globPaths.errors).toEqual([]);
   expect(globPaths.candidates).toHaveLength(1);
   expect(globPaths.candidates[0]?.value).toEqual({ v: 1 });
+  for (const prefix of ['- ', 'Verdict options:\n- ', '{"a":1}\n- ']) {
+    for (const close of ['', '\n*/']) {
+      const result = recoverJson(`${prefix}/* note\n{"verdict":"confirmed"}${close}`);
+      expect(result.candidates.at(-1)?.value).toEqual({ verdict: 'confirmed' });
+      expect(result.candidates.at(-1)?.requiresConfirmation).toBe(true);
+      expect(result.errors.some((error) => error.message.includes('unterminated comment-like'))).toBe(close === '');
+      if (prefix.startsWith('{')) expect(result.candidates[0]?.value).toEqual({ a: 1 });
+    }
+  }
+  for (const input of ['- // note {"verdict":"confirmed"}\n', '1. /* {"verdict":"confirmed"} */ explanation']) {
+    const result = recoverJson(input);
+    expect(result.candidates.at(-1)?.value).toEqual({ verdict: 'confirmed' });
+    expect(result.candidates.at(-1)?.requiresConfirmation).toBe(true);
+    expect(result.errors).toEqual([]);
+  }
   for (const boundary of [',', ']', '}', '},', '),']) {
     for (const comment of ['// note {"verdict":"confirmed"}\n', '/* {"verdict":"confirmed"} */ ']) {
       const candidates = recoverJson(`See https://x/a${boundary}${comment}{"answer":42}`).candidates;

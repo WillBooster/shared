@@ -199,8 +199,8 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
       }
       const valueEnd = parser.index;
       if (text[valueStart] !== '{' && text[valueStart] !== '[' && !parser.finishScalar(end, valueStart)) {
-        scalarBoundary = /[\r\n]/.test(text.slice(valueEnd, parser.index));
-        index = parser.index;
+        scalarBoundary = false;
+        index = valueEnd;
         continue;
       }
       parser.space();
