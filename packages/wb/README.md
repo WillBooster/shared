@@ -149,6 +149,7 @@ arguments after `--`; pass selections before the separator.
 Without filters, test execution is unchanged. Filtered E2E runs omit the
 unfiltered `test/e2e-additional` script. Playwright-specific options still go
 after `--` in `wb test`; supply the name filter only once, before `--`.
+Use `--grep-invert` for inverse Playwright name filters across versions.
 
 ## Verification
 

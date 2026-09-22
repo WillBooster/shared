@@ -253,7 +253,7 @@ export abstract class BaseScripts {
       argv.grep !== undefined ||
       findExplicitPlaywrightTargetIndexes(forwardedArgs).length > 0 ||
       forwardedArgs.some((arg) =>
-        /^(?:-g|--(?:grep|grep-invert|project|shard|test-list|test-list-invert|only-changed|last-failed)(?:=|$))/.test(
+        /^(?:-[gG]|--(?:grep|grep-invert|project|shard|test-list|test-list-invert|only-changed|last-failed)(?:=|$))/.test(
           arg
         )
       );
@@ -481,4 +481,4 @@ const PLAYWRIGHT_TEST_OPTIONS_WITH_OPTIONAL_VALUES = new Set([
   '--update-source-method',
 ]);
 
-const PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES = new Set(['-c', '-g', '-j']);
+const PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES = new Set(['-c', '-g', '-G', '-j']);
