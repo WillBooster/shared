@@ -59,6 +59,14 @@ class PlainAppScripts extends BaseScripts {
     return !project.hasPlaywrightConfig;
   }
 
+  override validateTestSelection(project: Project, argv: TestArgv, forwardedArgs: string[]): void {
+    if (project.hasPlaywrightConfig || argv.grep === undefined) return;
+    const { unsupportedOption } = adaptForwardedArgsForUnitRunner(forwardedArgs);
+    if (unsupportedOption !== undefined) {
+      throw new Error(`Cannot forward Playwright option to the unit-test runner: ${unsupportedOption}`);
+    }
+  }
+
   // A library has no server of its own, but it may ship a self-contained Playwright fixture whose
   // config builds and starts the app under test via a `webServer` block (e.g. a Next.js fixture that
   // verifies the published package imports cleanly). Run Playwright directly in that case — including
@@ -78,9 +86,7 @@ class PlainAppScripts extends BaseScripts {
     // whole (potentially paid) suite unfiltered; translate what the unit runners understand.
     const forwarded = adaptForwardedArgsForUnitRunner(options.forwardedPlaywrightArgs ?? []);
     if (forwarded.unsupportedOption !== undefined) {
-      if (argv.grep !== undefined) {
-        throw new Error(`Cannot forward Playwright option to the unit-test runner: ${forwarded.unsupportedOption}`);
-      }
+      this.validateTestSelection(project, argv, options.forwardedPlaywrightArgs ?? []);
       return buildShellCommand([
         'echo',
         `Skipping test/e2e/ (cannot forward the Playwright arg to the unit-test runner: ${forwarded.unsupportedOption}).`,

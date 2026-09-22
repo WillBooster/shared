@@ -270,6 +270,8 @@ export abstract class BaseScripts {
     return false;
   }
 
+  validateTestSelection(_project: Project, _argv: TestArgv, _forwardedArgs: string[]): void {}
+
   testUnit(project: Project, argv: TestArgv): string {
     return this.buildUnitRunnerCommand(project, argv, ['--parallel']);
   }
@@ -430,7 +432,7 @@ export function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
       return [...targetIndexes, ...args.slice(index + 1).map((_, offset) => index + 1 + offset)];
     }
     if (arg.startsWith('--')) {
-      if (arg === '--project' || arg.startsWith('--project=')) {
+      if (arg === '--project') {
         pendingValueMode = 'variadic';
         continue;
       }
@@ -446,6 +448,8 @@ export function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
       const shortOption = arg.slice(0, 2);
       if (arg.length === 2 && PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES.has(shortOption)) {
         pendingValueMode = 'required';
+      } else if (arg === '-u') {
+        pendingValueMode = 'optional';
       }
       continue;
     }
@@ -468,6 +472,7 @@ const PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES = new Set([
   '--repeat-each',
   '--reporter',
   '--retries',
+  '--run-agents',
   '--shard',
   '--test-list',
   '--test-list-invert',
@@ -476,14 +481,10 @@ const PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES = new Set([
   '--tsconfig',
   '--ui-host',
   '--ui-port',
-  '--ui-title',
+  '--update-source-method',
   '--workers',
 ]);
 
-const PLAYWRIGHT_TEST_OPTIONS_WITH_OPTIONAL_VALUES = new Set([
-  '--only-changed',
-  '--update-snapshots',
-  '--update-source-method',
-]);
+const PLAYWRIGHT_TEST_OPTIONS_WITH_OPTIONAL_VALUES = new Set(['--debug', '--only-changed', '--update-snapshots']);
 
 const PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES = new Set(['-c', '-g', '-G', '-j']);

@@ -49,14 +49,19 @@ it.each(['unit', 'e2e'])(
   60_000
 );
 
-it('rejects Playwright-only options instead of skipping selected unit-runner E2E tests', async () => {
-  const dir = await createFixture();
-  const result = runCli(dir, ['test', '--grep', 'selected case$', '--', '--workers=1']);
-  expect(result.status, result.stdout + result.stderr).not.toBe(0);
-  expect(result.stdout + result.stderr).toContain(
-    'Cannot forward Playwright option to the unit-test runner: --workers=1'
-  );
-}, 60_000);
+it.each(['headless', 'docker'])(
+  'rejects unsupported %s options before running selected tests',
+  async (e2e) => {
+    const dir = await createFixture();
+    const result = runCli(dir, ['test', '--e2e', e2e, '--grep', 'selected case$', '--', '--workers=1']);
+    expect(result.status, result.stdout + result.stderr).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain(
+      'Cannot forward Playwright option to the unit-test runner: --workers=1'
+    );
+    expect(await fs.exists(path.join(dir, 'executed'))).toBe(false);
+  },
+  60_000
+);
 
 it.each(['vitest', '@playwright/test'])(
   'filters real %s cases through test and full verification',
@@ -128,6 +133,9 @@ it.each(['vitest', '@playwright/test'])(
         ['--', '--grep-invert', 'other'],
         ['--', '--add-reporter', 'json'],
         ['--', '--last-failed-file', 'last-failed.json'],
+        ['--', '--run-agents', 'none'],
+        ['--', '--debug', 'cli'],
+        ['--', '-u', 'none'],
       ]) {
         const unitResult = runCli(dir, ['test', '--grep', 'unit selected case$', ...forwarded]);
         expect(unitResult.status, unitResult.stdout + unitResult.stderr).toBe(0);
@@ -142,6 +150,16 @@ it.each(['vitest', '@playwright/test'])(
       expect(projectsResult.status, projectsResult.stdout + projectsResult.stderr).toBe(0);
       expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
       await fs.rm(path.join(dir, 'executed'));
+      const projectFile = path.join(dir, 'test/e2e/project.test.ts');
+      await fs.writeFile(
+        projectFile,
+        "import { test } from '@playwright/test'; import fs from 'node:fs'; test('project case', () => fs.appendFileSync('executed', 'project'));"
+      );
+      const projectPathResult = runCli(dir, ['test', '--', '--project=p1', 'test/e2e/project.test.ts']);
+      expect(projectPathResult.status, projectPathResult.stdout + projectPathResult.stderr).toBe(0);
+      expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('project');
+      await fs.rm(path.join(dir, 'executed'));
+      await fs.rm(projectFile);
       for (const file of ['selected.test.ts', 'other.test.ts']) {
         await fs.writeFile(
           path.join(dir, 'test/e2e', file),
@@ -152,6 +170,9 @@ it.each(['vitest', '@playwright/test'])(
         ['--workers=1'],
         ['--add-reporter', 'json'],
         ['--last-failed-file', 'last-failed.json'],
+        ['--run-agents', 'none'],
+        ['--debug', 'cli'],
+        ['-u', 'none'],
       ]) {
         const fullResult = runCli(dir, ['test', '--', ...forwarded]);
         expect(fullResult.status, fullResult.stdout + fullResult.stderr).toBe(9);

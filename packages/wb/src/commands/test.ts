@@ -149,6 +149,8 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     }
 
     const defaultUnitTargets = getDefaultUnitTargets(project);
+    const hasE2eTests = shouldRunE2e && fs.existsSync(path.join(project.dirPath, 'test', 'e2e'));
+    if (hasE2eTests) scripts.validateTestSelection(project, testArgv, forwardedPlaywrightArgs);
     const explicitUnitTargets = testTargets.filter((target) => !isE2eTarget(target));
     const unitTargets = explicitUnitTargets.length > 0 ? explicitUnitTargets : defaultUnitTargets;
     if ((shouldRunUnit || isNameOnlySelection) && unitTargets !== false) {
@@ -161,7 +163,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
         return exitCode;
       }
     }
-    if (!shouldRunE2e || !fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
+    if (!hasE2eTests) {
       continue;
     }
 
