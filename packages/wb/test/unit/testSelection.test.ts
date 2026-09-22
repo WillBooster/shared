@@ -126,6 +126,17 @@ it.each(
   expect(await fs.exists(path.join(dir, '.wb'))).toBe(false);
 });
 
+it.each(['test', 'verify'])('explains non-string grep values for %s without running tests', async (command) => {
+  const dir = await createFixture();
+  for (const args of [['--no-grep'], ['--grep', 'first', '--grep', 'second']]) {
+    const result = runCli(dir, [command, ...(command === 'verify' ? ['--full'] : []), ...args]);
+    expect(result.status).toBe(1);
+    expect(result.stdout + result.stderr).toContain('--grep takes exactly one regular expression.');
+    expect(await fs.exists(path.join(dir, 'executed'))).toBe(false);
+    expect(await fs.exists(path.join(dir, '.wb'))).toBe(false);
+  }
+});
+
 async function createFixture(): Promise<string> {
   await fs.mkdir('.tmp', { recursive: true });
   const dir = await fs.mkdtemp(path.resolve('.tmp/test-selection-'));

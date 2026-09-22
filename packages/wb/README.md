@@ -99,7 +99,7 @@ Commands:
   wb test [targets...]           Test project. If you pass no arguments, it will
                                  run all tests. Use '--' to stop wb option
                                  parsing and forward the remaining flags to
-                                 Playwright. Example: wb test -- --grep
+                                 Playwright. Example: wb test --grep
                                  'uploaded image asset'
   wb test-on-ci                  Test project on CI with no options.
   wb tree-kill <pid> [signal]    Kill the given process and all descendants

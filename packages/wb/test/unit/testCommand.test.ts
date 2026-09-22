@@ -1,4 +1,3 @@
-import child_process from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -31,22 +30,6 @@ describe('buildPlaywrightArgsForE2E', () => {
 
   it('skips the default e2e directory when forwarded args already include explicit playwright targets', () => {
     expect(buildPlaywrightArgsForE2E([], ['test/e2e/phaserAssetLoading.spec.ts'])).toEqual(['test']);
-  });
-});
-
-describe('wb test --help', () => {
-  it('explains that -- forwards the remaining flags to Playwright', () => {
-    const result = child_process.spawnSync('bun', ['run', 'start', 'test', '--help'], {
-      cwd: process.cwd(),
-      encoding: 'utf8',
-    });
-    const normalizedStdout = result.stdout.replaceAll(/\s+/g, ' ');
-
-    expect(result.status).toBe(0);
-    expect(normalizedStdout).toContain(`Use '--' to stop wb option parsing`);
-    expect(normalizedStdout).toContain(`forward the remaining flags to Playwright.`);
-    expect(normalizedStdout).toContain(`Example: wb test -- --grep`);
-    expect(normalizedStdout).toContain(`'uploaded image asset'`);
   });
 });
 

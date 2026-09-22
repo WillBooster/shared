@@ -27,7 +27,8 @@ export const testSelectionOptions = {
     description: 'Run only tests whose names match this regular expression',
     type: 'string',
     requiresArg: true,
-    coerce(value: string): string {
+    coerce(value: unknown): string {
+      if (typeof value !== 'string') throw new Error('--grep takes exactly one regular expression.');
       if (!value.trim()) throw new Error('--grep must not be empty.');
       new RegExp(value);
       return value;
@@ -92,7 +93,7 @@ interface TestRunOptions {
 export const testCommand: CommandModule<unknown, TestCommandOptions> = {
   command: 'test [targets...]',
   describe:
-    "Test project. If you pass no arguments, it will run all tests. Use '--' to stop wb option parsing and forward the remaining flags to Playwright. Example: wb test -- --grep 'uploaded image asset'",
+    "Test project. If you pass no arguments, it will run all tests. Use '--' to stop wb option parsing and forward the remaining flags to Playwright. Example: wb test --grep 'uploaded image asset'",
   builder: (yargs: Argv<unknown>): Argv<TestCommandOptions> =>
     yargs
       .parserConfiguration({ 'populate--': true })
