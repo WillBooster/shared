@@ -414,13 +414,13 @@ function appendPlaywrightBailOption(commandArgs: string[], bail?: boolean): stri
 }
 
 export function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
-  let pendingValueMode: 'optional' | 'required' | undefined;
+  let pendingValueMode: 'optional' | 'required' | 'variadic' | undefined;
   const targetIndexes: number[] = [];
 
   for (const [index, arg] of args.entries()) {
     if (pendingValueMode) {
       if (pendingValueMode === 'required' || !arg.startsWith('-')) {
-        pendingValueMode = undefined;
+        if (pendingValueMode !== 'variadic') pendingValueMode = undefined;
         continue;
       }
       pendingValueMode = undefined;
@@ -430,6 +430,10 @@ export function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
       return [...targetIndexes, ...args.slice(index + 1).map((_, offset) => index + 1 + offset)];
     }
     if (arg.startsWith('--')) {
+      if (arg === '--project' || arg.startsWith('--project=')) {
+        pendingValueMode = 'variadic';
+        continue;
+      }
       if (arg.includes('=')) continue;
       if (PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES.has(arg)) {
         pendingValueMode = 'required';
@@ -459,7 +463,6 @@ const PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES = new Set([
   '--global-timeout',
   '--max-failures',
   '--output',
-  '--project',
   '--repeat-each',
   '--reporter',
   '--retries',

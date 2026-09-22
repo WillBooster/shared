@@ -119,6 +119,14 @@ it.each(['vitest', '@playwright/test'])(
         expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
         await fs.rm(path.join(dir, 'executed'));
       }
+      await fs.writeFile(
+        path.join(dir, 'playwright.config.ts'),
+        "export default { testDir: './test/e2e', webServer: [], projects: [{ name: 'p1' }, { name: 'p2' }] };"
+      );
+      const projectsResult = runCli(dir, ['test', '--grep', 'unit selected case$', '--', '--project', 'p1', 'p2']);
+      expect(projectsResult.status, projectsResult.stdout + projectsResult.stderr).toBe(0);
+      expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
+      await fs.rm(path.join(dir, 'executed'));
       for (const file of ['selected.test.ts', 'other.test.ts']) {
         await fs.writeFile(
           path.join(dir, 'test/e2e', file),
