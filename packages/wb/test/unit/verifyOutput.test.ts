@@ -162,15 +162,14 @@ it('preserves the previous log during dry-run and keeps standalone tests verbose
 }, 60_000);
 
 it.each([0, 7])(
-  'saves and flushes complete CI output with exit code %i',
+  'streams complete CI output without saving a log with exit code %i',
   async (exitCode) => {
     const dir = await createFixture();
     const logPath = path.join(dir, '.wb/test-ci.log');
-    await fs.mkdir(path.dirname(logPath), { recursive: true });
-    await fs.writeFile(logPath, 'PREVIOUS_RUN');
     const dryRun = runCli(dir, ['test-on-ci', '--dry-run']);
     expect(dryRun.status, dryRun.stderr).toBe(0);
-    expect(await fs.readFile(logPath, 'utf8')).toBe('PREVIOUS_RUN');
+    expect(dryRun.stdout).not.toContain('CI test summary: PASSED');
+    expect(await Bun.file(logPath).exists()).toBe(false);
     await fs.writeFile(
       path.join(dir, 'test/unit/example.test.ts'),
       `import fs from 'node:fs';
@@ -182,24 +181,82 @@ test('large output', () => {
   ${exitCode ? `process.exit(${exitCode});` : ''}
 });`
     );
-    const result = runCli(dir, ['test-on-ci']);
+    const result = runCli(dir, ['test-on-ci', '--silent']);
     expect(result.status, result.stderr).toBe(exitCode);
-    const log = await fs.readFile(logPath, 'utf8');
+    expect(await Bun.file(logPath).exists()).toBe(false);
     expect(result.stdout.match(/CI_STDOUT_α😀/g)).toHaveLength(20_000);
     expect(result.stderr.match(/CI_STDERR_β🚀/g)).toHaveLength(20_000);
-    // Chunks from stderr can split a stdout record in the combined log without losing data.
-    for (const marker of ['α', '😀', 'β', '🚀']) {
-      expect(log.split(marker)).toHaveLength(20_001);
+    expect(result.stdout).not.toContain('Full log:');
+    expect(result.stdout).not.toContain('Started (log)');
+    expect(result.stdout).toContain(`CI test summary: ${exitCode ? 'FAILED' : 'PASSED'}`);
+    if (exitCode) {
+      expect(result.stdout).toContain('Failed phase: verify-output-fixture / unit');
+      expect(result.stdout).toContain(`Working directory: ${dir}`);
+      expect(result.stdout).toContain('Rerun: CI=1 WB_ENV=test');
+      expect(result.stdout).toContain('exit=7');
     }
-    for (const output of [log, result.stdout + result.stderr]) {
-      expect(output).not.toContain('PREVIOUS_RUN');
-    }
-    expect(result.stdout).toContain(logPath);
   },
   60_000
 );
 
-it('preserves stdin EOF for CI E2E commands while capturing output', async () => {
+it('streams both CI channels before completion and reports an E2E failure', async () => {
+  const dir = await createFixture();
+  await fs.mkdir(path.join(dir, 'test/e2e'));
+  await fs.writeFile(
+    path.join(dir, 'test/e2e/failure.test.ts'),
+    `import { test } from 'bun:test';
+test('failure after output', async () => {
+  console.log('LIVE_STDOUT');
+  console.error('LIVE_STDERR');
+  while (!(await Bun.file('release').exists())) await Bun.sleep(10);
+  process.exit(7);
+}, 20_000);`
+  );
+  const child = spawn('node', [cliPath, 'test-on-ci', '--silent'], {
+    cwd: dir,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 30_000,
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+  });
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk.toString();
+  });
+  const exited = new Promise<number | null>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', resolve);
+  });
+  try {
+    await waitUntil(() => stdout.includes('LIVE_STDOUT') && stderr.includes('LIVE_STDERR'));
+    expect(child.exitCode).toBeNull();
+    expect(await Bun.file(path.join(dir, '.wb/test-ci.log')).exists()).toBe(false);
+  } finally {
+    await fs.writeFile(path.join(dir, 'release'), '');
+    await exited;
+  }
+  expect(await exited, stdout + stderr).toBe(7);
+  expect(stdout).toContain('CI test summary: FAILED');
+  expect(stdout).toContain('Failed phase: verify-output-fixture / e2e');
+  expect(stdout).toContain('test/e2e/');
+  const rerunCommand = stdout
+    .split('\n')
+    .find((line) => line.startsWith('Rerun: '))
+    ?.slice('Rerun: '.length);
+  expect(rerunCommand).toBeDefined();
+  const rerun = spawnSync('sh', ['-c', rerunCommand!], {
+    cwd: dir,
+    encoding: 'utf8',
+    timeout: 30_000,
+  });
+  expect(rerun.status, rerun.stdout + rerun.stderr).toBe(7);
+  expect(rerun.stdout).toContain('LIVE_STDOUT');
+  expect(rerun.stderr).toContain('LIVE_STDERR');
+}, 60_000);
+
+it('preserves stdin EOF for CI E2E commands while streaming output', async () => {
   const dir = await createFixture();
   await fs.mkdir(path.join(dir, 'test/e2e'));
   await fs.writeFile(
@@ -214,11 +271,11 @@ test('stdin', () => {
   const result = runCli(dir, ['test-on-ci']);
   expect(result.status, result.stdout + result.stderr).toBe(0);
   expect(result.stdout).toContain('E2E_STDIN_CLOSED');
-  expect(await fs.readFile(path.join(dir, '.wb/test-ci.log'), 'utf8')).toContain('E2E_STDIN_CLOSED');
+  expect(await Bun.file(path.join(dir, '.wb/test-ci.log')).exists()).toBe(false);
 }, 60_000);
 
 it.each([0, 7])(
-  'reports a full log device without interrupting the command with exit code %i',
+  'runs CI without writing logs under a file-size limit with exit code %i',
   async (exitCode) => {
     const dir = await createFixture();
     await fs.writeFile(
@@ -240,9 +297,10 @@ test('output', () => {
         timeout: 30_000,
       }
     );
-    expect(result.status, result.stderr).toBe(exitCode || 1);
+    expect(result.status, result.stderr).toBe(exitCode);
     expect(result.stdout.split('DISK_LIMIT_OUTPUT')).toHaveLength(20_001);
-    expect(result.stdout).toContain('Log incomplete:');
+    expect(result.stdout).not.toContain('Log incomplete:');
+    expect(await Bun.file(path.join(dir, '.wb/test-ci.log')).exists()).toBe(false);
   },
   60_000
 );
@@ -301,8 +359,7 @@ test('large stream', () => {
   }
   expect(await exited, stderr).toBe(0);
   expect(bytes).toBeGreaterThanOrEqual(160 * 1024 * 1024);
-  const log = await fs.stat(path.join(dir, '.wb/test-ci.log'));
-  expect(log.size).toBeGreaterThanOrEqual(160 * 1024 * 1024);
+  expect(await Bun.file(path.join(dir, '.wb/test-ci.log')).exists()).toBe(false);
 }, 60_000);
 
 async function createFixture(): Promise<string> {

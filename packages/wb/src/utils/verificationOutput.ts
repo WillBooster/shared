@@ -10,11 +10,8 @@ export function isCapturingVerificationOutput(): boolean {
   return capturingVerificationOutput;
 }
 
-/** Saves output as it arrives, optionally streaming it instead of showing only a verification recap. */
-export function startVerificationOutput(
-  logPath: string,
-  streamOutput = false
-): {
+/** Saves output as it arrives and shows a verification recap. */
+export function startVerificationOutput(logPath: string): {
   startStep: (name?: string) => void;
   succeed: () => void;
   finish: (exitCode: number) => Promise<void>;
@@ -53,7 +50,7 @@ export function startVerificationOutput(
         }
       }
       const done = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
-      if (succeeded || streamOutput || logError) return original.call(stream, buffer, undefined, done);
+      if (succeeded || logError) return original.call(stream, buffer, undefined, done);
       if (done) queueMicrotask(done);
       return true;
     }) as typeof original;
@@ -76,10 +73,10 @@ export function startVerificationOutput(
     globalThis.console = originalConsole;
     process.removeListener('exit', onExit);
     let tail = '';
-    const message = `${succeeded || streamOutput ? 'Full log' : 'Verification failed. Full log'}: ${logPath}\n`;
+    const message = `${succeeded ? 'Full log' : 'Verification failed. Full log'}: ${logPath}\n`;
     try {
       try {
-        tail = succeeded || streamOutput ? '' : readFailureTail(logFile, stepStart, logSize);
+        tail = succeeded ? '' : readFailureTail(logFile, stepStart, logSize);
       } finally {
         fs.closeSync(logFile);
       }
@@ -88,10 +85,9 @@ export function startVerificationOutput(
       logError ??= error instanceof Error ? error : new Error('Unknown log I/O error');
     }
     if (logError && !exitCode) process.exitCode = 1;
-    const output =
-      succeeded || streamOutput
-        ? message
-        : `Failed step: ${stepName ?? 'verification setup'} (exit code ${exitCode})\n${tail}${message}`;
+    const output = succeeded
+      ? message
+      : `Failed step: ${stepName ?? 'verification setup'} (exit code ${exitCode})\n${tail}${message}`;
     await Promise.all([
       new Promise<void>((resolve, reject) => {
         stdoutWrite(`${output}${logError ? `Log incomplete: ${String(logError)}\n` : ''}`, (error) =>
