@@ -15,8 +15,9 @@ let japaneseKanji: Set<string> | undefined;
 
 /**
  * Detects Chinese or Korean characters mixed into Japanese text, such as LLM-generated Japanese prose.
- * A kanji outside JIS X 0208 is treated as Chinese, except the four Jōyō kanji 𠮟塡剝頰,
- * so rare kanji such as some in personal names (e.g., 髙) are also reported.
+ * A kanji is treated as Chinese when it is outside JIS X 0208 (except the four Jōyō kanji 𠮟塡剝頰)
+ * or is a traditional or Chinese-only form that modern Japanese does not use (e.g., 這, 們, 對, 國).
+ * Rare kanji in personal names (e.g., 髙, 與) are therefore also reported.
  * Returns the detected languages, or an empty array if none are found.
  */
 export function detectForeignCjkInJapanese(text: string): ForeignCjkLanguage[] {
