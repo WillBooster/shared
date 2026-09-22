@@ -241,7 +241,14 @@ export abstract class BaseScripts {
     argv: TestArgv,
     { forwardedPlaywrightArgs = [], playwrightArgs = ['test', 'test/e2e/'] }: TestE2EOptions
   ): string {
-    const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
+    const suffix =
+      !argv.targets?.length &&
+      argv.grep === undefined &&
+      forwardedPlaywrightArgs.length === 0 &&
+      project.packageJson.scripts?.['test/e2e-additional']
+        ? ' && YARN test/e2e-additional'
+        : '';
+    if (argv.grep !== undefined) forwardedPlaywrightArgs = [...forwardedPlaywrightArgs, `--grep=${argv.grep}`];
     return `${buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs)}${suffix}`;
   }
 
@@ -265,6 +272,7 @@ export abstract class BaseScripts {
    */
   protected buildUnitRunnerCommand(project: Project, argv: TestArgv, bunOptions: string[] = []): string {
     const targets = argv.targets?.map(String);
+    const nameFilter = argv.grep === undefined ? [] : [`-t=${argv.grep}`];
     if (project.hasVitest) {
       // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
       return buildShellCommand([
@@ -272,6 +280,7 @@ export abstract class BaseScripts {
         'vitest',
         'run',
         ...(targets?.length ? targets : ['test/unit/']),
+        ...nameFilter,
         '--passWithNoTests',
         '--allowOnly',
         '--watch=false',
@@ -283,6 +292,7 @@ export abstract class BaseScripts {
         'test',
         ...(targets?.length ? targets : ['test/unit/']),
         ...(argv.bail ? ['--bail'] : []),
+        ...nameFilter,
         ...bunOptions,
       ]);
     }

@@ -22,7 +22,21 @@ const ANSI_ESCAPE_CODE_REGEXP = new RegExp(`${String.fromCodePoint(27)}\\[[0-?]*
 const SIMILAR_TEST_OUTPUT_LOOKBACK_LINE_COUNT = 200;
 const SIMILAR_TEST_OUTPUT_DISTANCE_RATIO = 0.05;
 
+export const testSelectionOptions = {
+  grep: {
+    description: 'Run only tests whose names match this regular expression',
+    type: 'string',
+    requiresArg: true,
+    coerce(value: string): string {
+      if (!value.trim()) throw new Error('--grep must not be empty.');
+      new RegExp(value);
+      return value;
+    },
+  },
+} as const;
+
 const builder = {
+  ...testSelectionOptions,
   e2e: {
     description: 'How to run E2E tests',
     type: 'string',
@@ -53,7 +67,7 @@ const builder = {
   },
 } as const;
 
-const argumentsBuilder = {
+export const testArgumentsBuilder = {
   targets: {
     array: true,
     description: 'Unit or E2E test target paths',
@@ -61,10 +75,12 @@ const argumentsBuilder = {
   },
 } as const;
 
-type TestCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>;
+type TestCommandOptions = InferredOptionTypes<
+  typeof builder & typeof sharedOptionsBuilder & typeof testArgumentsBuilder
+>;
 
 export type TestArgv = Partial<
-  ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof scriptOptionsBuilder & typeof argumentsBuilder>>
+  ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof scriptOptionsBuilder & typeof testArgumentsBuilder>>
 >;
 
 export type TestCommandArgv = ArgumentsCamelCase<TestCommandOptions> & { '--'?: string[] };
@@ -81,13 +97,19 @@ export const testCommand: CommandModule<unknown, TestCommandOptions> = {
     yargs
       .parserConfiguration({ 'populate--': true })
       .options(builder)
-      .positional('targets', argumentsBuilder.targets) as Argv<TestCommandOptions>,
+      .positional('targets', testArgumentsBuilder.targets) as Argv<TestCommandOptions>,
   async handler(argv) {
     process.exit(await test(argv as TestCommandArgv));
   },
 };
 
 export async function test(argv: TestCommandArgv, options: TestRunOptions = {}): Promise<number> {
+  if (
+    argv.grep !== undefined &&
+    (argv['--'] ?? []).some((arg) => /^(?:-g|-t|--grep|--test-name-pattern)(?:=|$)/.test(arg))
+  ) {
+    throw new Error('Use --grep before --, without another forwarded name filter.');
+  }
   const testArgv = withDefaultTestCascadeEnv(argv);
   const projects = await findDescendantProjects(testArgv);
   if (!projects) {
@@ -288,7 +310,7 @@ export function getDefaultUnitTargets(project: Pick<Project, 'dirPath'>): string
 
 async function testOnDocker(
   project: Project,
-  argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof argumentsBuilder>>,
+  argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof testArgumentsBuilder>>,
   scripts: BaseScripts,
   runE2eTestCommand: (script: string, options?: TestRunOptions) => Promise<number>,
   playwrightArgs?: string[],
