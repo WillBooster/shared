@@ -93,6 +93,14 @@ it.each(['vitest', '@playwright/test'])(
       expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
       await fs.rm(path.join(dir, 'executed'));
     }
+    if (!playwright) {
+      for (const command of [['test'], ['verify', '--full']]) {
+        const noMatch = runCli(dir, [...command, 'test/unit/selected.test.ts', '--grep', 'absent case']);
+        expect(noMatch.status, noMatch.stdout + noMatch.stderr).toBe(0);
+        expect(await fs.exists(path.join(dir, 'executed'))).toBe(false);
+        expect(noMatch.stdout).toContain('Name filter "absent case" (runner may pass with no matches)');
+      }
+    }
     if (playwright) {
       const separatedResult = runCli(dir, [
         'test',

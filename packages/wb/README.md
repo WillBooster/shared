@@ -139,7 +139,12 @@ bun wb verify --full test/unit/example.test.ts --grep 'handles invalid input'
 
 `--grep` applies to Bun, Vitest, and Playwright. With no paths, it filters both
 unit and E2E tests, allowing suites with no matching cases to pass so later suites
-can run. If no suite matches, the name-only run also passes. Paths are relative to the package being tested; in a monorepo,
+can run. If no suite matches, the name-only run also passes. With explicit paths,
+the runner decides the no-match outcome; Vitest can pass with every case skipped.
+The command and verification summary show the filter and no-match policy. Read
+the test output or verification log to confirm which cases ran.
+
+Paths are relative to the package being tested; in a monorepo,
 select the package with `-w packages/example`. Use paths under `test/unit/`,
 `test/e2e/`, or `test/debug/` to select the corresponding suite.
 

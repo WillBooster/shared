@@ -128,7 +128,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   const testTargets = (testArgv.targets ?? []) as string[];
   const forwardedPlaywrightArgs = testArgv['--'] ?? [];
   const { shouldRunE2e, shouldRunUnit } = resolveTestExecutionTargets(testTargets, forwardedPlaywrightArgs);
-  if (isNameOnlySelection) console.info(describeNameOnlyTestSelection(argv.grep!));
+  if (argv.grep !== undefined) console.info(describeTestSelection(argv.grep, isNameOnlySelection));
 
   for (const project of projects.descendants) {
     // Resolve the environment eagerly: withDefaultTestCascadeEnv forces the test cascade and
@@ -299,8 +299,9 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   return 0;
 }
 
-export function describeNameOnlyTestSelection(grep: string): string {
-  return `Name filter ${JSON.stringify(grep)} (empty suites allowed)`;
+export function describeTestSelection(grep: string, allowNoTests: boolean): string {
+  const noMatchPolicy = allowNoTests ? 'empty suites allowed' : 'runner may pass with no matches';
+  return `Name filter ${JSON.stringify(grep)} (${noMatchPolicy})`;
 }
 
 export function withDefaultTestCascadeEnv(argv: TestCommandArgv): TestCommandArgv {
