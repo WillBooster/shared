@@ -138,6 +138,10 @@ async function runCiStep(
     const builtScript = await buildScript();
     const script = builtScript.replaceAll(' --allowOnly', '');
     step.command = buildCiRerunCommand(project, script);
+    if (argv.dryRun) {
+      console.info(`Would run: ${step.command}`);
+      return;
+    }
     step.exitCode = await runWithSpawn(script, project, argv, { exitIfFailed: false });
   } finally {
     step.durationMs = Date.now() - startedAt;
@@ -156,7 +160,7 @@ function printCiSummary(steps: CiStep[], argv: CiArgv, interrupted: boolean): vo
   }
   console.info(`\nCI test summary: ${process.exitCode ? 'FAILED' : 'PASSED'}`);
   for (const step of steps) printCiStep(step);
-  if (interrupted) console.info('Remaining phases and projects were not run because execution stopped.');
+  if (interrupted) console.info('Execution stopped at the failed phase.');
   for (const step of steps.filter((item) => item.exitCode !== 0)) {
     console.info(`\nFailed phase: ${step.project.name} / ${step.name}`);
     console.info(`Working directory: ${step.project.dirPath}`);
@@ -184,7 +188,7 @@ function createCiStep(name: string, project: Project, argv: CiArgv): CiStep {
 }
 
 function buildCiRerunCommand(project: Project, script: string): string {
-  const environment = ['CI', 'WB_ENV', 'WB_DOCKER', 'PORT']
+  const environment = ['CI', 'WB_ENV', 'WB_DOCKER', 'PORT', 'NEXT_PUBLIC_WB_ENV', 'NEXT_PUBLIC_BASE_URL']
     .filter((key) => project.env[key] !== undefined)
     .map((key) => buildShellEnvironmentAssignment(key, project.env[key]!));
   return `${environment.join(' ')} ${buildShellCommand([

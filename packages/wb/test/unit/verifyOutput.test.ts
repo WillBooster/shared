@@ -169,6 +169,8 @@ it.each([0, 7])(
     const dryRun = runCli(dir, ['test-on-ci', '--dry-run']);
     expect(dryRun.status, dryRun.stderr).toBe(0);
     expect(dryRun.stdout).not.toContain('CI test summary: PASSED');
+    expect(dryRun.stdout).not.toContain('Finished:');
+    expect(dryRun.stdout).not.toContain('RAW_TEST_STDOUT');
     expect(await Bun.file(logPath).exists()).toBe(false);
     await fs.writeFile(
       path.join(dir, 'test/unit/example.test.ts'),
@@ -257,6 +259,30 @@ it('provides a working rerun command for a test-layout failure', async () => {
   expect(rerun.status, rerun.stdout + rerun.stderr).toBe(1);
   expect(rerun.stdout + rerun.stderr).toContain('misplaced.test.ts');
   expect(rerun.stdout).not.toContain('RAW_TEST_STDOUT');
+}, 60_000);
+
+it('preserves the derived Next.js environment in the printed rerun command', async () => {
+  const dir = await createFixture();
+  await fs.writeFile(
+    path.join(dir, 'package.json'),
+    JSON.stringify({
+      name: 'next-env-fixture',
+      packageManager: 'bun@1.4.2',
+      dependencies: { next: '16.3.0' },
+    })
+  );
+  await fs.writeFile(
+    path.join(dir, 'test/unit/example.test.ts'),
+    `import { test, expect } from 'bun:test';
+test('environment-dependent failure', () => {
+  expect(process.env.NEXT_PUBLIC_WB_ENV, 'derived-env').not.toBe('test');
+});`
+  );
+  const result = runCli(dir, ['test-on-ci']);
+  expect(result.status, result.stdout + result.stderr).toBe(1);
+  const rerun = runPrintedCommand(dir, result.stdout);
+  expect(rerun.status, rerun.stdout + rerun.stderr).toBe(1);
+  expect(rerun.stdout + rerun.stderr).toContain('derived-env');
 }, 60_000);
 
 it('preserves stdin EOF for CI E2E commands while streaming output', async () => {
