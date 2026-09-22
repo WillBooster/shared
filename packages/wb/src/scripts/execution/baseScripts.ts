@@ -242,8 +242,8 @@ export abstract class BaseScripts {
     { forwardedPlaywrightArgs = [], playwrightArgs = ['test', 'test/e2e/'] }: TestE2EOptions
   ): string {
     const suffix = this.additionalE2ECommand(project, argv, forwardedPlaywrightArgs);
-    if (argv.allowNoTests) forwardedPlaywrightArgs = [...forwardedPlaywrightArgs, '--pass-with-no-tests'];
-    if (argv.grep !== undefined) forwardedPlaywrightArgs = [...forwardedPlaywrightArgs, `--grep=${argv.grep}`];
+    if (argv.allowNoTests) forwardedPlaywrightArgs = ['--pass-with-no-tests', ...forwardedPlaywrightArgs];
+    if (argv.grep !== undefined) forwardedPlaywrightArgs = [`--grep=${argv.grep}`, ...forwardedPlaywrightArgs];
     return `${buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs)}${suffix}`;
   }
 

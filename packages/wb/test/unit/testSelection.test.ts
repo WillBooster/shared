@@ -85,6 +85,18 @@ it.each(['vitest', '@playwright/test'])(
       await fs.rm(path.join(dir, 'executed'));
     }
     if (playwright) {
+      const separatedResult = runCli(dir, [
+        'test',
+        '--grep',
+        'selected case$',
+        '--',
+        '--workers=1',
+        '--',
+        'test/e2e/selected.test.ts',
+      ]);
+      expect(separatedResult.status, separatedResult.stdout + separatedResult.stderr).toBe(0);
+      expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
+      await fs.rm(path.join(dir, 'executed'));
       const unitFile = path.join(dir, 'test/unit/selected.test.ts');
       const unitSource = await fs.readFile(unitFile, 'utf8');
       await fs.writeFile(unitFile, unitSource.replace('selected case', 'unit selected case'));
