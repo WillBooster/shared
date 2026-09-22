@@ -284,6 +284,24 @@ test('environment-dependent failure', () => {
   expect(rerun.stdout + rerun.stderr).toContain('derived-env');
 }, 60_000);
 
+it('reloads package-local mise variables when executing the printed rerun', async () => {
+  const dir = await createFixture();
+  await fs.writeFile(path.join(dir, 'mise.toml'), '[env]\nCI_RERUN_FIXTURE = "from-mise"\n');
+  await fs.writeFile(
+    path.join(dir, 'test/unit/example.test.ts'),
+    `import { test, expect } from 'bun:test';
+test('mise-dependent failure', () => {
+  expect(process.env.CI_RERUN_FIXTURE, 'mise-env').not.toBe('from-mise');
+});`
+  );
+  const env = { ...process.env, MISE_TRUSTED_CONFIG_PATHS: dir };
+  const result = runCli(dir, ['test-on-ci'], env);
+  expect(result.status, result.stdout + result.stderr).toBe(1);
+  const rerun = runPrintedCommand(dir, result.stdout, env);
+  expect(rerun.status, rerun.stdout + rerun.stderr).toBe(1);
+  expect(rerun.stdout + rerun.stderr).toContain('mise-env');
+}, 60_000);
+
 it('preserves stdin EOF for CI E2E commands while streaming output', async () => {
   const dir = await createFixture();
   await fs.mkdir(path.join(dir, 'test/e2e'));
@@ -415,9 +433,10 @@ async function createFixture(): Promise<string> {
   return dir;
 }
 
-function runCli(dir: string, args: string[]): SpawnSyncReturns<string> {
+function runCli(dir: string, args: string[], env = process.env): SpawnSyncReturns<string> {
   return spawnSync('node', [cliPath, ...args], {
     cwd: dir,
+    env,
     encoding: 'utf8',
     timeout: 30_000,
     maxBuffer: 4 * 1024 * 1024,
@@ -432,11 +451,11 @@ async function waitUntil(condition: () => boolean | Promise<boolean>): Promise<v
   }
 }
 
-function runPrintedCommand(dir: string, stdout: string): SpawnSyncReturns<string> {
+function runPrintedCommand(dir: string, stdout: string, env = process.env): SpawnSyncReturns<string> {
   const command = stdout
     .split('\n')
     .find((line) => line.startsWith('Rerun: '))
     ?.slice('Rerun: '.length);
   expect(command).toBeDefined();
-  return spawnSync('sh', ['-c', command!], { cwd: dir, encoding: 'utf8', timeout: 30_000 });
+  return spawnSync('sh', ['-c', command!], { cwd: dir, env, encoding: 'utf8', timeout: 30_000 });
 }

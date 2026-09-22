@@ -30,7 +30,7 @@ interface CiStep {
   name: string;
   durationMs: number;
   exitCode: number;
-  command: string;
+  rerunCommand: string;
 }
 
 export const testOnCiCommand: CommandModule<
@@ -79,8 +79,6 @@ async function runTests(projects: Project[], argv: CiArgv, steps: CiStep[]): Pro
     project.env.WB_ENV = process.env.WB_ENV;
 
     const scripts = selectScripts(project);
-
-    console.info(`Running "test-on-ci" for ${project.name} ...`);
 
     const structureViolations = findTestStructureViolations(project);
     if (structureViolations.length > 0) {
@@ -136,9 +134,8 @@ async function runCiStep(
   try {
     const builtScript = await buildScript();
     const script = builtScript.replaceAll(' --allowOnly', '');
-    step.command = buildCiRerunCommand(project, script);
     if (argv.dryRun) {
-      console.info(`Would run: ${step.command}`);
+      console.info(`Would run: ${normalizeScript(script, project).runnable}`);
       return;
     }
     step.exitCode = await runWithSpawn(script, project, argv, { exitIfFailed: false });
@@ -163,7 +160,7 @@ function printCiSummary(steps: CiStep[], argv: CiArgv, interrupted: boolean): vo
   for (const step of steps.filter((item) => item.exitCode !== 0)) {
     console.info(`\nFailed phase: ${step.project.name} / ${step.name}`);
     console.info(`Working directory: ${step.project.dirPath}`);
-    console.info(`Rerun: ${step.command}`);
+    console.info(`Rerun: ${step.rerunCommand}`);
   }
 }
 
@@ -179,25 +176,8 @@ function createCiStep(name: string, project: Project, argv: CiArgv): CiStep {
     name,
     durationMs: 0,
     exitCode: 1,
-    command: buildCiRerunCommand(
-      project,
-      buildShellCommand(['BUN', 'wb', 'test-on-ci', ...buildEnvReaderOptionArgs(argv)])
-    ),
+    rerunCommand: `${buildShellEnvironmentAssignment('CI', project.env.CI!)} ${buildShellEnvironmentAssignment('WB_ENV', project.env.WB_ENV!)} ${buildShellCommand(
+      [project.packageManagerCommand, 'run', 'wb', 'test-on-ci', ...buildEnvReaderOptionArgs(argv)]
+    )}`,
   };
-}
-
-function buildCiRerunCommand(project: Project, script: string): string {
-  const environment = ['CI', 'WB_ENV', 'WB_DOCKER', 'PORT', 'NEXT_PUBLIC_WB_ENV', 'NEXT_PUBLIC_BASE_URL']
-    .filter((key) => project.env[key] !== undefined)
-    .map((key) => buildShellEnvironmentAssignment(key, project.env[key]!));
-  return `${environment.join(' ')} ${buildShellCommand([
-    project.packageManagerCommand,
-    'run',
-    'wb',
-    'dotenv',
-    '--',
-    'sh',
-    '-c',
-    normalizeScript(script, project).runnable,
-  ])}`;
 }
