@@ -105,6 +105,9 @@ export const testCommand: CommandModule<unknown, TestCommandOptions> = {
 };
 
 export async function test(argv: TestCommandArgv, options: TestRunOptions = {}): Promise<number> {
+  if (argv.grep !== undefined && (argv.e2e === 'generate' || argv.e2e === 'trace')) {
+    throw new Error('--grep cannot be used with --e2e generate or trace; these modes do not run E2E tests.');
+  }
   if (
     argv.grep !== undefined &&
     (argv['--'] ?? []).some((arg) => /^(?:-[gt]|--(?:grep|test-name-pattern)(?:=|$))/.test(arg))

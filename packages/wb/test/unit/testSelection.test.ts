@@ -193,6 +193,8 @@ it.each(
     ['test', '--grep', ''],
     ['test', '--grep', '['],
     ['test', '--grep'],
+    ['test', '--e2e', 'generate', '--grep', 'selected'],
+    ['test', '--e2e', 'trace', '--grep', 'selected'],
     ['test', '--grep', 'selected', '--', '--grep', 'other'],
     ['test', '--grep', 'selected', '--', '-gother'],
     ['test', '--grep', 'selected', '--', '-tother'],
