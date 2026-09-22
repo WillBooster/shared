@@ -241,15 +241,23 @@ export abstract class BaseScripts {
     argv: TestArgv,
     { forwardedPlaywrightArgs = [], playwrightArgs = ['test', 'test/e2e/'] }: TestE2EOptions
   ): string {
-    const suffix =
-      !argv.targets?.length &&
-      argv.grep === undefined &&
-      forwardedPlaywrightArgs.length === 0 &&
-      project.packageJson.scripts?.['test/e2e-additional']
-        ? ' && YARN test/e2e-additional'
-        : '';
+    const suffix = this.additionalE2ECommand(project, argv, forwardedPlaywrightArgs);
+    if (argv.allowNoTests) forwardedPlaywrightArgs = [...forwardedPlaywrightArgs, '--pass-with-no-tests'];
     if (argv.grep !== undefined) forwardedPlaywrightArgs = [...forwardedPlaywrightArgs, `--grep=${argv.grep}`];
     return `${buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs)}${suffix}`;
+  }
+
+  protected additionalE2ECommand(project: Project, argv: TestArgv, forwardedArgs: string[] = []): string {
+    const hasSelection =
+      argv.targets?.length ||
+      argv.grep !== undefined ||
+      findExplicitPlaywrightTargetIndexes(forwardedArgs).length > 0 ||
+      forwardedArgs.some((arg) =>
+        /^(?:-g|--(?:grep|grep-invert|project|shard|test-list|test-list-invert|only-changed|last-failed)(?:=|$))/.test(
+          arg
+        )
+      );
+    return !hasSelection && project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
   }
 
   /**
@@ -293,6 +301,7 @@ export abstract class BaseScripts {
         ...(targets?.length ? targets : ['test/unit/']),
         ...(argv.bail ? ['--bail'] : []),
         ...nameFilter,
+        ...(argv.allowNoTests ? ['--pass-with-no-tests'] : []),
         ...bunOptions,
       ]);
     }

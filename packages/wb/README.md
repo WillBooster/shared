@@ -134,15 +134,16 @@ case names with a regular expression:
 ```sh
 bun wb test test/unit/example.test.ts --grep 'handles invalid input'
 bun wb test test/e2e/example.spec.ts --grep 'uploads an image'
-bun run verify-full test/unit/example.test.ts --grep 'handles invalid input'
+bun wb verify --full test/unit/example.test.ts --grep 'handles invalid input'
 ```
 
 `--grep` applies to Bun, Vitest, and Playwright. With no paths, it filters both
-unit and E2E tests. Paths are relative to the package being tested; in a monorepo,
+unit and E2E tests, allowing suites with no matching cases to pass so later suites
+can run. If no suite matches, the name-only run also passes. Paths are relative to the package being tested; in a monorepo,
 select the package with `-w packages/example`. Use paths under `test/unit/`,
 `test/e2e/`, or `test/debug/` to select the corresponding suite.
 
-`verify-full` retains all verification steps and filters only its tests.
+`wb verify --full` retains all verification steps and filters only its tests.
 `verify` requires `--full` when test paths or `--grep` are supplied.
 Without filters, test execution is unchanged. Filtered E2E runs omit the
 unfiltered `test/e2e-additional` script. Playwright-specific options still go

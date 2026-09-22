@@ -81,7 +81,7 @@ type TestCommandOptions = InferredOptionTypes<
 
 export type TestArgv = Partial<
   ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof scriptOptionsBuilder & typeof testArgumentsBuilder>>
->;
+> & { allowNoTests?: boolean };
 
 export type TestCommandArgv = ArgumentsCamelCase<TestCommandOptions> & { '--'?: string[] };
 
@@ -110,7 +110,10 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   ) {
     throw new Error('Use --grep before --, without another forwarded name filter.');
   }
-  const testArgv = withDefaultTestCascadeEnv(argv);
+  const testArgv = {
+    ...withDefaultTestCascadeEnv(argv),
+    allowNoTests: argv.grep !== undefined && !argv.targets?.length && !argv['--']?.length,
+  };
   const projects = await findDescendantProjects(testArgv);
   if (!projects) {
     console.error(chalk.red('No project found.'));

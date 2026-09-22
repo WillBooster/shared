@@ -32,13 +32,7 @@ export class HttpServerScripts extends BaseScripts {
     }
 
     const port = await ensurePort(project);
-    const suffix =
-      !argv.targets?.length &&
-      argv.grep === undefined &&
-      !options.forwardedPlaywrightArgs?.length &&
-      project.packageJson.scripts?.['test/e2e-additional']
-        ? ' && YARN test/e2e-additional'
-        : '';
+    const suffix = this.additionalE2ECommand(project, argv, options.forwardedPlaywrightArgs);
     const targets = argv.targets?.map(String);
     const normalizedTargets = targets?.length ? targets : ['test/e2e/'];
     const testCommand = this.buildUnitRunnerCommand(project, { ...argv, targets: normalizedTargets });

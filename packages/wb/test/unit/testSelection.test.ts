@@ -35,6 +35,20 @@ it('applies a name-only filter to both suites and excludes debug tests', async (
   expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selectedselected');
 }, 60_000);
 
+it.each(['unit', 'e2e'])(
+  'continues past an unmatched suite to run %s cases',
+  async (suite) => {
+    const dir = await createFixture();
+    const file = path.join(dir, 'test', suite, 'selected.test.ts');
+    const source = await fs.readFile(file, 'utf8');
+    await fs.writeFile(file, source.replace('selected case', 'unique selected case'));
+    const result = runCli(dir, ['test', '--grep', 'unique selected case$']);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
+  },
+  60_000
+);
+
 it.each(['vitest', '@playwright/test'])(
   'filters real %s cases without running additional E2E scripts',
   async (runner) => {
@@ -69,6 +83,22 @@ it.each(['vitest', '@playwright/test'])(
       expect(result.status, result.stdout + result.stderr).toBe(0);
       expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
       await fs.rm(path.join(dir, 'executed'));
+    }
+    if (playwright) {
+      const unitFile = path.join(dir, 'test/unit/selected.test.ts');
+      const unitSource = await fs.readFile(unitFile, 'utf8');
+      await fs.writeFile(unitFile, unitSource.replace('selected case', 'unit selected case'));
+      const unitResult = runCli(dir, ['test', '--grep', 'unit selected case$']);
+      expect(unitResult.status, unitResult.stdout + unitResult.stderr).toBe(0);
+      expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
+      for (const file of ['selected.test.ts', 'other.test.ts']) {
+        await fs.writeFile(
+          path.join(dir, 'test/e2e', file),
+          "import { test } from '@playwright/test'; test('passes', () => {});"
+        );
+      }
+      const fullResult = runCli(dir, ['test', '--', '--workers=1']);
+      expect(fullResult.status, fullResult.stdout + fullResult.stderr).toBe(9);
     }
   },
   120_000
