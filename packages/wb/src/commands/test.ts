@@ -22,7 +22,22 @@ const ANSI_ESCAPE_CODE_REGEXP = new RegExp(`${String.fromCodePoint(27)}\\[[0-?]*
 const SIMILAR_TEST_OUTPUT_LOOKBACK_LINE_COUNT = 200;
 const SIMILAR_TEST_OUTPUT_DISTANCE_RATIO = 0.05;
 
+export const testSelectionOptions = {
+  grep: {
+    description: 'Run only tests whose names match this regular expression',
+    type: 'string',
+    requiresArg: true,
+    coerce(value: unknown): string {
+      if (typeof value !== 'string') throw new Error('--grep takes exactly one regular expression.');
+      if (!value.trim()) throw new Error('--grep must not be empty.');
+      new RegExp(value);
+      return value;
+    },
+  },
+} as const;
+
 const builder = {
+  ...testSelectionOptions,
   e2e: {
     description: 'How to run E2E tests',
     type: 'string',
@@ -53,7 +68,7 @@ const builder = {
   },
 } as const;
 
-const argumentsBuilder = {
+export const testArgumentsBuilder = {
   targets: {
     array: true,
     description: 'Unit or E2E test target paths',
@@ -61,11 +76,13 @@ const argumentsBuilder = {
   },
 } as const;
 
-type TestCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>;
+type TestCommandOptions = InferredOptionTypes<
+  typeof builder & typeof sharedOptionsBuilder & typeof testArgumentsBuilder
+>;
 
 export type TestArgv = Partial<
-  ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof scriptOptionsBuilder & typeof argumentsBuilder>>
->;
+  ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof scriptOptionsBuilder & typeof testArgumentsBuilder>>
+> & { allowNoTests?: boolean };
 
 export type TestCommandArgv = ArgumentsCamelCase<TestCommandOptions> & { '--'?: string[] };
 
@@ -76,19 +93,35 @@ interface TestRunOptions {
 export const testCommand: CommandModule<unknown, TestCommandOptions> = {
   command: 'test [targets...]',
   describe:
-    "Test project. If you pass no arguments, it will run all tests. Use '--' to stop wb option parsing and forward the remaining flags to Playwright. Example: wb test -- --grep 'uploaded image asset'",
+    "Test project. If you pass no arguments, it will run all tests. Use '--' to stop wb option parsing and forward the remaining flags to Playwright. Example: wb test --grep 'uploaded image asset'",
   builder: (yargs: Argv<unknown>): Argv<TestCommandOptions> =>
     yargs
       .parserConfiguration({ 'populate--': true })
       .options(builder)
-      .positional('targets', argumentsBuilder.targets) as Argv<TestCommandOptions>,
+      .positional('targets', testArgumentsBuilder.targets) as Argv<TestCommandOptions>,
   async handler(argv) {
     process.exit(await test(argv as TestCommandArgv));
   },
 };
 
 export async function test(argv: TestCommandArgv, options: TestRunOptions = {}): Promise<number> {
-  const testArgv = withDefaultTestCascadeEnv(argv);
+  if (argv.grep !== undefined && (argv.e2e === 'generate' || argv.e2e === 'trace')) {
+    throw new Error('--grep cannot be used with --e2e generate or trace; these modes do not run E2E tests.');
+  }
+  if (
+    argv.grep !== undefined &&
+    (argv['--'] ?? []).some((arg) => /^(?:-[gt]|--(?:grep|test-name-pattern)(?:=|$))/.test(arg))
+  ) {
+    throw new Error('Use --grep before --, without another forwarded name filter.');
+  }
+  const isNameOnlySelection =
+    argv.grep !== undefined &&
+    !argv.targets?.length &&
+    findExplicitPlaywrightTargetIndexes(argv['--'] ?? []).length === 0;
+  const testArgv = {
+    ...withDefaultTestCascadeEnv(argv),
+    allowNoTests: isNameOnlySelection,
+  };
   const projects = await findDescendantProjects(testArgv);
   if (!projects) {
     console.error(chalk.red('No project found.'));
@@ -98,6 +131,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   const testTargets = (testArgv.targets ?? []) as string[];
   const forwardedPlaywrightArgs = testArgv['--'] ?? [];
   const { shouldRunE2e, shouldRunUnit } = resolveTestExecutionTargets(testTargets, forwardedPlaywrightArgs);
+  if (argv.grep !== undefined) console.info(describeTestSelection(argv.grep, isNameOnlySelection));
 
   for (const project of projects.descendants) {
     // Resolve the environment eagerly: withDefaultTestCascadeEnv forces the test cascade and
@@ -118,9 +152,11 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     }
 
     const defaultUnitTargets = getDefaultUnitTargets(project);
+    const hasE2eTests = shouldRunE2e && fs.existsSync(path.join(project.dirPath, 'test', 'e2e'));
+    if (hasE2eTests) scripts.validateTestSelection(project, testArgv, forwardedPlaywrightArgs);
     const explicitUnitTargets = testTargets.filter((target) => !isE2eTarget(target));
     const unitTargets = explicitUnitTargets.length > 0 ? explicitUnitTargets : defaultUnitTargets;
-    if (shouldRunUnit && unitTargets !== false) {
+    if ((shouldRunUnit || isNameOnlySelection) && unitTargets !== false) {
       const unitArgv = { ...testArgv, targets: unitTargets };
       const exitCode = await runUnitTestCommand(scripts.testUnit(project, unitArgv), project, testArgv, {
         exitIfFailed: options.exitIfFailed,
@@ -130,7 +166,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
         return exitCode;
       }
     }
-    if (!shouldRunE2e || !fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
+    if (!hasE2eTests) {
       continue;
     }
 
@@ -268,6 +304,11 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   return 0;
 }
 
+export function describeTestSelection(grep: string, allowNoTests: boolean): string {
+  const noMatchPolicy = allowNoTests ? 'empty suites allowed' : 'runner may pass with no matches';
+  return `Name filter ${JSON.stringify(grep)} (${noMatchPolicy})`;
+}
+
 export function withDefaultTestCascadeEnv(argv: TestCommandArgv): TestCommandArgv {
   if (argv.cascadeEnv || argv.cascadeNodeEnv || argv.autoCascadeEnv === false) {
     // Explicit env flags keep their profile-selection semantics, but the spawned tests must still
@@ -288,7 +329,7 @@ export function getDefaultUnitTargets(project: Pick<Project, 'dirPath'>): string
 
 async function testOnDocker(
   project: Project,
-  argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof argumentsBuilder>>,
+  argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof testArgumentsBuilder>>,
   scripts: BaseScripts,
   runE2eTestCommand: (script: string, options?: TestRunOptions) => Promise<number>,
   playwrightArgs?: string[],

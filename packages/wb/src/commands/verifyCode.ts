@@ -1,7 +1,7 @@
 import path from 'node:path';
 
 import chalk from 'chalk';
-import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
+import type { Argv, ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import { findDescendantProjects, findRootAndSelfProjects, findSelfProject } from '../project.js';
@@ -12,10 +12,18 @@ import { startVerificationOutput } from '../utils/verificationOutput.js';
 
 import { buildLintCommand, lint, type LintCommandArgv } from './lint.js';
 import { checkSlidevDecks, findSlidevDecks } from './slidevCheck.js';
-import { test, type TestCommandArgv, withDefaultTestCascadeEnv } from './test.js';
+import {
+  describeTestSelection,
+  test,
+  testSelectionOptions,
+  testArgumentsBuilder,
+  type TestCommandArgv,
+  withDefaultTestCascadeEnv,
+} from './test.js';
 import { buildTypeCheckCommands, typeCheck, type TypeCheckCommandArgv } from './typecheck.js';
 
 const builder = {
+  ...testSelectionOptions,
   full: {
     type: 'boolean',
     default: false,
@@ -23,7 +31,9 @@ const builder = {
   },
 } as const;
 
-type VerifyCodeCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
+type VerifyCodeCommandOptions = InferredOptionTypes<
+  typeof builder & typeof sharedOptionsBuilder & typeof testArgumentsBuilder
+>;
 type VerifyCodeCommandArgv = ArgumentsCamelCase<VerifyCodeCommandOptions>;
 
 /** A completed `wb verify` step, recorded so the final summary can prove every step actually ran. */
@@ -44,9 +54,24 @@ interface VerificationProgress {
 }
 
 export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions> = {
-  command: 'verify',
+  command: 'verify [targets...]',
   describe: 'Verify project code',
-  builder,
+  builder: (yargs: Argv<unknown>): Argv<VerifyCodeCommandOptions> =>
+    yargs
+      .parserConfiguration({ 'populate--': true })
+      .options(builder)
+      .positional('targets', testArgumentsBuilder.targets)
+      .check((argv) => {
+        if (Array.isArray(argv['--']) && argv['--'].length > 0) {
+          throw new Error(
+            'wb verify does not forward arguments after --. Pass test paths and --grep before it, or use wb test.'
+          );
+        }
+        if (!argv.full && (argv.targets?.length || argv.grep !== undefined)) {
+          throw new Error('Test targets and --grep require --full. Use wb test to run only tests.');
+        }
+        return true;
+      }) as Argv<VerifyCodeCommandOptions>,
   async handler(argv) {
     const projects = findRootAndSelfProjects(argv, false);
     if (!projects) {
@@ -69,7 +94,8 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
             runInProcessCommand('slidev-check', () => checkSlidevDecks(projects.self, deckPaths, argv))
           );
         }
-        await runStep(progress, { name: 'test' }, () => runProjectTest(projects.self, argv));
+        const detail = argv.grep !== undefined ? describeTestSelection(argv.grep, !argv.targets?.length) : undefined;
+        await runStep(progress, { name: 'test', detail }, () => runProjectTest(projects.self, argv));
       }
       reporter?.succeed();
       printVerifySummary(steps, Boolean(argv.dryRun));

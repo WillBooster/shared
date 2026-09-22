@@ -241,8 +241,23 @@ export abstract class BaseScripts {
     argv: TestArgv,
     { forwardedPlaywrightArgs = [], playwrightArgs = ['test', 'test/e2e/'] }: TestE2EOptions
   ): string {
-    const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
+    const suffix = this.additionalE2ECommand(project, argv, forwardedPlaywrightArgs);
+    if (argv.allowNoTests) forwardedPlaywrightArgs = ['--pass-with-no-tests', ...forwardedPlaywrightArgs];
+    if (argv.grep !== undefined) forwardedPlaywrightArgs = [`--grep=${argv.grep}`, ...forwardedPlaywrightArgs];
     return `${buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs)}${suffix}`;
+  }
+
+  protected additionalE2ECommand(project: Project, argv: TestArgv, forwardedArgs: string[] = []): string {
+    const hasSelection =
+      argv.targets?.length ||
+      argv.grep !== undefined ||
+      findExplicitPlaywrightTargetIndexes(forwardedArgs).length > 0 ||
+      forwardedArgs.some((arg) =>
+        /^(?:-[gG]|--(?:grep|grep-invert|project|shard|test-list|test-list-invert|only-changed|last-failed)(?:=|$))/.test(
+          arg
+        )
+      );
+    return !hasSelection && project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
   }
 
   /**
@@ -255,6 +270,8 @@ export abstract class BaseScripts {
     return false;
   }
 
+  validateTestSelection(_project: Project, _argv: TestArgv, _forwardedArgs: string[]): void {}
+
   testUnit(project: Project, argv: TestArgv): string {
     return this.buildUnitRunnerCommand(project, argv, ['--parallel']);
   }
@@ -265,6 +282,7 @@ export abstract class BaseScripts {
    */
   protected buildUnitRunnerCommand(project: Project, argv: TestArgv, bunOptions: string[] = []): string {
     const targets = argv.targets?.map(String);
+    const nameFilter = argv.grep === undefined ? [] : [`-t=${argv.grep}`];
     if (project.hasVitest) {
       // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
       return buildShellCommand([
@@ -272,6 +290,7 @@ export abstract class BaseScripts {
         'vitest',
         'run',
         ...(targets?.length ? targets : ['test/unit/']),
+        ...nameFilter,
         '--passWithNoTests',
         '--allowOnly',
         '--watch=false',
@@ -283,6 +302,8 @@ export abstract class BaseScripts {
         'test',
         ...(targets?.length ? targets : ['test/unit/']),
         ...(argv.bail ? ['--bail'] : []),
+        ...nameFilter,
+        ...(argv.allowNoTests ? ['--pass-with-no-tests'] : []),
         ...bunOptions,
       ]);
     }
@@ -395,13 +416,13 @@ function appendPlaywrightBailOption(commandArgs: string[], bail?: boolean): stri
 }
 
 export function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
-  let pendingValueMode: 'optional' | 'required' | undefined;
+  let pendingValueMode: 'optional' | 'required' | 'variadic' | undefined;
   const targetIndexes: number[] = [];
 
   for (const [index, arg] of args.entries()) {
     if (pendingValueMode) {
       if (pendingValueMode === 'required' || !arg.startsWith('-')) {
-        pendingValueMode = undefined;
+        if (pendingValueMode !== 'variadic') pendingValueMode = undefined;
         continue;
       }
       pendingValueMode = undefined;
@@ -411,6 +432,10 @@ export function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
       return [...targetIndexes, ...args.slice(index + 1).map((_, offset) => index + 1 + offset)];
     }
     if (arg.startsWith('--')) {
+      if (arg === '--project') {
+        pendingValueMode = 'variadic';
+        continue;
+      }
       if (arg.includes('=')) continue;
       if (PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES.has(arg)) {
         pendingValueMode = 'required';
@@ -423,6 +448,8 @@ export function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
       const shortOption = arg.slice(0, 2);
       if (arg.length === 2 && PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES.has(shortOption)) {
         pendingValueMode = 'required';
+      } else if (arg === '-u') {
+        pendingValueMode = 'optional';
       }
       continue;
     }
@@ -433,17 +460,19 @@ export function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
 }
 
 const PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES = new Set([
+  '--add-reporter',
   '--browser',
   '--config',
   '--grep',
   '--grep-invert',
   '--global-timeout',
+  '--last-failed-file',
   '--max-failures',
   '--output',
-  '--project',
   '--repeat-each',
   '--reporter',
   '--retries',
+  '--run-agents',
   '--shard',
   '--test-list',
   '--test-list-invert',
@@ -452,14 +481,10 @@ const PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES = new Set([
   '--tsconfig',
   '--ui-host',
   '--ui-port',
-  '--ui-title',
+  '--update-source-method',
   '--workers',
 ]);
 
-const PLAYWRIGHT_TEST_OPTIONS_WITH_OPTIONAL_VALUES = new Set([
-  '--only-changed',
-  '--update-snapshots',
-  '--update-source-method',
-]);
+const PLAYWRIGHT_TEST_OPTIONS_WITH_OPTIONAL_VALUES = new Set(['--debug', '--only-changed', '--update-snapshots']);
 
-const PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES = new Set(['-c', '-g', '-j']);
+const PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES = new Set(['-c', '-g', '-G', '-j']);
