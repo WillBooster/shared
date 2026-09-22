@@ -110,6 +110,8 @@ it.each(
     ['test', '--grep', '['],
     ['test', '--grep'],
     ['test', '--grep', 'selected', '--', '--grep', 'other'],
+    ['test', '--grep', 'selected', '--', '-gother'],
+    ['test', '--grep', 'selected', '--', '-tother'],
     ['verify', '--grep', 'selected'],
     ['verify', 'test/unit/selected.test.ts'],
   ].map((args) => ({ args }))

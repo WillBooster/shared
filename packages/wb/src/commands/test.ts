@@ -106,7 +106,7 @@ export const testCommand: CommandModule<unknown, TestCommandOptions> = {
 export async function test(argv: TestCommandArgv, options: TestRunOptions = {}): Promise<number> {
   if (
     argv.grep !== undefined &&
-    (argv['--'] ?? []).some((arg) => /^(?:-g|-t|--grep|--test-name-pattern)(?:=|$)/.test(arg))
+    (argv['--'] ?? []).some((arg) => /^(?:-[gt]|--(?:grep|test-name-pattern)(?:=|$))/.test(arg))
   ) {
     throw new Error('Use --grep before --, without another forwarded name filter.');
   }
