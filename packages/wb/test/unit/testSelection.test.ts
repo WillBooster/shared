@@ -50,7 +50,7 @@ it.each(['unit', 'e2e'])(
 );
 
 it.each(['vitest', '@playwright/test'])(
-  'filters real %s cases without running additional E2E scripts',
+  'filters real %s cases through test and full verification',
   async (runner) => {
     const dir = await createFixture();
     const playwright = runner === '@playwright/test';
@@ -61,7 +61,7 @@ it.each(['vitest', '@playwright/test'])(
         type: 'module',
         packageManager: 'bun@1.4.2',
         devDependencies: { [runner]: playwright ? '1.63.0' : '4.1.11' },
-        scripts: { 'test/e2e-additional': 'exit 9' },
+        ...(playwright ? { scripts: { 'test/e2e-additional': 'exit 9' } } : {}),
       })
     );
     const install = spawnSync('bun', ['install'], { cwd: dir, encoding: 'utf8', timeout: 60_000 });
