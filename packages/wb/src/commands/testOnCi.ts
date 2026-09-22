@@ -100,7 +100,6 @@ async function runTests(projects: Project[], argv: CiArgv, steps: CiStep[]): Pro
       await runCiStep('unit', () => scripts.testUnit(project, unitArgv), project, argv, steps);
     }
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
-      // Confirm dev server startup for consistency across projects with E2E tests.
       await runCiStep('startup', () => scripts.testStart(project, argv), project, argv, steps);
       await promisePool.promiseAll();
       if (hasDockerfile) {

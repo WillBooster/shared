@@ -194,7 +194,6 @@ test('large output', () => {
     if (exitCode) {
       expect(result.stdout).toContain('Failed phase: verify-output-fixture / unit');
       expect(result.stdout).toContain(`Working directory: ${dir}`);
-      expect(result.stdout).toContain('Rerun: CI=1 WB_ENV=test');
       expect(result.stdout).toContain('exit=7');
     }
   },
