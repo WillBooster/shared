@@ -36,12 +36,13 @@ export class HttpServerScripts extends BaseScripts {
 
     this.validateTestSelection(project, argv, options.forwardedPlaywrightArgs ?? []);
     const port = await ensurePort(project);
-    const suffix = this.additionalE2ECommand(project, argv, options.forwardedPlaywrightArgs);
-    const forwardedTargets =
-      argv.grep === undefined ? [] : adaptForwardedArgsForUnitRunner(options.forwardedPlaywrightArgs ?? []).targets;
-    const targets = [...(argv.targets?.map(String) ?? []), ...forwardedTargets];
+    const forwarded = adaptForwardedArgsForUnitRunner(options.forwardedPlaywrightArgs ?? []);
+    const supported = forwarded.unsupportedOption === undefined;
+    const suffix = this.additionalE2ECommand(project, argv, supported ? options.forwardedPlaywrightArgs : []);
+    const targets = [...(argv.targets?.map(String) ?? []), ...(supported ? forwarded.targets : [])];
     const normalizedTargets = targets.length > 0 ? targets : ['test/e2e/'];
-    const testCommand = this.buildUnitRunnerCommand(project, { ...argv, targets: normalizedTargets });
+    let testCommand = this.buildUnitRunnerCommand(project, { ...argv, targets: normalizedTargets });
+    if (supported && forwarded.flags.length > 0) testCommand += ` ${buildShellCommand(forwarded.flags)}`;
     return buildShellCommand([
       'YARN',
       'wb',

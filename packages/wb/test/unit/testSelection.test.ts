@@ -74,7 +74,7 @@ it.each(['plain', 'http', 'worker'].flatMap((kind) => ['headless', 'docker'].map
   60_000
 );
 
-it('keeps forwarded file selection when filtering HTTP-server E2E cases by name', async () => {
+it('applies supported forwarded selections to HTTP-server E2E tests', async () => {
   const dir = await createFixture();
   await fs.writeFile(
     path.join(dir, 'package.json'),
@@ -82,7 +82,7 @@ it('keeps forwarded file selection when filtering HTTP-server E2E cases by name'
       name: 'selection-fixture',
       packageManager: 'bun@1.4.2',
       dependencies: { express: '5.1.0' },
-      scripts: { build: 'true' },
+      scripts: { build: 'true', 'test/e2e-additional': 'exit 9' },
     })
   );
   await fs.mkdir(path.join(dir, 'src'));
@@ -98,9 +98,22 @@ it('keeps forwarded file selection when filtering HTTP-server E2E cases by name'
     path.join(dir, 'test/e2e/other.test.ts'),
     "import { test } from 'bun:test'; test('selected case', () => { throw new Error('Unselected file ran'); });"
   );
-  const result = runCli(dir, ['test', '--grep', 'selected case$', '--', 'test/e2e/selected.test.ts']);
-  expect(result.status, result.stdout + result.stderr).toBe(0);
-  expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
+  for (const selection of [
+    ['--grep', 'selected case$', '--', 'test/e2e/selected.test.ts'],
+    ['--', 'test/e2e/selected.test.ts'],
+    ['--', 'test/e2e/selected.test.ts', '--grep', 'selected case$'],
+  ]) {
+    const result = runCli(dir, ['test', ...selection]);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
+    await fs.rm(path.join(dir, 'executed'));
+  }
+  await fs.writeFile(
+    path.join(dir, 'test/e2e/other.test.ts'),
+    "import { test } from 'bun:test'; test('other file', () => {});"
+  );
+  const unfiltered = runCli(dir, ['test', '--', '--workers=1']);
+  expect(unfiltered.status, unfiltered.stdout + unfiltered.stderr).toBe(9);
 }, 60_000);
 
 it.each(['vitest', '@playwright/test'])(
