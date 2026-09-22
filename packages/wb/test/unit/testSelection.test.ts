@@ -113,7 +113,14 @@ it.each(['vitest', '@playwright/test'])(
       const unitFile = path.join(dir, 'test/unit/selected.test.ts');
       const unitSource = await fs.readFile(unitFile, 'utf8');
       await fs.writeFile(unitFile, unitSource.replace('selected case', 'unit selected case'));
-      for (const forwarded of [[], ['--', '--workers=1'], ['--', '-G', 'other'], ['--', '--grep-invert', 'other']]) {
+      for (const forwarded of [
+        [],
+        ['--', '--workers=1'],
+        ['--', '-G', 'other'],
+        ['--', '--grep-invert', 'other'],
+        ['--', '--add-reporter', 'json'],
+        ['--', '--last-failed-file', 'last-failed.json'],
+      ]) {
         const unitResult = runCli(dir, ['test', '--grep', 'unit selected case$', ...forwarded]);
         expect(unitResult.status, unitResult.stdout + unitResult.stderr).toBe(0);
         expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
@@ -133,8 +140,14 @@ it.each(['vitest', '@playwright/test'])(
           "import { test } from '@playwright/test'; test('passes', () => {});"
         );
       }
-      const fullResult = runCli(dir, ['test', '--', '--workers=1']);
-      expect(fullResult.status, fullResult.stdout + fullResult.stderr).toBe(9);
+      for (const forwarded of [
+        ['--workers=1'],
+        ['--add-reporter', 'json'],
+        ['--last-failed-file', 'last-failed.json'],
+      ]) {
+        const fullResult = runCli(dir, ['test', '--', ...forwarded]);
+        expect(fullResult.status, fullResult.stdout + fullResult.stderr).toBe(9);
+      }
       await fs.rm(path.join(dir, 'test/unit'), { recursive: true });
       for (const command of [['test'], ['verify', '--full']]) {
         const noMatch = runCli(dir, [...command, '--grep', 'absent case']);

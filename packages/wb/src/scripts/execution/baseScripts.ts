@@ -456,11 +456,13 @@ export function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
 }
 
 const PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES = new Set([
+  '--add-reporter',
   '--browser',
   '--config',
   '--grep',
   '--grep-invert',
   '--global-timeout',
+  '--last-failed-file',
   '--max-failures',
   '--output',
   '--repeat-each',
