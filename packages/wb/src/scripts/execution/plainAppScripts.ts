@@ -7,6 +7,7 @@ import { dockerScripts } from '../dockerScripts.js';
 
 import type { TestE2EOptions } from './baseScripts.js';
 import { BaseScripts } from './baseScripts.js';
+import { adaptForwardedArgsForUnitRunner, validateUnitRunnerTestSelection } from './unitRunnerArgs.js';
 
 /**
  * A collection of scripts for executing an app that utilizes an HTTP server like express.
@@ -59,13 +60,7 @@ class PlainAppScripts extends BaseScripts {
     return !project.hasPlaywrightConfig;
   }
 
-  override validateTestSelection(project: Project, argv: TestArgv, forwardedArgs: string[]): void {
-    if (project.hasPlaywrightConfig || argv.grep === undefined) return;
-    const { unsupportedOption } = adaptForwardedArgsForUnitRunner(forwardedArgs);
-    if (unsupportedOption !== undefined) {
-      throw new Error(`Cannot forward Playwright option to the unit-test runner: ${unsupportedOption}`);
-    }
-  }
+  override validateTestSelection = validateUnitRunnerTestSelection;
 
   // A library has no server of its own, but it may ship a self-contained Playwright fixture whose
   // config builds and starts the app under test via a `webServer` block (e.g. a Next.js fixture that
@@ -105,43 +100,3 @@ class PlainAppScripts extends BaseScripts {
 }
 
 export const plainAppScripts = new PlainAppScripts();
-
-const NAME_FILTER_OPTION_REGEXP = /^(?:-t|-g|--grep|--test-name-pattern)(?:=(?<value>.*))?$/;
-
-/**
- * Splits `wb test -- <args>` (documented as Playwright flags) into what `bun test`/vitest accept:
- * bare paths become positional targets, and the name-filter flags both runners share are translated
- * to a single `-t=<pattern>` token (`=`-joined so a pattern starting with `-` is not parsed as an
- * option; last filter wins, matching Playwright's CLI). Any other option is reported instead of
- * being spliced into the runner command — vitest aborts on unknown or duplicated options, which
- * would kill the whole monorepo test run.
- */
-function adaptForwardedArgsForUnitRunner(args: string[]): {
-  targets: string[];
-  flags: string[];
-  unsupportedOption?: string;
-} {
-  const targets: string[] = [];
-  let nameFilter: string | undefined;
-  for (let index = 0; index < args.length; index++) {
-    const arg = args[index] as string;
-    if (arg === '--') {
-      targets.push(...args.slice(index + 1));
-      break;
-    }
-    const filterMatch = NAME_FILTER_OPTION_REGEXP.exec(arg);
-    if (filterMatch) {
-      const value = filterMatch.groups?.value ?? args[++index];
-      // A missing or empty filter value (e.g. `--grep "$UNSET_VAR"`) must not fall through to an
-      // unfiltered run of the whole (potentially paid) suite — `-t ''` matches every test.
-      if (!value) return { targets, flags: [], unsupportedOption: arg };
-      nameFilter = value;
-      continue;
-    }
-    if (arg.startsWith('-') && arg !== '-') {
-      return { targets, flags: [], unsupportedOption: arg };
-    }
-    targets.push(arg);
-  }
-  return { targets, flags: nameFilter === undefined ? [] : [`-t=${nameFilter}`] };
-}

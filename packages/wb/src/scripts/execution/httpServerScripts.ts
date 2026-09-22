@@ -6,6 +6,7 @@ import { buildShellCommand } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
 
 import { BaseScripts, buildE2EReadinessCommand, type TestE2EOptions } from './baseScripts.js';
+import { adaptForwardedArgsForUnitRunner, validateUnitRunnerTestSelection } from './unitRunnerArgs.js';
 
 /**
  * A collection of scripts for executing an app that utilizes an HTTP server like express.
@@ -15,6 +16,8 @@ export class HttpServerScripts extends BaseScripts {
   constructor() {
     super(false);
   }
+
+  override validateTestSelection = validateUnitRunnerTestSelection;
 
   protected override startDevProtected(_: Project, argv: ScriptArgv): string {
     return `YARN build-ts run ${argv.watch ? '--watch' : ''} src/index.ts -- ${argv.normalizedArgsText ?? ''}`;
@@ -31,10 +34,13 @@ export class HttpServerScripts extends BaseScripts {
       return super.testE2EProtected(project, argv, startCommand, options, isDocker);
     }
 
+    this.validateTestSelection(project, argv, options.forwardedPlaywrightArgs ?? []);
     const port = await ensurePort(project);
     const suffix = this.additionalE2ECommand(project, argv, options.forwardedPlaywrightArgs);
-    const targets = argv.targets?.map(String);
-    const normalizedTargets = targets?.length ? targets : ['test/e2e/'];
+    const forwardedTargets =
+      argv.grep === undefined ? [] : adaptForwardedArgsForUnitRunner(options.forwardedPlaywrightArgs ?? []).targets;
+    const targets = [...(argv.targets?.map(String) ?? []), ...forwardedTargets];
+    const normalizedTargets = targets.length > 0 ? targets : ['test/e2e/'];
     const testCommand = this.buildUnitRunnerCommand(project, { ...argv, targets: normalizedTargets });
     return buildShellCommand([
       'YARN',

@@ -49,10 +49,21 @@ it.each(['unit', 'e2e'])(
   60_000
 );
 
-it.each(['headless', 'docker'])(
-  'rejects unsupported %s options before running selected tests',
-  async (e2e) => {
+it.each(['plain', 'http', 'worker'].flatMap((kind) => ['headless', 'docker'].map((e2e) => ({ kind, e2e }))))(
+  'rejects unsupported $e2e options before running selected $kind tests',
+  async ({ kind, e2e }) => {
     const dir = await createFixture();
+    if (kind === 'http') {
+      await fs.writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: 'selection-fixture', packageManager: 'bun@1.4.2', dependencies: { express: '5.1.0' } })
+      );
+    } else if (kind === 'worker') {
+      await fs.writeFile(
+        path.join(dir, 'wrangler.jsonc'),
+        JSON.stringify({ name: 'selection-fixture', main: 'src/index.ts', compatibility_date: '2026-09-01' })
+      );
+    }
     const result = runCli(dir, ['test', '--e2e', e2e, '--grep', 'selected case$', '--', '--workers=1']);
     expect(result.status, result.stdout + result.stderr).not.toBe(0);
     expect(result.stdout + result.stderr).toContain(
@@ -62,6 +73,35 @@ it.each(['headless', 'docker'])(
   },
   60_000
 );
+
+it('keeps forwarded file selection when filtering HTTP-server E2E cases by name', async () => {
+  const dir = await createFixture();
+  await fs.writeFile(
+    path.join(dir, 'package.json'),
+    JSON.stringify({
+      name: 'selection-fixture',
+      packageManager: 'bun@1.4.2',
+      dependencies: { express: '5.1.0' },
+      scripts: { build: 'true' },
+    })
+  );
+  await fs.mkdir(path.join(dir, 'src'));
+  await fs.writeFile(
+    path.join(dir, 'src/index.ts'),
+    "require('node:http').createServer((_, res) => res.end('ready')).listen(Number(process.env.PORT));"
+  );
+  await fs.writeFile(
+    path.join(dir, 'test/e2e/selected.test.ts'),
+    "import { test, expect } from 'bun:test'; import fs from 'node:fs'; test('selected case', async () => { expect(await (await fetch('http://localhost:' + process.env.PORT)).text()).toBe('ready'); fs.appendFileSync('executed', 'selected'); });"
+  );
+  await fs.writeFile(
+    path.join(dir, 'test/e2e/other.test.ts'),
+    "import { test } from 'bun:test'; test('selected case', () => { throw new Error('Unselected file ran'); });"
+  );
+  const result = runCli(dir, ['test', '--grep', 'selected case$', '--', 'test/e2e/selected.test.ts']);
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
+}, 60_000);
 
 it.each(['vitest', '@playwright/test'])(
   'filters real %s cases through test and full verification',
