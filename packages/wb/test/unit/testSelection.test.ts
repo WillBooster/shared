@@ -117,6 +117,9 @@ it.each(
     ['test', '--grep', 'selected', '--', '-tother'],
     ['verify', '--grep', 'selected'],
     ['verify', 'test/unit/selected.test.ts'],
+    ['verify', '--full', 'test/unit/selected.test.ts', '--', '--grep', 'selected case$'],
+    ['verify', '--full', '--', 'test/unit/selected.test.ts', '--grep', 'selected case$'],
+    ['verify', '--', '--grep', 'selected case$'],
   ].map((args) => ({ args }))
 )('rejects invalid selection $args before running anything', async ({ args }) => {
   const dir = await createFixture();

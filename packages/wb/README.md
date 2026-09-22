@@ -144,7 +144,8 @@ select the package with `-w packages/example`. Use paths under `test/unit/`,
 `test/e2e/`, or `test/debug/` to select the corresponding suite.
 
 `wb verify --full` retains all verification steps and filters only its tests.
-`verify` requires `--full` when test paths or `--grep` are supplied.
+`verify` requires `--full` when test paths or `--grep` are supplied, and rejects
+arguments after `--`; pass selections before the separator.
 Without filters, test execution is unchanged. Filtered E2E runs omit the
 unfiltered `test/e2e-additional` script. Playwright-specific options still go
 after `--` in `wb test`; supply the name filter only once, before `--`.

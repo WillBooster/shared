@@ -57,9 +57,15 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
   describe: 'Verify project code',
   builder: (yargs: Argv<unknown>): Argv<VerifyCodeCommandOptions> =>
     yargs
+      .parserConfiguration({ 'populate--': true })
       .options(builder)
       .positional('targets', testArgumentsBuilder.targets)
       .check((argv) => {
+        if (Array.isArray(argv['--']) && argv['--'].length > 0) {
+          throw new Error(
+            'wb verify does not forward arguments after --. Pass test paths and --grep before it, or use wb test.'
+          );
+        }
         if (!argv.full && (argv.targets?.length || argv.grep !== undefined)) {
           throw new Error('Test targets and --grep require --full. Use wb test to run only tests.');
         }
