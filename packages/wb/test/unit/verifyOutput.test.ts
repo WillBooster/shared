@@ -241,19 +241,22 @@ test('failure after output', async () => {
   expect(stdout).toContain('CI test summary: FAILED');
   expect(stdout).toContain('Failed phase: verify-output-fixture / e2e');
   expect(stdout).toContain('test/e2e/');
-  const rerunCommand = stdout
-    .split('\n')
-    .find((line) => line.startsWith('Rerun: '))
-    ?.slice('Rerun: '.length);
-  expect(rerunCommand).toBeDefined();
-  const rerun = spawnSync('sh', ['-c', rerunCommand!], {
-    cwd: dir,
-    encoding: 'utf8',
-    timeout: 30_000,
-  });
+  const rerun = runPrintedCommand(dir, stdout);
   expect(rerun.status, rerun.stdout + rerun.stderr).toBe(7);
   expect(rerun.stdout).toContain('LIVE_STDOUT');
   expect(rerun.stderr).toContain('LIVE_STDERR');
+}, 60_000);
+
+it('provides a working rerun command for a test-layout failure', async () => {
+  const dir = await createFixture();
+  await fs.writeFile(path.join(dir, 'test/misplaced.test.ts'), '');
+  const result = runCli(dir, ['test-on-ci']);
+  expect(result.status, result.stdout + result.stderr).toBe(1);
+  expect(result.stdout).toContain('Failed phase: verify-output-fixture / test layout');
+  const rerun = runPrintedCommand(dir, result.stdout);
+  expect(rerun.status, rerun.stdout + rerun.stderr).toBe(1);
+  expect(rerun.stdout + rerun.stderr).toContain('misplaced.test.ts');
+  expect(rerun.stdout).not.toContain('RAW_TEST_STDOUT');
 }, 60_000);
 
 it('preserves stdin EOF for CI E2E commands while streaming output', async () => {
@@ -402,4 +405,13 @@ async function waitUntil(condition: () => boolean | Promise<boolean>): Promise<v
     if (Date.now() > deadline) throw new Error('Timed out waiting for the condition.');
     await Bun.sleep(50);
   }
+}
+
+function runPrintedCommand(dir: string, stdout: string): SpawnSyncReturns<string> {
+  const command = stdout
+    .split('\n')
+    .find((line) => line.startsWith('Rerun: '))
+    ?.slice('Rerun: '.length);
+  expect(command).toBeDefined();
+  return spawnSync('sh', ['-c', command!], { cwd: dir, encoding: 'utf8', timeout: 30_000 });
 }

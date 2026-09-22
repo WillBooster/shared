@@ -9,7 +9,7 @@ import { findDescendantProjects } from '../project.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import { selectScripts } from '../scripts/execution/selectScripts.js';
 import { normalizeScript, runWithSpawn } from '../scripts/run.js';
-import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { buildEnvReaderOptionArgs, type sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { PackageCommandError } from '../utils/packageCommand.js';
 import { promisePool } from '../utils/promisePool.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../utils/shell.js';
@@ -30,7 +30,7 @@ interface CiStep {
   name: string;
   durationMs: number;
   exitCode: number;
-  command?: string;
+  command: string;
 }
 
 export const testOnCiCommand: CommandModule<
@@ -85,7 +85,7 @@ async function runTests(projects: Project[], argv: CiArgv, steps: CiStep[]): Pro
     const structureViolations = findTestStructureViolations(project);
     if (structureViolations.length > 0) {
       printTestStructureViolations(project.name, structureViolations);
-      steps.push({ project, name: 'test layout', durationMs: 0, exitCode: 1 });
+      steps.push(createCiStep('test layout', project, argv));
       process.exitCode = 1;
       continue;
     }
@@ -130,26 +130,14 @@ async function runCiStep(
   steps: CiStep[],
   stopOnFailure = true
 ): Promise<void> {
-  const step: CiStep = { project, name, durationMs: 0, exitCode: 1 };
+  const step = createCiStep(name, project, argv);
   steps.push(step);
   const startedAt = Date.now();
   console.info(`\nCI phase: ${project.name} / ${name}`);
   try {
     const builtScript = await buildScript();
     const script = builtScript.replaceAll(' --allowOnly', '');
-    const environment = ['CI', 'WB_ENV', 'WB_DOCKER', 'PORT']
-      .filter((key) => project.env[key] !== undefined)
-      .map((key) => buildShellEnvironmentAssignment(key, project.env[key]!));
-    step.command = `${environment.join(' ')} ${buildShellCommand([
-      project.packageManagerCommand,
-      'run',
-      'wb',
-      'dotenv',
-      '--',
-      'sh',
-      '-c',
-      normalizeScript(script, project).runnable,
-    ])}`;
+    step.command = buildCiRerunCommand(project, script);
     step.exitCode = await runWithSpawn(script, project, argv, { exitIfFailed: false });
   } finally {
     step.durationMs = Date.now() - startedAt;
@@ -172,7 +160,7 @@ function printCiSummary(steps: CiStep[], argv: CiArgv, interrupted: boolean): vo
   for (const step of steps.filter((item) => item.exitCode !== 0)) {
     console.info(`\nFailed phase: ${step.project.name} / ${step.name}`);
     console.info(`Working directory: ${step.project.dirPath}`);
-    if (step.command) console.info(`Rerun: ${step.command}`);
+    console.info(`Rerun: ${step.command}`);
   }
 }
 
@@ -180,4 +168,33 @@ function printCiStep(step: CiStep): void {
   console.info(
     `  ${step.exitCode === 0 ? 'PASS' : 'FAIL'}  ${step.project.name} / ${step.name}  ${(step.durationMs / 1000).toFixed(1)}s  exit=${step.exitCode}`
   );
+}
+
+function createCiStep(name: string, project: Project, argv: CiArgv): CiStep {
+  return {
+    project,
+    name,
+    durationMs: 0,
+    exitCode: 1,
+    command: buildCiRerunCommand(
+      project,
+      buildShellCommand(['BUN', 'wb', 'test-on-ci', ...buildEnvReaderOptionArgs(argv)])
+    ),
+  };
+}
+
+function buildCiRerunCommand(project: Project, script: string): string {
+  const environment = ['CI', 'WB_ENV', 'WB_DOCKER', 'PORT']
+    .filter((key) => project.env[key] !== undefined)
+    .map((key) => buildShellEnvironmentAssignment(key, project.env[key]!));
+  return `${environment.join(' ')} ${buildShellCommand([
+    project.packageManagerCommand,
+    'run',
+    'wb',
+    'dotenv',
+    '--',
+    'sh',
+    '-c',
+    normalizeScript(script, project).runnable,
+  ])}`;
 }
