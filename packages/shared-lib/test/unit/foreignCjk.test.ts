@@ -12,7 +12,7 @@ test('detectForeignCjkInJapanese accepts Japanese prose including rare kanji and
 
 test('detectForeignCjkInJapanese reports simplified and traditional Chinese', () => {
   expect(detectForeignCjkInJapanese('この関数は数组を处理します。')).toEqual(['chinese']);
-  expect(detectForeignCjkInJapanese('這是你的東西嗎？')).toEqual(['chinese']);
+  expect(detectForeignCjkInJapanese('我們討論這個問題。')).toEqual(['chinese']);
   expect(detectForeignCjkInJapanese('我很好')).toEqual(['chinese']);
 });
 
