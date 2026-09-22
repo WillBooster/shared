@@ -8,6 +8,7 @@ const JOYO_KANJI_OUTSIDE_JIS_X_0208 = '𠮟塡剝頰';
 // - old forms (kyūjitai) of Jōyō kanji, from the `kyujitai` npm package and Unihan's kJapaneseOldVariant,
 //   except those still common in Japanese words or names (e.g., 應 in 慶應, 澤, 邊, 龍, 藝 in 東京藝術大学, 糺す)
 // - Chinese function words that Japanese writes in kana (e.g., 們, 這, 麼, 很, 怎, 跟, 嘛) and stray simplified forms (e.g., 个)
+// - traditional Chinese characters that neither table covers but Japanese never uses: 碼, 舉, 鏈, 雖
 // Other Chinese-only content characters (e.g., 媽, 豬) are not listed because separating them from rare kanji
 // that Japanese prose does use (e.g., 乖離, 瑕疵, 齟齬, 俯瞰) needs Japanese usage frequencies.
 const CHINESE_CHARACTERS_IN_JIS_X_0208 = new Set(
@@ -19,9 +20,10 @@ let japaneseKanji: Set<string> | undefined;
 /**
  * Detects Chinese or Korean characters mixed into Japanese text, such as LLM-generated Japanese prose.
  * A kanji is treated as Chinese when it is outside JIS X 0208 (except the four Jōyō kanji 𠮟塡剝頰)
- * or is an old form or Chinese function word that modern Japanese prose does not use (e.g., 對, 國, 這, 們, 很).
- * Rare kanji in personal names (e.g., 髙, 與) are therefore also reported, while Chinese containing
- * neither kind of character (e.g., 最后返回答案, 豬肉) is not.
+ * or is one of the listed old forms, Chinese function words, or other Chinese-only characters that modern Japanese
+ * prose does not use (e.g., 對, 國, 這, 們, 很, 碼).
+ * Rare kanji in personal names (e.g., 髙, 與) are therefore also reported, while Chinese containing none of
+ * these characters (e.g., 最后返回答案, 豬肉) is not.
  * Returns the detected languages, or an empty array if none are found.
  */
 export function detectForeignCjkInJapanese(text: string): ForeignCjkLanguage[] {
