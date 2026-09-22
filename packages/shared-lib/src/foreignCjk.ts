@@ -4,8 +4,11 @@ const HANGUL_REGEX = /\p{Script=Hangul}/u;
 const HAN_REGEX = /\p{Script=Han}/gu;
 // Shift_JIS cannot encode these Jōyō kanji, which were added in 2010.
 const JOYO_KANJI_OUTSIDE_SHIFT_JIS = '𠮟塡剝頰';
-// Shift_JIS can encode these, but Japanese prose practically never uses them outside Chinese.
-const CHINESE_CHARACTERS_IN_SHIFT_JIS = new Set('个广听从關戲廣聽讀臺');
+// Shift_JIS can encode these (mostly traditional forms), but Japanese prose practically never uses them outside Chinese.
+// Traditional forms common in Japanese words or names (e.g., 儲, 裡, 邊 in 渡邊, 應 in 慶應) are deliberately excluded.
+const CHINESE_CHARACTERS_IN_SHIFT_JIS = new Set(
+  '个广听从關戲廣聽讀臺這們對會國學樂圖麼與萬沒讓變遞歸兩樣傳價寫寶專將嚴讚觀歡權檢濟藥經驗發點營亂爭亞隨險隱雜雙靈靜顯碼鏈賽醫釋鐵錢輕轉灣數處當來體實'
+);
 
 let japaneseKanji: Set<string> | undefined;
 
