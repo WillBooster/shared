@@ -49,6 +49,15 @@ it.each(['unit', 'e2e'])(
   60_000
 );
 
+it('rejects Playwright-only options instead of skipping selected unit-runner E2E tests', async () => {
+  const dir = await createFixture();
+  const result = runCli(dir, ['test', '--grep', 'selected case$', '--', '--workers=1']);
+  expect(result.status, result.stdout + result.stderr).not.toBe(0);
+  expect(result.stdout + result.stderr).toContain(
+    'Cannot forward Playwright option to the unit-test runner: --workers=1'
+  );
+}, 60_000);
+
 it.each(['vitest', '@playwright/test'])(
   'filters real %s cases through test and full verification',
   async (runner) => {
@@ -118,6 +127,12 @@ it.each(['vitest', '@playwright/test'])(
       }
       const fullResult = runCli(dir, ['test', '--', '--workers=1']);
       expect(fullResult.status, fullResult.stdout + fullResult.stderr).toBe(9);
+      await fs.rm(path.join(dir, 'test/unit'), { recursive: true });
+      for (const command of [['test'], ['verify', '--full']]) {
+        const noMatch = runCli(dir, [...command, '--grep', 'absent case']);
+        expect(noMatch.status, noMatch.stdout + noMatch.stderr).toBe(0);
+        expect(noMatch.stdout).toContain('Name filter "absent case" (empty suites allowed)');
+      }
     }
   },
   120_000

@@ -78,6 +78,9 @@ class PlainAppScripts extends BaseScripts {
     // whole (potentially paid) suite unfiltered; translate what the unit runners understand.
     const forwarded = adaptForwardedArgsForUnitRunner(options.forwardedPlaywrightArgs ?? []);
     if (forwarded.unsupportedOption !== undefined) {
+      if (argv.grep !== undefined) {
+        throw new Error(`Cannot forward Playwright option to the unit-test runner: ${forwarded.unsupportedOption}`);
+      }
       return buildShellCommand([
         'echo',
         `Skipping test/e2e/ (cannot forward the Playwright arg to the unit-test runner: ${forwarded.unsupportedOption}).`,

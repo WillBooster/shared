@@ -13,6 +13,7 @@ import { startVerificationOutput } from '../utils/verificationOutput.js';
 import { buildLintCommand, lint, type LintCommandArgv } from './lint.js';
 import { checkSlidevDecks, findSlidevDecks } from './slidevCheck.js';
 import {
+  describeNameOnlyTestSelection,
   test,
   testSelectionOptions,
   testArgumentsBuilder,
@@ -93,7 +94,9 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
             runInProcessCommand('slidev-check', () => checkSlidevDecks(projects.self, deckPaths, argv))
           );
         }
-        await runStep(progress, { name: 'test' }, () => runProjectTest(projects.self, argv));
+        const detail =
+          argv.grep !== undefined && !argv.targets?.length ? describeNameOnlyTestSelection(argv.grep) : undefined;
+        await runStep(progress, { name: 'test', detail }, () => runProjectTest(projects.self, argv));
       }
       reporter?.succeed();
       printVerifySummary(steps, Boolean(argv.dryRun));
