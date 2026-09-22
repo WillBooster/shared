@@ -110,9 +110,13 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   ) {
     throw new Error('Use --grep before --, without another forwarded name filter.');
   }
+  const isNameOnlySelection =
+    argv.grep !== undefined &&
+    !argv.targets?.length &&
+    findExplicitPlaywrightTargetIndexes(argv['--'] ?? []).length === 0;
   const testArgv = {
     ...withDefaultTestCascadeEnv(argv),
-    allowNoTests: argv.grep !== undefined && !argv.targets?.length && !argv['--']?.length,
+    allowNoTests: isNameOnlySelection,
   };
   const projects = await findDescendantProjects(testArgv);
   if (!projects) {
@@ -145,7 +149,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     const defaultUnitTargets = getDefaultUnitTargets(project);
     const explicitUnitTargets = testTargets.filter((target) => !isE2eTarget(target));
     const unitTargets = explicitUnitTargets.length > 0 ? explicitUnitTargets : defaultUnitTargets;
-    if (shouldRunUnit && unitTargets !== false) {
+    if ((shouldRunUnit || isNameOnlySelection) && unitTargets !== false) {
       const unitArgv = { ...testArgv, targets: unitTargets };
       const exitCode = await runUnitTestCommand(scripts.testUnit(project, unitArgv), project, testArgv, {
         exitIfFailed: options.exitIfFailed,

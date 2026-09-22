@@ -88,9 +88,12 @@ it.each(['vitest', '@playwright/test'])(
       const unitFile = path.join(dir, 'test/unit/selected.test.ts');
       const unitSource = await fs.readFile(unitFile, 'utf8');
       await fs.writeFile(unitFile, unitSource.replace('selected case', 'unit selected case'));
-      const unitResult = runCli(dir, ['test', '--grep', 'unit selected case$']);
-      expect(unitResult.status, unitResult.stdout + unitResult.stderr).toBe(0);
-      expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
+      for (const forwarded of [[], ['--', '--workers=1']]) {
+        const unitResult = runCli(dir, ['test', '--grep', 'unit selected case$', ...forwarded]);
+        expect(unitResult.status, unitResult.stdout + unitResult.stderr).toBe(0);
+        expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
+        await fs.rm(path.join(dir, 'executed'));
+      }
       for (const file of ['selected.test.ts', 'other.test.ts']) {
         await fs.writeFile(
           path.join(dir, 'test/e2e', file),
@@ -149,5 +152,6 @@ test('other case', () => { throw new Error('Unselected case ran'); });`
 }
 
 function runCli(dir: string, args: string[]): SpawnSyncReturns<string> {
-  return spawnSync('node', [cliPath, ...args], { cwd: dir, encoding: 'utf8', timeout: 30_000 });
+  const { BUN_TEST_WORKER_ID: _bunWorkerId, JEST_WORKER_ID: _jestWorkerId, ...env } = process.env;
+  return spawnSync('node', [cliPath, ...args], { cwd: dir, encoding: 'utf8', env, timeout: 30_000 });
 }
