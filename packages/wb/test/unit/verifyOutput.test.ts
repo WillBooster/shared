@@ -294,7 +294,15 @@ test('mise-dependent failure', () => {
   expect(process.env.CI_RERUN_FIXTURE, 'mise-env').not.toBe('from-mise');
 });`
   );
-  const env = { ...process.env, MISE_TRUSTED_CONFIG_PATHS: dir };
+  const runtimeDir = path.join(dir, '.runtime');
+  await fs.mkdir(runtimeDir);
+  const node = spawnSync('node', ['-p', 'process.execPath'], { encoding: 'utf8' });
+  expect(node.status, node.stderr).toBe(0);
+  await fs.symlink(node.stdout.trim(), path.join(runtimeDir, 'node'));
+  await fs.symlink(process.execPath, path.join(runtimeDir, 'bun'));
+  await fs.symlink(await fs.realpath(Bun.which('mise')!), path.join(runtimeDir, 'mise'));
+  const { CI_RERUN_FIXTURE: _fixtureValue, ...baseEnv } = process.env;
+  const env = { ...baseEnv, MISE_TRUSTED_CONFIG_PATHS: dir, PATH: `${runtimeDir}:/usr/bin:/bin` };
   const result = runCli(dir, ['test-on-ci'], env);
   expect(result.status, result.stdout + result.stderr).toBe(1);
   const rerun = runPrintedCommand(dir, result.stdout, env);
