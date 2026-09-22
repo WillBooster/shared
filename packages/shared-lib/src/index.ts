@@ -11,6 +11,7 @@ export {
   renderSectionTemplate,
 } from './githubTemplates.js';
 export { errorify, ignoreError, ignoreEnoent, ignoreErrorAsync, ignoreEnoentAsync, withRetry } from './error.js';
+export { detectForeignCjkInJapanese } from './foreignCjk.js';
 export { humanizeNumber } from './humanize.js';
 export { mailTemplates } from './mail.js';
 export {
@@ -41,5 +42,6 @@ export { zenkakuAlphanumericalsToHankaku } from './zenkaku.js';
 
 export type { AppEnv } from './appEnv.js';
 export type { RetryOptions } from './error.js';
+export type { ForeignCjkLanguage } from './foreignCjk.js';
 export type { CodeBlock, MarkdownSection } from './markdown.js';
 export type { TemplateSection } from './githubTemplates.js';
