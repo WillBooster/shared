@@ -4,9 +4,10 @@ const HANGUL_REGEX = /\p{Script=Hangul}/u;
 const HAN_REGEX = /\p{Script=Han}/u;
 // JIS X 0208 cannot encode these Jōyō kanji, which were added in 2010.
 const JOYO_KANJI_OUTSIDE_JIS_X_0208 = '𠮟塡剝頰';
-// Variants that Japanese names use but Chinese text does not: the NFKC-stable kanji of the Windows-31J NEC-selected IBM
-// and IBM extensions that neither Big5 nor GB2312 encodes (e.g., 髙, 﨑, 濵, 栁), plus 𠮷 from JIS X 0213.
-// Extension kanji that Big5 or GB2312 encodes (e.g., 德, 瀨) stay Chinese because Chinese text uses them.
+// Kanji for Japanese names (e.g., 髙, 﨑, 濵, 栁) that Chinese prose rarely contains: the NFKC-stable kanji of the
+// Windows-31J NEC-selected IBM and IBM extensions that neither Big5 nor GB2312 encodes, plus 𠮷 from JIS X 0213.
+// Some also appear in Chinese names (e.g., 喆), but prose that mixes Chinese into Japanese hardly contains them.
+// Extension kanji that Big5 or GB2312 encodes (e.g., 德, 瀨) stay Chinese because Chinese prose uses them.
 const JAPANESE_NAME_KANJI_OUTSIDE_JIS_X_0208 =
   '仼伃伹侊俿偂僘僴兊兤冝凬刕劜劯匇匤厓叝咊咜喆坙坥垬埈墲夋奛奝奣尞岺峵嵓嵭嶹巐弡弴彅惞愑愰憘戓抦敎昞昻晳暿曺曻朎杦栁桒棏樰橳櫢櫤涖淸澵濵焏犱犾猤玽甁硺礰竧箞絈緖罇荢葈蓜蠇裵褜訷贒郞鄕釞釥鈼鉙鉷鍈鏆隝隯霳霻靍靏靑靕髙魲鮏鮱鮻鰀﨎﨏﨑﨓﨔﨟﨡﨣﨤﨧﨨﨩𠮷';
 // Characters JIS X 0208 can encode but modern Japanese prose does not use:
@@ -37,10 +38,10 @@ export function detectForeignCjkInJapanese(text: string, allowedText?: string): 
 
 /**
  * Returns the distinct Chinese or Korean characters mixed into Japanese text, NFKC-normalized, in order of appearance.
- * A kanji is treated as Chinese when it is outside JIS X 0208 (except the four Jōyō kanji 𠮟塡剝頰 and name variants
- * that Chinese text does not use, e.g., 髙, 﨑, 𠮷) or is one of the listed old forms, Chinese function words, or other
- * Chinese-only characters that modern Japanese prose does not use (e.g., 對, 國, 這, 們, 很, 碼).
- * Old forms in names that Chinese text also uses (e.g., 國, 與, 德) are therefore also reported, while Chinese
+ * A kanji is treated as Chinese when it is outside JIS X 0208 (except the four Jōyō kanji 𠮟塡剝頰 and Japanese name
+ * kanji that neither Big5 nor GB2312 encodes, e.g., 髙, 﨑, 𠮷) or is one of the listed old forms, Chinese function
+ * words, or other Chinese-only characters that modern Japanese prose does not use (e.g., 對, 國, 這, 們, 很, 碼).
+ * Old forms in names that Chinese prose also uses (e.g., 國, 與, 德) are therefore also reported, while Chinese
  * containing none of these characters (e.g., 最后返回答案, 豬肉) is not.
  * Characters that also occur in `allowedText` are not reported, so passing the input that an LLM may quote
  * (e.g., the prompt, a question, or an error message) keeps quoted names and code from being reported.
