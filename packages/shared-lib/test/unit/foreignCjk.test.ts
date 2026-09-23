@@ -5,7 +5,7 @@ import { detectForeignCjkInJapanese, findForeignCjkCharactersInJapanese } from '
 test('detectForeignCjkInJapanese accepts Japanese prose including rare kanji and names', () => {
   expect(
     detectForeignCjkInJapanese(
-      'この関数は配列を再帰的に処理し、結果を返します。曖昧な閾値、冪等性、乖離、瑕疵、齟齬を𠮟る。慶應の中澤さん。'
+      'この関数は配列を再帰的に処理し、結果を返します。曖昧な閾値、冪等性、乖離、瑕疵、齟齬を𠮟る。慶應の中澤さん。髙橋さん、山﨑さん、𠮷田さん。'
     )
   ).toEqual([]);
 });
@@ -16,8 +16,9 @@ test('detectForeignCjkInJapanese reports simplified and traditional Chinese', ()
   expect(detectForeignCjkInJapanese('我很好')).toEqual(['chinese']);
 });
 
-test('detectForeignCjkInJapanese treats Windows-31J extension kanji as outside Japanese', () => {
+test('detectForeignCjkInJapanese treats Windows-31J extension kanji that Chinese text uses as outside Japanese', () => {
   expect(detectForeignCjkInJapanese('道德')).toEqual(['chinese']);
+  expect(detectForeignCjkInJapanese('瀨戸')).toEqual(['chinese']);
 });
 
 test('detectForeignCjkInJapanese reports Hangul including half-width and extended jamo', () => {
