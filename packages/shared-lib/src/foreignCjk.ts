@@ -6,7 +6,7 @@ const HAN_REGEX = /\p{Script=Han}/u;
 const JOYO_KANJI_OUTSIDE_JIS_X_0208 = '𠮟塡剝頰';
 // Kanji for Japanese names (e.g., 髙, 﨑, 濵, 栁) that Chinese prose rarely contains: the NFKC forms of the
 // Windows-31J NEC-selected IBM and IBM extension kanji that neither JIS X 0208, Big5, nor GB2312 encodes, plus 𠮷 from
-// JIS X 0213. NFKC forms are listed because the lookup runs after NFKC normalization (e.g., 蘒 U+FA20 becomes U+8612).
+// JIS X 0213. NFKC forms are listed because the lookup runs after NFKC normalization (e.g., U+FA20 becomes U+8612).
 // Some also appear in Chinese names (e.g., 喆), but prose that mixes Chinese into Japanese hardly contains them.
 // Extension kanji that Big5 or GB2312 encodes (e.g., 德, 瀨) stay Chinese because Chinese prose uses them.
 const JAPANESE_NAME_KANJI_OUTSIDE_JIS_X_0208 =
