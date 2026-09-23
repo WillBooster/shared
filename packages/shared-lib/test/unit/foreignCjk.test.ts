@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { detectForeignCjkInJapanese } from '../../src/foreignCjk.js';
+import { detectForeignCjkInJapanese, findForeignCjkCharactersInJapanese } from '../../src/foreignCjk.js';
 
 test('detectForeignCjkInJapanese accepts Japanese prose including rare kanji and names', () => {
   expect(
@@ -24,4 +24,18 @@ test('detectForeignCjkInJapanese reports Hangul including half-width and extende
   expect(detectForeignCjkInJapanese('この関数は 배열 を返します。')).toEqual(['korean']);
   expect(detectForeignCjkInJapanese('ﾡꥠ')).toEqual(['korean']);
   expect(detectForeignCjkInJapanese('这个 배열')).toEqual(['chinese', 'korean']);
+});
+
+test('findForeignCjkCharactersInJapanese returns distinct foreign characters in order of appearance', () => {
+  expect(findForeignCjkCharactersInJapanese('这个関数は这个 배열 を返します。')).toEqual(['这', '个', '배', '열']);
+});
+
+test('findForeignCjkCharactersInJapanese ignores characters that occur in allowedText', () => {
+  const stderr = "NameError: name '數组' is not defined";
+  expect(findForeignCjkCharactersInJapanese('変数 數组 が定義されていません。这是错误。', stderr)).toEqual([
+    '这',
+    '错',
+    '误',
+  ]);
+  expect(detectForeignCjkInJapanese('변수 數组 が未定義です。', `${stderr} 변수`)).toEqual([]);
 });
