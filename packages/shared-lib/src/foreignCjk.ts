@@ -1,7 +1,7 @@
 export type ForeignCjkLanguage = 'chinese' | 'korean';
 
 const HANGUL_REGEX = /\p{Script=Hangul}/u;
-const HAN_REGEX = /\p{Script=Han}/gu;
+const HAN_REGEX = /\p{Script=Han}/u;
 // JIS X 0208 cannot encode these Jōyō kanji, which were added in 2010.
 const JOYO_KANJI_OUTSIDE_JIS_X_0208 = '𠮟塡剝頰';
 // Characters JIS X 0208 can encode but modern Japanese prose does not use:
@@ -19,23 +19,41 @@ let japaneseKanji: Set<string> | undefined;
 
 /**
  * Detects Chinese or Korean characters mixed into Japanese text, such as LLM-generated Japanese prose.
+ * See {@link findForeignCjkCharactersInJapanese} for which characters count and how `allowedText` works.
+ * Returns the detected languages, or an empty array if none are found.
+ */
+export function detectForeignCjkInJapanese(text: string, allowedText?: string): ForeignCjkLanguage[] {
+  const characters = findForeignCjkCharactersInJapanese(text, allowedText);
+  const languages: ForeignCjkLanguage[] = [];
+  if (characters.some((char) => !HANGUL_REGEX.test(char))) languages.push('chinese');
+  if (characters.some((char) => HANGUL_REGEX.test(char))) languages.push('korean');
+  return languages;
+}
+
+/**
+ * Returns the distinct Chinese or Korean characters mixed into Japanese text, NFKC-normalized, in order of appearance.
  * A kanji is treated as Chinese when it is outside JIS X 0208 (except the four Jōyō kanji 𠮟塡剝頰)
  * or is one of the listed old forms, Chinese function words, or other Chinese-only characters that modern Japanese
  * prose does not use (e.g., 對, 國, 這, 們, 很, 碼).
  * Rare kanji in personal names (e.g., 髙, 與) are therefore also reported, while Chinese containing none of
  * these characters (e.g., 最后返回答案, 豬肉) is not.
- * Returns the detected languages, or an empty array if none are found.
+ * Characters that also occur in `allowedText` are not reported, so passing the input that an LLM may quote
+ * (e.g., the prompt, a question, or an error message) keeps quoted names and code from being reported.
  */
-export function detectForeignCjkInJapanese(text: string): ForeignCjkLanguage[] {
-  const normalized = text.normalize('NFKC');
-  const languages: ForeignCjkLanguage[] = [];
-  japaneseKanji ??= buildJapaneseKanjiSet();
-  const kanjiSet = japaneseKanji;
-  if (normalized.match(HAN_REGEX)?.some((char) => !kanjiSet.has(char) || CHINESE_CHARACTERS_IN_JIS_X_0208.has(char))) {
-    languages.push('chinese');
+export function findForeignCjkCharactersInJapanese(text: string, allowedText = ''): string[] {
+  const allowedCharacters = new Set(allowedText.normalize('NFKC'));
+  const kanjiSet = (japaneseKanji ??= buildJapaneseKanjiSet());
+  const characters = new Set<string>();
+  for (const char of text.normalize('NFKC')) {
+    if (allowedCharacters.has(char)) continue;
+    if (
+      HANGUL_REGEX.test(char) ||
+      (HAN_REGEX.test(char) && (!kanjiSet.has(char) || CHINESE_CHARACTERS_IN_JIS_X_0208.has(char)))
+    ) {
+      characters.add(char);
+    }
   }
-  if (HANGUL_REGEX.test(normalized)) languages.push('korean');
-  return languages;
+  return [...characters];
 }
 
 function buildJapaneseKanjiSet(): Set<string> {

@@ -11,7 +11,7 @@ export {
   renderSectionTemplate,
 } from './githubTemplates.js';
 export { errorify, ignoreError, ignoreEnoent, ignoreErrorAsync, ignoreEnoentAsync, withRetry } from './error.js';
-export { detectForeignCjkInJapanese } from './foreignCjk.js';
+export { detectForeignCjkInJapanese, findForeignCjkCharactersInJapanese } from './foreignCjk.js';
 export { humanizeNumber } from './humanize.js';
 export { mailTemplates } from './mail.js';
 export {
