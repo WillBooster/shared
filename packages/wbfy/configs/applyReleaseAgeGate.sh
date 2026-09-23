@@ -30,6 +30,11 @@ excludes=$(tr -d ' \n' < "$gateJsonPath" | sed -n 's/.*"excludes":\[\(.*\)].*/\1
 # `minimumReleaseAge = 0`) or a silently shortened exclusion list while reporting success.
 [ "$days" -gt 0 ] 2> /dev/null && [ -n "$excludes" ] ||
   { echo "$gateJsonPath is not a valid release-age gate." >&2; exit 1; }
+# temporaryExcludes maps a package to the UTC date (YYYY-MM-DD) from which it is gated again; it must
+# match bunfig.ts's filter so the global and repository configs agree.
+temporaryExcludes=$(tr -d ' \n' < "$gateJsonPath" | sed -n 's/.*"temporaryExcludes":{\([^}]*\)}.*/\1/p' |
+  tr -d '"' | tr ',' '\n' | awk -F: -v today="$(date -u +%F)" '$2 > today { print $1 }')
+[ -z "$temporaryExcludes" ] || excludes="$excludes"$'\n'"$temporaryExcludes"
 
 emitHeader() {
   [ -n "$1" ] && printf '%s\n' "$1"

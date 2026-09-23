@@ -18,16 +18,25 @@ interface BunfigToml {
 // configs/releaseAgeGate.json is the organization's single source of truth for the policy: the
 // machines' global configs get it through configs/applyReleaseAgeGate.sh (run by wbfy itself, by
 // reusable-workflows on CI, and by self-host-utils on the runners), and repositories get it here.
-// Only our own packages are exempt: we control who publishes them, so a compromised release cannot
+// `excludes` holds our own packages: we control who publishes them, so a compromised release cannot
 // reach us through an upstream maintainer's stolen credentials. That covers every
 // @willbooster-private package (the scope resolves only from our own registry), but bun, npm, and
 // Yarn match exclude entries by exact name — no @scope/* patterns — so each new package in the
 // scope must be added to configs/releaseAgeGate.json when it is first published. Third-party
-// packages — including
-// tooling wbfy pins itself — stay age-gated; getLatestAgeGatedDependencyVersion in packageJson.ts
-// pins the newest release old enough to pass the gate, so pinning keeps working without an exemption.
+// packages — including tooling wbfy pins itself — stay age-gated; getLatestAgeGatedDependencyVersion
+// in packageJson.ts pins the newest release old enough to pass the gate, so pinning keeps working
+// without an exemption. The exception is `temporaryExcludes`, which lets a third-party security fix
+// in immediately and gates the package again from the given UTC date, so the next wbfy run restores
+// the gate without anyone having to remember to remove the entry. Exact-name matching also applies:
+// list every package the fixed release pins exactly and publishes alongside it.
 export const bunMinimumReleaseAgeSeconds = releaseAgeGate.days * 24 * 60 * 60;
-export const bunMinimumReleaseAgeExcludes = releaseAgeGate.excludes;
+const today = new Date().toISOString().slice(0, 10);
+export const bunMinimumReleaseAgeExcludes = [
+  ...releaseAgeGate.excludes,
+  ...Object.entries(releaseAgeGate.temporaryExcludes)
+    .filter(([, gatedAgainFrom]) => today < gatedAgainFrom)
+    .map(([packageName]) => packageName),
+];
 
 export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
   const filePath = path.resolve(rootDirPath, 'bunfig.toml');

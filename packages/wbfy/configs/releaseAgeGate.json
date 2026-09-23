@@ -52,5 +52,17 @@
     "vinext-progress",
     "wbfy",
     "yarn-plugin-auto-install"
-  ]
+  ],
+  "temporaryExcludes": {
+    "next": "2026-09-30",
+    "@next/env": "2026-09-30",
+    "@next/swc-darwin-arm64": "2026-09-30",
+    "@next/swc-darwin-x64": "2026-09-30",
+    "@next/swc-linux-arm64-gnu": "2026-09-30",
+    "@next/swc-linux-arm64-musl": "2026-09-30",
+    "@next/swc-linux-x64-gnu": "2026-09-30",
+    "@next/swc-linux-x64-musl": "2026-09-30",
+    "@next/swc-win32-arm64-msvc": "2026-09-30",
+    "@next/swc-win32-x64-msvc": "2026-09-30"
+  }
 }
