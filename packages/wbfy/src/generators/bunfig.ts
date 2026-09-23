@@ -12,6 +12,7 @@ interface BunfigToml {
     exact?: boolean;
     globalStore?: boolean;
     linker?: string;
+    minimumReleaseAgeExcludes?: string[];
   };
 }
 
@@ -39,6 +40,18 @@ export const bunMinimumReleaseAgeExcludes = [
     .filter(([, gatedAgainFrom]) => today < gatedAgainFrom)
     .map(([packageName]) => packageName),
 ];
+
+/**
+ * Whether the repository's bunfig.toml lists today's exemptions. `temporaryExcludes` changes them by
+ * date alone, so a repository already configured by the running wbfy build must not be skipped
+ * once they differ, or an expired exemption would outlive its date.
+ */
+export function hasCurrentBunReleaseAgeExcludes(rootDirPath: string): boolean {
+  const filePath = path.resolve(rootDirPath, 'bunfig.toml');
+  if (!fs.existsSync(filePath)) return true;
+  const excludes = parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.minimumReleaseAgeExcludes;
+  return excludes?.join('\n') === bunMinimumReleaseAgeExcludes.join('\n');
+}
 
 export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
   const filePath = path.resolve(rootDirPath, 'bunfig.toml');

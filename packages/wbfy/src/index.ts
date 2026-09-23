@@ -10,7 +10,12 @@ import { fixChakraToaster } from './fixers/chakraToaster.js';
 import { fixPlaywrightConfig } from './fixers/playwrightConfig.js';
 import { fixTypos } from './fixers/typos.js';
 import { generateAgentInstructions } from './generators/agents.js';
-import { generateBunfigToml, readBunGlobalStore, resolveBunGlobalStore } from './generators/bunfig.js';
+import {
+  generateBunfigToml,
+  hasCurrentBunReleaseAgeExcludes,
+  readBunGlobalStore,
+  resolveBunGlobalStore,
+} from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
 import { generateEditorconfig } from './generators/editorconfig.js';
 import { generateFnoxToml } from './generators/fnoxToml.js';
@@ -165,8 +170,13 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // The badge records the build that generated the repository's configuration, so the same build
     // would only rewrite what is already there. Skipping is a deliberate trade: the parts of a run
     // that depend on state OUTSIDE the repository (GitHub settings, dependency updates, the fetched
-    // .gitignore) do get skipped too, which is what --force is for.
-    if (skippableVersionLabel && (await readAppliedWbfyVersionLabel(rootDirPath)) === skippableVersionLabel) {
+    // .gitignore) do get skipped too, which is what --force is for. The release-age exemptions are
+    // the exception: they expire by date, and restoring the gate must not wait for a new build.
+    if (
+      skippableVersionLabel &&
+      (await readAppliedWbfyVersionLabel(rootDirPath)) === skippableVersionLabel &&
+      hasCurrentBunReleaseAgeExcludes(rootDirPath)
+    ) {
       console.info(`Skip ${rootDirPath}: wbfy ${skippableVersionLabel} is already applied. Pass --force to re-apply.`);
       continue;
     }
