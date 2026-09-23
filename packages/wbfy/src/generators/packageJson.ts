@@ -1108,10 +1108,10 @@ function getNpmPackageTimes(dependency: string): Record<string, string> {
 }
 
 function shouldApplyPackageAgeGate(dependency: string): boolean {
-  // Keep managed first-party packages aligned with Bun's explicit exemptions. wbfy's generated
-  // configuration can rely on the current wb contract, so independently soaking or downgrading wb
-  // would pair new generated files with an incompatible old CLI. Those packages are released and
-  // fixed at their source instead; only packages Bun itself gates may be selected from older tags.
+  // Keep pinning aligned with Bun's exemptions. wbfy's generated configuration can rely on the
+  // current wb contract, so independently soaking or downgrading wb would pair new generated files
+  // with an incompatible old CLI, and a temporarily exempted package must reach its security fix.
+  // Only packages Bun itself gates may be selected from older tags.
   return !bunMinimumReleaseAgeExcludes.some((pattern) => doesPackagePatternMatch(pattern, dependency));
 }
 

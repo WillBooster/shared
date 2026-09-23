@@ -76,3 +76,35 @@ npmRegistries:
     await fs.rm(workDirPath, { force: true, recursive: true });
   }
 });
+
+test('exempts temporarily excluded packages only until their date', async () => {
+  const workDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-release-age-gate-'));
+  try {
+    const homeDirPath = path.join(workDirPath, 'home');
+    await fs.mkdir(homeDirPath);
+    await fs.copyFile(scriptPath, path.join(workDirPath, 'applyReleaseAgeGate.sh'));
+    await fs.writeFile(
+      path.join(workDirPath, 'releaseAgeGate.json'),
+      JSON.stringify(
+        {
+          days: 7,
+          excludes: ['@willbooster/wb'],
+          temporaryExcludes: { '@next/env': '9999-12-31', next: new Date().toISOString().slice(0, 10) },
+        },
+        undefined,
+        2
+      )
+    );
+
+    const { status } = childProcess.spawnSync('bash', [path.join(workDirPath, 'applyReleaseAgeGate.sh')], {
+      env: { ...process.env, HOME: homeDirPath, XDG_CONFIG_HOME: '' },
+      stdio: 'inherit',
+    });
+    expect(status).toBe(0);
+
+    const bunfig = await fs.readFile(path.join(homeDirPath, '.bunfig.toml'), 'utf8');
+    expect(bunfig).toContain('minimumReleaseAgeExcludes = [\n  "@willbooster/wb",\n  "@next/env",\n]\n');
+  } finally {
+    await fs.rm(workDirPath, { force: true, recursive: true });
+  }
+});
