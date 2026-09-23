@@ -4,12 +4,13 @@ const HANGUL_REGEX = /\p{Script=Hangul}/u;
 const HAN_REGEX = /\p{Script=Han}/u;
 // JIS X 0208 cannot encode these Jōyō kanji, which were added in 2010.
 const JOYO_KANJI_OUTSIDE_JIS_X_0208 = '𠮟塡剝頰';
-// Kanji for Japanese names (e.g., 髙, 﨑, 濵, 栁) that Chinese prose rarely contains: the NFKC-stable kanji of the
-// Windows-31J NEC-selected IBM and IBM extensions that neither Big5 nor GB2312 encodes, plus 𠮷 from JIS X 0213.
+// Kanji for Japanese names (e.g., 髙, 﨑, 濵, 栁) that Chinese prose rarely contains: the NFKC forms of the
+// Windows-31J NEC-selected IBM and IBM extension kanji that neither JIS X 0208, Big5, nor GB2312 encodes, plus 𠮷 from
+// JIS X 0213. NFKC forms are listed because the lookup runs after NFKC normalization (e.g., 蘒 U+FA20 becomes U+8612).
 // Some also appear in Chinese names (e.g., 喆), but prose that mixes Chinese into Japanese hardly contains them.
 // Extension kanji that Big5 or GB2312 encodes (e.g., 德, 瀨) stay Chinese because Chinese prose uses them.
 const JAPANESE_NAME_KANJI_OUTSIDE_JIS_X_0208 =
-  '仼伃伹侊俿偂僘僴兊兤冝凬刕劜劯匇匤厓叝咊咜喆坙坥垬埈墲夋奛奝奣尞岺峵嵓嵭嶹巐弡弴彅惞愑愰憘戓抦敎昞昻晳暿曺曻朎杦栁桒棏樰橳櫢櫤涖淸澵濵焏犱犾猤玽甁硺礰竧箞絈緖罇荢葈蓜蠇裵褜訷贒郞鄕釞釥鈼鉙鉷鍈鏆隝隯霳霻靍靏靑靕髙魲鮏鮱鮻鰀﨎﨏﨑﨓﨔﨟﨡﨣﨤﨧﨨﨩𠮷';
+  '仼伃伹侊俿偂僘僴兊兤冝凬刕劜劯匇匤厓叝咊咜喆坙坥垬埈墲夋奛奝奣尞岺峵嵓嵭嶹巐弡弴彅惞愑愰憘戓抦敎昞昻晳暿曺曻朎杦栁桒棏樰橳櫢櫤涖淸澵濵焏犱犾猤玽甁硺礰竧箞絈緖罇荢葈蓜蘒蠇裵褜訷贒郞鄕釞釥鈼鉙鉷鍈鏆隝隯霳霻靍靏靑靕髙魲鮏鮱鮻鰀﨎﨏﨑﨓﨔﨟﨡﨣﨤﨧﨨﨩𠮷';
 // Characters JIS X 0208 can encode but modern Japanese prose does not use:
 // - old forms (kyūjitai) of Jōyō kanji, from the `kyujitai` npm package and Unihan's kJapaneseOldVariant,
 //   except those still common in Japanese words or names (e.g., 應 in 慶應, 澤, 邊, 龍, 藝 in 東京藝術大学, 糺す)
