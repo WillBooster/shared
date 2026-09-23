@@ -19,18 +19,18 @@ interface BunfigToml {
 // machines' global configs get it through configs/applyReleaseAgeGate.sh (run by wbfy itself, by
 // reusable-workflows on CI, and by self-host-utils on the runners), and repositories get it here.
 // Our own packages are exempt: we control who publishes them, so a compromised release cannot
-// reach us through an upstream maintainer's stolen credentials. The only permanent third-party
-// exemptions are the coding-agent CLIs and SDKs (Codex, the Claude Agent SDK and its platform
-// packages), whose newest models run only on their latest releases. Our own exemptions cover every
+// reach us through an upstream maintainer's stolen credentials. That covers every
 // @willbooster-private package (the scope resolves only from our own registry), but bun, npm, and
 // Yarn match exclude entries by exact name — no @scope/* patterns — so each new package in the
-// scope must be added to configs/releaseAgeGate.json when it is first published. Other third-party
-// packages — including tooling wbfy pins itself — stay age-gated; getLatestAgeGatedDependencyVersion
-// in packageJson.ts pins the newest release old enough to pass the gate, so pinning keeps working
-// without an exemption. The exception is `temporaryExcludes`, which lets a third-party security fix
-// in immediately and gates the package again from the given UTC date, so the next wbfy run restores
-// the gate without anyone having to remember to remove the entry. Exact-name matching also applies:
-// list every package the fixed release pins exactly and publishes alongside it.
+// scope must be added to configs/releaseAgeGate.json when it is first published. The only permanent
+// third-party exemption is the Codex CLI, whose newest models run only on its latest releases.
+// Other third-party packages — including tooling wbfy pins itself — stay age-gated;
+// getLatestAgeGatedDependencyVersion in packageJson.ts pins the newest release old enough to pass
+// the gate, so pinning keeps working without an exemption. `temporaryExcludes` lets a third-party
+// release needed now (a security fix, or an SDK a new model requires) in immediately and gates the
+// package again from the given UTC date, so the next wbfy run restores the gate without anyone
+// having to remember to remove the entry. List every package that release pins exactly and
+// publishes alongside it, since exclusion matches exact names only.
 export const bunMinimumReleaseAgeSeconds = releaseAgeGate.days * 24 * 60 * 60;
 const today = new Date().toISOString().slice(0, 10);
 export const bunMinimumReleaseAgeExcludes = [
