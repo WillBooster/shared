@@ -41,10 +41,17 @@ export function createThrottledFetch({
   };
 }
 
+// RFC 9110 requires senders to generate HTTP dates in this IMF-fixdate form, e.g. `Sun, 06 Nov 1994 08:49:37 GMT`.
+// `Date.parse` alone would also accept malformed values such as `1.5`.
+const IMF_FIXDATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/u;
+
 /** Parses `Retry-After` in either form RFC 9110 allows: delay seconds or an HTTP date. */
 function parseRetryAfterMilliseconds(value: string | null): number | undefined {
-  const trimmed = value?.trim();
-  if (!trimmed) return;
-  const milliseconds = /^\d+$/u.test(trimmed) ? Number(trimmed) * 1000 : Date.parse(trimmed) - Date.now();
+  const trimmed = value?.trim() ?? '';
+  const milliseconds = /^\d+$/u.test(trimmed)
+    ? Number(trimmed) * 1000
+    : IMF_FIXDATE.test(trimmed)
+      ? Date.parse(trimmed) - Date.now()
+      : Number.NaN;
   return Number.isFinite(milliseconds) ? Math.max(0, milliseconds) : undefined;
 }
