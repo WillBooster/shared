@@ -8,8 +8,10 @@ export interface SafeRedirectPathOptions {
   origin?: string;
 }
 
-// The base for resolving relative values when no origin is given; a reserved domain (RFC 2606).
+// Bases for resolving values when no origin is given, on a reserved domain (RFC 2606). A value is relative exactly when
+// it resolves onto each of them, which rejects every form browsers read as absolute (`https:`, `//`, `/\\`, ...).
 const PLACEHOLDER_ORIGIN = 'https://redirect.invalid';
+const ALTERNATIVE_PLACEHOLDER_ORIGIN = 'https://alternative.redirect.invalid';
 
 /**
  * Returns the path, query, and fragment of `value` when it points to a page on the app's own origin, and `fallback`
@@ -24,12 +26,17 @@ export function getSafeRedirectPath(
   // Parsed outside the per-value `try` so that a misconfigured origin fails loudly instead of rejecting every value.
   const baseUrl = new URL(origin ?? PLACEHOLDER_ORIGIN);
   const rawValue = (typeof value === 'string' ? value : value?.[0])?.trim();
-  // Without an origin, no absolute URL is on the app's origin; `URL.canParse` without a base accepts only those.
-  if (!rawValue || (origin === undefined && URL.canParse(rawValue))) return fallback;
+  if (!rawValue) return fallback;
 
   let url: URL;
   try {
     url = new URL(rawValue, baseUrl);
+    if (
+      origin === undefined &&
+      new URL(rawValue, ALTERNATIVE_PLACEHOLDER_ORIGIN).origin !== ALTERNATIVE_PLACEHOLDER_ORIGIN
+    ) {
+      return fallback;
+    }
   } catch {
     return fallback;
   }
