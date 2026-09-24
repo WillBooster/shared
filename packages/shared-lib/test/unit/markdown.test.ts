@@ -183,4 +183,8 @@ test('extractTaggedCodeBlock reads the closed block right after the tag and skip
   expect(extractTaggedCodeBlock('<answer>\n42', 'answer')).toBeUndefined();
   expect(extractTaggedCodeBlock('<answer> ```\n42\n```', 'answer')).toBeUndefined();
   expect(extractTaggedCodeBlock('Use <answer>\n```\nexample\n```\n<answer>\n```\nreal\n```', 'answer')).toBe('real');
+  expect(
+    extractTaggedCodeBlock('~~~markdown\n<answer>\n```\nexample\n```\n~~~\n<answer>\n```\nreal\n```', 'answer')
+  ).toBe('real');
+  expect(extractTaggedCodeBlock('````markdown\n<answer>\n```\nreal\n```\n````', 'answer')).toBe('real');
 });
