@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { humanizeNumber } from '../../src/humanize.js';
+import { formatElapsedTimeInJapanese, humanizeNumber } from '../../src/humanize.js';
 
 test('humanizeNumber with values less than base', () => {
   expect(humanizeNumber(999)).toBe('999');
@@ -28,4 +28,10 @@ test('humanizeNumber with large values', () => {
   expect(humanizeNumber(1e12)).toBe('1.00T');
   expect(humanizeNumber(1e15)).toBe('1.00P');
   expect(humanizeNumber(1e18)).toBe('1000.00P');
+});
+
+test('formatElapsedTimeInJapanese rounds before choosing the format and splitting minutes', () => {
+  expect(formatElapsedTimeInJapanese(59_940)).toBe('59.9秒');
+  expect(formatElapsedTimeInJapanese(59_980)).toBe('1分0秒');
+  expect(formatElapsedTimeInJapanese(119_800)).toBe('2分0秒');
 });

@@ -54,6 +54,22 @@ export function extractIfSingleOutermostCodeBlock(text: string, languages?: read
   return block.code;
 }
 
+/**
+ * Returns the trimmed contents of the first closed fenced code block (backticks or tildes) that directly follows
+ * `<tagName>` in text such as an LLM response, e.g. `<answer>\n~~~\n42\n~~~`, or `undefined` when there is none.
+ * Only whitespace may separate the tag from the opening fence; occurrences of the tag in prose are skipped.
+ */
+export function extractTaggedCodeBlock(text: string, tagName: string): string | undefined {
+  const tag = `<${tagName}>`;
+  for (let index = text.indexOf(tag); index !== -1; index = text.indexOf(tag, index + tag.length)) {
+    const lines = splitLines(text.slice(index + tag.length).trimStart());
+    const fence = parseOpeningFence(lines[0] ?? '');
+    if (!fence) continue;
+    const end = findClosingFence(lines, 1, fence);
+    if (end < lines.length) return lines.slice(1, end).join('\n').trim();
+  }
+}
+
 export interface MarkdownSection {
   depth: number;
   /** The heading text with the closing `#` sequence and inline-code backticks removed. */
