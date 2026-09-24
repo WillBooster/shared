@@ -1,5 +1,6 @@
 export { getAppEnv } from './appEnv.js';
 export { ensureTruthy } from './assert.js';
+export { forEachConcurrently } from './concurrency.js';
 export {
   BUG_ISSUE_SECTIONS,
   CHANGE_ISSUE_SECTIONS,
@@ -12,12 +13,13 @@ export {
 } from './githubTemplates.js';
 export { errorify, ignoreError, ignoreEnoent, ignoreErrorAsync, ignoreEnoentAsync, withRetry } from './error.js';
 export { detectForeignCjkInJapanese, findForeignCjkCharactersInJapanese } from './foreignCjk.js';
-export { humanizeNumber } from './humanize.js';
+export { formatElapsedTimeInJapanese, humanizeNumber } from './humanize.js';
 export { mailTemplates } from './mail.js';
 export {
   extractCodeBlocks,
   extractIfSingleOutermostCodeBlock,
   extractSections,
+  extractTaggedCodeBlock,
   parseMarkdownSections,
 } from './markdown.js';
 export { parseIsoDate } from './parseIsoDate.js';
@@ -38,6 +40,8 @@ export { sleep } from './sleep.js';
 export { getConnectionLevelSqlitePragmas, getPersistentSqlitePragmas } from './sqlite.js';
 export { escapeRegExp, quoteForShell, toCodeBlock, toTildeCodeBlock } from './text.js';
 export { TEST_WRITING_RULES } from './testingRules.js';
+export { createThrottledFetch } from './throttledFetch.js';
+export { getSafeRedirectPath } from './url.js';
 export { zenkakuAlphanumericalsToHankaku } from './zenkaku.js';
 
 export type { AppEnv } from './appEnv.js';
@@ -45,3 +49,5 @@ export type { RetryOptions } from './error.js';
 export type { ForeignCjkLanguage } from './foreignCjk.js';
 export type { CodeBlock, MarkdownSection } from './markdown.js';
 export type { TemplateSection } from './githubTemplates.js';
+export type { ThrottledFetchOptions } from './throttledFetch.js';
+export type { SafeRedirectPathOptions } from './url.js';

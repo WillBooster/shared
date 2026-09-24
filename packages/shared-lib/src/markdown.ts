@@ -54,6 +54,51 @@ export function extractIfSingleOutermostCodeBlock(text: string, languages?: read
   return block.code;
 }
 
+const WRAPPED_MARKDOWN_LANGUAGES = new Set(['', 'markdown', 'md']);
+
+/**
+ * Returns the trimmed contents of the first closed fenced code block (backticks or tildes) that follows a line holding
+ * only `<tagName>` in text such as an LLM response, e.g. `<answer>\n~~~\n42\n~~~`, or `undefined` when there is none.
+ * Only blank lines may separate the tag line from the opening fence. Mentions of the tag within prose lines and tag
+ * lines inside other fenced blocks (e.g. a format example) are skipped, but a whole-response `markdown`, `md`, or
+ * unlabeled wrapper is read inside, as `parseMarkdownSections` does.
+ */
+export function extractTaggedCodeBlock(text: string, tagName: string): string | undefined {
+  const tag = `<${tagName}>`;
+  const found = findTaggedCodeBlock(splitLines(text), tag);
+  if (found !== undefined) return found;
+  // Only a real wrapper hides every tag line from the scan above; a leading example block paired with the tagged
+  // block's closing fence merely looks like one, so its contents must not be read first.
+  const wrapper = findOutermostCodeBlock(text);
+  if (wrapper?.isWhole && WRAPPED_MARKDOWN_LANGUAGES.has(wrapper.language)) {
+    return findTaggedCodeBlock(splitLines(wrapper.code), tag);
+  }
+}
+
+function findTaggedCodeBlock(lines: readonly string[], tag: string): string | undefined {
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index] ?? '';
+    const enclosingFence = parseOpeningFence(line);
+    if (enclosingFence) {
+      index = findClosingFence(lines, index + 1, enclosingFence);
+      continue;
+    }
+    if (line.trim() !== tag) continue;
+    let fenceIndex = index + 1;
+    while (fenceIndex < lines.length && !lines[fenceIndex]?.trim()) fenceIndex++;
+    const fence = parseOpeningFence(lines[fenceIndex] ?? '');
+    if (!fence) continue;
+    const end = findClosingFence(lines, fenceIndex + 1, fence);
+    if (end < lines.length) {
+      return lines
+        .slice(fenceIndex + 1, end)
+        .map((contentLine) => stripIndent(contentLine, fence.indent))
+        .join('\n')
+        .trim();
+    }
+  }
+}
+
 export interface MarkdownSection {
   depth: number;
   /** The heading text with the closing `#` sequence and inline-code backticks removed. */
@@ -61,8 +106,6 @@ export interface MarkdownSection {
   /** The source text up to the next heading at the same or a shallower depth, trimmed; subsections are included. */
   content: string;
 }
-
-const WRAPPED_MARKDOWN_LANGUAGES = new Set(['', 'markdown', 'md']);
 
 /**
  * Extracts the content of the section headed by each of `names` from Markdown text such as an LLM response, keyed by
