@@ -8,6 +8,9 @@ export async function forEachConcurrently<T>(
   concurrency: number,
   action: (item: T) => Promise<void>
 ): Promise<void> {
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new RangeError(`concurrency must be a positive integer: ${concurrency}`);
+  }
   let nextIndex = 0;
   let failure: { error: unknown } | undefined;
   await Promise.all(
