@@ -1,15 +1,19 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 
-import { expect, test } from 'bun:test';
+import { afterEach, expect, test } from 'bun:test';
 
 import { createThrottledFetch } from '../../src/throttledFetch.js';
 
-test('createThrottledFetch spaces requests and holds queued ones until Retry-After elapses', async () => {
-  const arrivals: number[] = [];
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
+
+test('createThrottledFetch spaces request starts and holds queued ones until Retry-After elapses', async () => {
   const server = createServer((request, response) => {
-    arrivals.push(performance.now());
-    if (arrivals.length === 1) {
+    if (request.url === '/first') {
       response.writeHead(429, { 'retry-after': '1' });
       response.end('rate limited');
     } else {
@@ -21,6 +25,15 @@ test('createThrottledFetch spaces requests and holds queued ones until Retry-Aft
     const address = server.address();
     assert.ok(address !== null && typeof address === 'object');
     const baseUrl = `http://127.0.0.1:${address.port}`;
+    // Record when each request starts, which is what the interval applies to; server arrival adds scheduling delay.
+    const starts: number[] = [];
+    globalThis.fetch = Object.assign(
+      async (...args: Parameters<typeof fetch>) => {
+        starts.push(performance.now());
+        return originalFetch(...args);
+      },
+      { preconnect: originalFetch.preconnect }
+    );
     const throttledFetch = createThrottledFetch({ intervalMilliseconds: 300, rateLimitFallbackMilliseconds: 60_000 });
 
     const responses = await Promise.all([
@@ -35,8 +48,9 @@ test('createThrottledFetch spaces requests and holds queued ones until Retry-Aft
       '/second',
       '/third',
     ]);
-    expect(arrivals[1]! - arrivals[0]!).toBeGreaterThanOrEqual(950);
-    expect(arrivals[2]! - arrivals[1]!).toBeGreaterThanOrEqual(290);
+    expect(starts).toHaveLength(3);
+    expect(starts[1]! - starts[0]!).toBeGreaterThanOrEqual(1000);
+    expect(starts[2]! - starts[1]!).toBeGreaterThanOrEqual(300);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
