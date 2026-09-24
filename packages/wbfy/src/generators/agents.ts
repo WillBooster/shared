@@ -15,19 +15,27 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     if (!rootConfig.isRoot) return;
 
     const extraContent = await readAgentsExtraContent(rootConfig.dirPath);
+    const deployScriptResults = await Promise.all(
+      allConfigs.map(async (config) => {
+        const scripts = config.packageJson?.scripts ?? {};
+        const deployScript = scripts['deploy'];
+        return typeof deployScript === 'string' && (await invokesWbDeploy(deployScript, new Set(Object.keys(scripts))));
+      })
+    );
+    const usesWbDeploy = deployScriptResults.includes(true);
 
     for (const [fileName, toolName] of [
       ['AGENTS.md', 'Codex CLI'],
       ['CLAUDE.md', 'Claude Code'],
       ['GEMINI.md', 'Gemini CLI'],
     ] as const) {
-      const content = generateAgentInstruction(rootConfig, allConfigs, toolName, extraContent);
+      const content = generateAgentInstruction(rootConfig, allConfigs, toolName, usesWbDeploy, extraContent);
       const filePath = path.resolve(rootConfig.dirPath, fileName);
       await promisePool.run(() => fsUtil.generateFile(filePath, content));
     }
 
     const cursorRulesPath = path.resolve(rootConfig.dirPath, '.cursor/rules/general.mdc');
-    const cursorRulesContent = generateCursorGeneralMdcContent(rootConfig, allConfigs, extraContent);
+    const cursorRulesContent = generateCursorGeneralMdcContent(rootConfig, allConfigs, usesWbDeploy, extraContent);
     await promisePool.run(() => fsUtil.generateFile(cursorRulesPath, cursorRulesContent));
   });
 }
@@ -50,10 +58,11 @@ export async function readAgentsExtraContent(rootDirPath: string): Promise<strin
 function generateCursorGeneralMdcContent(
   config: PackageConfig,
   allConfigs: PackageConfig[],
+  usesWbDeploy: boolean,
   extraContent?: string
 ): string {
   const frontmatter = `---\ndescription: General Coding Rules\nglobs:\nalwaysApply: true\n---`;
-  const body = generateAgentInstruction(config, allConfigs, 'Cursor', extraContent);
+  const body = generateAgentInstruction(config, allConfigs, 'Cursor', usesWbDeploy, extraContent);
   return `${frontmatter}\n\n${body}`;
 }
 
@@ -61,6 +70,7 @@ function generateAgentInstruction(
   rootConfig: PackageConfig,
   allConfigs: PackageConfig[],
   toolName: string,
+  usesWbDeploy: boolean,
   extraContent?: string
 ): string {
   const packageManager = 'bun';
@@ -89,13 +99,6 @@ function generateAgentInstruction(
   // it after a file that never appears — and away from the `Env` it should be editing.
   const ownsGeneratedWorkerTypes = allConfigs.some((config) => generatesWorkerTypes(config));
   const hasDeployWorkflow = hasCloudflareDeployWorkflow(path.resolve(rootConfig.dirPath, '.github/workflows'));
-  const usesWbDeploy = allConfigs.some((config) => {
-    const deployScript = config.packageJson?.scripts?.['deploy'];
-    return (
-      typeof deployScript === 'string' &&
-      invokesWbDeploy(deployScript, new Set(Object.keys(config.packageJson?.scripts ?? {})))
-    );
-  });
   // Independent facts stay separate sentences: the workflow's own deploy mechanism is not
   // inspected, so the wb-deploy clause must not claim the workflow invokes it.
   const cloudflareInstruction = ownsWranglerConfig

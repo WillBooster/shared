@@ -43,6 +43,7 @@ test('describes wb deploy only when the package script invokes it', async () => 
     ['bun x wb deploy'],
     ['cd packages/api && wb deploy'],
     ['pnpm --filter api exec wb deploy'],
+    ['if [ -n "$CI" ]; then bun wb deploy; fi'],
   ];
   const nonInvokingScripts: [string, Record<string, string>?][] = [
     ['echo "wb deploy"'],
@@ -56,6 +57,7 @@ test('describes wb deploy only when the package script invokes it', async () => 
     ['bun dlx wb deploy'],
     ['bun wb deploy', { wb: 'node scripts/wb.js' }],
     ['yarn dlx wb deploy', { dlx: 'echo shadowed' }],
+    ['unused() { wb deploy; }; echo ready'],
   ];
 
   try {
