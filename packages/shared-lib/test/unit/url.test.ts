@@ -2,19 +2,15 @@ import { expect, test } from 'bun:test';
 
 import { getSafeRedirectPath } from '../../src/url.js';
 
-test('getSafeRedirectPath keeps paths on the same origin', () => {
-  expect(getSafeRedirectPath('/practice/a?b=c#d')).toBe('/practice/a?b=c#d');
-  expect(getSafeRedirectPath([' /first ', '/second'])).toBe('/first');
-  expect(
-    getSafeRedirectPath('https://example.com/ja/projects?x=1', { origin: 'https://example.com', fallback: '/ja' })
-  ).toBe('/ja/projects?x=1');
-});
+const origin = 'https://example.com';
 
-test('getSafeRedirectPath rejects every absolute URL without an origin', () => {
-  for (const value of ['https://redirect.invalid/a', '//redirect.invalid/a', String.raw`/\redirect.invalid/a`]) {
-    expect(getSafeRedirectPath(value, { fallback: '/home' })).toBe('/home');
-  }
-  expect(getSafeRedirectPath('settings?a=1', { fallback: '/home' })).toBe('/settings?a=1');
+test('getSafeRedirectPath keeps paths on the same origin', () => {
+  expect(getSafeRedirectPath('/practice/a?b=c#d', { origin })).toBe('/practice/a?b=c#d');
+  expect(getSafeRedirectPath('settings', { origin })).toBe('/settings');
+  expect(getSafeRedirectPath([' /first ', '/second'], { origin })).toBe('/first');
+  expect(getSafeRedirectPath('https://example.com/ja/projects?x=1', { origin, fallback: '/ja' })).toBe(
+    '/ja/projects?x=1'
+  );
 });
 
 test('getSafeRedirectPath rejects values that browsers resolve to another origin', () => {
@@ -34,6 +30,10 @@ test('getSafeRedirectPath rejects values that browsers resolve to another origin
     null,
     undefined,
   ]) {
-    expect(getSafeRedirectPath(value, { origin: 'https://example.com', fallback: '/home' })).toBe('/home');
+    expect(getSafeRedirectPath(value, { origin, fallback: '/home' })).toBe('/home');
   }
+});
+
+test('getSafeRedirectPath throws for an unparsable origin instead of rejecting every value', () => {
+  expect(() => getSafeRedirectPath('/a', { origin: 'example.com' })).toThrow(TypeError);
 });
