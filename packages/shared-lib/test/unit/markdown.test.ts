@@ -187,4 +187,5 @@ test('extractTaggedCodeBlock reads the closed block right after the tag and skip
     extractTaggedCodeBlock('~~~markdown\n<answer>\n```\nexample\n```\n~~~\n<answer>\n```\nreal\n```', 'answer')
   ).toBe('real');
   expect(extractTaggedCodeBlock('````markdown\n<answer>\n```\nreal\n```\n````', 'answer')).toBe('real');
+  expect(extractTaggedCodeBlock('```\nexample\n```\n\n<answer>\n```\n42\n```', 'answer')).toBe('42');
 });

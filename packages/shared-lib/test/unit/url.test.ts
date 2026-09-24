@@ -10,6 +10,11 @@ test('getSafeRedirectPath keeps paths on the same origin', () => {
   ).toBe('/ja/projects?x=1');
 });
 
+test('getSafeRedirectPath rejects every absolute URL without an origin', () => {
+  expect(getSafeRedirectPath('https://redirect.invalid/a', { fallback: '/home' })).toBe('/home');
+  expect(getSafeRedirectPath('settings?a=1', { fallback: '/home' })).toBe('/settings?a=1');
+});
+
 test('getSafeRedirectPath rejects values that browsers resolve to another origin', () => {
   for (const value of [
     'https://evil.example',
