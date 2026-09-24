@@ -3,20 +3,22 @@ import { expect, test } from 'bun:test';
 import { forEachConcurrently } from '../../src/concurrency.js';
 import { sleep } from '../../src/sleep.js';
 
-test('forEachConcurrently keeps at most the given number of actions in flight and visits every item', async () => {
+test('forEachConcurrently keeps at most the given number of actions in flight and does not wait for a slow item', async () => {
   let inFlight = 0;
   let maxInFlight = 0;
-  const visited: number[] = [];
-  await forEachConcurrently([30, 1, 1, 1, 1, 1], 2, async (milliseconds) => {
+  const slowGate = Promise.withResolvers<void>();
+  const visited: string[] = [];
+  // The slow item is released only by the last fast one, so this settles only if the other worker drains the rest.
+  await forEachConcurrently(['slow', 'a', 'b', 'c', 'd'], 2, async (item) => {
     inFlight++;
     maxInFlight = Math.max(maxInFlight, inFlight);
-    await sleep(milliseconds);
-    visited.push(milliseconds);
+    await (item === 'slow' ? slowGate.promise : Promise.resolve());
+    visited.push(item);
+    if (item === 'd') slowGate.resolve();
     inFlight--;
   });
   expect(maxInFlight).toBe(2);
-  // The slow first item does not block the others, which all finish on the second worker before it.
-  expect(visited).toEqual([1, 1, 1, 1, 1, 30]);
+  expect(visited).toEqual(['a', 'b', 'c', 'd', 'slow']);
 });
 
 test('forEachConcurrently rejects with the first error and starts no further items', async () => {
