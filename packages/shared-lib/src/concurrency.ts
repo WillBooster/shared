@@ -4,17 +4,17 @@
  * started, and the returned promise rejects with the first error once it is known.
  */
 export async function forEachConcurrently<T>(
-  items: Iterable<T>,
+  items: readonly T[],
   concurrency: number,
   action: (item: T) => Promise<void>
 ): Promise<void> {
-  const iterator = items[Symbol.iterator]();
+  let nextIndex = 0;
   let failed = false;
   await Promise.all(
     Array.from({ length: concurrency }, async () => {
-      for (let next = iterator.next(); !failed && !next.done; next = iterator.next()) {
+      while (!failed && nextIndex < items.length) {
         try {
-          await action(next.value);
+          await action(items[nextIndex++] as T);
         } catch (error) {
           failed = true;
           throw error;
