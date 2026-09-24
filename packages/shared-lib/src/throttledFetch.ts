@@ -10,7 +10,8 @@ export interface ThrottledFetchOptions {
 /**
  * Creates a `fetch` for a rate-limited API that starts requests in call order, at least `intervalMilliseconds` apart.
  * A 429 response holds every later request until its `Retry-After` (delay seconds or an HTTP date) elapses, including
- * requests already waiting; the 429 response itself is returned to the caller, not retried.
+ * requests already waiting; the 429 response itself is returned to the caller, not retried. An abort signal takes effect
+ * only once its request starts, not while it waits in the queue.
  */
 export function createThrottledFetch({
   intervalMilliseconds,
