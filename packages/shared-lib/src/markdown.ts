@@ -62,11 +62,20 @@ export function extractIfSingleOutermostCodeBlock(text: string, languages?: read
 export function extractTaggedCodeBlock(text: string, tagName: string): string | undefined {
   const tag = `<${tagName}>`;
   for (let index = text.indexOf(tag); index !== -1; index = text.indexOf(tag, index + tag.length)) {
-    const lines = splitLines(text.slice(index + tag.length).trimStart());
+    const rest = text.slice(index + tag.length);
+    // Keep the indentation of a fence on its own line, which is stripped from the contents.
+    const lastLeadingBreak = (/^\s*/u.exec(rest)?.[0] ?? '').lastIndexOf('\n');
+    const lines = splitLines(lastLeadingBreak === -1 ? rest.trimStart() : rest.slice(lastLeadingBreak + 1));
     const fence = parseOpeningFence(lines[0] ?? '');
     if (!fence) continue;
     const end = findClosingFence(lines, 1, fence);
-    if (end < lines.length) return lines.slice(1, end).join('\n').trim();
+    if (end < lines.length) {
+      return lines
+        .slice(1, end)
+        .map((line) => stripIndent(line, fence.indent))
+        .join('\n')
+        .trim();
+    }
   }
 }
 

@@ -176,6 +176,9 @@ test('extractTaggedCodeBlock reads the closed block right after the tag and skip
     'Write <problem> and <answer> blocks.\n\n<problem>\n~~~markdown\n# Q\n```js\nx\n```\n~~~\n\n<answer> ```\n 42 \n```';
   expect(extractTaggedCodeBlock(response, 'problem')).toBe('# Q\n```js\nx\n```');
   expect(extractTaggedCodeBlock(response, 'answer')).toBe('42');
+  expect(extractTaggedCodeBlock('<answer>\n\n  ```\n  if (a) {\n    b();\n  }\n  ```', 'answer')).toBe(
+    'if (a) {\n  b();\n}'
+  );
   expect(extractTaggedCodeBlock('<answer>\n~~~\n42', 'answer')).toBeUndefined();
   expect(extractTaggedCodeBlock('<answer>\n42', 'answer')).toBeUndefined();
 });
