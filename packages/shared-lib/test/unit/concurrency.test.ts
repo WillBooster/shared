@@ -28,3 +28,14 @@ test('forEachConcurrently rejects with the first error and starts no further ite
   expect(String(await promise.catch((error: unknown) => error))).toBe('Error: failed at 2');
   expect(started).toEqual([1, 2]);
 });
+
+test('forEachConcurrently rejects only after every started action has settled', async () => {
+  let settled = false;
+  const promise = forEachConcurrently([1, 2], 2, async (item) => {
+    if (item === 2) throw new Error('failed at 2');
+    await sleep(20);
+    settled = true;
+  });
+  expect(String(await promise.catch((error: unknown) => error))).toBe('Error: failed at 2');
+  expect(settled).toBe(true);
+});
