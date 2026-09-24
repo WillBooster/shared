@@ -3,13 +3,13 @@ import { sleep } from './sleep.js';
 export interface ThrottledFetchOptions {
   /** The minimum interval between the starts of consecutive requests. */
   intervalMilliseconds: number;
-  /** How long to hold later requests after a 429 response without a valid `Retry-After`. */
+  /** How long to hold later requests after a 429 response without `Retry-After` in delay seconds or IMF-fixdate. */
   rateLimitFallbackMilliseconds: number;
 }
 
 /**
  * Creates a `fetch` for a rate-limited API that starts requests in call order, at least `intervalMilliseconds` apart.
- * A 429 response holds every later request until its `Retry-After` (delay seconds or an HTTP date) elapses, including
+ * A 429 response holds every later request until its `Retry-After` (delay seconds or an IMF-fixdate) elapses, including
  * requests already waiting; the 429 response itself is returned to the caller, not retried. An abort signal takes effect
  * only once its request starts, not while it waits in the queue.
  */
@@ -46,7 +46,7 @@ export function createThrottledFetch({
 // `Date.parse` alone would also accept malformed values such as `1.5`.
 const IMF_FIXDATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/u;
 
-/** Parses `Retry-After` in either form RFC 9110 allows: delay seconds or an HTTP date. */
+/** Parses `Retry-After` in delay seconds or IMF-fixdate; the obsolete RFC 850 and asctime dates yield `undefined`. */
 function parseRetryAfterMilliseconds(value: string | null): number | undefined {
   const trimmed = value?.trim() ?? '';
   const milliseconds = /^\d+$/u.test(trimmed)
