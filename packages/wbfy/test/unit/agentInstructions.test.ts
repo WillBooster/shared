@@ -57,6 +57,7 @@ test('describes wb deploy only when the package script invokes it', async () => 
     ['bun dlx wb deploy'],
     ['bun wb deploy', { wb: 'node scripts/wb.js' }],
     ['yarn dlx wb deploy', { dlx: 'echo shadowed' }],
+    ['unused() { wb deploy; }; echo ready'],
   ];
 
   try {

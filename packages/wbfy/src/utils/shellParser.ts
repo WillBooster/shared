@@ -8,7 +8,7 @@ let parserPromise: Promise<Parser> | undefined;
 /**
  * Returns the unquoted words (command name first) of every simple command in a Bash script, including those nested
  * in subshells, compound statements, and command substitutions, or undefined when the script does not parse.
- * Heredoc bodies and comments are not commands, so they never contribute words.
+ * Heredoc bodies and comments are not commands, and function bodies are skipped because they run only when called.
  */
 export async function parseShellCommands(script: string): Promise<string[][] | undefined> {
   parserPromise ??= createParser();
@@ -19,12 +19,19 @@ export async function parseShellCommands(script: string): Promise<string[][] | u
     if (tree.rootNode.hasError) return;
     return tree.rootNode.descendantsOfType('command').flatMap((command) => {
       const name = command?.childForFieldName('name');
-      if (!command || !name) return [];
+      if (!command || !name || isInFunctionBody(command)) return [];
       return [[name, ...command.childrenForFieldName('argument')].map((word) => unquoteWord(word))];
     });
   } finally {
     tree.delete();
   }
+}
+
+function isInFunctionBody(node: Node): boolean {
+  for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent) {
+    if (ancestor.type === 'function_definition') return true;
+  }
+  return false;
 }
 
 async function createParser(): Promise<Parser> {
