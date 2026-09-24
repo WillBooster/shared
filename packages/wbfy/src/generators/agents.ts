@@ -17,11 +17,9 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     const extraContent = await readAgentsExtraContent(rootConfig.dirPath);
     const deployScriptResults = await Promise.all(
       allConfigs.map(async (config) => {
-        const deployScript = config.packageJson?.scripts?.['deploy'];
-        return (
-          typeof deployScript === 'string' &&
-          (await invokesWbDeploy(deployScript, new Set(Object.keys(config.packageJson?.scripts ?? {}))))
-        );
+        const scripts = config.packageJson?.scripts ?? {};
+        const deployScript = scripts['deploy'];
+        return typeof deployScript === 'string' && (await invokesWbDeploy(deployScript, new Set(Object.keys(scripts))));
       })
     );
     const usesWbDeploy = deployScriptResults.includes(true);

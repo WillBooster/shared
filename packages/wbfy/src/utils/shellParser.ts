@@ -19,8 +19,8 @@ export async function parseShellCommands(script: string): Promise<string[][] | u
   try {
     if (tree.rootNode.hasError) return;
     return tree.rootNode.descendantsOfType('command').flatMap((command) => {
-      const name = command?.childForFieldName('name');
-      if (!command || !name || isInFunctionBody(command)) return [];
+      const name = command.childForFieldName('name');
+      if (!name || isInFunctionBody(command)) return [];
       return [[name, ...command.childrenForFieldName('argument')].map((word) => unquoteWord(word))];
     });
   } finally {
