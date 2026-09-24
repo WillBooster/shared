@@ -8,7 +8,8 @@ let parserPromise: Promise<Parser> | undefined;
 /**
  * Returns the unquoted words (command name first) of every simple command in a Bash script, including those nested
  * in subshells, compound statements, and command substitutions, or undefined when the script does not parse.
- * Heredoc bodies and comments are not commands, and function bodies are skipped because they run only when called.
+ * Comments and literal heredoc text are not commands (command substitutions in an unquoted heredoc are), and function
+ * bodies are skipped because they run only when called.
  */
 export async function parseShellCommands(script: string): Promise<string[][] | undefined> {
   parserPromise ??= createParser();
