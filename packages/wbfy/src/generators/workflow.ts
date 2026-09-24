@@ -16,6 +16,7 @@ import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
 import { repoResolvesPrivatePackages } from '../utils/privatePackages.js';
 import { promisePool } from '../utils/promisePool.js';
+import { parseShellCommands } from '../utils/shellParser.js';
 import { assertPrivateWorkflowRunners } from './workflowRunnerPolicy.js';
 
 interface Workflow {
@@ -507,170 +508,16 @@ function skipRunnerOptions(tokens: string[], startIndex: number): number {
 }
 
 /**
- * Tokenize a shell command line into command segments, each a list of tokens with quotes removed.
- * A new segment starts at an unquoted `&&`/`||`/`;`/`|`/`&`; an unquoted `#` starts a comment to
- * end of line; a backslash escapes the next character (so `\;` is a literal, not a separator);
- * grouping parentheses `(`/`)` are token separators, so `(wb deploy)` tokenizes as `wb deploy`.
- * Segments/tokens model command structure precisely enough that quoted operators, escaped
- * operators, comments, and subshell groups neither fabricate nor hide a `wb deploy` invocation.
+ * Whether a deploy script invokes `wb … deploy` at command position. Package runners and global yargs options
+ * (with their value tokens) may precede the deploy command.
  */
-function tokenizeShellCommand(script: string): { segments: string[][]; sawHeredoc: boolean } {
-  const segments: string[][] = [];
-  let tokens: string[] = [];
-  let current = '';
-  let inToken = false;
-  let quote: string | undefined;
-  // Whether the script uses any heredoc. Faithfully classifying which body lines are data (the
-  // delimiter word can be quoted/backslash-escaped, `<<-` strips leading tabs, terminators match
-  // exactly) is more than this parser models, so a heredoc anywhere makes detection return false.
-  let sawHeredoc = false;
-  // Heredoc delimiters whose bodies begin at the NEXT newline: `cat <<A <<B` queues A then B, and
-  // the commands AFTER the `<<` header on the same line still execute, so the header is recorded
-  // here and the bodies are skipped only when the line's newline is reached.
-  let pendingHeredocDelimiters: string[] = [];
-  const skipHeredocBodies = (fromIndex: number): number => {
-    let cursor = fromIndex;
-    for (const delimiter of pendingHeredocDelimiters) {
-      while (cursor < script.length) {
-        const lineStart = cursor + 1;
-        let lineEnd = lineStart;
-        while (lineEnd < script.length && script[lineEnd] !== '\n') lineEnd++;
-        cursor = lineEnd;
-        if (script.slice(lineStart, lineEnd).trim() === delimiter) break;
-        if (lineEnd >= script.length) break;
-      }
-    }
-    pendingHeredocDelimiters = [];
-    return cursor;
-  };
-  const endToken = (): void => {
-    if (inToken) tokens.push(current);
-    current = '';
-    inToken = false;
-  };
-  const endSegment = (): void => {
-    endToken();
-    segments.push(tokens);
-    tokens = [];
-  };
-  for (let index = 0; index < script.length; index++) {
-    const character = script[index] ?? '';
-    if (quote) {
-      if (character === '\\' && quote === '"') {
-        // Inside double quotes, backslash-newline is still a line continuation (both removed);
-        // any other escaped character contributes literally.
-        if (script[index + 1] === '\n') index++;
-        else current += script[++index] ?? '';
-        continue;
-      }
-      if (character === quote) quote = undefined;
-      else current += character;
-      continue;
-    }
-    if (character === '\\') {
-      // Backslash-newline is a line continuation: the shell removes both, joining the lines
-      // without introducing a token boundary. Any other escaped character is a literal.
-      if (script[index + 1] === '\n') {
-        index++;
-        continue;
-      }
-      current += script[++index] ?? '';
-      inToken = true;
-      continue;
-    }
-    if (character === "'" || character === '"') {
-      quote = character;
-      inToken = true;
-      continue;
-    }
-    // A `<<`/`<<-` heredoc redirection: its body lines (up to the delimiter line) are DATA, not
-    // commands, so `cat <<'EOF'\nwb deploy\nEOF` must not read `wb deploy` as an invocation. Since
-    // the caller declines on ANY heredoc, flag it the instant `<<` appears — before parsing the
-    // delimiter word — so an exotic delimiter (`<<+`) the word scanner cannot read still declines.
-    if (character === '<' && script[index + 1] === '<') {
-      sawHeredoc = true;
-      let cursor = index + 2;
-      if (script[cursor] === '-') cursor++;
-      while (/[ \t]/u.test(script[cursor] ?? '')) cursor++;
-      let delimiter = '';
-      // The delimiter word may be quoted (`<<'EOF'`) or backslash-escaped (`<<\EOF`); either form
-      // just disables body expansion, so collect the bare word. Missing the escaped form would drop
-      // `sawHeredoc` and read the heredoc body as commands.
-      let delimiterQuote: string | undefined;
-      while (cursor < script.length) {
-        const delimiterChar = script[cursor] ?? '';
-        if (delimiterQuote) {
-          if (delimiterChar === delimiterQuote) delimiterQuote = undefined;
-          else delimiter += delimiterChar;
-        } else if (delimiterChar === '\\') {
-          // A backslash quotes the next character into the delimiter word (`<<\EOF` → `EOF`).
-          cursor++;
-          delimiter += script[cursor] ?? '';
-        } else if (delimiterChar === "'" || delimiterChar === '"') {
-          delimiterQuote = delimiterChar;
-        } else if (/[\w.-]/u.test(delimiterChar)) {
-          delimiter += delimiterChar;
-        } else {
-          break;
-        }
-        cursor++;
-      }
-      if (delimiter) {
-        // The `<<delim` header is a redirection (not a token); record the delimiter and keep
-        // parsing the rest of this line — its body is skipped when the newline is reached.
-        endToken();
-        pendingHeredocDelimiters.push(delimiter);
-        index = cursor - 1;
-        continue;
-      }
-    }
-    if (character === '#' && !inToken) {
-      // Comment runs to end of line; end the current command segment and let the loop resume at
-      // the newline so the next line is parsed as its own segment.
-      endSegment();
-      while (index + 1 < script.length && script[index + 1] !== '\n') index++;
-      continue;
-    }
-    if (character === '&' || character === '|' || character === ';' || character === '\n') {
-      endSegment();
-      if ((character === '&' || character === '|') && script[index + 1] === character) index++;
-      // A newline that closes a heredoc header line consumes the queued bodies before the next
-      // command.
-      if (character === '\n' && pendingHeredocDelimiters.length > 0) index = skipHeredocBodies(index);
-      continue;
-    }
-    if (character === '(' || character === ')') {
-      endToken();
-      continue;
-    }
-    if (/\s/u.test(character)) {
-      endToken();
-      continue;
-    }
-    current += character;
-    inToken = true;
-  }
-  endSegment();
-  return { segments, sawHeredoc };
-}
-
-/**
- * Whether a deploy script invokes `wb … deploy` at command position. Env assignments, package
- * runners, and global yargs options (with their value tokens) may precede the deploy command;
- * shell quoting, escaping, comments, and grouping are honored.
- */
-export function invokesWbDeploy(deployScript: string, scriptNames: ReadonlySet<string>): boolean {
-  const { segments, sawHeredoc } = tokenizeShellCommand(deployScript);
-  // A heredoc makes body-vs-command classification unreliable (see tokenizeShellCommand).
-  if (sawHeredoc) return false;
-  for (const tokens of segments) {
+export async function invokesWbDeploy(deployScript: string, scriptNames: ReadonlySet<string>): Promise<boolean> {
+  for (const tokens of (await parseShellCommands(deployScript)) ?? []) {
     let index = 0;
-    while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
     // Leading launchers run the following command: `env` (with options + KEY=value assignments)
-    // and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options). Command-position shell
-    // reserved words and other launchers (`if`/`then`/`for`/`time`/`exec`/`!`/brace groups, …) are
-    // NOT modeled: they leave a non-`wb` first token, so the segment simply does not match. This is
-    // a deliberate false-negative for generated guidance.
+    // and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options). Other launchers (`time`,
+    // `exec`, …) are NOT modeled: they leave a non-`wb` first token, so the command simply does
+    // not match. This is a deliberate false-negative for generated guidance.
     if (tokens[index] === 'env') {
       index++;
       while (index < tokens.length) {
