@@ -36,18 +36,13 @@ test('createThrottledFetch spaces request starts and holds queued ones until Ret
     );
     const throttledFetch = createThrottledFetch({ intervalMilliseconds: 300, rateLimitFallbackMilliseconds: 60_000 });
 
-    const responses = await Promise.all([
-      throttledFetch(`${baseUrl}/first`),
-      throttledFetch(`${baseUrl}/second`),
-      throttledFetch(`${baseUrl}/third`),
-    ]);
+    // Only requests started after the 429 arrives can be held, so the others are queued once it is received.
+    const rateLimited = await throttledFetch(`${baseUrl}/first`);
+    const responses = await Promise.all([throttledFetch(`${baseUrl}/second`), throttledFetch(`${baseUrl}/third`)]);
 
-    expect(responses[0]?.status).toBe(429);
-    expect(await Promise.all(responses.map((response) => response.text()))).toEqual([
-      'rate limited',
-      '/second',
-      '/third',
-    ]);
+    expect(rateLimited.status).toBe(429);
+    expect(await rateLimited.text()).toBe('rate limited');
+    expect(await Promise.all(responses.map((response) => response.text()))).toEqual(['/second', '/third']);
     expect(starts).toHaveLength(3);
     expect(starts[1]! - starts[0]!).toBeGreaterThanOrEqual(1000);
     expect(starts[2]! - starts[1]!).toBeGreaterThanOrEqual(300);
