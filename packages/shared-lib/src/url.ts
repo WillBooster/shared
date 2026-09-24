@@ -33,7 +33,10 @@ export function getSafeRedirectPath(
   } catch {
     return fallback;
   }
+  // A `blob:` URL shares its inner URL's origin but has that URL as its pathname, hence the protocol check.
   // Dot segments can leave a pathname such as `//evil.example`, which is protocol-relative once returned as a path.
-  if (url.origin !== baseUrl.origin || url.pathname.startsWith('//')) return fallback;
+  if (url.protocol !== baseUrl.protocol || url.origin !== baseUrl.origin || url.pathname.startsWith('//')) {
+    return fallback;
+  }
   return `${url.pathname}${url.search}${url.hash}`;
 }

@@ -24,6 +24,7 @@ test('getSafeRedirectPath rejects values that browsers resolve to another origin
     '/\n/evil.example',
     '/.//evil.example',
     'javascript:alert(1)',
+    'blob:https://example.com/id',
     'https://example.com.evil.example/',
     '',
     [],
