@@ -39,3 +39,39 @@ test('createThrottledFetch spaces request starts and extends the wait of queued 
   expect(starts.get('/second')! - rateLimitedAt).toBeGreaterThanOrEqual(2000);
   expect(starts.get('/third')! - starts.get('/second')!).toBeGreaterThanOrEqual(1000);
 });
+
+test('createThrottledFetch holds for Retry-After seconds or IMF-fixdate and falls back for other values', async () => {
+  const fallbackMilliseconds = 300;
+  // Resolves the 429 immediately and returns how long the next request waited after it.
+  const measureHold = async (retryAfter: string | undefined): Promise<number> => {
+    let rateLimitedAt = 0;
+    globalThis.fetch = Object.assign(
+      async (input: Parameters<typeof fetch>[0]) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (url !== '/first') return new Response(String(performance.now()));
+        rateLimitedAt = performance.now();
+        return new Response('', {
+          status: 429,
+          headers: retryAfter === undefined ? {} : { 'retry-after': retryAfter },
+        });
+      },
+      { preconnect: originalFetch.preconnect }
+    );
+    const throttledFetch = createThrottledFetch({
+      intervalMilliseconds: 0,
+      rateLimitFallbackMilliseconds: fallbackMilliseconds,
+    });
+    await throttledFetch('/first');
+    const next = await throttledFetch('/next');
+    return Number(await next.text()) - rateLimitedAt;
+  };
+
+  expect(await measureHold('0')).toBeLessThan(fallbackMilliseconds);
+  // HTTP dates have whole-second precision, so a date 2 s ahead holds for more than 1 s.
+  expect(await measureHold(new Date(Date.now() + 2000).toUTCString())).toBeGreaterThanOrEqual(1000);
+  for (const invalid of ['1.5', 'soon', undefined]) {
+    const hold = await measureHold(invalid);
+    expect(hold).toBeGreaterThanOrEqual(fallbackMilliseconds);
+    expect(hold).toBeLessThan(1000);
+  }
+});
