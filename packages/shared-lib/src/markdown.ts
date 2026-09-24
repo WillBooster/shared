@@ -65,13 +65,14 @@ const WRAPPED_MARKDOWN_LANGUAGES = new Set(['', 'markdown', 'md']);
  */
 export function extractTaggedCodeBlock(text: string, tagName: string): string | undefined {
   const tag = `<${tagName}>`;
+  const found = findTaggedCodeBlock(splitLines(text), tag);
+  if (found !== undefined) return found;
+  // Only a real wrapper hides every tag line from the scan above; a leading example block paired with the tagged
+  // block's closing fence merely looks like one, so its contents must not be read first.
   const wrapper = findOutermostCodeBlock(text);
-  // A leading example block and the tagged block can look like a whole-response wrapper, so fall back to the text.
-  const wrapped =
-    wrapper?.isWhole && WRAPPED_MARKDOWN_LANGUAGES.has(wrapper.language)
-      ? findTaggedCodeBlock(splitLines(wrapper.code), tag)
-      : undefined;
-  return wrapped ?? findTaggedCodeBlock(splitLines(text), tag);
+  if (wrapper?.isWhole && WRAPPED_MARKDOWN_LANGUAGES.has(wrapper.language)) {
+    return findTaggedCodeBlock(splitLines(wrapper.code), tag);
+  }
 }
 
 function findTaggedCodeBlock(lines: readonly string[], tag: string): string | undefined {
