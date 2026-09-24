@@ -1,5 +1,8 @@
 import { sleep } from './sleep.js';
 
+// `setTimeout` fires after 1 ms for longer delays, which would turn a long `Retry-After` hold into a busy loop.
+const MAX_TIMER_MILLISECONDS = 2_147_483_647;
+
 export interface ThrottledFetchOptions {
   /** The minimum interval between the starts of consecutive requests. */
   intervalMilliseconds: number;
@@ -26,7 +29,7 @@ export function createThrottledFetch({
       await previousAdmission;
       // A response to an earlier request can push `nextRequestAt` back while this request sleeps.
       while (nextRequestAt > performance.now()) {
-        await sleep(nextRequestAt - performance.now());
+        await sleep(Math.min(nextRequestAt - performance.now(), MAX_TIMER_MILLISECONDS));
       }
       nextRequestAt = performance.now() + intervalMilliseconds;
     })();

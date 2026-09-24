@@ -1,7 +1,10 @@
 export interface SafeRedirectPathOptions {
   /** Returned when `value` does not point to a page on `origin`. */
   fallback?: string;
-  /** The app's own origin, e.g. `https://example.com`; absolute URLs on it are accepted and reduced to their paths. */
+  /**
+   * The app's own origin, e.g. `https://example.com`; absolute URLs on it are accepted and reduced to their paths.
+   * When omitted, every absolute URL is rejected. An unparsable origin throws a `TypeError`.
+   */
   origin?: string;
 }
 
@@ -18,16 +21,18 @@ export function getSafeRedirectPath(
   value: string | readonly string[] | null | undefined,
   { fallback = '/', origin = PLACEHOLDER_ORIGIN }: SafeRedirectPathOptions = {}
 ): string {
+  // Parsed outside the per-value `try` so that a misconfigured origin fails loudly instead of rejecting every value.
+  const baseUrl = new URL(origin);
   const rawValue = (typeof value === 'string' ? value : value?.[0])?.trim();
   if (!rawValue) return fallback;
 
   let url: URL;
   try {
-    url = new URL(rawValue, origin);
+    url = new URL(rawValue, baseUrl);
   } catch {
     return fallback;
   }
   // Dot segments can leave a pathname such as `//evil.example`, which is protocol-relative once returned as a path.
-  if (url.origin !== new URL(origin).origin || url.pathname.startsWith('//')) return fallback;
+  if (url.origin !== baseUrl.origin || url.pathname.startsWith('//')) return fallback;
   return `${url.pathname}${url.search}${url.hash}`;
 }

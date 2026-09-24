@@ -7,7 +7,7 @@
 export async function forEachConcurrently<T>(
   items: readonly T[],
   concurrency: number,
-  action: (item: T) => Promise<void>
+  action: (item: T) => Promise<unknown>
 ): Promise<void> {
   if (!Number.isInteger(concurrency) || concurrency < 1) {
     throw new RangeError(`concurrency must be a positive integer: ${concurrency}`);
