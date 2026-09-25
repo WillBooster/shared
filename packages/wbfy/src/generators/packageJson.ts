@@ -761,7 +761,9 @@ async function normalizePublishedConfigPackageMetadata(
   // NodeNext resolves a relative `./config.mjs` import to `config.d.mts`, not
   // the package-level `types` field. Keep the published config importable from
   // package-local TypeScript linter settings.
-  await promisePool.run(() => fsUtil.generateFile(path.resolve(config.dirPath, 'config.d.mts'), configDmtsContent));
+  await promisePool.runAndWaitForReturnValue(() =>
+    fsUtil.generateFile(path.resolve(config.dirPath, 'config.d.mts'), configDmtsContent)
+  );
 }
 
 const configDmtsContent = `export { default } from './config.js';

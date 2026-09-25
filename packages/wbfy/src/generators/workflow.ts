@@ -15,7 +15,7 @@ import type { PackageConfig } from '../packageConfig.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
 import { repoResolvesPrivatePackages } from '../utils/privatePackages.js';
-import { promisePool } from '../utils/promisePool.js';
+import { runAllInPool } from '../utils/promisePool.js';
 import { parseShellCommands } from '../utils/shellParser.js';
 import { assertPrivateWorkflowRunners } from './workflowRunnerPolicy.js';
 
@@ -281,10 +281,14 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       fileNamesByKind.delete('sync-force');
     }
 
-    for (const [kind, fileName] of fileNamesByKind) {
+    await runAllInPool(
       // 実際はKnownKind以外の値も代入されることに注意
-      await promisePool.run(() => writeWorkflowYaml(rootConfig, workflowsPath, kind as KnownKind, fileName));
-    }
+      [...fileNamesByKind].map(
+        ([kind, fileName]) =>
+          () =>
+            writeWorkflowYaml(rootConfig, workflowsPath, kind as KnownKind, fileName)
+      )
+    );
   });
 }
 

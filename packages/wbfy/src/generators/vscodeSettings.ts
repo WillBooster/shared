@@ -46,7 +46,7 @@ export async function generateVscodeSettings(config: PackageConfig): Promise<voi
     // already-clean settings.json survive wbfy runs.
     if (JSON.stringify(settings) === originalSettingsJson) return;
     const newContent = JSON.stringify(settings, undefined, 2);
-    await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
+    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 

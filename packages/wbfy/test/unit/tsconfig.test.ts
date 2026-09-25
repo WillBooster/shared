@@ -6,7 +6,6 @@ import { expect, test } from 'bun:test';
 
 import { generateTsconfig } from '../../src/generators/tsconfig.js';
 import type { PackageConfig } from '../../src/packageConfig.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -71,7 +70,6 @@ test('leaves an unparseable tsconfig untouched', async () => {
   const brokenContent = '{ "compilerOptions": { "paths": ';
   await withTempTsconfig(brokenContent, async (filePath, config) => {
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     expect(fs.readFileSync(filePath, 'utf8')).toBe(brokenContent);
   });
 });
@@ -79,7 +77,6 @@ test('leaves an unparseable tsconfig untouched', async () => {
 test('initializes an empty tsconfig with the generated settings', async () => {
   await withTempTsconfig('', async (filePath, config) => {
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     const generated = JSON.parse(fs.readFileSync(filePath, 'utf8')) as { compilerOptions?: object };
     expect(generated.compilerOptions).toBeDefined();
   });
@@ -89,7 +86,6 @@ test('leaves a tsconfig with an unterminated block comment untouched', async () 
   const brokenContent = '/* unfinished';
   await withTempTsconfig(brokenContent, async (filePath, config) => {
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     expect(fs.readFileSync(filePath, 'utf8')).toBe(brokenContent);
   });
 });
@@ -101,7 +97,6 @@ test('does not write through a dangling tsconfig.json symlink', async () => {
     fs.symlinkSync(targetPath, path.join(tempDirPath, 'tsconfig.json'));
     const config = createConfig({ dirPath: tempDirPath, isRoot: true, doesContainTypeScript: true });
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     expect(fs.existsSync(targetPath)).toBe(false);
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
@@ -111,7 +106,6 @@ test('does not write through a dangling tsconfig.json symlink', async () => {
 test('initializes a comment-only tsconfig with the generated settings', async () => {
   await withTempTsconfig('// intentionally empty\n', async (filePath, config) => {
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     const generated = JSON.parse(fs.readFileSync(filePath, 'utf8')) as { compilerOptions?: object };
     expect(generated.compilerOptions).toBeDefined();
   });
@@ -120,11 +114,9 @@ test('initializes a comment-only tsconfig with the generated settings', async ()
 test('keeps a commented tsconfig byte-identical when the settings are already up to date', async () => {
   await withTempTsconfig('', async (filePath, config) => {
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     const commented = fs.readFileSync(filePath, 'utf8').replace('{\n', '{\n  // explains the setup\n');
     fs.writeFileSync(filePath, commented);
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     expect(fs.readFileSync(filePath, 'utf8')).toBe(commented);
   });
 });
@@ -161,7 +153,6 @@ test('keeps a nested workspace in the root project when its ancestor package is 
       packageJson: { name: 'root', workspaces },
     });
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
       exclude?: string[];
       include?: string[];
@@ -209,7 +200,6 @@ test('excludes framework workspace app and src/app directories from the root pro
       packageJson: { name: 'root', workspaces },
     });
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
       exclude?: string[];
     };
@@ -245,7 +235,6 @@ test('prunes a stale framework app exclude after its workspace is removed', asyn
         packageJson: { name: 'root', workspaces },
       });
       await generateTsconfig(config);
-      await promisePool.promiseAll();
       const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
         exclude?: string[];
       };
@@ -274,7 +263,6 @@ test('keeps a commented Next tsconfig byte-identical when no cleanup is needed',
   await withTempTsconfig(commentedContent, async (filePath, config) => {
     config.depending.next = true;
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     expect(fs.readFileSync(filePath, 'utf8')).toBe(commentedContent);
   });
 });
@@ -293,7 +281,6 @@ async function generateCompilerOptionsFromContent(
   return withTempTsconfig(existingContent, async (filePath, config) => {
     Object.assign(config.depending, dependingOverrides);
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     const generated = JSON.parse(fs.readFileSync(filePath, 'utf8')) as {
       compilerOptions?: Record<string, unknown>;
     };

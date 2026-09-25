@@ -7,7 +7,6 @@ import { expect, test } from 'bun:test';
 import { z } from 'zod';
 
 import { generateWorkflows } from '../../src/generators/workflow.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 import { withTempWorkflowsRepo } from '../helpers/callerWorkflow.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -38,7 +37,6 @@ test('rewriting private callers removes hosted overrides without losing custom r
     fs.writeFileSync(filePath, YAML.stringify(original));
     const config = createConfig({ dirPath, isRoot: true, isPublicRepo: false });
     await generateWorkflows(config);
-    await promisePool.promiseAll();
     const written = fs.readFileSync(filePath, 'utf8');
     const { jobs } = callerSchema.parse(YAML.parse(written));
     for (const job of Object.values(jobs)) expect(job.with?.github_hosted_runner).toBeUndefined();
@@ -46,7 +44,6 @@ test('rewriting private callers removes hosted overrides without losing custom r
     expect(jobs.test?.with?.custom_test_command).toBe(original.jobs.test.with.custom_test_command);
     expect(JSON.parse(String(jobs.custom?.with?.runs_on))).toEqual(labels);
     await generateWorkflows(config);
-    await promisePool.promiseAll();
     expect(fs.readFileSync(filePath, 'utf8')).toBe(written);
   });
 });

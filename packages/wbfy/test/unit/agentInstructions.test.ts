@@ -5,7 +5,6 @@ import { expect, test } from 'bun:test';
 
 import { generateAgentInstructions } from '../../src/generators/agents.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 test('uses the repository directory name before the first package.json is generated', async () => {
@@ -17,7 +16,6 @@ test('uses the repository directory name before the first package.json is genera
     fsUtil.setRootDirPath(dirPath);
     const config = createConfig({ dirPath, isRoot: true, doesContainPackageJson: false, packageJson: {} });
     await generateAgentInstructions(config, [config]);
-    await promisePool.promiseAll();
 
     const content = await fs.promises.readFile(path.join(dirPath, 'AGENTS.md'), 'utf8');
     expect(content).toContain(`- Name: \`${path.basename(dirPath)}\``);
@@ -70,7 +68,6 @@ test('describes wb deploy only when the package script invokes it', async () => 
         packageJson: { name: 'example', scripts: { deploy: deployScript, ...additionalScripts } },
       });
       await generateAgentInstructions(config, [config]);
-      await promisePool.promiseAll();
       expect(await fs.promises.readFile(path.join(dirPath, 'AGENTS.md'), 'utf8'), deployScript).toContain(
         expectedSentence
       );
@@ -84,7 +81,6 @@ test('describes wb deploy only when the package script invokes it', async () => 
         packageJson: { name: 'example', scripts: { deploy: deployScript, ...additionalScripts } },
       });
       await generateAgentInstructions(config, [config]);
-      await promisePool.promiseAll();
       expect(await fs.promises.readFile(path.join(dirPath, 'AGENTS.md'), 'utf8'), deployScript).not.toContain(
         expectedSentence
       );

@@ -108,7 +108,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     const end = extractedObjectLiteral.node.getEnd();
     const newContent = `${oldContent.slice(0, start)}${newObjectLiteral}${oldContent.slice(end)}`;
 
-    await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
+    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 

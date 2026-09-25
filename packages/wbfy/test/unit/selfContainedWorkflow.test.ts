@@ -10,7 +10,6 @@ import {
   generateSelfContainedWorkflows,
   selfContainedWorkflowMarker,
 } from '../../src/generators/selfContainedWorkflow.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 interface ParsedWorkflow {
@@ -40,7 +39,6 @@ test('generates self-contained test and semantic-pr workflows without reusable-w
       repository: 'github:someone/example',
     });
     await generateSelfContainedWorkflows(config);
-    await promisePool.promiseAll();
 
     const testContent = await fs.readFile(path.join(dirPath, '.github', 'workflows', 'test.yml'), 'utf8');
     expect(testContent.startsWith(selfContainedWorkflowMarker)).toBe(true);
@@ -71,7 +69,6 @@ test('includes typecheck, Playwright caching and step-scoped FNOX_AGE_KEY when t
       depending: { ...createConfig().depending, playwrightTest: true },
     });
     await generateSelfContainedWorkflows(config);
-    await promisePool.promiseAll();
 
     const content = await fs.readFile(path.join(dirPath, '.github', 'workflows', 'test.yml'), 'utf8');
     const workflow = YAML.parse(content) as ParsedWorkflow;
@@ -108,7 +105,6 @@ test('installs Playwright browsers from the declaring workspace package in a mon
       depending: { ...createConfig().depending, playwrightTest: true },
     });
     await generateSelfContainedWorkflows(rootConfig, [rootConfig, childConfig, secondChildConfig]);
-    await promisePool.promiseAll();
 
     const content = await fs.readFile(path.join(dirPath, '.github', 'workflows', 'test.yml'), 'utf8');
     const workflow = YAML.parse(content) as ParsedWorkflow;
@@ -128,7 +124,6 @@ test('installs Playwright browsers from the declaring workspace package in a mon
 test('generated test step preserves full logs and failing exit codes', async () => {
   await withTempRepo(async (dirPath) => {
     await generateSelfContainedWorkflows(createConfig({ dirPath, isRoot: true, isWillBoosterRepo: false }));
-    await promisePool.promiseAll();
     const workflow = YAML.parse(
       await fs.readFile(path.join(dirPath, '.github/workflows/test.yml'), 'utf8')
     ) as ParsedWorkflow;
@@ -208,7 +203,6 @@ test('semantic-pr workflow grants the permissions the action needs', async () =>
       repository: 'github:someone/example',
     });
     await generateSelfContainedWorkflows(config);
-    await promisePool.promiseAll();
 
     const content = await fs.readFile(path.join(dirPath, '.github', 'workflows', 'semantic-pr.yml'), 'utf8');
     const workflow = YAML.parse(content) as {
@@ -231,7 +225,6 @@ test('treats an empty workflow file as absent', async () => {
       repository: 'github:someone/example',
     });
     await generateSelfContainedWorkflows(config);
-    await promisePool.promiseAll();
 
     const content = await fs.readFile(path.join(workflowsPath, 'test.yml'), 'utf8');
     expect(content.startsWith(selfContainedWorkflowMarker)).toBe(true);
@@ -255,7 +248,6 @@ test('generates release and deploy workflows for wb-deploy scripts and semantic-
       },
     });
     await generateSelfContainedWorkflows(config);
-    await promisePool.promiseAll();
 
     const workflowsPath = path.join(dirPath, '.github', 'workflows');
     const production = await fs.readFile(path.join(workflowsPath, 'deploy-production.yml'), 'utf8');
@@ -289,7 +281,6 @@ test('does not generate deploy workflows for bespoke deploy scripts', async () =
       packageJson: { scripts: { deploy: 'bash scripts/deploy.sh' } },
     });
     await generateSelfContainedWorkflows(config);
-    await promisePool.promiseAll();
 
     const workflowsPath = path.join(dirPath, '.github', 'workflows');
     expect(
@@ -325,7 +316,6 @@ test('never overwrites a hand-written workflow and regenerates a marked one', as
       repository: 'github:someone/example',
     });
     await generateSelfContainedWorkflows(config);
-    await promisePool.promiseAll();
 
     expect(await fs.readFile(path.join(workflowsPath, 'test.yml'), 'utf8')).toBe(handWritten);
     const regenerated = await fs.readFile(path.join(workflowsPath, 'semantic-pr.yml'), 'utf8');
@@ -346,7 +336,6 @@ test('hardens every install with the Takumi Guard proxy without exposing the tok
       packageJson: { scripts: { deploy: 'WB_ENV=production bun wb deploy' } },
     });
     await generateSelfContainedWorkflows(config);
-    await promisePool.promiseAll();
 
     const workflowsPath = path.join(dirPath, '.github', 'workflows');
     for (const fileName of ['test.yml', 'deploy-production.yml', 'release.yml']) {

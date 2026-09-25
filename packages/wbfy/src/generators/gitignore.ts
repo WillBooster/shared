@@ -164,7 +164,7 @@ src-tauri/gen/schemas/
       // so an existing copy is always a disposable generated one.
       const workerTypesPath = path.resolve(config.dirPath, 'worker-configuration.d.ts');
       if (fs.existsSync(workerTypesPath)) {
-        await promisePool.run(() => fs.promises.rm(workerTypesPath, { force: true }));
+        await promisePool.runAndWaitForReturnValue(() => fs.promises.rm(workerTypesPath, { force: true }));
       }
     }
     if (rootConfig.depending.vinext || config.depending.vinext) {
@@ -184,7 +184,7 @@ src-tauri/gen/schemas/
           return;
         }
         content = responseText.trim();
-        await promisePool.run(() => writeCache(name, content));
+        await promisePool.runAndWaitForReturnValue(() => writeCache(name, content));
         if (options.isVerbose) {
           console.info(`Fetched ${url}`);
         }
@@ -253,7 +253,7 @@ src-tauri/gen/schemas/
       }
     }
     const newContent = headUserContent + '\n' + generated + tailUserContent;
-    await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
+    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 

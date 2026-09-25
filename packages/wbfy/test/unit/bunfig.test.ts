@@ -12,7 +12,6 @@ import {
   resolveBunGlobalStore,
   shouldUseBunGlobalStore,
 } from '../../src/generators/bunfig.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 test('preserves [test] sections with their comments and drops other sections', () => {
@@ -68,7 +67,6 @@ test('keeps Next.js dependencies inside the Turbopack filesystem root', async ()
     // decision is passed separately from the root PackageConfig.
     const config = createConfig({ dirPath: tempDirPath });
     await generateBunfigToml(config, false);
-    await promisePool.promiseAll();
 
     const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
     expect(content).toContain('globalStore = false');
@@ -86,7 +84,6 @@ test('overwrites any existing minimumReleaseAge with the org default — the gat
     // bunfig.toml would effectively disable the supply-chain gate.
     fs.writeFileSync(path.join(tempDirPath, 'bunfig.toml'), '[install]\nminimumReleaseAge = 172800\n');
     await generateBunfigToml(createConfig({ dirPath: tempDirPath }), true);
-    await promisePool.promiseAll();
 
     const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
     expect(content).toContain(`minimumReleaseAge = ${bunMinimumReleaseAgeSeconds}\n`);
@@ -114,7 +111,6 @@ minimumReleaseAgeExcludes = [
 `
     );
     await generateBunfigToml(createConfig({ dirPath: tempDirPath }), true);
-    await promisePool.promiseAll();
     const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
     expect(content).not.toContain('@next/eslint-plugin-next');
     expect(content).not.toContain('my-repo-specific-package');
