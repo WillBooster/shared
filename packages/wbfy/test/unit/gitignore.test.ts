@@ -7,6 +7,7 @@ import { expect, test } from 'bun:test';
 import { generateDockerignore } from '../../src/generators/dockerignore.js';
 import { generateGitignore } from '../../src/generators/gitignore.js';
 import { generatePrettierignore } from '../../src/generators/prettierignore.js';
+import { getPackageConfig } from '../../src/packageConfig.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 test('keeps maven and python ignore entries in multi-language repositories', async () => {
@@ -198,6 +199,31 @@ test('keeps Tauri lockfiles and source directories visible after migration', asy
       }).exitCode;
     expect(checkIgnore('src-tauri/Cargo.lock')).toBe(1);
     expect(checkIgnore('src/debug/foo.ts')).toBe(1);
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
+
+test('keeps nested Tauri source directories visible from the workspace root', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gitignore-')));
+  try {
+    expect(Bun.spawnSync(['git', 'init', '-q', tempDirPath]).exitCode).toBe(0);
+    fs.writeFileSync(path.join(tempDirPath, '.git/info/exclude'), '');
+    fs.writeFileSync(path.join(tempDirPath, '.gitignore'), 'debug/\n');
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{"workspaces":["apps/*"]}');
+    const appDirPath = path.join(tempDirPath, 'apps/desktop');
+    fs.mkdirSync(path.join(appDirPath, 'src-tauri'), { recursive: true });
+    fs.writeFileSync(path.join(appDirPath, 'package.json'), '{}');
+    fs.writeFileSync(path.join(appDirPath, 'src-tauri/tauri.conf.json'), '{}');
+    const config = await getPackageConfig(tempDirPath, { isRoot: true });
+    if (!config) throw new Error('Unable to read workspace configuration');
+
+    await generateGitignore(config, config);
+    const result = Bun.spawnSync(
+      ['git', '-c', 'core.excludesFile=/dev/null', 'check-ignore', 'apps/desktop/src/debug/foo.ts'],
+      { cwd: tempDirPath }
+    );
+    expect(result.exitCode).toBe(1);
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }

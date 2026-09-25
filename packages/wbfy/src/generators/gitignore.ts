@@ -246,7 +246,7 @@ src-tauri/gen/schemas/
       if (/^!\.yarn\/cache$/m.test(generated)) {
         tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?\.yarn\/cache(?:\/.*)?)$/gm, '# $1');
       }
-      if (config.depending.tauri) {
+      if (config.depending.tauri || config.doesContainTauriConfig || config.doesContainTauriConfigInPackages) {
         tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?debug\/)$/gm, '# $1');
       }
       if (config.doesContainTauriConfig || config.doesContainTauriConfigInPackages) {
