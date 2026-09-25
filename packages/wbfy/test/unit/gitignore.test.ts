@@ -55,8 +55,8 @@ test('keeps negations with trailing comments in vendored templates effective', a
     execFileSync('git', ['init', '--quiet'], { cwd: tempDirPath });
 
     // The vim template ignores `[._]*.s[a-v][a-z]` and re-includes `!*.svg` with a trailing comment.
-    const result = spawnSync('git', ['check-ignore', '_icon.svg'], { cwd: tempDirPath });
-    expect(result.status).toBe(1);
+    expect(spawnSync('git', ['check-ignore', '_icon.sva'], { cwd: tempDirPath }).status).toBe(0);
+    expect(spawnSync('git', ['check-ignore', '_icon.svg'], { cwd: tempDirPath }).status).toBe(1);
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
