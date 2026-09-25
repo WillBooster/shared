@@ -48,3 +48,25 @@ test('ignores node_modules when the root manifest will be created during this ru
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
 });
+
+test('keeps repository ignore rules across the first and subsequent runs', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gitignore-')));
+  try {
+    const filePath = path.join(tempDirPath, '.gitignore');
+    fs.writeFileSync(filePath, '# Native build artifacts\nbuild/\nprebuilds/\n');
+    const config = createConfig({ dirPath: tempDirPath, isRoot: true });
+
+    await generateGitignore(config, config);
+    await promisePool.promiseAll();
+    const firstContent = fs.readFileSync(filePath, 'utf8');
+    expect(firstContent).toContain(
+      '# Project-specific settings (tail)\n# Native build artifacts\nbuild/\nprebuilds/\n'
+    );
+
+    await generateGitignore(config, config);
+    await promisePool.promiseAll();
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(firstContent);
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});

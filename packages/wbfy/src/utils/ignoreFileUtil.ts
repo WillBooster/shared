@@ -50,6 +50,11 @@ export const ignoreFileUtil = {
     if (lastHeaderIndex > 0) {
       return content.slice(lastHeaderIndex - 1);
     }
+    // An unmanaged ignore file consists entirely of repository rules. Keep them in the
+    // editable tail on the first run so generated templates cannot silently drop exclusions.
+    if (content && !content.includes(this.separatorPrefix)) {
+      return `${defaultTailUserContent}${content.trimEnd()}\n`;
+    }
     return defaultTailUserContent;
   },
   async isBerryZeroInstallEnabled(filePath: string): Promise<boolean> {
