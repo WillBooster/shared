@@ -69,7 +69,9 @@ export const ignoreFileUtil = {
 };
 
 function getIndexOfTailUserContentHeader(content: string): number {
-  const index = content.indexOf(userContentHeader);
-  const lastIndex = content.lastIndexOf(userContentHeader);
-  return lastIndex > index ? lastIndex : -1;
+  let index = -1;
+  for (const match of content.matchAll(/^\uFEFF?# Project-specific settings \(tail\)\r?$/gm)) {
+    index = match.index;
+  }
+  return index;
 }

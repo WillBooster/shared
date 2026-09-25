@@ -49,7 +49,9 @@ export async function generateGitignore(config: PackageConfig, rootConfig: Packa
     const isManaged = ignoreFileUtil.isManaged(content);
     let headUserContent =
       (isManaged ? ignoreFileUtil.getHeadUserContent(content) : ignoreFileUtil.defaultHeadUserContent) + commonContent;
-    let tailUserContent = ignoreFileUtil.getTailUserContent(content);
+    let tailUserContent = isManaged
+      ? ignoreFileUtil.getTailUserContent(content)
+      : ignoreFileUtil.defaultTailUserContent;
 
     const names = [...defaultNames];
     if (config.doesContainGemfile) {
@@ -231,7 +233,7 @@ src-tauri/gen/schemas/
       tailUserContent += `${content
         .replace(/^\uFEFF/u, '')
         .trimEnd()
-        .replaceAll(/^# Project-specific settings/gm, '# Imported project-specific settings')}\n`;
+        .replaceAll('# Project-specific settings', '# Imported project-specific settings')}\n`;
       tailUserContent = tailUserContent.replaceAll(
         /^((?:\*\*\/)?\/?\.(?:idea|vscode|yarn)(?:\/(?:\*{1,2})?)?)$/gm,
         '# $1'
