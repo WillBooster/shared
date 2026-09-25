@@ -8,7 +8,7 @@ import { logger } from '../logger.js';
 import { options } from '../options.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { promisePool } from '../utils/promisePool.js';
+import { runAllInPool } from '../utils/promisePool.js';
 import { getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
 
 export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
@@ -20,19 +20,6 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     if (options.isVerbose) {
       console.info(`Found ${docFiles.length} markdown files in ${dirPath}`);
     }
-    for (const mdFile of docFiles) {
-      const filePath = path.join(dirPath, mdFile);
-      void promisePool.run(async () => {
-        const content = await fsUtil.readFileIfExists(filePath);
-        if (content === undefined) return;
-        let newContent = fixTyposInText(content);
-        newContent = replaceWithConfig(newContent, packageConfig, 'doc');
-        if (content !== newContent) {
-          await fsUtil.generateFile(filePath, newContent);
-        }
-      });
-    }
-
     // fixTypos runs once on the root config, so this glob set must cover every declared workspace
     // layout (e.g. apps/*), not just the conventional packages/* directory — while honoring
     // declared negations (e.g. `!apps/excluded`), whose sources are not part of the monorepo.
@@ -54,19 +41,6 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     if (options.isVerbose) {
       console.info(`Found ${tsFiles.length} TypeScript files in ${dirPath}`);
     }
-    for (const tsFile of tsFiles) {
-      const filePath = path.join(dirPath, tsFile);
-      void promisePool.run(async () => {
-        const oldContent = await fsUtil.readFileIfExists(filePath);
-        if (oldContent === undefined) return;
-        let newContent = fixTyposInCode(oldContent);
-        newContent = replaceWithConfig(newContent, packageConfig, 'ts');
-
-        if (oldContent !== newContent) {
-          await fsUtil.generateFile(filePath, newContent);
-        }
-      });
-    }
 
     const textBasedFiles = await fg.glob('**/*.{csv,htm,html,tsv,xml,yaml,yml}', {
       dot: true,
@@ -76,22 +50,29 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     if (options.isVerbose) {
       console.info(`Found ${textBasedFiles.length} text-based files in ${dirPath}`);
     }
-    for (const file of textBasedFiles) {
-      const filePath = path.join(dirPath, file);
-      void promisePool.run(async () => {
-        const oldContent = await fsUtil.readFileIfExists(filePath);
-        if (oldContent === undefined) return;
-        let newContent = fixTyposInText(oldContent);
-        newContent = replaceWithConfig(newContent, packageConfig, 'text');
 
-        if (oldContent !== newContent) {
-          await fsUtil.generateFile(filePath, newContent);
-        }
-      });
-    }
-
-    await promisePool.promiseAll();
+    await runAllInPool([
+      ...docFiles.map((file) => fixFile(path.join(dirPath, file), fixTyposInText, packageConfig, 'doc')),
+      ...tsFiles.map((file) => fixFile(path.join(dirPath, file), fixTyposInCode, packageConfig, 'ts')),
+      ...textBasedFiles.map((file) => fixFile(path.join(dirPath, file), fixTyposInText, packageConfig, 'text')),
+    ]);
   });
+}
+
+function fixFile(
+  filePath: string,
+  fixTypos: (content: string) => string,
+  packageConfig: PackageConfig,
+  propName: 'doc' | 'ts' | 'text'
+): () => Promise<void> {
+  return async () => {
+    const content = await fsUtil.readFileIfExists(filePath);
+    if (content === undefined) return;
+    const newContent = replaceWithConfig(fixTypos(content), packageConfig, propName);
+    if (content !== newContent) {
+      await fsUtil.generateFile(filePath, newContent);
+    }
+  };
 }
 
 export function fixTyposInText(content: string): string {

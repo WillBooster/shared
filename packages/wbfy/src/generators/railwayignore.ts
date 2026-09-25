@@ -18,7 +18,7 @@ export async function fixRailwayignore(config: PackageConfig): Promise<void> {
     const usesDockerEnv = consumesDockerEnv(config.dockerfile);
     if (!content) {
       if (config.isRailway && usesDockerEnv) {
-        await promisePool.run(() => fsUtil.generateFile(filePath, '!.docker.env\n'));
+        await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, '!.docker.env\n'));
       }
       return;
     }
@@ -35,7 +35,7 @@ export async function fixRailwayignore(config: PackageConfig): Promise<void> {
     }
     if (newContent === content) return;
 
-    await promisePool.run(() =>
+    await promisePool.runAndWaitForReturnValue(() =>
       newContent ? fsUtil.generateFile(filePath, newContent) : fsUtil.removeConfined(filePath)
     );
   });

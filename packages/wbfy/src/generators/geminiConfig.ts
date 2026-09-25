@@ -7,7 +7,7 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
-import { promisePool } from '../utils/promisePool.js';
+import { runAllInPool } from '../utils/promisePool.js';
 
 import { generateAgentCodingStyle, getDefaultProseLanguage, readAgentsExtraContent } from './agents.js';
 
@@ -65,10 +65,9 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
       codingRuleExtraContent ? `\n${codingRuleExtraContent.trimEnd()}` : ''
     }`;
 
-    const promises = [
-      ...(hasNonCanonicalConfig ? [] : [promisePool.run(() => fsUtil.generateFile(configFilePath, yamlContent))]),
-      promisePool.run(() => fsUtil.generateFile(styleguideFilePath, styleguideContent)),
-    ];
-    await Promise.all(promises);
+    await runAllInPool([
+      ...(hasNonCanonicalConfig ? [] : [() => fsUtil.generateFile(configFilePath, yamlContent)]),
+      () => fsUtil.generateFile(styleguideFilePath, styleguideContent),
+    ]);
   });
 }

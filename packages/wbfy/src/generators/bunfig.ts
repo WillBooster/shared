@@ -81,7 +81,7 @@ export async function generateBunfigToml(config: PackageConfig, useGlobalStore: 
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
     const content = newContent(existingContent, useGlobalStore);
-    await promisePool.run(() => fsUtil.generateFile(filePath, content));
+    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, content));
   });
 }
 

@@ -5,7 +5,6 @@ import path from 'node:path';
 import { expect, test } from 'bun:test';
 
 import { fixPlaywrightConfig } from '../../src/fixers/playwrightConfig.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -53,7 +52,6 @@ async function fixConfig(content: string, dependingOverrides: Record<string, boo
     const config = createConfig({ dirPath, isRoot: true });
     Object.assign(config.depending, dependingOverrides);
     await fixPlaywrightConfig(config);
-    await promisePool.promiseAll();
     return fs.readFileSync(filePath, 'utf8');
   } finally {
     fs.rmSync(dirPath, { force: true, recursive: true });

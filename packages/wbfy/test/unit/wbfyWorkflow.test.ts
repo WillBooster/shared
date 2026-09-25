@@ -4,7 +4,6 @@ import path from 'node:path';
 import { expect, test } from 'bun:test';
 
 import { generateWorkflows } from '../../src/generators/workflow.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 // The self-applying nightly wbfy caller is not part of the generated workflow set.
@@ -26,7 +25,6 @@ test('generates no wbfy caller workflow', async () => {
   await withTempRepo(async (dirPath, workflowsPath) => {
     const config = createConfig({ dirPath, isRoot: true });
     await generateWorkflows(config);
-    await promisePool.promiseAll();
 
     expect(fs.existsSync(path.join(workflowsPath, 'wbfy.yml'))).toBe(false);
     // The rest of the mandatory set is unaffected.
@@ -46,7 +44,6 @@ jobs:
     await fs.promises.writeFile(path.join(workflowsPath, 'wbfy.yml'), customContent);
     const config = createConfig({ dirPath, isRoot: true });
     await generateWorkflows(config);
-    await promisePool.promiseAll();
 
     expect(await fs.promises.readFile(path.join(workflowsPath, 'wbfy.yml'), 'utf8')).toBe(customContent);
   });

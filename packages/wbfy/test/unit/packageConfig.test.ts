@@ -6,7 +6,6 @@ import { expect, test } from 'bun:test';
 
 import { generateWorkflows } from '../../src/generators/workflow.js';
 import { getPackageConfig } from '../../src/packageConfig.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 
 // Regression test for the direct workspace-child invocation (`wbfy <repo>/packages/<app>`):
 // the entry keeps its child classification, but repository visibility must still be fetched
@@ -86,7 +85,6 @@ jobs:
     config.isPublicRepo = true;
     expect(config?.cargoTomlDirPaths).toEqual([]);
     await generateWorkflows(config);
-    await promisePool.promiseAll();
     expect(fs.existsSync(path.join(workflowsDirPath, 'test-rust.yml'))).toBe(false);
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
@@ -119,7 +117,6 @@ jobs:
     config.isRepoVisibilityKnown = true;
     config.isPublicRepo = true;
     await generateWorkflows(config);
-    await promisePool.promiseAll();
 
     expect(fs.readFileSync(workflowPath, 'utf8')).toBe(workflowContent);
   } finally {

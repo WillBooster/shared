@@ -38,6 +38,6 @@ export async function generatePyrightConfigJson(config: PackageConfig): Promise<
       return;
     }
     const newContent = JSON.stringify(newSettings, undefined, 2);
-    await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
+    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
 }

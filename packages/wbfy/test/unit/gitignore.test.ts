@@ -5,7 +5,6 @@ import path from 'node:path';
 import { expect, test } from 'bun:test';
 
 import { generateGitignore } from '../../src/generators/gitignore.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 test('keeps maven and python ignore entries in multi-language repositories', async () => {
@@ -20,7 +19,6 @@ test('keeps maven and python ignore entries in multi-language repositories', asy
       doesContainPythonLockAnywhere: true,
     });
     await generateGitignore(config, config);
-    await promisePool.promiseAll();
     const content = fs.readFileSync(path.join(tempDirPath, '.gitignore'), 'utf8');
     expect(content).toMatch(/^target\/$/mu);
     expect(content).toMatch(/^__pycache__\/$/mu);
@@ -40,7 +38,6 @@ test('ignores node_modules when the root manifest will be created during this ru
       packageJson: {},
     });
     await generateGitignore(config, config);
-    await promisePool.promiseAll();
 
     const content = fs.readFileSync(path.join(tempDirPath, '.gitignore'), 'utf8');
     expect(content).toMatch(/^node_modules\/$/mu);

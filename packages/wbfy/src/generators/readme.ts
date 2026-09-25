@@ -92,7 +92,9 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
     // list, so nothing has to remove it.
     newContent = writeBadgeBlock(newContent, badges);
 
-    await promisePool.run(() => fsUtil.generateFile(filePath, newContent, getLineEnding(newContent)));
+    await promisePool.runAndWaitForReturnValue(() =>
+      fsUtil.generateFile(filePath, newContent, getLineEnding(newContent))
+    );
   });
 }
 

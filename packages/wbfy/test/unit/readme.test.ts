@@ -6,7 +6,6 @@ import { afterEach, expect, mock, spyOn, test } from 'bun:test';
 
 import { generateReadme, readAppliedWbfyVersionLabel, writeBadgeBlock } from '../../src/generators/readme.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 import * as version from '../../src/utils/version.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -42,7 +41,6 @@ async function runGenerateReadme(
   fsUtil.setRootDirPath(dirPath);
   const config = createConfig({ dirPath, isRoot: true, packageJson: { name: 'example' }, ...overrides });
   await generateReadme(config);
-  await promisePool.promiseAll();
   return fs.readFileSync(path.resolve(dirPath, 'README.md'), 'utf8');
 }
 

@@ -7,7 +7,6 @@ import { expect, test } from 'bun:test';
 import { getWorkspaceDirPatterns, getWorkspaceSubDirPaths } from '../../src/utils/workspaceUtil.js';
 import { generateTsconfig } from '../../src/generators/tsconfig.js';
 import { getPackageConfig } from '../../src/packageConfig.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 
 test('discovers and manages workspaces declared outside packages/* (e.g. apps/*)', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
@@ -37,7 +36,6 @@ test('discovers and manages workspaces declared outside packages/* (e.g. apps/*)
     // …and therefore receive managed settings such as tsconfig.json.
     if (!config) throw new Error('unreachable');
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     const tsconfig = JSON.parse(fs.readFileSync(path.join(appDirPath, 'tsconfig.json'), 'utf8')) as {
       compilerOptions?: object;
     };
@@ -70,7 +68,6 @@ test('derives root signals and root tsconfig coverage from an apps/*-only monore
 
     config.isRoot = true;
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
       exclude?: string[];
       include?: string[];
@@ -146,7 +143,6 @@ test('removes stale wbfy-managed packages/* entries from an existing root tsconf
     if (!config) throw new Error('unreachable');
     config.isRoot = true;
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
       exclude?: string[];
       include?: string[];
@@ -215,7 +211,6 @@ test('drops a negation-derived exclude after the workspace negation is removed',
       if (!config) throw new Error('unreachable');
       config.isRoot = true;
       await generateTsconfig(config);
-      await promisePool.promiseAll();
       return JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as { exclude?: string[] };
     };
 
@@ -284,7 +279,6 @@ test.each(workspaceNegationCases)(
         if (!config) throw new Error('unreachable');
         config.isRoot = true;
         await generateTsconfig(config);
-        await promisePool.promiseAll();
         const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
           exclude?: string[];
         };
@@ -320,7 +314,6 @@ test('keeps hygiene excludes a workspace directory happens to match', async () =
     if (!config) throw new Error('unreachable');
     config.isRoot = true;
     await generateTsconfig(config);
-    await promisePool.promiseAll();
     const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
       exclude?: string[];
     };

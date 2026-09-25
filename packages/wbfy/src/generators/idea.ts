@@ -19,8 +19,8 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
     if (fs.existsSync(dirPath)) {
       const filePath = path.resolve(dirPath, 'watcherTasks.xml');
       await (doesContainJsOrTs(config) || doesContainJava(config)
-        ? promisePool.run(() => fsUtil.generateFile(filePath, getWatcherTasksContent(config)))
-        : promisePool.run(() => fs.promises.rm(filePath, { force: true })));
+        ? promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, getWatcherTasksContent(config)))
+        : promisePool.runAndWaitForReturnValue(() => fs.promises.rm(filePath, { force: true })));
     }
   });
 }

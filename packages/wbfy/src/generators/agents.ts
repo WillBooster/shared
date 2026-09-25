@@ -6,7 +6,7 @@ import { ISSUE_TEMPLATE_RULES, PULL_REQUEST_BODY_RULES, TEST_WRITING_RULES } fro
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { promisePool } from '../utils/promisePool.js';
+import { runAllInPool } from '../utils/promisePool.js';
 import { generatesWorkerTypes } from '../packageConfig.js';
 import { hasCloudflareDeployWorkflow, invokesWbDeploy } from './workflow.js';
 
@@ -24,19 +24,22 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     );
     const usesWbDeploy = deployScriptResults.includes(true);
 
-    for (const [fileName, toolName] of [
-      ['AGENTS.md', 'Codex CLI'],
-      ['CLAUDE.md', 'Claude Code'],
-      ['GEMINI.md', 'Gemini CLI'],
-    ] as const) {
-      const content = generateAgentInstruction(rootConfig, allConfigs, toolName, usesWbDeploy, extraContent);
-      const filePath = path.resolve(rootConfig.dirPath, fileName);
-      await promisePool.run(() => fsUtil.generateFile(filePath, content));
-    }
-
     const cursorRulesPath = path.resolve(rootConfig.dirPath, '.cursor/rules/general.mdc');
     const cursorRulesContent = generateCursorGeneralMdcContent(rootConfig, allConfigs, usesWbDeploy, extraContent);
-    await promisePool.run(() => fsUtil.generateFile(cursorRulesPath, cursorRulesContent));
+    await runAllInPool([
+      ...(
+        [
+          ['AGENTS.md', 'Codex CLI'],
+          ['CLAUDE.md', 'Claude Code'],
+          ['GEMINI.md', 'Gemini CLI'],
+        ] as const
+      ).map(([fileName, toolName]) => {
+        const content = generateAgentInstruction(rootConfig, allConfigs, toolName, usesWbDeploy, extraContent);
+        const filePath = path.resolve(rootConfig.dirPath, fileName);
+        return () => fsUtil.generateFile(filePath, content);
+      }),
+      () => fsUtil.generateFile(cursorRulesPath, cursorRulesContent),
+    ]);
   });
 }
 

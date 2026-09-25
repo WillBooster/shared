@@ -4,7 +4,6 @@ import path from 'node:path';
 import { expect, test } from 'bun:test';
 
 import { generateWorkflows } from '../../src/generators/workflow.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 import { readCallerJob, withTempWorkflowsRepo } from '../helpers/callerWorkflow.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -29,7 +28,6 @@ jobs:
 `
     );
     await generateWorkflows(createConfig({ dirPath, isRoot: true }));
-    await promisePool.promiseAll();
 
     const job = readCallerJob(workflowsPath);
     expect(job.secrets?.VERDACCIO_TOKEN).toBeUndefined();
@@ -44,7 +42,6 @@ test('passes VERDACCIO_TOKEN when a private package is depended upon', async () 
       JSON.stringify({ name: 'consumer', devDependencies: { '@willbooster-private/agentic-workflows': '1.0.0' } })
     );
     await generateWorkflows(createConfig({ dirPath, isRoot: true }));
-    await promisePool.promiseAll();
 
     const job = readCallerJob(workflowsPath);
     expect(job.secrets?.VERDACCIO_TOKEN).toBe('${{ secrets.VERDACCIO_TOKEN }}');
