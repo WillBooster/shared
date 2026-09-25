@@ -226,7 +226,7 @@ src-tauri/gen/schemas/
     if (content && !ignoreFileUtil.isManaged(content)) {
       // Imported repository rules come after the generated section. Neutralize only rules
       // that would undo deliberate exceptions in that section, leaving other rules intact.
-      tailUserContent += `${content.trimEnd()}\n`;
+      tailUserContent += `${content.replace(/^\uFEFF/u, '').trimEnd()}\n`;
       tailUserContent = tailUserContent.replaceAll(
         /^((?:\*\*\/)?\/?\.(?:idea|vscode|yarn)(?:\/(?:\*{1,2})?)?)$/gm,
         '# $1'
