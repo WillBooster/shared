@@ -11,7 +11,7 @@ const TEST_FILE_NAME_REGEXP = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 
 /**
  * Enforces the test-layout convention with no fallback: `test/` may contain only the `unit`, `e2e`,
- * `debug`, `helpers`, and `fixtures` directories, and test files may exist only under `test/unit/`,
+ * `debug`, `helpers`, and `fixtures` directories (plus `corpus` for Tree-sitter grammars), and test files may exist only under `test/unit/`,
  * `test/e2e/`, and `test/debug/` — anywhere else in the project (e.g. `test/helpers/`, `src/`, or the
  * project root), wb would silently skip them. A project's own Playwright config also requires
  * `test/e2e` for the same reason. `test/fixtures/` is exempt from the test-file check because
@@ -47,11 +47,17 @@ function findFileSystemViolations(projectDirPath: string): string[] {
 
   const violations: string[] = [];
   const testDirPath = path.join(projectDirPath, 'test');
+  // Tree-sitter's CLI reads grammar fixtures from test/corpus; moving them to a wb test
+  // directory would make the grammar suite disappear from `tree-sitter test`.
+  const isTreeSitterGrammar = fs.existsSync(path.join(projectDirPath, 'tree-sitter.json'));
   if (fs.existsSync(testDirPath)) {
     for (const entry of fs.readdirSync(testDirPath, { withFileTypes: true })) {
       // OS and editor artifacts such as .DS_Store are environment noise, not layout mistakes.
       if (entry.name.startsWith('.')) continue;
-      if (!entry.isDirectory() || !ALLOWED_TEST_DIRECTORY_NAMES.has(entry.name)) {
+      if (
+        !entry.isDirectory() ||
+        (!ALLOWED_TEST_DIRECTORY_NAMES.has(entry.name) && !(isTreeSitterGrammar && entry.name === 'corpus'))
+      ) {
         violations.push(`test/${entry.name}`);
       }
     }
@@ -92,7 +98,7 @@ function collectStrayTestFiles(projectDirPath: string, relativeDirPath: string, 
 export function printTestStructureViolations(projectName: string, violations: string[]): void {
   console.error(
     chalk.red(
-      `Invalid test layout in ${projectName}. test/ may contain only the unit, e2e, debug, helpers, and fixtures directories, test files may exist only under test/unit/, test/e2e/, and test/debug/, and a Playwright config requires test/e2e/:\n` +
+      `Invalid test layout in ${projectName}. test/ may contain only the unit, e2e, debug, helpers, and fixtures directories (plus corpus for Tree-sitter grammars), test files may exist only under test/unit/, test/e2e/, and test/debug/, and a Playwright config requires test/e2e/:\n` +
         violations.map((violation) => `  ${violation}`).join('\n')
     )
   );
