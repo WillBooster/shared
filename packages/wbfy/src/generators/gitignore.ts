@@ -235,22 +235,22 @@ src-tauri/gen/schemas/
         .trimEnd()
         .replaceAll(/# Project-specific settings/giu, '# Imported project-specific settings')}\n`;
       tailUserContent = tailUserContent.replaceAll(
-        /^((?:\*\*\/)?\/?\.(?:idea|vscode|yarn)(?:\/(?:\*{1,2})?)?)$/gm,
+        /^((?:\*\*\/)?\/?\.(?:idea|vscode|yarn)(?:\/(?:\*{1,2})?)?)[ \t]*$/gm,
         '# $1'
       );
       tailUserContent = tailUserContent.replaceAll(
-        /^((?:\*\*\/)?\/?(?:\.idea\/watcherTasks\.xml|\.vscode\/(?:settings|tasks|launch|extensions)\.json|\.vscode\/[^/]+\.code-snippets|\.yarn\/(?:releases|patches|plugins|sdks|versions)(?:\/.*)?))$/gm,
+        /^((?:\*\*\/)?\/?(?:\.idea\/watcherTasks\.xml|\.vscode\/(?:settings|tasks|launch|extensions)\.json|\.vscode\/[^/]+\.code-snippets|\.yarn\/(?:releases|patches|plugins|sdks|versions)(?:\/.*)?))[ \t]*$/gm,
         '# $1'
       );
-      tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?\.vscode\/(?:\*\*\/)?\*\.json)$/gm, '# $1');
+      tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?\.vscode\/(?:\*\*\/)?\*\.json)[ \t]*$/gm, '# $1');
       if (/^!\.yarn\/cache$/m.test(generated)) {
-        tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?\.yarn\/cache(?:\/.*)?)$/gm, '# $1');
+        tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?\.yarn\/cache(?:\/.*)?)[ \t]*$/gm, '# $1');
       }
       if (config.depending.tauri || config.doesContainTauriConfig || config.doesContainTauriConfigInPackages) {
-        tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?debug\/)$/gm, '# $1');
+        tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?debug\/)[ \t]*$/gm, '# $1');
       }
       if (config.doesContainTauriConfig || config.doesContainTauriConfigInPackages) {
-        tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?Cargo\.lock)$/gm, '# $1');
+        tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?Cargo\.lock)[ \t]*$/gm, '# $1');
       }
     }
     const newContent = headUserContent + '\n' + generated + tailUserContent;
