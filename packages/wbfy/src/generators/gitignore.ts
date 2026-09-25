@@ -46,7 +46,9 @@ export async function generateGitignore(config: PackageConfig, rootConfig: Packa
   return logger.functionIgnoringException('generateGitignore', async () => {
     const filePath = path.resolve(config.dirPath, '.gitignore');
     const content = (await fsUtil.readFileIfExists(filePath)) ?? '';
-    let headUserContent = ignoreFileUtil.getHeadUserContent(content) + commonContent;
+    const isManaged = ignoreFileUtil.isManaged(content);
+    let headUserContent =
+      (isManaged ? ignoreFileUtil.getHeadUserContent(content) : ignoreFileUtil.defaultHeadUserContent) + commonContent;
     let tailUserContent = ignoreFileUtil.getTailUserContent(content);
 
     const names = [...defaultNames];
@@ -223,7 +225,7 @@ src-tauri/gen/schemas/
     if (rootConfig.depending.reactNative || config.depending.reactNative || config.doesContainPubspecYaml) {
       generated = generated.replaceAll(/^(.idea\/.+)$/gm, '$1\nandroid/$1');
     }
-    if (content && !ignoreFileUtil.isManaged(content)) {
+    if (content && !isManaged) {
       // Imported repository rules come after the generated section. Neutralize only rules
       // that would undo deliberate exceptions in that section, leaving other rules intact.
       tailUserContent += `${content.replace(/^\uFEFF/u, '').trimEnd()}\n`;
