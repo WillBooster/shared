@@ -287,7 +287,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       hasInvalidPackageConfig = true;
       continue;
     }
-    const abbreviationPromise = fixTypos(rootConfig);
+    const fixTyposPromise = fixTypos(rootConfig);
 
     await generateRepositoryNpmrc(allPackageConfigs);
 
@@ -337,8 +337,10 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       !isReusableWorkflowsRepo(rootConfig.repository) &&
       !!rootConfig.repository?.startsWith('github:') &&
       rootConfig.isRoot;
+    // fixTypos read-modify-writes the Markdown and YAML files that the generators below rewrite.
+    await fixTyposPromise;
     await Promise.all([
-      abbreviationPromise.then(() => generateReadme(rootConfig)),
+      generateReadme(rootConfig),
       generateDockerignore(rootConfig),
       generateEditorconfig(rootConfig),
       generateGeminiConfig(rootConfig, allPackageConfigs),
