@@ -1331,8 +1331,6 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
   const scripts: Record<string, string> = {
     // No `--bun`: its node->bun PATH shim leaks into every child process and breaks tools
     // requiring real Node.js (Playwright, wrangler, vinext).
-    // wb recognizes Tree-sitter's required test/corpus when tree-sitter.json is present, so
-    // grammar packages can use the same cleanup script as other repositories.
     cleanup: 'bun wb lint --fix --format',
     format: `bun wb lint --format`,
     lint: `bun wb lint`,
