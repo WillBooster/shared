@@ -103,9 +103,13 @@ export async function generateSelfContainedWorkflows(
     if (rootConfig.depending.semanticRelease && rootConfig.release.branches.length > 0) {
       workflowByFileName['release.yml'] = buildReleaseWorkflow(rootConfig, hasProductionDeployWorkflow, usesFnox);
     }
-    for (const [fileName, workflow] of Object.entries(workflowByFileName)) {
-      await promisePool.run(() => writeSelfContainedWorkflow(path.join(workflowsPath, fileName), workflow));
-    }
+    await Promise.all(
+      Object.entries(workflowByFileName).map(([fileName, workflow]) =>
+        promisePool.runAndWaitForReturnValue(() =>
+          writeSelfContainedWorkflow(path.join(workflowsPath, fileName), workflow)
+        )
+      )
+    );
   });
 }
 

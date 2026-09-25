@@ -125,7 +125,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     // already-up-to-date tsconfig.json survive wbfy runs.
     if (originalSettingsJson === JSON.stringify(newSettings)) return;
     const newContent = JSON.stringify(newSettings, undefined, 2);
-    await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
+    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 
@@ -318,7 +318,9 @@ async function normalizeFrameworkTsconfig(config: PackageConfig): Promise<void> 
   // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
   // already-clean tsconfig.json survive wbfy runs.
   if (JSON.stringify(settings) === originalSettingsJson) return;
-  await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
+  await promisePool.runAndWaitForReturnValue(() =>
+    fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2))
+  );
 }
 
 /**

@@ -66,8 +66,10 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
     }`;
 
     const promises = [
-      ...(hasNonCanonicalConfig ? [] : [promisePool.run(() => fsUtil.generateFile(configFilePath, yamlContent))]),
-      promisePool.run(() => fsUtil.generateFile(styleguideFilePath, styleguideContent)),
+      ...(hasNonCanonicalConfig
+        ? []
+        : [promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(configFilePath, yamlContent))]),
+      promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(styleguideFilePath, styleguideContent)),
     ];
     await Promise.all(promises);
   });

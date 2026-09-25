@@ -30,7 +30,7 @@ dist/** linguist-generated=true
 export async function generateGitattributes(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateGitattributes', async () => {
     const filePath = path.resolve(config.dirPath, '.gitattributes');
-    await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
+    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 

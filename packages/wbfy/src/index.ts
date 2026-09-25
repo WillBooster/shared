@@ -52,7 +52,6 @@ import { getPackageConfig, getWorkerTypesScriptError } from './packageConfig.js'
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { doesContainJava, doesContainJsOrTs } from './utils/packageCapabilities.js';
-import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
 import { getWbfyVersion, getWbfyVersionLabel } from './utils/version.js';
@@ -309,9 +308,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // Run after generateFnoxToml so its transactional recipient sync cannot restore a snapshot
     // over definitions inserted here.
     await ensureWbEnvDefinitions(rootConfig, allPackageConfigs);
-    // promisePool.run resolves when a task STARTS, so the generated bunfig.toml is not
-    // guaranteed to be on disk yet; the probe below must not validate a stale configuration.
-    await promisePool.promiseAll();
 
     // The layout must be verified installable BEFORE any `bun add` mutates package.json files:
     // per-package installs tolerate failures (spawnSync discards their status), so a layout that
@@ -361,11 +357,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       // child lefthook.yml or replace the enclosing repository's hook installation.
       ...(rootConfig.isRoot ? [generateLefthook(rootConfig, allPackageConfigs)] : []),
     ]);
-    await promisePool.promiseAll();
     // After the workflow generator (and its pooled writes) so the instruction files describe the
     // finalized workflow files instead of lagging one run behind.
     await generateAgentInstructions(rootConfig, allPackageConfigs);
-    await promisePool.promiseAll();
 
     const promises: Promise<void>[] = [];
     for (const config of allPackageConfigs) {
@@ -379,7 +373,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
         promises.push(fixChakraToaster(config));
       }
       await generateGitignore(config, rootConfig);
-      await promisePool.promiseAll();
       if (!config.isRoot && !config.doesContainPackageJson) {
         continue;
       }
@@ -404,7 +397,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       }
     }
     await Promise.all(promises);
-    await promisePool.promiseAll();
     // Run after every pooled generator write so normalization cannot overwrite a concurrent
     // update, and before cleanup so formatter metadata caches observe the changed files.
     renormalizeTrackedTextFiles(rootDirPath);

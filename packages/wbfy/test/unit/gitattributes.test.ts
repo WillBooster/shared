@@ -6,7 +6,6 @@ import path from 'node:path';
 import { expect, test } from 'bun:test';
 
 import { generateGitattributes, renormalizeTrackedTextFiles } from '../../src/generators/gitattributes.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 test('marks tracked CRLF text for renormalization when introducing text attributes', async () => {
@@ -26,7 +25,6 @@ test('marks tracked CRLF text for renormalization when introducing text attribut
     fs.rmSync(path.join(tempDirPath, 'Deleted.java'));
 
     await generateGitattributes(createConfig({ dirPath: tempDirPath }));
-    await promisePool.promiseAll();
     renormalizeTrackedTextFiles(tempDirPath);
 
     expect(git(tempDirPath, 'ls-files', '--eol', 'Main.java')).toContain('attr/text eol=lf');

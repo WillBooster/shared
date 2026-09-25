@@ -39,6 +39,6 @@ pubspec.yaml
     }
 
     const newContent = headUserContent + commonContent + additionalContent + gitignoreContent + tailUserContent;
-    await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
+    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
 }

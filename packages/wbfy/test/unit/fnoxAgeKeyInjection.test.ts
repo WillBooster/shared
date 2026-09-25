@@ -5,7 +5,6 @@ import { expect, test } from 'bun:test';
 
 import { generateFnoxToml, hasFnoxSyncFailed } from '../../src/generators/fnoxToml.js';
 import { generateWorkflows } from '../../src/generators/workflow.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 import { readCallerJob, withTempWorkflowsRepo } from '../helpers/callerWorkflow.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -33,7 +32,6 @@ test('maps FNOX_AGE_KEY from PUBLIC_FNOX_AGE_KEY in a public repository', async 
   await withTempWorkflowsRepo('wbfy-fnox-age-key-injection-', async (dirPath, workflowsPath) => {
     writeFnoxRepoFixture(dirPath, workflowsPath, defaultCallerContent);
     await generateWorkflows(createConfig({ dirPath, isRoot: true, isPublicRepo: true }));
-    await promisePool.promiseAll();
 
     expect(readCallerJob(workflowsPath).secrets?.FNOX_AGE_KEY).toBe('${{ secrets.PUBLIC_FNOX_AGE_KEY }}');
   });
@@ -43,7 +41,6 @@ test('maps FNOX_AGE_KEY from the org-internal secret in a private repository', a
   await withTempWorkflowsRepo('wbfy-fnox-age-key-injection-', async (dirPath, workflowsPath) => {
     writeFnoxRepoFixture(dirPath, workflowsPath, defaultCallerContent);
     await generateWorkflows(createConfig({ dirPath, isRoot: true, isPublicRepo: false }));
-    await promisePool.promiseAll();
 
     expect(readCallerJob(workflowsPath).secrets?.FNOX_AGE_KEY).toBe('${{ secrets.FNOX_AGE_KEY }}');
   });
@@ -62,7 +59,6 @@ test('keeps an existing PUBLIC_FNOX_AGE_KEY mapping when the visibility lookup f
       )
     );
     await generateWorkflows(createConfig({ dirPath, isRoot: true, isPublicRepo: false, isRepoVisibilityKnown: false }));
-    await promisePool.promiseAll();
 
     expect(readCallerJob(workflowsPath).secrets?.FNOX_AGE_KEY).toBe('${{ secrets.PUBLIC_FNOX_AGE_KEY }}');
   });
@@ -77,7 +73,6 @@ test('adds no mapping in a public WillBoosterLab repository', async () => {
     await generateWorkflows(
       createConfig({ dirPath, isRoot: true, isPublicRepo: true, repository: 'github:WillBoosterLab/example' })
     );
-    await promisePool.promiseAll();
 
     expect(readCallerJob(workflowsPath).secrets?.FNOX_AGE_KEY).toBeUndefined();
   });
@@ -100,7 +95,6 @@ test('does not remap FNOX_AGE_KEY while the fnox recipient sync failed', async (
       await generateFnoxToml(config);
       expect(hasFnoxSyncFailed()).toBe(true);
       await generateWorkflows(config);
-      await promisePool.promiseAll();
 
       expect(readCallerJob(workflowsPath).secrets?.FNOX_AGE_KEY).toBe('${{ secrets.FNOX_AGE_KEY }}');
     } finally {

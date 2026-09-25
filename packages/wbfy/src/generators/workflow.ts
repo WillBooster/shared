@@ -281,10 +281,14 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       fileNamesByKind.delete('sync-force');
     }
 
-    for (const [kind, fileName] of fileNamesByKind) {
-      // 実際はKnownKind以外の値も代入されることに注意
-      await promisePool.run(() => writeWorkflowYaml(rootConfig, workflowsPath, kind as KnownKind, fileName));
-    }
+    await Promise.all(
+      [...fileNamesByKind].map(([kind, fileName]) =>
+        // 実際はKnownKind以外の値も代入されることに注意
+        promisePool.runAndWaitForReturnValue(() =>
+          writeWorkflowYaml(rootConfig, workflowsPath, kind as KnownKind, fileName)
+        )
+      )
+    );
   });
 }
 

@@ -59,9 +59,11 @@ export async function generateGitHubTemplates(config: PackageConfig): Promise<vo
 
     const languageNote =
       getDefaultProseLanguage(config) === 'Japanese' ? ' Write in Japanese, keeping the headings as they are.' : '';
-    for (const [fileName, content] of Object.entries(generateTemplates(languageNote))) {
-      const filePath = path.resolve(config.dirPath, '.github', fileName);
-      await promisePool.run(() => fsUtil.generateFile(filePath, content));
-    }
+    await Promise.all(
+      Object.entries(generateTemplates(languageNote)).map(([fileName, content]) => {
+        const filePath = path.resolve(config.dirPath, '.github', fileName);
+        return promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, content));
+      })
+    );
   });
 }

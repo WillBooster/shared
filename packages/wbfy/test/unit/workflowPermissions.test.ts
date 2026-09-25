@@ -6,7 +6,6 @@ import { expect, test } from 'bun:test';
 import { z } from 'zod';
 
 import { generateWorkflows } from '../../src/generators/workflow.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 import { withTempWorkflowsRepo } from '../helpers/callerWorkflow.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -43,7 +42,6 @@ test('generated callers scope permissions without changing preserved sibling job
     );
 
     await generateWorkflows(createConfig({ dirPath, isRoot: true, cargoTomlDirPaths: ['native'] }));
-    await promisePool.promiseAll();
 
     expect(readPermissions(workflowsPath, 'test-rust.yml')).toEqual({
       actions: 'read',

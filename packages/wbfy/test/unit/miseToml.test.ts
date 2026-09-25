@@ -6,7 +6,6 @@ import semver from 'semver';
 
 import { generateMiseToml } from '../../src/generators/miseToml.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 // setRootDirPath is process-wide state: leaving a deleted temporary directory behind would confine
@@ -25,7 +24,6 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
     }
     fsUtil.setRootDirPath(dirPath);
     await generateMiseToml(createConfig({ dirPath }));
-    await promisePool.promiseAll();
     return fs.readFileSync(path.join(dirPath, 'mise.toml'), 'utf8');
   } finally {
     fs.rmSync(dirPath, { force: true, recursive: true });

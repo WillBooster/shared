@@ -24,19 +24,22 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     );
     const usesWbDeploy = deployScriptResults.includes(true);
 
-    for (const [fileName, toolName] of [
-      ['AGENTS.md', 'Codex CLI'],
-      ['CLAUDE.md', 'Claude Code'],
-      ['GEMINI.md', 'Gemini CLI'],
-    ] as const) {
-      const content = generateAgentInstruction(rootConfig, allConfigs, toolName, usesWbDeploy, extraContent);
-      const filePath = path.resolve(rootConfig.dirPath, fileName);
-      await promisePool.run(() => fsUtil.generateFile(filePath, content));
-    }
-
     const cursorRulesPath = path.resolve(rootConfig.dirPath, '.cursor/rules/general.mdc');
     const cursorRulesContent = generateCursorGeneralMdcContent(rootConfig, allConfigs, usesWbDeploy, extraContent);
-    await promisePool.run(() => fsUtil.generateFile(cursorRulesPath, cursorRulesContent));
+    await Promise.all([
+      ...(
+        [
+          ['AGENTS.md', 'Codex CLI'],
+          ['CLAUDE.md', 'Claude Code'],
+          ['GEMINI.md', 'Gemini CLI'],
+        ] as const
+      ).map(([fileName, toolName]) => {
+        const content = generateAgentInstruction(rootConfig, allConfigs, toolName, usesWbDeploy, extraContent);
+        const filePath = path.resolve(rootConfig.dirPath, fileName);
+        return promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, content));
+      }),
+      promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(cursorRulesPath, cursorRulesContent)),
+    ]);
   });
 }
 

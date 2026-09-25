@@ -53,7 +53,7 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
     const newContent = `${oldContent.slice(0, insertionPoint)}${prefix}${propertyTexts.join(', ')}${oldContent.slice(
       insertionPoint
     )}`;
-    await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
+    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 
