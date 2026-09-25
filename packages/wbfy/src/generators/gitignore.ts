@@ -206,7 +206,7 @@ src-tauri/gen/schemas/
     }
     // gitignore treats `#` as a comment only at line start, so a trailing comment (e.g., vim's `!*.svg  # ...`)
     // turns the whole line into a pattern that never matches.
-    generated = generated.replaceAll(/^([^#\s].*?)\s+(#.*)$/gm, '$2\n$1');
+    generated = generated.replaceAll(/^([^#\s].*?)[ \t]+(#.*)$/gm, '$2\n$1');
     generated = generated.replaceAll(/^.idea\/?$/gm, '# .idea');
     if (config.depending.tauri) {
       // The rust template's unanchored debug/ would also hide frontend source
