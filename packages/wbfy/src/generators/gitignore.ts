@@ -223,7 +223,7 @@ src-tauri/gen/schemas/
     if (rootConfig.depending.reactNative || config.depending.reactNative || config.doesContainPubspecYaml) {
       generated = generated.replaceAll(/^(.idea\/.+)$/gm, '$1\nandroid/$1');
     }
-    if (content && !content.includes(ignoreFileUtil.separatorPrefix)) {
+    if (content && !content.includes(ignoreFileUtil.separator)) {
       // Imported repository rules come after the generated section. Neutralize only rules
       // that would undo deliberate exceptions in that section, leaving other rules intact.
       tailUserContent = tailUserContent.replaceAll(/^(\/?\.idea\/?)$/gm, '# $1');
