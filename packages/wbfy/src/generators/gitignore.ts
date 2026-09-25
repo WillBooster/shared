@@ -242,6 +242,7 @@ src-tauri/gen/schemas/
         /^((?:\*\*\/)?\/?(?:\.idea\/watcherTasks\.xml|\.vscode\/(?:settings|tasks|launch|extensions)\.json|\.vscode\/[^/]+\.code-snippets|\.yarn\/(?:releases|patches|plugins|sdks|versions)(?:\/.*)?))$/gm,
         '# $1'
       );
+      tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?\.vscode\/(?:\*\*\/)?\*\.json)$/gm, '# $1');
       if (/^!\.yarn\/cache$/m.test(generated)) {
         tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?\.yarn\/cache(?:\/.*)?)$/gm, '# $1');
       }
