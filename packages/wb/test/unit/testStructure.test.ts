@@ -22,6 +22,13 @@ describe('findTestStructureViolations', () => {
     expect(findTestStructureViolations({ dirPath, packageJson })).toEqual([]);
   });
 
+  it('accepts a Tree-sitter grammar corpus but rejects it in other projects', async () => {
+    const grammarDirPath = await createProjectDir(['test/corpus'], ['tree-sitter.json', 'test/corpus/commands.txt']);
+    const otherDirPath = await createProjectDir(['test/corpus'], ['test/corpus/commands.txt']);
+    expect(findTestStructureViolations({ dirPath: grammarDirPath, packageJson })).toEqual([]);
+    expect(findTestStructureViolations({ dirPath: otherDirPath, packageJson })).toEqual(['test/corpus']);
+  });
+
   // The regression this convention removes: files directly under test/ were silently never run.
   it('rejects files directly under test/ and unknown directories', async () => {
     const dirPath = await createProjectDir(['test/integration'], ['test/example.test.ts']);
