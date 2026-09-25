@@ -50,7 +50,7 @@
     "build-ts": "21.0.16",
     "oxfmt": "0.68.0",
     "oxlint": "1.83.0",
-    "oxlint-tsgolint": "7.0.2001",
+    "oxlint-tsgolint": "7.0.2002",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "sort-package-json": "4.0.0",
