@@ -228,7 +228,10 @@ src-tauri/gen/schemas/
     if (content && !isManaged) {
       // Imported repository rules come after the generated section. Neutralize only rules
       // that would undo deliberate exceptions in that section, leaving other rules intact.
-      tailUserContent += `${content.replace(/^\uFEFF/u, '').trimEnd()}\n`;
+      tailUserContent += `${content
+        .replace(/^\uFEFF/u, '')
+        .trimEnd()
+        .replaceAll(/^# Project-specific settings/gm, '# Imported project-specific settings')}\n`;
       tailUserContent = tailUserContent.replaceAll(
         /^((?:\*\*\/)?\/?\.(?:idea|vscode|yarn)(?:\/(?:\*{1,2})?)?)$/gm,
         '# $1'
@@ -241,10 +244,10 @@ src-tauri/gen/schemas/
         tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?\.yarn\/cache(?:\/.*)?)$/gm, '# $1');
       }
       if (config.depending.tauri) {
-        tailUserContent = tailUserContent.replaceAll(/^(debug\/)$/gm, '# $1');
+        tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?debug\/)$/gm, '# $1');
       }
       if (config.doesContainTauriConfig || config.doesContainTauriConfigInPackages) {
-        tailUserContent = tailUserContent.replaceAll(/^(\/?Cargo\.lock)$/gm, '# $1');
+        tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?Cargo\.lock)$/gm, '# $1');
       }
     }
     const newContent = headUserContent + '\n' + generated + tailUserContent;
