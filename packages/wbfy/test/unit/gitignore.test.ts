@@ -5,6 +5,7 @@ import path from 'node:path';
 import { expect, test } from 'bun:test';
 
 import { generateGitignore } from '../../src/generators/gitignore.js';
+import { generatePrettierignore } from '../../src/generators/prettierignore.js';
 import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -75,6 +76,10 @@ test('keeps repository ignore rules across the first and subsequent runs', async
     expect(checkIgnore('.idea/watcherTasks.xml')).toBe(1);
     expect(checkIgnore('.vscode/settings.json')).toBe(1);
     expect(checkIgnore('.yarn/releases/example.cjs')).toBe(1);
+
+    await generatePrettierignore(config);
+    await promisePool.promiseAll();
+    expect(fs.readFileSync(path.join(tempDirPath, '.prettierignore'), 'utf8')).toContain('build/\nprebuilds/\n');
 
     await generateGitignore(config, config);
     await promisePool.promiseAll();

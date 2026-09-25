@@ -22,11 +22,7 @@ export const ignoreFileUtil = {
   },
   async readGitignoreWithoutSeparators(filePath: string): Promise<string | undefined> {
     try {
-      let content = await fs.promises.readFile(filePath, 'utf8');
-      const lastHeaderIndex = getIndexOfTailUserContentHeader(content);
-      if (lastHeaderIndex > 0) {
-        content = content.slice(0, lastHeaderIndex - 1);
-      }
+      const content = await fs.promises.readFile(filePath, 'utf8');
       return (
         content
           .replaceAll(userContentHeaderRegex, '')
