@@ -8,7 +8,7 @@ import { logger } from '../logger.js';
 import { options } from '../options.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { promisePool } from '../utils/promisePool.js';
+import { runAllInPool } from '../utils/promisePool.js';
 import { getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
 
 export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
@@ -51,33 +51,28 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
       console.info(`Found ${textBasedFiles.length} text-based files in ${dirPath}`);
     }
 
-    // All tasks are created synchronously so that Promise.all() observes every rejection; a task
-    // rejecting during an `await` between its creation and Promise.all() would be unhandled.
-    await Promise.all([
-      ...docFiles.map((file) =>
-        fixFile(path.join(dirPath, file), (content) => replaceWithConfig(fixTyposInText(content), packageConfig, 'doc'))
-      ),
-      ...tsFiles.map((file) =>
-        fixFile(path.join(dirPath, file), (content) => replaceWithConfig(fixTyposInCode(content), packageConfig, 'ts'))
-      ),
-      ...textBasedFiles.map((file) =>
-        fixFile(path.join(dirPath, file), (content) =>
-          replaceWithConfig(fixTyposInText(content), packageConfig, 'text')
-        )
-      ),
+    await runAllInPool([
+      ...docFiles.map((file) => fixFile(path.join(dirPath, file), fixTyposInText, packageConfig, 'doc')),
+      ...tsFiles.map((file) => fixFile(path.join(dirPath, file), fixTyposInCode, packageConfig, 'ts')),
+      ...textBasedFiles.map((file) => fixFile(path.join(dirPath, file), fixTyposInText, packageConfig, 'text')),
     ]);
   });
 }
 
-function fixFile(filePath: string, fix: (content: string) => string): Promise<void> {
-  return promisePool.runAndWaitForReturnValue(async () => {
+function fixFile(
+  filePath: string,
+  fixTypos: (content: string) => string,
+  packageConfig: PackageConfig,
+  propName: 'doc' | 'ts' | 'text'
+): () => Promise<void> {
+  return async () => {
     const content = await fsUtil.readFileIfExists(filePath);
     if (content === undefined) return;
-    const newContent = fix(content);
+    const newContent = replaceWithConfig(fixTypos(content), packageConfig, propName);
     if (content !== newContent) {
       await fsUtil.generateFile(filePath, newContent);
     }
-  });
+  };
 }
 
 export function fixTyposInText(content: string): string {

@@ -13,7 +13,7 @@ import { getDefaultProseLanguage } from '../generators/agents.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { promisePool } from '../utils/promisePool.js';
+import { runAllInPool } from '../utils/promisePool.js';
 
 const generateTemplates = (languageNote: string): Record<string, string> => ({
   'pull_request_template.md': `
@@ -59,10 +59,10 @@ export async function generateGitHubTemplates(config: PackageConfig): Promise<vo
 
     const languageNote =
       getDefaultProseLanguage(config) === 'Japanese' ? ' Write in Japanese, keeping the headings as they are.' : '';
-    await Promise.all(
+    await runAllInPool(
       Object.entries(generateTemplates(languageNote)).map(([fileName, content]) => {
         const filePath = path.resolve(config.dirPath, '.github', fileName);
-        return promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, content));
+        return () => fsUtil.generateFile(filePath, content);
       })
     );
   });

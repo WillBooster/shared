@@ -6,7 +6,7 @@ import { ISSUE_TEMPLATE_RULES, PULL_REQUEST_BODY_RULES, TEST_WRITING_RULES } fro
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { promisePool } from '../utils/promisePool.js';
+import { runAllInPool } from '../utils/promisePool.js';
 import { generatesWorkerTypes } from '../packageConfig.js';
 import { hasCloudflareDeployWorkflow, invokesWbDeploy } from './workflow.js';
 
@@ -26,7 +26,7 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
 
     const cursorRulesPath = path.resolve(rootConfig.dirPath, '.cursor/rules/general.mdc');
     const cursorRulesContent = generateCursorGeneralMdcContent(rootConfig, allConfigs, usesWbDeploy, extraContent);
-    await Promise.all([
+    await runAllInPool([
       ...(
         [
           ['AGENTS.md', 'Codex CLI'],
@@ -36,9 +36,9 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
       ).map(([fileName, toolName]) => {
         const content = generateAgentInstruction(rootConfig, allConfigs, toolName, usesWbDeploy, extraContent);
         const filePath = path.resolve(rootConfig.dirPath, fileName);
-        return promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, content));
+        return () => fsUtil.generateFile(filePath, content);
       }),
-      promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(cursorRulesPath, cursorRulesContent)),
+      () => fsUtil.generateFile(cursorRulesPath, cursorRulesContent),
     ]);
   });
 }
