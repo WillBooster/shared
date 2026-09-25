@@ -233,7 +233,7 @@ src-tauri/gen/schemas/
       tailUserContent += `${content
         .replace(/^\uFEFF/u, '')
         .replace(/[\r\n]+$/u, '')
-        .replaceAll(/^([ \t]*#) Project-specific settings/gimu, '$1 Imported project-specific settings')}\n`;
+        .replaceAll(/^(#) Project-specific settings/gimu, '$1 Imported project-specific settings')}\n`;
       tailUserContent = tailUserContent.replaceAll(
         /^((?:\*\*\/)?\/?\.(?:idea|vscode|yarn)(?:\/(?:\*{1,2})?)?)[ \t]*$/gm,
         '# $1'
