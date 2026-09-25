@@ -231,6 +231,13 @@ src-tauri/gen/schemas/
         /^((?:\*\*\/)?\/?\.(?:idea|vscode|yarn)(?:\/(?:\*{1,2})?)?)$/gm,
         '# $1'
       );
+      tailUserContent = tailUserContent.replaceAll(
+        /^((?:\*\*\/)?\/?(?:\.idea\/watcherTasks\.xml|\.vscode\/(?:settings|tasks|launch|extensions)\.json|\.vscode\/[^/]+\.code-snippets|\.yarn\/(?:releases|patches|plugins|sdks|versions)(?:\/.*)?))$/gm,
+        '# $1'
+      );
+      if (/^!\.yarn\/cache$/m.test(generated)) {
+        tailUserContent = tailUserContent.replaceAll(/^((?:\*\*\/)?\/?\.yarn\/cache(?:\/.*)?)$/gm, '# $1');
+      }
       if (config.depending.tauri) {
         tailUserContent = tailUserContent.replaceAll(/^(debug\/)$/gm, '# $1');
       }
