@@ -53,15 +53,18 @@ test('keeps repository ignore rules across the first and subsequent runs', async
   const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gitignore-')));
   try {
     const filePath = path.join(tempDirPath, '.gitignore');
-    fs.writeFileSync(filePath, '# Native build artifacts\nbuild/\nprebuilds/\n');
+    expect(Bun.spawnSync(['git', 'init', '-q', tempDirPath]).exitCode).toBe(0);
+    fs.writeFileSync(filePath, '# Native build artifacts\nbuild/\nprebuilds/\n.idea/\n');
     const config = createConfig({ dirPath: tempDirPath, isRoot: true });
 
     await generateGitignore(config, config);
     await promisePool.promiseAll();
     const firstContent = fs.readFileSync(filePath, 'utf8');
     expect(firstContent).toContain(
-      '# Project-specific settings (tail)\n# Native build artifacts\nbuild/\nprebuilds/\n'
+      '# Project-specific settings (tail)\n# Native build artifacts\nbuild/\nprebuilds/\n# .idea/\n'
     );
+    expect(Bun.spawnSync(['git', 'check-ignore', 'build/Makefile'], { cwd: tempDirPath }).exitCode).toBe(0);
+    expect(Bun.spawnSync(['git', 'check-ignore', '.idea/watcherTasks.xml'], { cwd: tempDirPath }).exitCode).toBe(1);
 
     await generateGitignore(config, config);
     await promisePool.promiseAll();

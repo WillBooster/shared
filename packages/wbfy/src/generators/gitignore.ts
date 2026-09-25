@@ -47,7 +47,7 @@ export async function generateGitignore(config: PackageConfig, rootConfig: Packa
     const filePath = path.resolve(config.dirPath, '.gitignore');
     const content = (await fsUtil.readFileIfExists(filePath)) ?? '';
     let headUserContent = ignoreFileUtil.getHeadUserContent(content) + commonContent;
-    const tailUserContent = ignoreFileUtil.getTailUserContent(content);
+    let tailUserContent = ignoreFileUtil.getTailUserContent(content);
 
     const names = [...defaultNames];
     if (config.doesContainGemfile) {
@@ -222,6 +222,17 @@ src-tauri/gen/schemas/
     }
     if (rootConfig.depending.reactNative || config.depending.reactNative || config.doesContainPubspecYaml) {
       generated = generated.replaceAll(/^(.idea\/.+)$/gm, '$1\nandroid/$1');
+    }
+    if (content && !content.includes(ignoreFileUtil.separatorPrefix)) {
+      // Imported repository rules come after the generated section. Neutralize only rules
+      // that would undo deliberate exceptions in that section, leaving other rules intact.
+      tailUserContent = tailUserContent.replaceAll(/^(\/?\.idea\/?)$/gm, '# $1');
+      if (config.depending.tauri) {
+        tailUserContent = tailUserContent.replaceAll(/^(debug\/)$/gm, '# $1');
+      }
+      if (config.doesContainTauriConfig || config.doesContainTauriConfigInPackages) {
+        tailUserContent = tailUserContent.replaceAll(/^(\/?Cargo\.lock)$/gm, '# $1');
+      }
     }
     const newContent = headUserContent + '\n' + generated + tailUserContent;
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
