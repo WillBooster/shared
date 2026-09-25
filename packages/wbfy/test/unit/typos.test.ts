@@ -42,6 +42,7 @@ test('fixTypos resolves only after every file is rewritten, including files queu
     }
   } finally {
     promisePool.concurrency = oldConcurrency;
+    fsUtil.setRootDirPath(undefined);
     fs.rmSync(dirPath, { force: true, recursive: true });
   }
 });
