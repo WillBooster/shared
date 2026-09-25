@@ -92,6 +92,30 @@ test('keeps repository ignore rules across the first and subsequent runs', async
   }
 });
 
+test('preserves an escaped trailing space in the final imported rule', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gitignore-')));
+  try {
+    const filePath = path.join(tempDirPath, '.gitignore');
+    expect(Bun.spawnSync(['git', 'init', '-q', tempDirPath]).exitCode).toBe(0);
+    fs.writeFileSync(path.join(tempDirPath, '.git/info/exclude'), '');
+    fs.writeFileSync(filePath, String.raw`foo\ `);
+    const checkIgnore = (): number =>
+      Bun.spawnSync(['git', '-c', 'core.excludesFile=/dev/null', 'check-ignore', 'foo '], {
+        cwd: tempDirPath,
+      }).exitCode;
+    expect(checkIgnore()).toBe(0);
+
+    const config = createConfig({ dirPath: tempDirPath, isRoot: true });
+    await generateGitignore(config, config);
+    expect(fs.readFileSync(filePath, 'utf8')).toContain('foo\\ \n');
+    expect(checkIgnore()).toBe(0);
+    await generateGitignore(config, config);
+    expect(checkIgnore()).toBe(0);
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
+
 test('retains editable rules from the legacy managed format', async () => {
   const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gitignore-')));
   try {

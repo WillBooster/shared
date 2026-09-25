@@ -232,7 +232,7 @@ src-tauri/gen/schemas/
       // that would undo deliberate exceptions in that section, leaving other rules intact.
       tailUserContent += `${content
         .replace(/^\uFEFF/u, '')
-        .trimEnd()
+        .replace(/[\r\n]+$/u, '')
         .replaceAll(/# Project-specific settings/giu, '# Imported project-specific settings')}\n`;
       tailUserContent = tailUserContent.replaceAll(
         /^((?:\*\*\/)?\/?\.(?:idea|vscode|yarn)(?:\/(?:\*{1,2})?)?)[ \t]*$/gm,
@@ -254,7 +254,7 @@ src-tauri/gen/schemas/
       }
     }
     const newContent = headUserContent + '\n' + generated + tailUserContent;
-    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
+    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent, '\n', true));
   });
 }
 

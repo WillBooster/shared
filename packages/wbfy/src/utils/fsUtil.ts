@@ -78,13 +78,20 @@ export const fsUtil = {
     return true;
   },
   /** Returns whether the file was actually generated (false when the confinement guards skip it). */
-  async generateFile(filePath: string, content: string, lineEnding: '\n' | '\r\n' = '\n'): Promise<boolean> {
+  async generateFile(
+    filePath: string,
+    content: string,
+    lineEnding: '\n' | '\r\n' = '\n',
+    preserveTrailingSpaces = false
+  ): Promise<boolean> {
     if (!(await isConfinedWritablePath(filePath))) return false;
     await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     // `trim` treats a BOM as whitespace, so it is reattached at position 0: dropping it would
     // rewrite the encoding marker of a file the generator was only asked to update.
     const byteOrderMark = content.startsWith('﻿') ? '﻿' : '';
-    let normalizedContent = content.trim();
+    // Ignore patterns may end in escaped spaces, so their writer keeps those spaces
+    // while normalizing terminal line breaks like other generated files.
+    let normalizedContent = preserveTrailingSpaces ? content.trimStart().replace(/[\r\n]+$/u, '') : content.trim();
     if (normalizedContent) {
       normalizedContent = `${byteOrderMark}${normalizedContent}${lineEnding}`;
     }
