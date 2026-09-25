@@ -306,7 +306,7 @@ function hasLocalWbWorkspace(config: PackageConfig): boolean {
 
 function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageConfig[]): string[] {
   const postMergeCommands: string[] = [];
-  const toolsChangedPattern = String.raw`(mise\.toml|\.mise\.toml)`;
+  const toolsChangedPattern = String.raw`(mise\.toml|rust-toolchain(\.toml)?)`;
   postMergeCommands.push(String.raw`run_if_changed "${toolsChangedPattern}" "mise install"`);
   // `mise activate` updates PATH only when the prompt is drawn, so the hook inherits the tool
   // versions pinned before the merge; refresh PATH so a pulled Bun pin installs with that Bun.
