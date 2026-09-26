@@ -55,7 +55,7 @@
     "@tsconfig/node-lts": "24.0.1",
     "@tsconfig/node-ts": "23.6.4",
     "@types/bun": "1.4.2",
-    "@types/node": "26.6.1",
+    "@types/node": "26.6.2",
     "@types/semver": "7.8.0",
     "@types/yargs": "17.0.35",
     "@willbooster/oxfmt-config": "1.2.2",
