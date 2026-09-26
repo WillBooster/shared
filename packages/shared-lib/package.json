@@ -57,7 +57,7 @@
     "oxlint-tsgolint": "7.0.2002",
     "sort-package-json": "4.0.0",
     "typescript": "7.0.2",
-    "yaml": "2.9.0"
+    "yaml": "2.9.1"
   },
   "publishConfig": {
     "access": "public",
