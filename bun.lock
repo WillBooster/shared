@@ -38,7 +38,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "workspace:*",
-        "build-ts": "21.0.16",
+        "build-ts": "21.0.17",
         "oxfmt": "0.68.0",
         "oxlint": "1.83.0",
         "oxlint-tsgolint": "7.0.2002",
@@ -60,7 +60,7 @@
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "workspace:*",
         "blitz": "3.0.2",
-        "build-ts": "21.0.16",
+        "build-ts": "21.0.17",
         "oxfmt": "0.68.0",
         "oxlint": "1.83.0",
         "oxlint-tsgolint": "7.0.2002",
@@ -80,7 +80,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "workspace:*",
-        "build-ts": "21.0.16",
+        "build-ts": "21.0.17",
         "next": "16.3.5",
         "oxfmt": "0.68.0",
         "oxlint": "1.83.0",
@@ -109,7 +109,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "workspace:*",
-        "build-ts": "21.0.16",
+        "build-ts": "21.0.17",
         "oxfmt": "0.68.0",
         "oxlint": "1.83.0",
         "oxlint-tsgolint": "7.0.2002",
@@ -131,7 +131,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "workspace:*",
-        "build-ts": "21.0.16",
+        "build-ts": "21.0.17",
         "oxfmt": "0.68.0",
         "oxlint": "1.83.0",
         "oxlint-tsgolint": "7.0.2002",
@@ -181,7 +181,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "at-decorators": "7.1.2",
-        "build-ts": "21.0.16",
+        "build-ts": "21.0.17",
         "oxfmt": "0.68.0",
         "oxlint": "1.83.0",
         "oxlint-tsgolint": "7.0.2002",
@@ -199,6 +199,7 @@
       },
       "dependencies": {
         "@octokit/core": "7.0.8",
+        "@willbooster/tree-sitter-bash": "1.0.2",
         "deepmerge": "4.3.1",
         "fast-glob": "3.3.3",
         "js-yaml": "5.4.2",
@@ -206,9 +207,8 @@
         "mdast-util-from-markdown": "2.0.3",
         "minimal-promise-pool": "6.0.3",
         "semver": "7.8.5",
-        "tree-sitter-bash": "0.25.1",
+        "tree-sitter": "0.25.1",
         "typescript": "7.0.2",
-        "web-tree-sitter": "0.27.0",
         "yargs": "18.1.0",
         "zod": "4.6.5",
       },
@@ -227,7 +227,7 @@
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/shared-lib": "workspace:*",
         "@willbooster/wb": "workspace:*",
-        "build-ts": "21.0.16",
+        "build-ts": "21.0.17",
         "lefthook": "2.1.14",
         "oxfmt": "0.68.0",
         "oxlint": "1.83.0",
@@ -239,6 +239,7 @@
   },
   "trustedDependencies": [
     "blitz",
+    "tree-sitter",
     "esbuild",
     "lefthook",
     "sharp",
@@ -1271,6 +1272,8 @@
 
     "@willbooster/shared-lib-react": ["@willbooster/shared-lib-react@workspace:packages/shared-lib-react"],
 
+    "@willbooster/tree-sitter-bash": ["@willbooster/tree-sitter-bash@1.0.2", "", { "dependencies": { "node-addon-api": "^8.2.1", "node-gyp-build": "^4.8.2" }, "peerDependencies": { "tree-sitter": "^0.25.0" }, "optionalPeers": ["tree-sitter"] }, "sha512-+xLxCshZqBRGvTwNlE8nEnUIZqSBP78FIFR34VdeGUk7RHHzYT8GFdSZLDgRfN/rqbl7R+PoqA9v7hhneYWVHA=="],
+
     "@willbooster/wb": ["@willbooster/wb@workspace:packages/wb"],
 
     "@willbooster/wbfy": ["@willbooster/wbfy@workspace:packages/wbfy"],
@@ -1383,7 +1386,7 @@
 
     "buffer-from": ["buffer-from@1.1.2", "", {}, "sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ=="],
 
-    "build-ts": ["build-ts@21.0.16", "", { "dependencies": { "@babel/core": "8.0.5", "@babel/plugin-proposal-decorators": "8.0.2", "@babel/plugin-transform-explicit-resource-management": "8.0.5", "@babel/preset-env": "8.0.5", "@babel/preset-react": "8.0.1", "@babel/preset-typescript": "8.0.1", "@willbooster/shared-lib-node": "13.4.0", "magic-string": "1.3.1", "oxc-parser": "0.149.0", "rolldown": "1.2.8", "signal-exit": "4.1.0", "tsx": "4.23.13", "typescript": "7.0.2", "yargs": "18.1.0" }, "bin": { "build-ts": "bin/index.js" } }, "sha512-OATzXk9+nTitjIXiZ26HS7VZLeAh42/JXgfEWaZjiPJp9xo30FV/mu+X+c00wRJNOBjQYpOCGaqqSysaq9K8fA=="],
+    "build-ts": ["build-ts@21.0.17", "", { "dependencies": { "@babel/core": "8.0.5", "@babel/plugin-proposal-decorators": "8.0.2", "@babel/plugin-transform-explicit-resource-management": "8.0.5", "@babel/preset-env": "8.0.5", "@babel/preset-react": "8.0.1", "@babel/preset-typescript": "8.0.1", "@willbooster/shared-lib-node": "13.4.0", "magic-string": "1.3.1", "oxc-parser": "0.149.0", "rolldown": "1.2.8", "signal-exit": "4.1.0", "tsx": "4.23.13", "typescript": "7.0.2", "yargs": "18.1.0" }, "bin": { "build-ts": "bin/index.js" } }, "sha512-gWOJvwBZM9/h/FnrGU2yAMIbKhH0NfvsK9mfDMziBUf6c+BLBCog83pvGMqvfb+9JcO5hVxVATz88OTVLCRRXA=="],
 
     "bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
@@ -2813,7 +2816,7 @@
 
     "traverse": ["traverse@0.6.8", "", {}, "sha512-aXJDbk6SnumuaZSANd21XAo15ucCDE38H4fkqiGsc3MhCK+wOlZvLP9cB/TvpHT0mOyWgC4Z8EwRlzqYSUzdsA=="],
 
-    "tree-sitter-bash": ["tree-sitter-bash@0.25.1", "", { "dependencies": { "node-addon-api": "^8.2.1", "node-gyp-build": "^4.8.2" }, "peerDependencies": { "tree-sitter": "^0.25.0" }, "optionalPeers": ["tree-sitter"] }, "sha512-7hMytuYIMoXOq24yRulgIxthE9YmggZIOHCyPTTuJcu6EU54tYD+4G39cUb28kxC6jMf/AbPfWGLQtgPTdh3xw=="],
+    "tree-sitter": ["tree-sitter@0.25.1", "", { "dependencies": { "node-addon-api": "^8.5.0", "node-gyp-build": "^4.8.4" } }, "sha512-mrcEdkYtHfrK1A6fs3O6FxkBo0Qig5XUXqHhxUOQu0bmPo00QF4XaSx4edpazdHwxnSCjlGKGgIqWdaN4dvTLA=="],
 
     "trim-lines": ["trim-lines@3.0.1", "", {}, "sha512-kRj8B+YHZCc9kQYdWfJB2/oUl9rA99qbowYYBtr4ui4mZyAQ2JpvVBd/6U2YloATfqBhBTSMhTpgBHtU0Mf3Rg=="],
 
@@ -2944,8 +2947,6 @@
     "wcwidth": ["wcwidth@1.0.1", "", { "dependencies": { "defaults": "^1.0.3" } }, "sha512-XHPEwS0q6TaxcvG85+8EYkbiCux2XtWG2mkc47Ng2A77BQu9+DqIOJldST4HgPkuea7dvKSj5VgX3P1d4rW8Tg=="],
 
     "web-streams-polyfill": ["web-streams-polyfill@3.3.3", "", {}, "sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw=="],
-
-    "web-tree-sitter": ["web-tree-sitter@0.27.0", "", {}, "sha512-XK08gj6RwTMQatAG7uVRP8MunqotL/XC19vHgkSPKmELgbGPBj4ECvB8haHOUnyj6ls2B8t42UTro14zxGgAHg=="],
 
     "web-worker": ["web-worker@1.5.0", "", {}, "sha512-RiMReJrTAiA+mBjGONMnjVDP2u3p9R1vkcGz6gDIrOMT3oGuYwX2WRMYI9ipkphSuE5XKEhydbhNEJh4NY9mlw=="],
 

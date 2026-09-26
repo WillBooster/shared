@@ -515,13 +515,14 @@ function skipRunnerOptions(tokens: string[], startIndex: number): number {
  * Whether a deploy script invokes `wb … deploy` at command position. Package runners and global yargs options
  * (with their value tokens) may precede the deploy command.
  */
-export async function invokesWbDeploy(deployScript: string, scriptNames: ReadonlySet<string>): Promise<boolean> {
-  for (const tokens of (await parseShellCommands(deployScript)) ?? []) {
+export function invokesWbDeploy(deployScript: string, scriptNames: ReadonlySet<string>): boolean {
+  for (const tokens of parseShellCommands(deployScript) ?? []) {
     let index = 0;
     // Leading launchers run the following command: `env` (with options + KEY=value assignments)
-    // and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options). Other launchers (`time`,
-    // `exec`, …) are NOT modeled: they leave a non-`wb` first token, so the command simply does
-    // not match. This is a deliberate false-negative for generated guidance.
+    // and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options). The grammar parses the
+    // `time` keyword as a wrapper, so `time wb deploy` already yields `wb` first. Other launchers
+    // (`exec`, `nice`, …) are NOT modeled: they leave a non-`wb` first token, so the command simply
+    // does not match. This is a deliberate false-negative for generated guidance.
     if (tokens[index] === 'env') {
       index++;
       while (index < tokens.length) {

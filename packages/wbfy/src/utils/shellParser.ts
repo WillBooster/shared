@@ -1,9 +1,9 @@
-import { fileURLToPath } from 'node:url';
+import Bash from '@willbooster/tree-sitter-bash';
+import Parser from 'tree-sitter';
 
-import type { Node } from 'web-tree-sitter';
-import { Language, Parser } from 'web-tree-sitter';
+type Node = Parser.SyntaxNode;
 
-let parserPromise: Promise<Parser> | undefined;
+let parser: Parser | undefined;
 
 /**
  * Returns the unquoted words (command name first) of every simple command in a Bash script, including those nested
@@ -11,21 +11,15 @@ let parserPromise: Promise<Parser> | undefined;
  * Comments and literal heredoc text are not commands (command substitutions in an unquoted heredoc are), and function
  * bodies are skipped because they run only when called.
  */
-export async function parseShellCommands(script: string): Promise<string[][] | undefined> {
-  parserPromise ??= createParser();
-  const parser = await parserPromise;
-  const tree = parser.parse(script);
-  if (!tree) return;
-  try {
-    if (tree.rootNode.hasError) return;
-    return tree.rootNode.descendantsOfType('command').flatMap((command) => {
-      const name = command.childForFieldName('name');
-      if (!name || isInFunctionBody(command)) return [];
-      return [[name, ...command.childrenForFieldName('argument')].map((word) => unquoteWord(word))];
-    });
-  } finally {
-    tree.delete();
-  }
+export function parseShellCommands(script: string): string[][] | undefined {
+  parser ??= createParser();
+  const { rootNode } = parser.parse(script);
+  if (rootNode.hasError) return;
+  return rootNode.descendantsOfType('command').flatMap((command) => {
+    const name = command.childForFieldName('name');
+    if (!name || isInFunctionBody(command)) return [];
+    return [[name, ...command.childrenForFieldName('argument')].map((word) => unquoteWord(word))];
+  });
 }
 
 function isInFunctionBody(node: Node): boolean {
@@ -35,10 +29,9 @@ function isInFunctionBody(node: Node): boolean {
   return false;
 }
 
-async function createParser(): Promise<Parser> {
-  await Parser.init();
+function createParser(): Parser {
   const parser = new Parser();
-  parser.setLanguage(await Language.load(fileURLToPath(import.meta.resolve('tree-sitter-bash/tree-sitter-bash.wasm'))));
+  parser.setLanguage(Bash as Parser.Language);
   return parser;
 }
 
