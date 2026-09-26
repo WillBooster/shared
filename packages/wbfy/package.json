@@ -19,7 +19,7 @@
     "dist/"
   ],
   "scripts": {
-    "build": "build-ts app --external @willbooster/tree-sitter-bash",
+    "build": "build-ts app --external tree-sitter-bash",
     "cleanup": "bun wb lint --fix --format",
     "format": "bun wb lint --format",
     "lint": "bun wb lint",
@@ -33,7 +33,6 @@
   },
   "dependencies": {
     "@octokit/core": "7.0.8",
-    "@willbooster/tree-sitter-bash": "1.1.0",
     "deepmerge": "4.3.1",
     "fast-glob": "3.3.3",
     "js-yaml": "5.4.2",
@@ -42,6 +41,7 @@
     "minimal-promise-pool": "6.0.3",
     "semver": "7.8.5",
     "tree-sitter": "0.25.1",
+    "tree-sitter-bash": "0.25.1",
     "typescript": "7.0.2",
     "yargs": "18.1.0",
     "zod": "4.6.5"

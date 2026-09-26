@@ -1,4 +1,6 @@
-import Bash from '@willbooster/tree-sitter-bash';
+// Keep this external native grammar on an age-gated release: bunx resolves wbfy's dependencies
+// before wbfy can refresh a machine's global release-age exclusions.
+import Bash from 'tree-sitter-bash';
 import Parser from 'tree-sitter';
 
 type Node = Parser.SyntaxNode;
