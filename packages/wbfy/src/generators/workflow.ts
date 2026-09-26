@@ -515,8 +515,8 @@ function skipRunnerOptions(tokens: string[], startIndex: number): number {
  * Whether a deploy script invokes `wb … deploy` at command position. Package runners and global yargs options
  * (with their value tokens) may precede the deploy command.
  */
-export async function invokesWbDeploy(deployScript: string, scriptNames: ReadonlySet<string>): Promise<boolean> {
-  for (const tokens of (await parseShellCommands(deployScript)) ?? []) {
+export function invokesWbDeploy(deployScript: string, scriptNames: ReadonlySet<string>): boolean {
+  for (const tokens of parseShellCommands(deployScript) ?? []) {
     let index = 0;
     // Leading launchers run the following command: `env` (with options + KEY=value assignments)
     // and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options). Other launchers (`time`,

@@ -15,14 +15,11 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     if (!rootConfig.isRoot) return;
 
     const extraContent = await readAgentsExtraContent(rootConfig.dirPath);
-    const deployScriptResults = await Promise.all(
-      allConfigs.map(async (config) => {
-        const scripts = config.packageJson?.scripts ?? {};
-        const deployScript = scripts['deploy'];
-        return typeof deployScript === 'string' && (await invokesWbDeploy(deployScript, new Set(Object.keys(scripts))));
-      })
-    );
-    const usesWbDeploy = deployScriptResults.includes(true);
+    const usesWbDeploy = allConfigs.some((config) => {
+      const scripts = config.packageJson?.scripts ?? {};
+      const deployScript = scripts['deploy'];
+      return typeof deployScript === 'string' && invokesWbDeploy(deployScript, new Set(Object.keys(scripts)));
+    });
 
     const cursorRulesPath = path.resolve(rootConfig.dirPath, '.cursor/rules/general.mdc');
     const cursorRulesContent = generateCursorGeneralMdcContent(rootConfig, allConfigs, usesWbDeploy, extraContent);
