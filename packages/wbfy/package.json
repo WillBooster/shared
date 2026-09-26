@@ -67,7 +67,7 @@
     "oxlint": "1.83.0",
     "oxlint-tsgolint": "7.0.2002",
     "sort-package-json": "4.0.0",
-    "type-fest": "5.9.0"
+    "type-fest": "5.10.0"
   },
   "engines": {
     "bun": ">=1.4"
