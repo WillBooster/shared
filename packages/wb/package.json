@@ -50,7 +50,7 @@
     "yargs": "18.1.0"
   },
   "devDependencies": {
-    "@slidev/parser": "52.19.1",
+    "@slidev/parser": "52.20.1",
     "@tsconfig/bun": "1.0.11",
     "@tsconfig/node-lts": "24.0.1",
     "@tsconfig/node-ts": "23.6.4",
@@ -67,7 +67,7 @@
     "oxlint-tsgolint": "7.0.2002",
     "sort-package-json": "4.0.0",
     "textlint-rule-no-hankaku-kana": "2.0.1",
-    "type-fest": "5.9.0",
+    "type-fest": "5.10.0",
     "typescript": "7.0.2"
   },
   "engines": {
