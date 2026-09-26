@@ -199,7 +199,7 @@
       },
       "dependencies": {
         "@octokit/core": "7.0.8",
-        "@willbooster/tree-sitter-bash": "1.0.2",
+        "@willbooster/tree-sitter-bash": "1.1.0",
         "deepmerge": "4.3.1",
         "fast-glob": "3.3.3",
         "js-yaml": "5.4.2",
@@ -1272,7 +1272,7 @@
 
     "@willbooster/shared-lib-react": ["@willbooster/shared-lib-react@workspace:packages/shared-lib-react"],
 
-    "@willbooster/tree-sitter-bash": ["@willbooster/tree-sitter-bash@1.0.2", "", { "dependencies": { "node-addon-api": "^8.2.1", "node-gyp-build": "^4.8.2" }, "peerDependencies": { "tree-sitter": "^0.25.0" }, "optionalPeers": ["tree-sitter"] }, "sha512-+xLxCshZqBRGvTwNlE8nEnUIZqSBP78FIFR34VdeGUk7RHHzYT8GFdSZLDgRfN/rqbl7R+PoqA9v7hhneYWVHA=="],
+    "@willbooster/tree-sitter-bash": ["@willbooster/tree-sitter-bash@1.1.0", "", { "dependencies": { "node-addon-api": "^8.2.1", "node-gyp-build": "^4.8.2" }, "peerDependencies": { "tree-sitter": "^0.25.0" }, "optionalPeers": ["tree-sitter"] }, "sha512-GMVc83EdjSYMD4ws1sz2sStD0fyRV5AD8z7mCSEMIR6YQHu0aR4bQ220xGqHuOAsIzodNIpIhnSy1TiUZG2hbg=="],
 
     "@willbooster/wb": ["@willbooster/wb@workspace:packages/wb"],
 
