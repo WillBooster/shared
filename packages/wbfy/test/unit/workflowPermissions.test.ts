@@ -222,6 +222,30 @@ test('does not grant caller-only test permissions to an inline test beside a reu
   });
 });
 
+test('scopes a reusable test sibling without granting its permissions to the inline job', async () => {
+  await withTempWorkflowsRepo('wbfy-mixed-test-callers-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    fs.writeFileSync(
+      path.join(workflowsPath, 'test.yml'),
+      `jobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n  test-nightly:\n    uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main\n`
+    );
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+
+    const workflow = readWorkflow(workflowsPath, 'test.yml');
+    expect(workflow.permissions).toBeUndefined();
+    expect(siblingJobSchema.parse(workflow.jobs.test)).toEqual({
+      'runs-on': 'ubuntu-latest',
+      steps: [{ run: 'echo preserved' }],
+    });
+    expect(workflow.jobs['test-nightly']?.permissions).toEqual({
+      actions: 'write',
+      contents: 'write',
+      'pull-requests': 'read',
+    });
+  });
+});
+
 test('preserves permissions explicitly set on an inline test workflow', async () => {
   await withTempWorkflowsRepo('wbfy-explicit-test-permissions-', async (dirPath, workflowsPath) => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));

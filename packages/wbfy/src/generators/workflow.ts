@@ -717,6 +717,9 @@ export function hasCloudflareDeployWorkflow(workflowsDirPath: string): boolean {
 // other callee is a GitHub error.
 const installCapableReusableWorkflows = new Set(['deploy', 'release', 'run-script', 'test']);
 const reusableWorkflowPermissions: Record<string, Record<string, string>> = {
+  // A test caller can share a file with an inline test job; scope its callee token to
+  // the caller so the inline job does not inherit the template's write permissions.
+  test: { ...workflows.test.permissions },
   // skip-duplicate-actions reads workflow runs; cancel_others is false, so read is enough.
   'test-rust': { actions: 'read', contents: 'read' },
   'semantic-pr': { 'pull-requests': 'read', statuses: 'write' },
