@@ -163,6 +163,23 @@ test('keeps a valid force-sync caller beside an inline sync job', async () => {
   });
 });
 
+test('keeps write access for inline release and sync jobs', async () => {
+  await withTempWorkflowsRepo('wbfy-inline-write-jobs-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    for (const kind of ['release', 'sync']) {
+      fs.writeFileSync(
+        path.join(workflowsPath, `${kind}.yml`),
+        `jobs:\n  ${kind}:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ${kind}\n`
+      );
+    }
+    const base = createConfig();
+    await generateWorkflows(createConfig({ dirPath, isRoot: true, release: { ...base.release, branches: ['main'] } }));
+
+    expect(readWorkflow(workflowsPath, 'release.yml').permissions?.contents).toBe('write');
+    expect(readWorkflow(workflowsPath, 'sync.yml').permissions?.contents).toBe('write');
+  });
+});
+
 test('generated close-comment callers are removed', async () => {
   await withTempWorkflowsRepo('wbfy-workflow-close-comment-', async (dirPath, workflowsPath) => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
