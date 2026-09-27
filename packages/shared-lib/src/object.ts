@@ -6,8 +6,8 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * Returns a shallow copy of the own enumerable string-keyed properties whose values are not `undefined`,
  * e.g. to turn `process.env` into a `Record<string, string>`.
- * Arrays and class instances such as `Date` are rejected by the type, since the copy is a plain object without their
- * prototype.
+ * Expects a plain record: the copy is a plain object without the input's prototype, so the type rejects arrays and
+ * class instances such as `Date`, though not a class that declares a string index signature.
  */
 export function omitUndefined<T extends Readonly<Record<string, unknown>>>(value: T): WithoutUndefined<T> {
   const result: Record<string, unknown> = {};
