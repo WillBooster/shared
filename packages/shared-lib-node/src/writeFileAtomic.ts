@@ -32,7 +32,8 @@ export async function writeFileAtomic(
     if (mode !== undefined) await fs.promises.chmod(tempPath, mode);
     await fs.promises.rename(tempPath, filePath);
   } catch (error) {
-    await fs.promises.rm(tempPath, { force: true });
+    // A cleanup failure must not replace the error that explains why the write failed.
+    await fs.promises.rm(tempPath, { force: true }).catch(() => {});
     throw error;
   }
 }
@@ -52,7 +53,11 @@ export function writeFileAtomicSync(
     if (mode !== undefined) fs.chmodSync(tempPath, mode);
     fs.renameSync(tempPath, filePath);
   } catch (error) {
-    fs.rmSync(tempPath, { force: true });
+    try {
+      fs.rmSync(tempPath, { force: true });
+    } catch {
+      // A cleanup failure must not replace the error that explains why the write failed.
+    }
     throw error;
   }
 }
