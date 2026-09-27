@@ -66,6 +66,9 @@ function generateCursorGeneralMdcContent(
   return `${frontmatter}\n\n${body}`;
 }
 
+export const LANGUAGE_BOUND_TEXT_EXCEPTION =
+  'except text whose language is part of what the code handles (e.g., UI strings, test inputs)';
+
 function generateAgentInstruction(
   rootConfig: PackageConfig,
   allConfigs: PackageConfig[],
@@ -129,8 +132,8 @@ function generateAgentInstruction(
     : '';
   const languageInstruction =
     getDefaultProseLanguage(rootConfig) === 'Japanese'
-      ? '\n- Unless instructed otherwise, write issues, PR bodies, review comments, and documentation for people (README, `docs/`) in Japanese, and every other artifact (including commit messages, PR titles, identifiers, code comments, JSDoc, and agent instructions) in English, except text whose language is part of what the code handles (e.g., UI strings, test inputs).'
-      : '\n- Write every artifact in English, except text whose language is part of what the code handles (e.g., UI strings, test inputs).';
+      ? `\n- Unless instructed otherwise, write issues, PR bodies, review comments, and documentation for people (README, \`docs/\`) in Japanese, and every other artifact (including commit messages, PR titles, identifiers, code comments, JSDoc, and agent instructions) in English, ${LANGUAGE_BOUND_TEXT_EXCEPTION}.`
+      : `\n- Write every artifact in English, ${LANGUAGE_BOUND_TEXT_EXCEPTION}.`;
   const runnerInstruction = rootConfig.isWillBoosterRepo
     ? '\n- Private repositories use self-hosted CI runners. Keep OS/size constraints in an explicit self-hosted label array; fix missing runner capabilities instead of switching to GitHub-hosted runners. The sole approved exception is the Windows desktop build in WillBooster/cheerlings.'
     : '';

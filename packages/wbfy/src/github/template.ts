@@ -9,7 +9,7 @@ import {
   renderSectionTemplate,
 } from '@willbooster/shared-lib/src';
 
-import { getDefaultProseLanguage } from '../generators/agents.js';
+import { getDefaultProseLanguage, LANGUAGE_BOUND_TEXT_EXCEPTION } from '../generators/agents.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -57,14 +57,16 @@ export async function generateGitHubTemplates(config: PackageConfig): Promise<vo
       return;
     }
 
-    const exception = 'except text whose language is part of what the code handles (e.g., UI strings, test inputs)';
     const [prLanguageNote, issueLanguageNote] =
       getDefaultProseLanguage(config) === 'Japanese'
         ? [
-            ` Write the title in English and the body in Japanese, ${exception}, keeping the headings as they are.`,
-            ` Write in Japanese, ${exception}, keeping the headings as they are.`,
+            ` Write the title in English and the body in Japanese, ${LANGUAGE_BOUND_TEXT_EXCEPTION}, keeping the headings as they are.`,
+            ` Write in Japanese, ${LANGUAGE_BOUND_TEXT_EXCEPTION}, keeping the headings as they are.`,
           ]
-        : [` Write in English, ${exception}.`, ` Write in English, ${exception}.`];
+        : [
+            ` Write in English, ${LANGUAGE_BOUND_TEXT_EXCEPTION}.`,
+            ` Write in English, ${LANGUAGE_BOUND_TEXT_EXCEPTION}.`,
+          ];
     await runAllInPool(
       Object.entries(generateTemplates(prLanguageNote, issueLanguageNote)).map(([fileName, content]) => {
         const filePath = path.resolve(config.dirPath, '.github', fileName);
