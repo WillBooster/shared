@@ -37,6 +37,12 @@ test('writeFileAtomic keeps the permissions of the replaced file when no mode is
   expect(stat.mode & 0o777).toBe(0o600);
 });
 
+test('writeFileAtomic writes a file whose name is at the length limit', async () => {
+  const filePath = path.join(dirPath, 'a'.repeat(255));
+  await writeFileAtomic(filePath, 'content');
+  expect(await fs.promises.readFile(filePath, 'utf8')).toBe('content');
+});
+
 test('writeFileAtomic removes its temporary file when the rename fails', async () => {
   const filePath = path.join(dirPath, 'target');
   await fs.promises.mkdir(path.join(filePath, 'child'), { recursive: true });

@@ -7,8 +7,13 @@ export function downloadFile(data: BlobPart, fileName: string, mimeType = 'appli
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = fileName;
+  // Firefox and Safari start a download only from an anchor connected to the document.
+  document.body.append(anchor);
   anchor.click();
   // Revoking right after `click()` can cancel the download in some browsers, so the URL is released later, as
   // FileSaver.js does with the same 40-second delay.
-  setTimeout(() => URL.revokeObjectURL(url), 40_000);
+  setTimeout(() => {
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }, 40_000);
 }

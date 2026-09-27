@@ -11,7 +11,18 @@ export function omitUndefined<T extends object>(value: T): WithoutUndefined<T> {
   const result: Record<string, unknown> = {};
   for (const key of Object.keys(value)) {
     const propertyValue = (value as Record<string, unknown>)[key];
-    if (propertyValue !== undefined) result[key] = propertyValue;
+    if (propertyValue === undefined) continue;
+    if (key === '__proto__') {
+      // Assignment would invoke the `__proto__` setter and replace the prototype instead of copying the key.
+      Object.defineProperty(result, key, {
+        configurable: true,
+        enumerable: true,
+        value: propertyValue,
+        writable: true,
+      });
+    } else {
+      result[key] = propertyValue;
+    }
   }
   return result as WithoutUndefined<T>;
 }

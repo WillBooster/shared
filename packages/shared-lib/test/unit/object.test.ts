@@ -11,6 +11,13 @@ test('omitUndefined drops undefined values and types possibly omitted keys as op
   expect(readDropped).toBeFunction();
 });
 
+test('omitUndefined copies a `__proto__` key as an own property without changing the prototype', () => {
+  const result = omitUndefined(JSON.parse('{"__proto__":{"admin":true},"x":1}') as Record<string, unknown>);
+  expect(Object.keys(result)).toEqual(['__proto__', 'x']);
+  expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+  expect((result as { admin?: boolean }).admin).toBeUndefined();
+});
+
 test('omitUndefined turns an environment-like record into a Record<string, string>', () => {
   const env: Record<string, string> = omitUndefined({ HOME: '/home/user', UNSET: undefined } as Record<
     string,

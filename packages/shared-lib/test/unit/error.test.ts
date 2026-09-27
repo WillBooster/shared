@@ -65,4 +65,13 @@ test('getErrorMessage answers the message of an Error and a string for any other
     },
   };
   expect(getErrorMessage(throwingGetters)).toBe('Unknown error');
+  const throwingPrototypeProxy = new Proxy(
+    {},
+    {
+      getPrototypeOf() {
+        throw new Error('prototype');
+      },
+    }
+  );
+  expect(getErrorMessage(throwingPrototypeProxy)).toBe('[object Object]');
 });

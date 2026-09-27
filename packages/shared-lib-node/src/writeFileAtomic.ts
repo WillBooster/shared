@@ -21,7 +21,8 @@ export async function writeFileAtomic(
     options?.mode ?? getExistingMode(filePath),
     fs.promises.mkdir(dirPath, { recursive: true }),
   ]);
-  const tempPath = path.join(dirPath, `.${path.basename(filePath)}.${randomUUID()}.tmp`);
+  // The name does not include the target's, which may already be near the file name length limit.
+  const tempPath = path.join(dirPath, `.${randomUUID()}.tmp`);
   try {
     // Creating the file with the mode keeps it from being more permissive than intended while it is written.
     await fs.promises.writeFile(tempPath, data, mode === undefined ? undefined : { mode });
