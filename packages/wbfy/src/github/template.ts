@@ -15,11 +15,13 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { runAllInPool } from '../utils/promisePool.js';
 
-const generateTemplates = (languageNote: string): Record<string, string> => ({
+const ENGLISH_NOTE = ' Write the title and body in English, even when the request was made in another language.';
+
+const generateTemplates = (prLanguageNote: string, issueLanguageNote: string): Record<string, string> => ({
   'pull_request_template.md': `
 Close #<IssueNumber>
 
-<!-- Write for a reviewer who has not followed the work.${languageNote} Scale each section to the change: a sentence for a small change, numbered subsections for a large one. Delete this comment and the placeholder comments below. -->
+<!-- Write for a reviewer who has not followed the work.${prLanguageNote} Scale each section to the change: a sentence for a small change, numbered subsections for a large one. Delete this comment and the placeholder comments below. -->
 
 ${renderSectionTemplate(PULL_REQUEST_SECTIONS)}
 `.trim(),
@@ -31,7 +33,7 @@ title: 'fix: '
 labels: 't: fix :bug:'
 ---
 
-<!-- Keep Problem and Proposal; delete Evidence or Impact when they add nothing.${languageNote} Delete these comments. -->
+<!-- Keep Problem and Proposal; delete Evidence or Impact when they add nothing.${issueLanguageNote} Delete these comments. -->
 
 ${renderSectionTemplate(BUG_ISSUE_SECTIONS)}
 `.trim(),
@@ -43,7 +45,7 @@ title: 'feat: '
 labels: 't: feat :sparkles:'
 ---
 
-<!-- Keep the first three sections for any change and add the others as the change grows; a large change fills all of them (spec-booster reviews against this list).${languageNote} Delete these comments. -->
+<!-- Keep the first three sections for any change and add the others as the change grows; a large change fills all of them (spec-booster reviews against this list).${issueLanguageNote} Delete these comments. -->
 
 ${renderSectionTemplate(CHANGE_ISSUE_SECTIONS)}
 `.trim(),
@@ -57,10 +59,15 @@ export async function generateGitHubTemplates(config: PackageConfig): Promise<vo
       return;
     }
 
-    const languageNote =
-      getDefaultProseLanguage(config) === 'Japanese' ? ' Write in Japanese, keeping the headings as they are.' : '';
+    const [prLanguageNote, issueLanguageNote] =
+      getDefaultProseLanguage(config) === 'Japanese'
+        ? [
+            ' Write the title in English and the body in Japanese, keeping the headings as they are.',
+            ' Write in Japanese (an English title is also fine), keeping the headings as they are.',
+          ]
+        : [ENGLISH_NOTE, ENGLISH_NOTE];
     await runAllInPool(
-      Object.entries(generateTemplates(languageNote)).map(([fileName, content]) => {
+      Object.entries(generateTemplates(prLanguageNote, issueLanguageNote)).map(([fileName, content]) => {
         const filePath = path.resolve(config.dirPath, '.github', fileName);
         return () => fsUtil.generateFile(filePath, content);
       })
