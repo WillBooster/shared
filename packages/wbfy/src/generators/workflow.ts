@@ -455,7 +455,14 @@ async function writeWorkflowYaml(
   await writeYaml(newSettings, filePath);
 
   if (kind === 'sync') {
-    if (!newSettings.jobs.sync?.with) return;
+    if (!newSettings.jobs.sync?.with) {
+      // The force-sync caller is generated from sync's reusable call. Remove an older generated
+      // sibling when sync is inline; otherwise it can retain an invalid merged inline job.
+      if (jobsAllCallReusableWorkflow(workflowsPath, 'sync-force.yml', 'sync')) {
+        await fsUtil.removeConfined(path.join(workflowsPath, 'sync-force.yml'));
+      }
+      return;
+    }
 
     // Generate the force-sync workflow based on the sync workflow if it exists.
     newSettings.jobs['sync-force'] = newSettings.jobs.sync;
