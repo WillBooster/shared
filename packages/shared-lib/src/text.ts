@@ -53,54 +53,31 @@ export function truncate(text: string, maxLength: number, ellipsis = '…'): str
 }
 
 /**
- * Returns the first `end` code units of `text`, one fewer when the cut would split a surrogate pair,
- * because an unpaired surrogate is replaced with U+FFFD by encoders.
+ * Returns the first `end` code units of `text`, one fewer when the last kept unit is a high surrogate, whose low half
+ * is either cut off or absent from `text`, because an unpaired surrogate is replaced with U+FFFD by encoders.
  */
 export function sliceWithoutSplittingSurrogates(text: string, end: number): string {
-  // A high surrogate as the last kept unit would be unpaired, whether its low half is cut off or was never there.
   // oxlint-disable-next-line unicorn/prefer-code-point -- the check is on a single UTF-16 code unit
   const lastKeptUnit = text.charCodeAt(end - 1);
   return text.slice(0, lastKeptUnit >= 0xD8_00 && lastKeptUnit <= 0xDB_FF ? end - 1 : end);
 }
 
+const htmlEntities: Readonly<Record<string, string>> = {
+  '"': '&quot;',
+  '&': '&amp;',
+  "'": '&#39;',
+  '<': '&lt;',
+  '>': '&gt;',
+};
+
 const htmlSpecialCharacterPattern = /["&'<>]/u;
+const htmlSpecialCharactersPattern = /["&'<>]/gu;
 
 /** Escapes `&`, `<`, `>`, `"`, and `'`, so the result is safe in HTML text and in quoted attribute values. */
 export function escapeHtml(text: string): string {
-  // Scanning natively for the first special character keeps text without any as fast as a single regex test.
-  const firstIndex = text.search(htmlSpecialCharacterPattern);
-  if (firstIndex === -1) return text;
-  let escaped = text.slice(0, firstIndex);
-  let chunkStart = firstIndex;
-  for (let index = firstIndex; index < text.length; index++) {
-    let entity: string;
-    switch (text.codePointAt(index)) {
-      case 0x22: {
-        entity = '&quot;';
-        break;
-      }
-      case 0x26: {
-        entity = '&amp;';
-        break;
-      }
-      case 0x27: {
-        entity = '&#39;';
-        break;
-      }
-      case 0x3C: {
-        entity = '&lt;';
-        break;
-      }
-      case 0x3E: {
-        entity = '&gt;';
-        break;
-      }
-      default: {
-        continue;
-      }
-    }
-    escaped += text.slice(chunkStart, index) + entity;
-    chunkStart = index + 1;
-  }
-  return escaped + text.slice(chunkStart);
+  // Measured in V8 and JavaScriptCore: a native `search` first is faster than `replaceAll` alone for text without these
+  // characters, and one native `replaceAll` beats a per-code-unit loop for text where they are rare.
+  return text.search(htmlSpecialCharacterPattern) === -1
+    ? text
+    : text.replaceAll(htmlSpecialCharactersPattern, (character) => htmlEntities[character] as string);
 }
