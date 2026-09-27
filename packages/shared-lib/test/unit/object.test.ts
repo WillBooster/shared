@@ -29,13 +29,15 @@ test('omitUndefined turns an environment-like record into a Record<string, strin
 // Type-checked only.
 // @ts-expect-error -- the copy is a plain object, not an array
 const copyArray = (): unknown => omitUndefined([1, undefined]);
+// @ts-expect-error -- the copy has no `Date` methods
+const copyDate = (): unknown => omitUndefined(new Date());
 
-test('omitUndefined rejects arrays and leaves symbol keys out of its result type', () => {
+test('omitUndefined rejects arrays and class instances and leaves symbol keys out of its result type', () => {
   const key = Symbol('key');
   const result = omitUndefined({ [key]: 'value', name: 'a' });
   expect(result).toStrictEqual({ name: 'a' });
   // Type-checked only.
   // @ts-expect-error -- symbol keys are not copied
   const readSymbol = (): string => result[key];
-  expect([copyArray, readSymbol]).toHaveLength(2);
+  expect([copyArray, copyDate, readSymbol]).toHaveLength(3);
 });
