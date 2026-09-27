@@ -269,7 +269,7 @@ test('leaves a third-party hybrid job in an unmanaged workflow untouched', async
   await withTempWorkflowsRepo('wbfy-third-party-workflow-', async (dirPath, workflowsPath) => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
     const filePath = path.join(workflowsPath, 'custom.yml');
-    const content = `# Keep this custom workflow\njobs:\n  external:\n    uses: OtherOrg/actions/.github/workflows/test.yml@main\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`;
+    const content = `# Keep this custom workflow\njobs:\n  external:\n    uses: OtherOrg/actions/.github/workflows/test.yml@main\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n  reusable:\n    uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main\n`;
     fs.writeFileSync(filePath, content);
 
     await generateWorkflows(createConfig({ dirPath, isRoot: true }));
