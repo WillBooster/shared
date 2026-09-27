@@ -302,7 +302,7 @@ test('repairs a legacy inline close-comment caller without removing sibling jobs
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
     fs.writeFileSync(
       path.join(workflowsPath, 'close-comment.yml'),
-      `jobs:\n  close-comment:\n    uses: WillBooster/reusable-workflows/.github/workflows/close-comment.yml@main\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n  sibling:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`
+      `jobs:\n  close-comment:\n    uses: WillBooster/reusable-workflows/.github/workflows/close-comment.yml@main\n    permissions:\n      pull-requests: write\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n  sibling:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`
     );
 
     await generateWorkflows(createConfig({ dirPath, isRoot: true }));

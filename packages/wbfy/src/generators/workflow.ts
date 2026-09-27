@@ -423,7 +423,11 @@ async function writeWorkflowYaml(
       (job['runs-on'] !== undefined || job.steps !== undefined)
     ) {
       const injectedPermissions =
-        calledWorkflow?.ref === 'main' ? reusableWorkflowPermissions[calledWorkflow.workflowName] : undefined;
+        calledWorkflow.ref === 'main'
+          ? isLegacyCloseComment
+            ? legacyCloseCommentPermissions
+            : reusableWorkflowPermissions[calledWorkflow.workflowName]
+          : undefined;
       // A prior run may have replaced the inline job's token scope with the callee's scope.
       // Keep a repository-specific scope when it differs from that injected value.
       if (
@@ -717,6 +721,9 @@ const reusableWorkflowPermissions: Record<string, Record<string, string>> = {
   'test-rust': { actions: 'read', contents: 'read' },
   'semantic-pr': { 'pull-requests': 'read', statuses: 'write' },
 };
+// Older close-comment callers received this scope from their callee; only use it to
+// recognize and remove that injected value when restoring an inline job.
+const legacyCloseCommentPermissions = { 'pull-requests': 'write' };
 
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   job.with ??= {};
