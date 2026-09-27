@@ -3,7 +3,8 @@ const formatters = new Map<string, Intl.DateTimeFormat>();
 /**
  * Formats the calendar date of `date` in an IANA `timeZone` (e.g. `Asia/Tokyo`) as YYYY-MM-DD, independent of the
  * runtime's local time zone, which is UTC on Cloudflare Workers and most servers.
- * Supports ISO years 0000–9999, like `parseIsoDate`. Throws a `RangeError` for an unknown time zone.
+ * Supports ISO years 0000–9999, like `parseIsoDate`. Throws a `RangeError` for a date outside them in `timeZone` and
+ * for an unknown time zone.
  */
 export function formatIsoDateInTimeZone(date: Date, timeZone: string): string {
   let formatter = formatters.get(timeZone);
@@ -31,5 +32,7 @@ export function formatIsoDateInTimeZone(date: Date, timeZone: string): string {
     else if (part.type === 'day') day = part.value;
   }
   // The Gregorian calendar has no year 0: ISO year 0000 is 1 BC.
-  return `${String(isBeforeCommonEra ? 1 - year : year).padStart(4, '0')}-${month}-${day}`;
+  const isoYear = isBeforeCommonEra ? 1 - year : year;
+  if (isoYear < 0 || isoYear > 9999) throw new RangeError(`The year ${isoYear} in ${timeZone} is outside 0000–9999`);
+  return `${String(isoYear).padStart(4, '0')}-${month}-${day}`;
 }

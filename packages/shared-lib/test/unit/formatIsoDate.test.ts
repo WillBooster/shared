@@ -10,3 +10,7 @@ test('formatIsoDateInTimeZone uses the calendar date in the given time zone', ()
   expect(formatIsoDateInTimeZone(new Date('0000-01-01T00:00:00Z'), 'UTC')).toBe('0000-01-01');
   expect(formatIsoDateInTimeZone(new Date('0001-01-01T00:00:00Z'), 'Asia/Tokyo')).toBe('0001-01-01');
 });
+
+test('formatIsoDateInTimeZone rejects a date outside ISO years 0000–9999 in the time zone', () => {
+  expect(() => formatIsoDateInTimeZone(new Date('0000-01-01T00:00:00Z'), 'America/New_York')).toThrow(RangeError);
+});
