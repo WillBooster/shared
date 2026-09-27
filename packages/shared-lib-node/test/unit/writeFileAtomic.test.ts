@@ -29,6 +29,14 @@ test('writeFileAtomic creates parent directories, replaces content, and leaves n
   expect(await fs.promises.readdir(path.dirname(filePath))).toEqual(['state.json']);
 });
 
+test('writeFileAtomic keeps the permissions of the replaced file when no mode is given', async () => {
+  const filePath = path.join(dirPath, 'secret');
+  await fs.promises.writeFile(filePath, 'old', { mode: 0o600 });
+  await writeFileAtomic(filePath, 'new');
+  const stat = await fs.promises.stat(filePath);
+  expect(stat.mode & 0o777).toBe(0o600);
+});
+
 test('writeFileAtomic removes its temporary file when the rename fails', async () => {
   const filePath = path.join(dirPath, 'target');
   await fs.promises.mkdir(path.join(filePath, 'child'), { recursive: true });

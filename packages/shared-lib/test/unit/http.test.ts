@@ -8,6 +8,7 @@ test('parseBearerToken accepts the scheme in any case and rejects other schemes 
   expect(parseBearerToken('Basic dXNlcjpwYXNz')).toBeUndefined();
   expect(parseBearerToken('Bearer a b')).toBeUndefined();
   expect(parseBearerToken('Bearer ')).toBeUndefined();
+  expect(parseBearerToken('Bearer \u212A')).toBeUndefined();
   expect(parseBearerToken(undefined)).toBeUndefined();
 });
 

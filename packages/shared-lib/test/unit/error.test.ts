@@ -56,4 +56,13 @@ test('getErrorMessage answers the message of an Error and a string for any other
     }
   );
   expect(getErrorMessage(throwingProxy)).toBe('Unknown error');
+  const throwingGetters = {
+    toString() {
+      throw new Error('toString');
+    },
+    get [Symbol.toStringTag]() {
+      throw new Error('tag');
+    },
+  };
+  expect(getErrorMessage(throwingGetters)).toBe('Unknown error');
 });

@@ -19,10 +19,12 @@ export function errorify(obj: unknown): Error {
  * Never throws, so it is safe to call in a catch block.
  */
 export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  // `String` throws for an object without a prototype, and both throw for a proxy whose traps throw.
+  // `String` throws for an object without a prototype, and even `instanceof`, a `message` getter, and
+  // `Object.prototype.toString` throw for a proxy or object whose traps or getters throw.
   return (
-    ignoreError(() => String(error)) ?? ignoreError(() => Object.prototype.toString.call(error)) ?? 'Unknown error'
+    ignoreError(() => (error instanceof Error ? error.message : String(error))) ??
+    ignoreError(() => Object.prototype.toString.call(error)) ??
+    'Unknown error'
   );
 }
 
