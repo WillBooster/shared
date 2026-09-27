@@ -256,7 +256,6 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
         await fsUtil.removeConfined(path.join(workflowsPath, testRustFileName));
       }
     }
-    // wbfy no longer generates close-comment.yml; remove its previous output but keep a customized one.
     const closeCommentFileName = fileNamesByKind.get('close-comment');
     if (closeCommentFileName && jobsAllCallReusableWorkflow(workflowsPath, closeCommentFileName, 'close-comment')) {
       fileNamesByKind.delete('close-comment');
