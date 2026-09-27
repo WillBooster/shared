@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -581,7 +582,7 @@ async function listRemoteWorkerSecretNames(
   } catch (error) {
     console.warn(
       chalk.yellow(
-        `Failed to run wrangler to list remote secrets; checking only the local payload against Cloudflare's limits.\n${error instanceof Error ? error.message : String(error)}`
+        `Failed to run wrangler to list remote secrets; checking only the local payload against Cloudflare's limits.\n${getErrorMessage(error)}`
       )
     );
     return undefined;

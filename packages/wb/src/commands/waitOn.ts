@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import net from 'node:net';
 import { setTimeout } from 'node:timers/promises';
 
@@ -39,7 +40,7 @@ export const waitOnCommand: CommandModule<unknown, InferredOptionTypes<typeof bu
       if (!argv.resource) throw new Error('A resource is required.');
       await waitOn(argv.resource, { interval: argv.interval, timeout: argv.timeout });
     } catch (error) {
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      console.error(chalk.red(getErrorMessage(error)));
       process.exit(1);
     }
   },

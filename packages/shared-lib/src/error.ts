@@ -14,6 +14,25 @@ export function errorify(obj: unknown): Error {
   return new Error(ignoreError(() => JSON.stringify(obj)) ?? ignoreError(() => String(obj)));
 }
 
+/**
+ * Returns the message of a thrown `Error`, or the string form of any other thrown value.
+ * Never throws, so it is safe to call in a catch block.
+ */
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  try {
+    return String(error);
+  } catch {
+    // e.g. an object without a prototype, which has no `toString`
+    return Object.prototype.toString.call(error);
+  }
+}
+
+/** Whether a thrown value carries the given `code`, such as a Node.js errno code (`ENOENT`, `EEXIST`, ...). */
+export function hasErrorCode<C extends string>(error: unknown, code: C): error is { code: C } {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
+}
+
 export function ignoreError<T>(fn: () => T): T | undefined {
   try {
     return fn();
@@ -26,9 +45,7 @@ export function ignoreEnoent<T>(fn: () => T): T | undefined {
   try {
     return fn();
   } catch (error) {
-    if (typeof error === 'object' && error && 'code' in error && error.code === 'ENOENT') {
-      return;
-    }
+    if (hasErrorCode(error, 'ENOENT')) return;
     throw error;
   }
 }
@@ -45,9 +62,7 @@ export async function ignoreEnoentAsync<T>(fn: () => Promise<T>): Promise<T | un
   try {
     return await fn();
   } catch (error) {
-    if (typeof error === 'object' && error && 'code' in error && error.code === 'ENOENT') {
-      return;
-    }
+    if (hasErrorCode(error, 'ENOENT')) return;
     throw error;
   }
 }

@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -36,7 +37,7 @@ export const genDockerEnvCommand: CommandModule<unknown, GenDockerEnvCommandOpti
     try {
       generateDockerEnv(argv);
     } catch (error) {
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      console.error(chalk.red(getErrorMessage(error)));
       process.exit(1);
     }
   },

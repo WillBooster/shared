@@ -1,4 +1,4 @@
-import { escapeRegExp, toTildeCodeBlock } from './text.js';
+import { escapeRegExp, sliceWithoutSplittingSurrogates, toTildeCodeBlock } from './text.js';
 
 const INDENT_STEP = '  ';
 const MAX_IMPLICIT_KEY_LENGTH = 1024;
@@ -211,9 +211,7 @@ function replaceIndentedMarker(match: string, marker: string | undefined): strin
 /** Cuts text down to `maxLength` characters, marking it so that an LLM reads the rest as missing rather than absent. */
 export function truncateForPrompt(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
-  const kept = text.slice(0, maxLength);
-  // Cutting between the halves of a surrogate pair would leave an unpaired one, which encoders replace with U+FFFD.
-  return `${/[\uD800-\uDBFF]$/u.test(kept) ? kept.slice(0, -1) : kept}\n...<truncated>`;
+  return `${sliceWithoutSplittingSurrogates(text, maxLength)}\n...<truncated>`;
 }
 
 // The functions below reproduce `stringify(value, { lineWidth: 0, aliasDuplicateObjects: false, blockQuote: 'literal' })`

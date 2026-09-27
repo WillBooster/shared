@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -102,7 +103,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
         } catch (error) {
           console.warn(
             chalk.yellow(
-              `Could not auto-materialize private packages (${error instanceof Error ? error.message : String(error)}); ` +
+              `Could not auto-materialize private packages (${getErrorMessage(error)}); ` +
                 'run `wb setup-private-packages` if the Docker build needs them. Continuing.'
             )
           );

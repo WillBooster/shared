@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import path from 'node:path';
 
 import { load } from '@slidev/parser/fs';
@@ -22,7 +23,7 @@ export async function lintSlidevText(deckPath: string, workspaceRoot: string): P
   try {
     data = await load({ roots: [userRoot], userRoot, allowedRoots: [workspaceRoot, userRoot] }, deckPath);
   } catch (error) {
-    console.error(`${deckPath}: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`${deckPath}: ${getErrorMessage(error)}`);
     return 1;
   }
   const kernel = new TextlintKernel();

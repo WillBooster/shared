@@ -7,3 +7,11 @@ export function getConnectionLevelSqlitePragmas(): string {
 export function getPersistentSqlitePragmas(): string {
   return 'PRAGMA journal_mode = WAL;';
 }
+
+/**
+ * Escapes `%`, `_`, and `\` so the text matches itself literally in a `LIKE` pattern.
+ * The query must declare the escape character, e.g. `WHERE name LIKE ? ESCAPE '\'`.
+ */
+export function escapeLikePattern(text: string): string {
+  return text.replaceAll(/[%\\_]/gu, String.raw`\$&`);
+}
