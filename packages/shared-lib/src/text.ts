@@ -70,14 +70,13 @@ const htmlEntities: Readonly<Record<string, string>> = {
   '>': '&gt;',
 };
 
-const htmlSpecialCharacterPattern = /["&'<>]/u;
 const htmlSpecialCharactersPattern = /["&'<>]/gu;
 
 /** Escapes `&`, `<`, `>`, `"`, and `'`, so the result is safe in HTML text and in quoted attribute values. */
 export function escapeHtml(text: string): string {
   // Measured in V8 and JavaScriptCore: a native `search` first is faster than `replaceAll` alone for text without these
   // characters, and one native `replaceAll` beats a per-code-unit loop for text where they are rare.
-  return text.search(htmlSpecialCharacterPattern) === -1
+  return text.search(htmlSpecialCharactersPattern) === -1
     ? text
     : text.replaceAll(htmlSpecialCharactersPattern, (character) => htmlEntities[character] as string);
 }
