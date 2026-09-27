@@ -57,13 +57,14 @@ export async function generateGitHubTemplates(config: PackageConfig): Promise<vo
       return;
     }
 
+    const exception = 'except text whose language is part of what the code handles (e.g., UI strings, test inputs)';
     const [prLanguageNote, issueLanguageNote] =
       getDefaultProseLanguage(config) === 'Japanese'
         ? [
-            ' Write the title in English and the body in Japanese, keeping the headings as they are.',
-            ' Write in Japanese, keeping the headings as they are.',
+            ` Write the title in English and the body in Japanese, ${exception}, keeping the headings as they are.`,
+            ` Write in Japanese, ${exception}, keeping the headings as they are.`,
           ]
-        : [' Write in English.', ' Write in English.'];
+        : [` Write in English, ${exception}.`, ` Write in English, ${exception}.`];
     await runAllInPool(
       Object.entries(generateTemplates(prLanguageNote, issueLanguageNote)).map(([fileName, content]) => {
         const filePath = path.resolve(config.dirPath, '.github', fileName);
