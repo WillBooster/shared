@@ -116,7 +116,7 @@ exit "$failed"
 
 // Git hooks call Lefthook through an absolute path, so they also fire in a fresh worktree without
 // node_modules. Installing on every run would slow each commit and push, and would run `prepare`.
-const installMissingDepsCommand = '[ -d node_modules ] || bun install --frozen-lockfile';
+const installMissingDepsCommand = '[ -d node_modules ] || bun install --frozen-lockfile || exit';
 
 const scripts = {
   // prepare calls this without arguments after Bun saves the root lockfile; Lefthook passes its

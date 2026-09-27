@@ -14,7 +14,7 @@ pre-commit:
     - name: cleanup
       glob: '**/*.{astro,cjs,css,cts,gql,graphql,hbs,htm,html,java,js,json,json5,jsonc,jsx,less,md,mdx,mjs,mts,scss,svelte,toml,ts,tsx,vue,yaml,yml}'
       run: |-
-        [ -d node_modules ] || bun install --frozen-lockfile
+        [ -d node_modules ] || bun install --frozen-lockfile || exit
         bun run --cwd packages/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}
       stage_fixed: true
     - name: check-migrations
