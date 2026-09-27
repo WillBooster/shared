@@ -129,7 +129,7 @@ function generateAgentInstruction(
     : '';
   const languageInstruction =
     getDefaultProseLanguage(rootConfig) === 'Japanese'
-      ? '\n- Write commit messages, PR titles, code comments, JSDoc, and agent instructions in English, and, unless instructed otherwise, every other artifact in Japanese, except text whose language is part of what the code handles (e.g., UI strings, test inputs).'
+      ? '\n- Unless instructed otherwise, write issues, PR bodies, review comments, and documentation for people (README, `docs/`) in Japanese, and every other artifact (including commit messages, PR titles, identifiers, code comments, JSDoc, and agent instructions) in English, except text whose language is part of what the code handles (e.g., UI strings, test inputs).'
       : '\n- Write every artifact in English, except text whose language is part of what the code handles (e.g., UI strings, test inputs).';
   const runnerInstruction = rootConfig.isWillBoosterRepo
     ? '\n- Private repositories use self-hosted CI runners. Keep OS/size constraints in an explicit self-hosted label array; fix missing runner capabilities instead of switching to GitHub-hosted runners. The sole approved exception is the Windows desktop build in WillBooster/cheerlings.'
@@ -174,9 +174,10 @@ ${generateAgentCodingStyle(rootConfig, allConfigs)}
 }
 
 /**
- * The language issues, PRs, review comments, and documentation default to: Japanese only in a
- * WillBooster / WillBoosterLab repository confirmed private. An unknown visibility (offline run,
- * failed lookup) yields English so that a Japanese default is never written into a public repository.
+ * The language a repository is written in: Japanese only in a WillBooster / WillBoosterLab
+ * repository confirmed private, where it still applies only to issues, PR bodies, review comments,
+ * and documentation for people. An unknown visibility (offline run, failed lookup) yields English so
+ * that a Japanese default is never written into a public repository.
  */
 export function getDefaultProseLanguage(rootConfig: PackageConfig): 'English' | 'Japanese' {
   return rootConfig.isWillBoosterRepo && rootConfig.isRepoVisibilityKnown && !rootConfig.isPublicRepo
