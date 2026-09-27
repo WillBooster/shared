@@ -1,5 +1,7 @@
 /*! JSON recovery informed by jsonrepair, Copyright (c) 2020-2026 Jos de Jong (ISC). See NOTICE. */
 
+import { getErrorMessage } from './error.js';
+
 export interface JsonRepair {
   /** UTF-16 offset in the original response. */
   offset: number;
@@ -249,7 +251,7 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
       });
     } catch (error) {
       if (result.errors.length < MAX_ERRORS)
-        result.errors.push({ offset: parser.index, message: error instanceof Error ? error.message : String(error) });
+        result.errors.push({ offset: parser.index, message: getErrorMessage(error) });
       failures++;
       index = valueStart + 1;
       scalarBoundary = false;

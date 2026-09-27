@@ -31,4 +31,5 @@ export { calculateHashFromFiles, canSkipSeed, updateHashFromFiles } from './hash
 export { isProcessAlive } from './process.js';
 export { spawnAsync } from './spawn.js';
 export { treeKill } from './treeKill.js';
-export { writeFileAtomic } from './writeFileAtomic.js';
+export { writeFileAtomic, writeFileAtomicSync } from './writeFileAtomic.js';
+export type { WriteFileAtomicOptions } from './writeFileAtomic.js';
