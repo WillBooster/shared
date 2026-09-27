@@ -71,6 +71,23 @@ test('generated close-comment callers are removed', async () => {
   });
 });
 
+test('customized close-comment workflows are preserved', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-custom-close-comment-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    fs.writeFileSync(
+      path.join(workflowsPath, 'close-comment.yml'),
+      `jobs:\n  close-comment:\n    uses: WillBooster/reusable-workflows/.github/workflows/close-comment.yml@main\n  sibling:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`
+    );
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+
+    expect(siblingJobSchema.parse(readWorkflow(workflowsPath, 'close-comment.yml').jobs.sibling)).toEqual({
+      'runs-on': 'ubuntu-latest',
+      steps: [{ run: 'echo preserved' }],
+    });
+  });
+});
+
 function readPermissions(workflowsPath: string, fileName: string): Record<string, string> | undefined {
   const workflow = readWorkflow(workflowsPath, fileName);
   expect(workflow.permissions).toBeUndefined();
