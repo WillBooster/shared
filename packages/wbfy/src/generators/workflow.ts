@@ -376,7 +376,12 @@ async function writeWorkflowYaml(
       const rustJob = oldSettings.jobs?.['test-rust'];
       if (!rustJob?.uses || (rustJob['runs-on'] === undefined && rustJob.steps === undefined)) return;
     }
-    newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
+    // A Rust-free repository's custom workflow must keep its own triggers when its
+    // old hybrid job is repaired; the Rust template would schedule it on PRs and pushes.
+    newSettings =
+      kind === 'test-rust' && config.cargoTomlDirPaths.length === 0
+        ? structuredClone(oldSettings)
+        : (merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow);
   }
 
   if (!('jobs' in newSettings)) return;
