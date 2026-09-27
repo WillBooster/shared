@@ -114,6 +114,10 @@ exit "$failed"
   ],
 };
 
+// Git hooks call Lefthook through an absolute path, so they also fire in a fresh worktree without
+// node_modules. Installing on every run would slow each hook run and would also run `prepare`.
+const installMissingDepsCommand = '[ -d node_modules ] || bun install --frozen-lockfile || exit';
+
 const scripts = {
   // prepare calls this without arguments after Bun saves the root lockfile; Lefthook passes its
   // staged path. The unpredictable sibling file makes replacement atomic, `cp -p` preserves its
@@ -198,7 +202,7 @@ async function core(config: PackageConfig, allConfigs: PackageConfig[]): Promise
 function getPrePushScript(config: PackageConfig): string {
   // Bun repos receive wb as part of wbfy's managed toolchain, so generate the
   // final hook command on the first run instead of changing it on the second.
-  const quietLintCommand = 'bun wb lint --quiet';
+  const quietLintCommand = `${installMissingDepsCommand}\nbun wb lint --quiet`;
   // No separate typecheck step needed — the lint command already includes typechecking.
   if (config.repository?.startsWith('github:WillBoosterLab/')) {
     return `
@@ -249,6 +253,10 @@ function getCleanupGlobs(config: PackageConfig): string {
 }
 
 function getCleanupCommand(config: PackageConfig): string {
+  return `${installMissingDepsCommand}\n${getCleanupCommandBody(config)}`;
+}
+
+function getCleanupCommandBody(config: PackageConfig): string {
   if (hasLocalWbWorkspace(config)) {
     return String.raw`
 bun run --cwd packages/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}
@@ -336,8 +344,9 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
   // bun.lock-only merges (Renovate lockfile maintenance), bunfig.toml / .npmrc changes (linker,
   // registry, hoisting), and patch edits all change the installed tree without touching package.json.
   postMergeCommands.push(
-    String.raw`run_if_changed "(package\.json|bun\.lock|bunfig\.toml|\.npmrc|patches/)" "${installCommand}${rmNextDirectories}"`
+    String.raw`run_if_changed "(package\.json|bun\.lock|bunfig\.toml|\.npmrc|patches/)" "${installCommand}${rmNextDirectories}" || exit`
   );
+  postMergeCommands.push(installMissingDepsCommand);
   // Vite's dependency cache in node_modules/.vite self-invalidates on lockfile / patches /
   // config / NODE_ENV changes (see Vite's dep pre-bundling docs), so the residual stale case is
   // install-layout changes (bunfig.toml linker, .npmrc): they change the installed tree without
