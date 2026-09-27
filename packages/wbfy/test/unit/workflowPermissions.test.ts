@@ -98,14 +98,14 @@ test('keeps an inline Rust test when Rust code is removed', async () => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
     fs.writeFileSync(
       path.join(workflowsPath, 'test-rust.yml'),
-      `name: Custom\non:\n  workflow_dispatch:\njobs:\n  test-rust:\n    uses: WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n    permissions:\n      actions: read\n      contents: read\n`
+      `name: Custom\non:\n  push:\n    tags:\n      - 'v*'\njobs:\n  test-rust:\n    uses: WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n    permissions:\n      actions: read\n      contents: read\n`
     );
 
     await generateWorkflows(createConfig({ dirPath, isRoot: true, cargoTomlDirPaths: [] }));
 
     const workflow = readWorkflow(workflowsPath, 'test-rust.yml');
     expect(workflow.name).toBe('Custom');
-    expect(Object.keys(workflow.on ?? {})).toEqual(['workflow_dispatch']);
+    expect(workflow.on).toEqual({ push: { tags: ['v*'] } });
     expect(siblingJobSchema.parse(workflow.jobs['test-rust'])).toEqual({
       'runs-on': 'ubuntu-latest',
       steps: [{ run: 'echo preserved' }],

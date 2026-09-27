@@ -513,6 +513,9 @@ async function writeWorkflowYaml(
     }
     case 'test':
     case 'test-rust': {
+      // Rust-free hybrid repair starts from a custom workflow, whose trigger need not
+      // have the template's push.branches array and must retain its own schedule.
+      if (kind === 'test-rust' && config.cargoTomlDirPaths.length === 0) break;
       // Don't use `paths-ignore` for test because GitHub's Branch Protection and Rulesets require job running.
       if (newSettings.on?.pull_request) {
         delete newSettings.on.pull_request['paths-ignore'];
