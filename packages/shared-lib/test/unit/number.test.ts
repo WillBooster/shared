@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { parsePositiveInteger } from '../../src/parseInteger.js';
+import { parsePositiveInteger } from '../../src/number.js';
 
 test('parsePositiveInteger accepts only canonical positive safe integers', () => {
   expect(parsePositiveInteger('1')).toBe(1);

@@ -1,3 +1,4 @@
+export { downloadFile } from './downloadFile.js';
 export { useInterval } from './hooks/useInterval.js';
 export { useLocalStorage } from './hooks/useLocalStorage.js';
 export { useNoHydrationError } from './hooks/useNoHydrationError.js';

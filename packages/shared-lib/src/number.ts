@@ -7,3 +7,8 @@ export function parsePositiveInteger(text: string): number | undefined {
   const value = Number(text);
   return Number.isSafeInteger(value) ? value : undefined;
 }
+
+/** Limits a number to the range from `min` to `max`, both inclusive. */
+export function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}

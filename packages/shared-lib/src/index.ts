@@ -22,11 +22,12 @@ export {
   ignoreEnoentAsync,
   withRetry,
 } from './error.js';
+export { getFileExtension } from './filePath.js';
 export { formatIsoDateInTimeZone } from './formatIsoDate.js';
 export { parseGitHubRepositoryFullName } from './github.js';
 export { getFormString, parseBearerToken } from './http.js';
 export { detectForeignCjkInJapanese, findForeignCjkCharactersInJapanese } from './foreignCjk.js';
-export { formatElapsedTimeInJapanese, humanizeNumber } from './humanize.js';
+export { formatDuration, formatElapsedTimeInJapanese, humanizeNumber } from './humanize.js';
 export { mailTemplates } from './mail.js';
 export { isRecord, omitUndefined } from './object.js';
 export {
@@ -39,7 +40,7 @@ export {
 export { parseIsoDate } from './parseIsoDate.js';
 export type { ParsedIsoDate } from './parseIsoDate.js';
 export { parseCommandLineArgs } from './parseCommandLineArgs.js';
-export { parsePositiveInteger } from './parseInteger.js';
+export { clamp, parsePositiveInteger } from './number.js';
 export {
   escapePromptTag,
   formatPrompt,
