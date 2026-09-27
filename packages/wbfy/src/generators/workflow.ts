@@ -188,7 +188,7 @@ const workflows = {
   },
 } as const;
 
-type KnownKind = keyof typeof workflows | 'deploy';
+type KnownKind = keyof typeof workflows | 'deploy' | 'close-comment';
 
 /**
  * Parses a `uses:` value calling one of WillBooster's own reusable workflows (or the
@@ -411,16 +411,17 @@ async function writeWorkflowYaml(
   let repairedInlineJob = false;
   const templateJobs = (workflows[kind as keyof typeof workflows] as Workflow | undefined)?.jobs;
   for (const [jobName, job] of Object.entries(newSettings.jobs)) {
-    // A repository may already have a same-named inline job. The template's reusable `uses`
-    // must not be merged into it: GitHub rejects jobs with both `uses` and `runs-on`/`steps`.
-    // This also repairs hybrid jobs emitted by older wbfy versions on their next run.
+    const calledWorkflow = job && parseOrgReusableWorkflowCall(job.uses);
+    const isLegacyCloseComment =
+      kind === 'close-comment' && jobName === 'close-comment' && calledWorkflow?.workflowName === 'close-comment';
+    // A repository may already have an inline job under a template name, or a legacy
+    // close-comment caller. GitHub rejects jobs with `uses` beside `runs-on` or `steps`.
     if (
       job &&
-      templateJobs?.[jobName]?.uses &&
-      parseOrgReusableWorkflowCall(job.uses) &&
+      calledWorkflow &&
+      (templateJobs?.[jobName]?.uses || isLegacyCloseComment) &&
       (job['runs-on'] !== undefined || job.steps !== undefined)
     ) {
-      const calledWorkflow = parseOrgReusableWorkflowCall(job.uses);
       const injectedPermissions =
         calledWorkflow?.ref === 'main' ? reusableWorkflowPermissions[calledWorkflow.workflowName] : undefined;
       // A prior run may have replaced the inline job's token scope with the callee's scope.
