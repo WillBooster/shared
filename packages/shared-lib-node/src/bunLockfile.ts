@@ -1,6 +1,7 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+
+import { writeFileAtomicSync } from './writeFileAtomic.js';
 
 /**
  * Anchored to `", ` so only a registry entry's `resolved` slot is cleared. A direct tarball
@@ -28,19 +29,8 @@ export function normalizeBunLockfile(startDirPath: string): string | undefined {
   const normalizedContent = content.replaceAll(guardResolvedUrlPattern, '$1""');
   if (normalizedContent === content) return;
 
-  // A sibling temp file makes the replacement an atomic same-directory rename, so an interrupted
-  // write cannot leave a truncated bun.lock behind.
-  const temporaryPath = `${lockfilePath}.normalizing.${process.pid}.${crypto.randomUUID()}`;
-  try {
-    // stat's mode includes file-type bits, which chmod is not specified to accept.
-    const mode = fs.statSync(lockfilePath).mode & 0o777;
-    fs.writeFileSync(temporaryPath, normalizedContent, { mode });
-    // writeFileSync's mode is masked by the process umask; chmod restores the exact original bits.
-    fs.chmodSync(temporaryPath, mode);
-    fs.renameSync(temporaryPath, lockfilePath);
-  } finally {
-    fs.rmSync(temporaryPath, { force: true });
-  }
+  // An atomic write keeps an interrupted replacement from leaving a truncated bun.lock behind.
+  writeFileAtomicSync(lockfilePath, normalizedContent);
   return lockfilePath;
 }
 

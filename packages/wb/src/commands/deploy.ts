@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -118,7 +119,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     try {
       resolvedConfig = resolveWranglerConfigForEnv(project, envName);
     } catch (error) {
-      console.error(chalk.red(String(error instanceof Error ? error.message : error)));
+      console.error(chalk.red(getErrorMessage(error)));
       process.exit(1);
     }
     if (!resolvedConfig) {
@@ -581,7 +582,7 @@ async function listRemoteWorkerSecretNames(
   } catch (error) {
     console.warn(
       chalk.yellow(
-        `Failed to run wrangler to list remote secrets; checking only the local payload against Cloudflare's limits.\n${error instanceof Error ? error.message : String(error)}`
+        `Failed to run wrangler to list remote secrets; checking only the local payload against Cloudflare's limits.\n${getErrorMessage(error)}`
       )
     );
     return undefined;

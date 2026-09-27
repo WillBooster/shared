@@ -39,3 +39,44 @@ function toFencedCodeBlock(fenceChar: string, text: string, language: string): s
   const fence = fenceChar.repeat(longestRun + 1 + languageStart);
   return `${fence}${language.slice(languageStart)}\n${text}${text.endsWith('\n') ? '' : '\n'}${fence}`;
 }
+
+/**
+ * Shortens text to at most `maxLength` UTF-16 code units, including the `ellipsis` that marks the cut.
+ * Throws a `RangeError` when `maxLength` cannot hold the ellipsis.
+ */
+export function truncate(text: string, maxLength: number, ellipsis = '…'): string {
+  if (text.length <= maxLength) return text;
+  if (maxLength < ellipsis.length) {
+    throw new RangeError(`maxLength (${maxLength}) must be at least the ellipsis length (${ellipsis.length})`);
+  }
+  return `${sliceWithoutSplittingSurrogates(text, maxLength - ellipsis.length)}${ellipsis}`;
+}
+
+/**
+ * Returns the first `end` code units of `text`, one fewer when the last kept unit is a high surrogate, whose low half
+ * is either cut off or absent from `text`, because an unpaired surrogate is replaced with U+FFFD by encoders.
+ */
+export function sliceWithoutSplittingSurrogates(text: string, end: number): string {
+  // oxlint-disable-next-line unicorn/prefer-code-point -- the check is on a single UTF-16 code unit
+  const lastKeptUnit = text.charCodeAt(end - 1);
+  return text.slice(0, lastKeptUnit >= 0xD8_00 && lastKeptUnit <= 0xDB_FF ? end - 1 : end);
+}
+
+const htmlEntities: Readonly<Record<string, string>> = {
+  '"': '&quot;',
+  '&': '&amp;',
+  "'": '&#39;',
+  '<': '&lt;',
+  '>': '&gt;',
+};
+
+const htmlSpecialCharactersPattern = /["&'<>]/gu;
+
+/** Escapes `&`, `<`, `>`, `"`, and `'`, so the result is safe in HTML text and in quoted attribute values. */
+export function escapeHtml(text: string): string {
+  // Measured in V8 and JavaScriptCore: a native `search` first is faster than `replaceAll` alone for text without these
+  // characters, and one native `replaceAll` beats a per-code-unit loop for text where they are rare.
+  return text.search(htmlSpecialCharactersPattern) === -1
+    ? text
+    : text.replaceAll(htmlSpecialCharactersPattern, (character) => htmlEntities[character] as string);
+}

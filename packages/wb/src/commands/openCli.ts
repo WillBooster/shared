@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import childProcess from 'node:child_process';
 
 import chalk from 'chalk';
@@ -20,7 +21,7 @@ export const openCliCommand: CommandModule<unknown, InferredOptionTypes<typeof a
       if (!argv.target) throw new Error('A URL or file is required.');
       await openTarget(argv.target);
     } catch (error) {
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      console.error(chalk.red(getErrorMessage(error)));
       process.exit(1);
     }
   },

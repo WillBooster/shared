@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -494,7 +495,7 @@ dbs:
     fs.writeFileSync(configPath, litestreamConfig);
     console.info(`Generated ${configPath}`);
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
+    const reason = getErrorMessage(error);
     throw new Error(`Failed to write ${configPath}: ${reason}`, {
       cause: error,
     });

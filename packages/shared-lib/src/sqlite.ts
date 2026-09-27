@@ -7,3 +7,13 @@ export function getConnectionLevelSqlitePragmas(): string {
 export function getPersistentSqlitePragmas(): string {
   return 'PRAGMA journal_mode = WAL;';
 }
+
+/**
+ * Escapes `%`, `_`, and `\` so that `LIKE` does not read them as wildcards or escapes. SQLite's `LIKE` still matches
+ * ASCII letters case-insensitively unless `PRAGMA case_sensitive_like = ON`; use `=` when case must match exactly.
+ * The query must declare the escape character, e.g. `WHERE name LIKE ? ESCAPE '\'` in SQL, which is `ESCAPE '\\'`
+ * inside a JavaScript string literal.
+ */
+export function escapeLikePattern(text: string): string {
+  return text.replaceAll(/[%\\_]/gu, String.raw`\$&`);
+}

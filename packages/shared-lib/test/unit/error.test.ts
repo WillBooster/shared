@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { errorify, withRetry } from '../../src/error.js';
+import { errorify, getErrorMessage, withRetry } from '../../src/error.js';
 
 test('errorify keeps a diagnostic for values JSON cannot serialize', () => {
   expect(errorify(undefined).message).toBe('undefined');
@@ -41,4 +41,37 @@ test('withRetry waits as long as getSleepMilliseconds decides while advancing it
   ).rejects.toThrow('fail');
   expect(decided).toEqual([1, 10]);
   expect(Date.now() - startedAt).toBeGreaterThanOrEqual(190);
+});
+
+test('getErrorMessage answers the message of an Error and a string for any other thrown value without throwing', () => {
+  expect(getErrorMessage(new TypeError('bad'))).toBe('bad');
+  expect(getErrorMessage('plain')).toBe('plain');
+  expect(getErrorMessage(Object.create(null))).toBe('[object Object]');
+  const throwingProxy = new Proxy(
+    {},
+    {
+      get() {
+        throw new Error('trap');
+      },
+    }
+  );
+  expect(getErrorMessage(throwingProxy)).toBe('Unknown error');
+  const throwingGetters = {
+    toString() {
+      throw new Error('toString');
+    },
+    get [Symbol.toStringTag]() {
+      throw new Error('tag');
+    },
+  };
+  expect(getErrorMessage(throwingGetters)).toBe('Unknown error');
+  const throwingPrototypeProxy = new Proxy(
+    {},
+    {
+      getPrototypeOf() {
+        throw new Error('prototype');
+      },
+    }
+  );
+  expect(getErrorMessage(throwingPrototypeProxy)).toBe('[object Object]');
 });

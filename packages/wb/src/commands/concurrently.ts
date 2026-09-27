@@ -1,3 +1,4 @@
+import { getErrorMessage, hasErrorCode } from '@willbooster/shared-lib/src';
 import child_process from 'node:child_process';
 import { constants } from 'node:os';
 
@@ -80,7 +81,7 @@ export const concurrentlyCommand: CommandModule<
       });
       process.exit(exitCode);
     } catch (error) {
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      console.error(chalk.red(getErrorMessage(error)));
       process.exit(1);
     }
   },
@@ -237,7 +238,7 @@ function isProcessGroupGone(pid: number): boolean {
     process.kill(-pid, 0);
     return false;
   } catch (error) {
-    if (isNoSuchProcessError(error)) {
+    if (hasErrorCode(error, 'ESRCH')) {
       return true;
     }
     return false;
@@ -253,13 +254,9 @@ function killProcessGroup(pid: number, signal: NodeJS.Signals): boolean {
     process.kill(-pid, signal);
     return true;
   } catch (error) {
-    if (isNoSuchProcessError(error)) {
+    if (hasErrorCode(error, 'ESRCH')) {
       return false;
     }
     throw error;
   }
-}
-
-function isNoSuchProcessError(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ESRCH';
 }

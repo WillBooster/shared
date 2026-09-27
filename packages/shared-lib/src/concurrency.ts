@@ -7,18 +7,42 @@
 export async function forEachConcurrently<T>(
   items: readonly T[],
   concurrency: number,
-  action: (item: T) => Promise<unknown>
+  action: (item: T, index: number) => Promise<unknown>
+): Promise<void> {
+  await runConcurrently(items.length, concurrency, (index) => action(items[index] as T, index));
+}
+
+/**
+ * Like `forEachConcurrently`, but resolves with the results of `mapper` in the order of `items`.
+ */
+export async function mapConcurrently<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = Array.from<R>({ length: items.length });
+  await runConcurrently(items.length, concurrency, async (index) => {
+    results[index] = await mapper(items[index] as T, index);
+  });
+  return results;
+}
+
+async function runConcurrently(
+  length: number,
+  concurrency: number,
+  run: (index: number) => Promise<unknown>
 ): Promise<void> {
   if (!Number.isInteger(concurrency) || concurrency < 1) {
     throw new RangeError(`concurrency must be a positive integer: ${concurrency}`);
   }
   let nextIndex = 0;
   let failure: { error: unknown } | undefined;
+  // Workers beyond the item count would find nothing to take, so they are not created.
   await Promise.all(
-    Array.from({ length: concurrency }, async () => {
-      while (!failure && nextIndex < items.length) {
+    Array.from({ length: Math.min(concurrency, length) }, async () => {
+      while (!failure && nextIndex < length) {
         try {
-          await action(items[nextIndex++] as T);
+          await run(nextIndex++);
         } catch (error) {
           failure ??= { error };
         }

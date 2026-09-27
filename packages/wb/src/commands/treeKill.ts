@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import { constants } from 'node:os';
 
 import { treeKill } from '@willbooster/shared-lib-node/src';
@@ -33,7 +34,7 @@ export const treeKillCommand: CommandModule<object, TreeKillCommandArgs> = {
       }
       treeKill(argv.pid, signal);
     } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
+      console.error(getErrorMessage(error));
       process.exit(1);
     }
   },

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { forEachConcurrently } from '../../src/concurrency.js';
+import { forEachConcurrently, mapConcurrently } from '../../src/concurrency.js';
 import { sleep } from '../../src/sleep.js';
 
 test('forEachConcurrently keeps at most the given number of actions in flight and does not wait for a slow item', async () => {
@@ -40,4 +40,14 @@ test('forEachConcurrently rejects only after every started action has settled', 
   });
   expect(String(await promise.catch((error: unknown) => error))).toBe('Error: failed at 2');
   expect(settled).toBe(true);
+});
+
+test('mapConcurrently resolves with results in item order even when later items finish first', async () => {
+  const firstGate = Promise.withResolvers<void>();
+  const results = await mapConcurrently(['a', 'b', 'c'], 2, async (item, index) => {
+    if (index === 0) await firstGate.promise;
+    if (index === 2) firstGate.resolve();
+    return `${item}${index}`;
+  });
+  expect(results).toEqual(['a0', 'b1', 'c2']);
 });

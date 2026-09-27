@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import chalk from 'chalk';
 import type { Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
@@ -26,7 +27,7 @@ export const killPortCommand: CommandModule<
     try {
       killPorts(argv.ports ?? [], argv.dryRun);
     } catch (error) {
-      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      console.error(chalk.red(getErrorMessage(error)));
       process.exit(1);
     }
   },

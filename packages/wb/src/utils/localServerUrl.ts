@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 
-import { isProcessAlive } from '@willbooster/shared-lib-node/src';
+import { isProcessAlive, writeFileAtomicSync } from '@willbooster/shared-lib-node/src';
 
 import type { Project } from '../project.js';
 
@@ -59,18 +59,13 @@ export function publishLocalServerUrl(project: Project, baseUrl: string): void {
   const filePath = rootDirPath && buildLocalServerUrlFilePath(rootDirPath, project.env.WB_ENV, project.name);
   if (!filePath) return;
 
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  // Rename replaces atomically, so a concurrent reader sees either publication whole, never a URL
-  // and a pid belonging to different servers. The pid in the temporary name keeps two publishers
-  // of one package from colliding on it.
-  const temporaryFilePath = `${filePath}.${process.pid}.tmp`;
+  // An atomic write keeps a concurrent reader from seeing a URL and a pid belonging to different servers.
   const publication: LocalServerPublication = {
     url: baseUrl,
     pid: process.pid,
     startedAt: readProcessStartTime(process.pid),
   };
-  fs.writeFileSync(temporaryFilePath, `${JSON.stringify(publication, undefined, 2)}\n`);
-  fs.renameSync(temporaryFilePath, filePath);
+  writeFileAtomicSync(filePath, `${JSON.stringify(publication, undefined, 2)}\n`);
 }
 
 /**
