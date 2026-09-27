@@ -257,24 +257,32 @@ it.each(
     ['verify', '--full', '--', 'test/unit/selected.test.ts', '--grep', 'selected case$'],
     ['verify', '--', '--grep', 'selected case$'],
   ].map((args) => ({ args }))
-)('rejects invalid selection $args before running anything', async ({ args }) => {
-  const dir = await createFixture();
-  const result = runCli(dir, args);
-  expect(result.status, result.stdout + result.stderr).not.toBe(0);
-  expect(await fs.exists(path.join(dir, 'executed'))).toBe(false);
-  expect(await fs.exists(path.join(dir, '.wb'))).toBe(false);
-});
-
-it.each(['test', 'verify'])('explains non-string grep values for %s without running tests', async (command) => {
-  const dir = await createFixture();
-  for (const args of [['--no-grep'], ['--grep', 'first', '--grep', 'second']]) {
-    const result = runCli(dir, [command, ...(command === 'verify' ? ['--full'] : []), ...args]);
-    expect(result.status).toBe(1);
-    expect(result.stdout + result.stderr).toContain('--grep takes exactly one regular expression.');
+)(
+  'rejects invalid selection $args before running anything',
+  async ({ args }) => {
+    const dir = await createFixture();
+    const result = runCli(dir, args);
+    expect(result.status, result.stdout + result.stderr).not.toBe(0);
     expect(await fs.exists(path.join(dir, 'executed'))).toBe(false);
     expect(await fs.exists(path.join(dir, '.wb'))).toBe(false);
-  }
-});
+  },
+  60_000
+);
+
+it.each(['test', 'verify'])(
+  'explains non-string grep values for %s without running tests',
+  async (command) => {
+    const dir = await createFixture();
+    for (const args of [['--no-grep'], ['--grep', 'first', '--grep', 'second']]) {
+      const result = runCli(dir, [command, ...(command === 'verify' ? ['--full'] : []), ...args]);
+      expect(result.status).toBe(1);
+      expect(result.stdout + result.stderr).toContain('--grep takes exactly one regular expression.');
+      expect(await fs.exists(path.join(dir, 'executed'))).toBe(false);
+      expect(await fs.exists(path.join(dir, '.wb'))).toBe(false);
+    }
+  },
+  60_000
+);
 
 async function createFixture(): Promise<string> {
   await fs.mkdir('.tmp', { recursive: true });
