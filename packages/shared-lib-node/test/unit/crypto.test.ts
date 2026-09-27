@@ -7,4 +7,5 @@ test('timingSafeEqualString compares strings of any lengths', () => {
   expect(timingSafeEqualString('secret', 'secreT')).toBe(false);
   expect(timingSafeEqualString('secret', 'secret-longer')).toBe(false);
   expect(timingSafeEqualString('', '')).toBe(true);
+  expect(timingSafeEqualString('\uD800', '\uD801')).toBe(false);
 });

@@ -10,5 +10,10 @@ export function sha256Hex(data: string | Uint8Array): string {
  * secret's length.
  */
 export function timingSafeEqualString(actual: string, expected: string): boolean {
-  return timingSafeEqual(createHash('sha256').update(actual).digest(), createHash('sha256').update(expected).digest());
+  return timingSafeEqual(digestCodeUnits(actual), digestCodeUnits(expected));
+}
+
+function digestCodeUnits(text: string): Buffer {
+  // UTF-16LE keeps every code unit, while UTF-8 would turn distinct lone surrogates into the same U+FFFD.
+  return createHash('sha256').update(text, 'utf16le').digest();
 }
