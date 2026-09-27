@@ -240,6 +240,32 @@ test('preserves permissions explicitly set on an inline test workflow', async ()
   });
 });
 
+test('leaves a third-party hybrid job in an unmanaged workflow untouched', async () => {
+  await withTempWorkflowsRepo('wbfy-third-party-workflow-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    const filePath = path.join(workflowsPath, 'custom.yml');
+    const content = `# Keep this custom workflow\njobs:\n  external:\n    uses: OtherOrg/actions/.github/workflows/test.yml@main\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`;
+    fs.writeFileSync(filePath, content);
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(content);
+  });
+});
+
+test('does not replace a third-party hybrid caller in a managed workflow', async () => {
+  await withTempWorkflowsRepo('wbfy-third-party-test-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    const filePath = path.join(workflowsPath, 'test.yml');
+    const content = `jobs:\n  test:\n    uses: OtherOrg/actions/.github/workflows/test.yml@main\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`;
+    fs.writeFileSync(filePath, content);
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(content);
+  });
+});
+
 test('generated close-comment callers are removed', async () => {
   await withTempWorkflowsRepo('wbfy-workflow-close-comment-', async (dirPath, workflowsPath) => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));

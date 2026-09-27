@@ -359,6 +359,17 @@ async function writeWorkflowYaml(
       console.warn(`Skipped generating ${filePath} because the existing content is not a workflow.`);
       return;
     }
+    if (
+      Object.values(oldSettings.jobs ?? {}).some(
+        (job) =>
+          job?.uses &&
+          !parseOrgReusableWorkflowCall(job.uses) &&
+          (job['runs-on'] !== undefined || job.steps !== undefined)
+      )
+    ) {
+      console.warn(`Skipped generating ${filePath} because a third-party hybrid job is not managed by wbfy.`);
+      return;
+    }
     if (kind === 'test-rust' && config.cargoTomlDirPaths.length === 0) {
       // Without Rust, only a prior hybrid caller needs repair. Other same-named workflows are
       // custom files and must not acquire the template's Rust test job.
@@ -398,11 +409,17 @@ async function writeWorkflowYaml(
 
   let isReusableWorkflow = false;
   let repairedInlineJob = false;
+  const templateJobs = (workflows[kind as keyof typeof workflows] as Workflow | undefined)?.jobs;
   for (const [jobName, job] of Object.entries(newSettings.jobs)) {
     // A repository may already have a same-named inline job. The template's reusable `uses`
     // must not be merged into it: GitHub rejects jobs with both `uses` and `runs-on`/`steps`.
     // This also repairs hybrid jobs emitted by older wbfy versions on their next run.
-    if (job && (job['runs-on'] !== undefined || job.steps !== undefined) && job.uses !== undefined) {
+    if (
+      job &&
+      templateJobs?.[jobName]?.uses &&
+      parseOrgReusableWorkflowCall(job.uses) &&
+      (job['runs-on'] !== undefined || job.steps !== undefined)
+    ) {
       const calledWorkflow = parseOrgReusableWorkflowCall(job.uses);
       const injectedPermissions =
         calledWorkflow?.ref === 'main' ? reusableWorkflowPermissions[calledWorkflow.workflowName] : undefined;
