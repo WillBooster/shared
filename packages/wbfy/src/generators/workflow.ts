@@ -3,6 +3,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 
 import merge from 'deepmerge';
 import * as yaml from 'js-yaml';
@@ -294,9 +295,15 @@ export function isReusableWorkflowsRepo(repository?: string): boolean {
  * Whether every job of the workflow file calls the named WillBooster reusable workflow (owner
  * restricted via parseOrgReusableWorkflowCall). Used to decide whether wbfy owns a file enough to
  * delete it: unparsable files and files with any other job return false — deleting a whole
- * workflow on a loose match would be too aggressive.
+ * workflow on a loose match would be too aggressive. Only force-sync cleanup includes hybrid
+ * inline jobs because that file is itself generated from sync.
  */
-export function jobsAllCallReusableWorkflow(workflowsPath: string, fileName: string, workflowName: string): boolean {
+export function jobsAllCallReusableWorkflow(
+  workflowsPath: string,
+  fileName: string,
+  workflowName: string,
+  includeInline = false
+): boolean {
   if (!fileName.endsWith('.yml')) return false;
   let content: string;
   try {
@@ -304,13 +311,16 @@ export function jobsAllCallReusableWorkflow(workflowsPath: string, fileName: str
   } catch {
     return false;
   }
-  const isTargetCall = (uses: unknown): boolean =>
-    typeof uses === 'string' && parseOrgReusableWorkflowCall(uses)?.workflowName === workflowName;
+  const isTargetCall = (job: Job | undefined): boolean =>
+    !!job &&
+    typeof job.uses === 'string' &&
+    parseOrgReusableWorkflowCall(job.uses)?.workflowName === workflowName &&
+    (includeInline || (job['runs-on'] === undefined && job.steps === undefined));
   try {
     const workflow = yaml.load(content) as Workflow | undefined;
     if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
       const jobs = Object.values(workflow.jobs);
-      return jobs.length > 0 && jobs.every((job) => isTargetCall(job?.uses));
+      return jobs.length > 0 && jobs.every(isTargetCall);
     }
   } catch {
     // Unparsable content is not provably a caller of the named workflow.
@@ -329,13 +339,11 @@ async function writeWorkflowYaml(
     ? 'deploy-production.yml'
     : undefined;
 
-  // A non-generated test-rust.yml in a repo without Rust code merely shares the name; leave it alone.
-  if (kind === 'test-rust' && config.cargoTomlDirPaths.length === 0) return;
-
   let newSettings = structuredClone(kind in workflows ? workflows[kind as keyof typeof workflows] : {}) as Workflow;
   const oldContent = await fsUtil.readFileIfExists(filePath);
+  if (kind === 'test-rust' && config.cargoTomlDirPaths.length === 0 && oldContent === undefined) return;
+  let oldSettings: Workflow | undefined;
   if (oldContent !== undefined) {
-    let oldSettings: Workflow;
     try {
       oldSettings = yaml.load(oldContent) as Workflow;
     } catch {
@@ -383,11 +391,23 @@ async function writeWorkflowYaml(
 
   let isReusableWorkflow = false;
   let repairedInlineJob = false;
-  for (const job of Object.values(newSettings.jobs)) {
+  for (const [jobName, job] of Object.entries(newSettings.jobs)) {
     // A repository may already have a same-named inline job. The template's reusable `uses`
     // must not be merged into it: GitHub rejects jobs with both `uses` and `runs-on`/`steps`.
     // This also repairs hybrid jobs emitted by older wbfy versions on their next run.
     if (job && (job['runs-on'] !== undefined || job.steps !== undefined) && job.uses !== undefined) {
+      const calledWorkflow = parseOrgReusableWorkflowCall(job.uses);
+      const injectedPermissions =
+        calledWorkflow?.ref === 'main' ? reusableWorkflowPermissions[calledWorkflow.workflowName] : undefined;
+      // A prior run may have replaced the inline job's token scope with the callee's scope.
+      // Keep a repository-specific scope when it differs from that injected value.
+      if (
+        oldSettings?.jobs?.[jobName]?.uses &&
+        injectedPermissions &&
+        isDeepStrictEqual(job.permissions, injectedPermissions)
+      ) {
+        delete job.permissions;
+      }
       delete job.uses;
       delete job.with;
       delete job.secrets;
@@ -403,6 +423,16 @@ async function writeWorkflowYaml(
     isReusableWorkflow = true;
   }
   if (!isReusableWorkflow && !repairedInlineJob) return;
+  if (!isReusableWorkflow && oldSettings) {
+    // Template permissions serve its reusable caller; an inline-only workflow retains only its
+    // own permission set, including when an older run wrote the template's set over the file.
+    const templatePermissions = (workflows[kind as keyof typeof workflows] as Workflow | undefined)?.permissions;
+    if (!oldSettings.permissions || isDeepStrictEqual(oldSettings.permissions, templatePermissions)) {
+      delete newSettings.permissions;
+    } else {
+      newSettings.permissions = oldSettings.permissions;
+    }
+  }
 
   // Deploy callers need no repository writes: the called reusable workflow inherits the caller's
   // token permissions, repositories default the token to write, and the reusable deploy workflow
@@ -458,7 +488,7 @@ async function writeWorkflowYaml(
     if (!newSettings.jobs.sync?.with) {
       // The force-sync caller is generated from sync's reusable call. Remove an older generated
       // sibling when sync is inline; otherwise it can retain an invalid merged inline job.
-      if (jobsAllCallReusableWorkflow(workflowsPath, 'sync-force.yml', 'sync')) {
+      if (jobsAllCallReusableWorkflow(workflowsPath, 'sync-force.yml', 'sync', true)) {
         await fsUtil.removeConfined(path.join(workflowsPath, 'sync-force.yml'));
       }
       return;

@@ -65,12 +65,14 @@ test('preserves an inline test job when its name matches the reusable template',
     const config = createConfig({ dirPath, isRoot: true, isPublicRepo: true });
 
     await generateWorkflows(config);
+    expect(readWorkflow(workflowsPath, 'test.yml').permissions).toBeUndefined();
     expect(siblingJobSchema.parse(readWorkflow(workflowsPath, 'test.yml').jobs.test)).toEqual({
       'runs-on': 'ubuntu-latest',
       steps: [{ run: 'echo preserved' }],
     });
 
     await generateWorkflows(config);
+    expect(readWorkflow(workflowsPath, 'test.yml').permissions).toBeUndefined();
     expect(siblingJobSchema.parse(readWorkflow(workflowsPath, 'test.yml').jobs.test)).toEqual({
       'runs-on': 'ubuntu-latest',
       steps: [{ run: 'echo preserved' }],
@@ -78,10 +80,28 @@ test('preserves an inline test job when its name matches the reusable template',
 
     fs.writeFileSync(
       filePath,
-      `jobs:\n  test:\n    uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n    with:\n      github_hosted_runner: true\n    secrets:\n      GH_TOKEN: inherited\n`
+      `permissions:\n  actions: write\n  contents: write\n  pull-requests: read\njobs:\n  test:\n    uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n    with:\n      github_hosted_runner: true\n    secrets:\n      GH_TOKEN: inherited\n`
     );
     await generateWorkflows(config);
+    expect(readWorkflow(workflowsPath, 'test.yml').permissions).toBeUndefined();
     expect(siblingJobSchema.parse(readWorkflow(workflowsPath, 'test.yml').jobs.test)).toEqual({
+      'runs-on': 'ubuntu-latest',
+      steps: [{ run: 'echo preserved' }],
+    });
+  });
+});
+
+test('keeps an inline Rust test when Rust code is removed', async () => {
+  await withTempWorkflowsRepo('wbfy-inline-rust-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    fs.writeFileSync(
+      path.join(workflowsPath, 'test-rust.yml'),
+      `jobs:\n  test-rust:\n    uses: WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n    permissions:\n      actions: read\n      contents: read\n`
+    );
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true, cargoTomlDirPaths: [] }));
+
+    expect(siblingJobSchema.parse(readWorkflow(workflowsPath, 'test-rust.yml').jobs['test-rust'])).toEqual({
       'runs-on': 'ubuntu-latest',
       steps: [{ run: 'echo preserved' }],
     });
