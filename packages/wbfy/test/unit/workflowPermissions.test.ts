@@ -143,6 +143,28 @@ test('removes a generated force-sync caller when sync becomes an inline job', as
   });
 });
 
+test('removes an invalid generated force-sync caller with copied sibling jobs', async () => {
+  await withTempWorkflowsRepo('wbfy-force-sync-siblings-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    fs.writeFileSync(
+      path.join(workflowsPath, 'sync.yml'),
+      `jobs:\n  sync:\n    uses: WillBooster/reusable-workflows/.github/workflows/sync.yml@main\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n    with:\n      sync_params_without_dest: --source source\n  extra:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`
+    );
+    fs.writeFileSync(
+      path.join(workflowsPath, 'sync-force.yml'),
+      `jobs:\n  sync-force:\n    uses: WillBooster/reusable-workflows/.github/workflows/sync.yml@main\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n    with:\n      sync_params_without_dest: --force --source source\n  extra:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`
+    );
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+
+    expect(fs.existsSync(path.join(workflowsPath, 'sync-force.yml'))).toBe(false);
+    expect(siblingJobSchema.parse(readWorkflow(workflowsPath, 'sync.yml').jobs.extra)).toEqual({
+      'runs-on': 'ubuntu-latest',
+      steps: [{ run: 'echo preserved' }],
+    });
+  });
+});
+
 test('keeps a valid force-sync caller beside an inline sync job', async () => {
   await withTempWorkflowsRepo('wbfy-valid-force-sync-', async (dirPath, workflowsPath) => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));

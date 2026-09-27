@@ -292,17 +292,16 @@ export function isReusableWorkflowsRepo(repository?: string): boolean {
 }
 
 /**
- * Whether every job of the workflow file calls the named WillBooster reusable workflow (owner
+ * Whether every job, or the named hybrid job, calls the WillBooster reusable workflow (owner
  * restricted via parseOrgReusableWorkflowCall). Used to decide whether wbfy owns a file enough to
- * delete it: unparsable files and files with any other job return false — deleting a whole
- * workflow on a loose match would be too aggressive. Force-sync cleanup targets only hybrids
- * left by the template merge; a valid standalone caller may be repository-owned.
+ * delete it: unparsable files and files with other jobs return false by default. Force-sync
+ * cleanup targets its own hybrid job because copied siblings do not change that provenance.
  */
 export function jobsAllCallReusableWorkflow(
   workflowsPath: string,
   fileName: string,
   workflowName: string,
-  inlineOnly = false
+  hybridJobName?: string
 ): boolean {
   if (!fileName.endsWith('.yml')) return false;
   let content: string;
@@ -315,13 +314,13 @@ export function jobsAllCallReusableWorkflow(
     !!job &&
     typeof job.uses === 'string' &&
     parseOrgReusableWorkflowCall(job.uses)?.workflowName === workflowName &&
-    (inlineOnly
+    (hybridJobName
       ? job['runs-on'] !== undefined || job.steps !== undefined
       : job['runs-on'] === undefined && job.steps === undefined);
   try {
     const workflow = yaml.load(content) as Workflow | undefined;
     if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
-      const jobs = Object.values(workflow.jobs);
+      const jobs = hybridJobName ? [workflow.jobs[hybridJobName]] : Object.values(workflow.jobs);
       return jobs.length > 0 && jobs.every(isTargetCall);
     }
   } catch {
@@ -501,7 +500,7 @@ async function writeWorkflowYaml(
     if (!newSettings.jobs.sync?.with) {
       // The force-sync caller is generated from sync's reusable call. Remove an older generated
       // sibling when sync is inline; otherwise it can retain an invalid merged inline job.
-      if (jobsAllCallReusableWorkflow(workflowsPath, 'sync-force.yml', 'sync', true)) {
+      if (jobsAllCallReusableWorkflow(workflowsPath, 'sync-force.yml', 'sync', 'sync-force')) {
         await fsUtil.removeConfined(path.join(workflowsPath, 'sync-force.yml'));
       }
       return;
