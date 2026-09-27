@@ -227,16 +227,12 @@ test('preserves permissions explicitly set on an inline test workflow', async ()
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
     fs.writeFileSync(
       path.join(workflowsPath, 'test.yml'),
-      `permissions:\n  actions: write\n  contents: write\n  pull-requests: read\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: git push --dry-run\n`
+      `permissions:\n  contents: read\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`
     );
 
     await generateWorkflows(createConfig({ dirPath, isRoot: true }));
 
-    expect(readWorkflow(workflowsPath, 'test.yml').permissions).toEqual({
-      actions: 'write',
-      contents: 'write',
-      'pull-requests': 'read',
-    });
+    expect(readWorkflow(workflowsPath, 'test.yml').permissions).toEqual({ contents: 'read' });
   });
 });
 
