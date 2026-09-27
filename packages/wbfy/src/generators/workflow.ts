@@ -431,9 +431,10 @@ async function writeWorkflowYaml(
     isReusableWorkflow = true;
   }
   if (!isReusableWorkflow && !repairedInlineJob) return;
-  if (!isReusableWorkflow && oldSettings && kind === 'test') {
-    // The test template's permissions serve callee-only checks. Release and sync still need
-    // their template write permissions when their own inline steps publish or commit changes.
+  const testJob = newSettings.jobs.test;
+  if (kind === 'test' && oldSettings && testJob && (testJob['runs-on'] !== undefined || testJob.steps !== undefined)) {
+    // The test template's permissions serve callee-only checks; unrelated reusable siblings
+    // receive their own job-level scope. Release and sync still need template write permissions.
     const templatePermissions = (workflows[kind as keyof typeof workflows] as Workflow | undefined)?.permissions;
     if (!oldSettings.permissions || isDeepStrictEqual(oldSettings.permissions, templatePermissions)) {
       delete newSettings.permissions;

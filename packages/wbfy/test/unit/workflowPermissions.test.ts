@@ -180,6 +180,26 @@ test('keeps write access for inline release and sync jobs', async () => {
   });
 });
 
+test('does not grant caller-only test permissions to an inline test beside a reusable sibling', async () => {
+  await withTempWorkflowsRepo('wbfy-mixed-test-jobs-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    fs.writeFileSync(
+      path.join(workflowsPath, 'test.yml'),
+      `jobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n  lint-pr:\n    uses: WillBooster/reusable-workflows/.github/workflows/semantic-pr.yml@main\n`
+    );
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+
+    const workflow = readWorkflow(workflowsPath, 'test.yml');
+    expect(workflow.permissions).toBeUndefined();
+    expect(siblingJobSchema.parse(workflow.jobs.test)).toEqual({
+      'runs-on': 'ubuntu-latest',
+      steps: [{ run: 'echo preserved' }],
+    });
+    expect(workflow.jobs['lint-pr']?.permissions).toEqual({ 'pull-requests': 'read', statuses: 'write' });
+  });
+});
+
 test('generated close-comment callers are removed', async () => {
   await withTempWorkflowsRepo('wbfy-workflow-close-comment-', async (dirPath, workflowsPath) => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
