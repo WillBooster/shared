@@ -30,7 +30,7 @@ const siblingJobSchema = z.strictObject({
 test('generated callers scope permissions without changing preserved sibling jobs', async () => {
   await withTempWorkflowsRepo('wbfy-workflow-permissions-', async (dirPath, workflowsPath) => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
-    for (const workflowName of ['test-rust', 'semantic-pr', 'close-comment']) {
+    for (const workflowName of ['test-rust', 'semantic-pr']) {
       fs.writeFileSync(
         path.join(workflowsPath, `${workflowName}.yml`),
         `jobs:\n  ${workflowName}:\n    permissions:\n      contents: write\n    uses: WillBooster/reusable-workflows/.github/workflows/${workflowName}.yml@main\n  sibling:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`
@@ -38,7 +38,7 @@ test('generated callers scope permissions without changing preserved sibling job
     }
     fs.writeFileSync(
       path.join(workflowsPath, 'custom.yml'),
-      `jobs:\n  rust:\n    permissions:\n      contents: write\n    uses: WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main\n  pr:\n    permissions:\n      contents: write\n    uses: WillBooster/reusable-workflows/.github/workflows/semantic-pr.yml@main\n  comment:\n    permissions:\n      contents: write\n    uses: WillBooster/reusable-workflows/.github/workflows/close-comment.yml@main\n`
+      `jobs:\n  rust:\n    permissions:\n      contents: write\n    uses: WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main\n  pr:\n    permissions:\n      contents: write\n    uses: WillBooster/reusable-workflows/.github/workflows/semantic-pr.yml@main\n`
     );
 
     await generateWorkflows(createConfig({ dirPath, isRoot: true, cargoTomlDirPaths: ['native'] }));
@@ -51,11 +51,40 @@ test('generated callers scope permissions without changing preserved sibling job
       'pull-requests': 'read',
       statuses: 'write',
     });
-    expect(readPermissions(workflowsPath, 'close-comment.yml')).toEqual({ 'pull-requests': 'write' });
     const customWorkflow = readWorkflow(workflowsPath, 'custom.yml');
     expect(customWorkflow.jobs.rust?.permissions).toEqual({ actions: 'read', contents: 'read' });
     expect(customWorkflow.jobs.pr?.permissions).toEqual({ 'pull-requests': 'read', statuses: 'write' });
-    expect(customWorkflow.jobs.comment?.permissions).toEqual({ 'pull-requests': 'write' });
+  });
+});
+
+test('generated close-comment callers are removed', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-close-comment-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    fs.writeFileSync(
+      path.join(workflowsPath, 'close-comment.yml'),
+      `jobs:\n  close-comment:\n    uses: WillBooster/reusable-workflows/.github/workflows/close-comment.yml@main\n`
+    );
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+
+    expect(fs.existsSync(path.join(workflowsPath, 'close-comment.yml'))).toBe(false);
+  });
+});
+
+test('customized close-comment workflows are preserved', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-custom-close-comment-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    fs.writeFileSync(
+      path.join(workflowsPath, 'close-comment.yml'),
+      `jobs:\n  close-comment:\n    uses: WillBooster/reusable-workflows/.github/workflows/close-comment.yml@main\n  sibling:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`
+    );
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+
+    expect(siblingJobSchema.parse(readWorkflow(workflowsPath, 'close-comment.yml').jobs.sibling)).toEqual({
+      'runs-on': 'ubuntu-latest',
+      steps: [{ run: 'echo preserved' }],
+    });
   });
 });
 

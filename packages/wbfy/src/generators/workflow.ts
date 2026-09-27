@@ -185,19 +185,6 @@ const workflows = {
       sync: { uses: 'WillBooster/reusable-workflows/.github/workflows/sync.yml@main' },
     },
   },
-  'close-comment': {
-    name: 'Add close comment',
-    on: {
-      pull_request: {
-        types: ['opened'],
-      },
-    },
-    jobs: {
-      'close-comment': {
-        uses: 'WillBooster/reusable-workflows/.github/workflows/close-comment.yml@main',
-      },
-    },
-  },
 } as const;
 
 type KnownKind = keyof typeof workflows | 'deploy';
@@ -253,7 +240,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       if (!entry.isFile() || !entry.name.endsWith('.yml')) continue;
       fileNamesByKind.set(entry.name.slice(0, -'.yml'.length), entry.name);
     }
-    const mandatoryKinds = ['test', 'semantic-pr', 'close-comment'];
+    const mandatoryKinds = ['test', 'semantic-pr'];
     if (rootConfig.depending.semanticRelease) {
       mandatoryKinds.push('release');
     }
@@ -268,6 +255,11 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
         fileNamesByKind.delete('test-rust');
         await fsUtil.removeConfined(path.join(workflowsPath, testRustFileName));
       }
+    }
+    const closeCommentFileName = fileNamesByKind.get('close-comment');
+    if (closeCommentFileName && jobsAllCallReusableWorkflow(workflowsPath, closeCommentFileName, 'close-comment')) {
+      fileNamesByKind.delete('close-comment');
+      await fsUtil.removeConfined(path.join(workflowsPath, closeCommentFileName));
     }
     fileNamesByKind.delete('wbfy');
     for (const kind of mandatoryKinds) {
@@ -647,7 +639,6 @@ const reusableWorkflowPermissions: Record<string, Record<string, string>> = {
   // skip-duplicate-actions reads workflow runs; cancel_others is false, so read is enough.
   'test-rust': { actions: 'read', contents: 'read' },
   'semantic-pr': { 'pull-requests': 'read', statuses: 'write' },
-  'close-comment': { 'pull-requests': 'write' },
 };
 
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
