@@ -344,7 +344,7 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
   // bun.lock-only merges (Renovate lockfile maintenance), bunfig.toml / .npmrc changes (linker,
   // registry, hoisting), and patch edits all change the installed tree without touching package.json.
   postMergeCommands.push(
-    String.raw`run_if_changed "(package\.json|bun\.lock|bunfig\.toml|\.npmrc|patches/)" "${installCommand}${rmNextDirectories}"`
+    String.raw`run_if_changed "(package\.json|bun\.lock|bunfig\.toml|\.npmrc|patches/)" "${installCommand}${rmNextDirectories}" || exit`
   );
   postMergeCommands.push(installMissingDepsCommand);
   // Vite's dependency cache in node_modules/.vite self-invalidates on lockfile / patches /
