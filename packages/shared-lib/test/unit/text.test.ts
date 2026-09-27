@@ -30,5 +30,6 @@ test('truncate keeps the result within maxLength including the ellipsis without 
   expect(truncate('abcdef', 4)).toBe('abc…');
   expect(truncate('abcdef', 5, '...')).toBe('ab...');
   expect(truncate('a😀bc', 3)).toBe('a…');
+  expect(truncate('a\uD83Dbc', 3)).toBe('a…');
   expect(() => truncate('abcdef', 2, '...')).toThrow(RangeError);
 });

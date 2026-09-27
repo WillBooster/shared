@@ -442,6 +442,7 @@ test('escapePromptTag normalizes whitespace before and after the closing slash',
 
 test('truncateForPrompt keeps the cut off the halves of a surrogate pair', () => {
   expect(truncateForPrompt('x\u{1F600}y', 2)).toBe('x\n...<truncated>');
+  expect(truncateForPrompt('x\uD83Dy', 2)).toBe('x\n...<truncated>');
   expect(truncateForPrompt('xy\u{1F600}', 3)).toBe('xy\n...<truncated>');
   expect(truncateForPrompt('xyz', 3)).toBe('xyz');
 });

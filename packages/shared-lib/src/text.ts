@@ -57,8 +57,10 @@ export function truncate(text: string, maxLength: number, ellipsis = '…'): str
  * because an unpaired surrogate is replaced with U+FFFD by encoders.
  */
 export function sliceWithoutSplittingSurrogates(text: string, end: number): string {
-  // A code point above U+FFFF starting at the last kept index is a pair whose low half would be cut off.
-  return text.slice(0, (text.codePointAt(end - 1) ?? 0) > 0xFF_FF ? end - 1 : end);
+  // A high surrogate as the last kept unit would be unpaired, whether its low half is cut off or was never there.
+  // oxlint-disable-next-line unicorn/prefer-code-point -- the check is on a single UTF-16 code unit
+  const lastKeptUnit = text.charCodeAt(end - 1);
+  return text.slice(0, lastKeptUnit >= 0xD8_00 && lastKeptUnit <= 0xDB_FF ? end - 1 : end);
 }
 
 const htmlSpecialCharacterPattern = /["&'<>]/u;
