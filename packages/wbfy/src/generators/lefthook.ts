@@ -115,7 +115,7 @@ exit "$failed"
 };
 
 // Git hooks call Lefthook through an absolute path, so they also fire in a fresh worktree without
-// node_modules. Installing on every run would slow each commit and push, and would run `prepare`.
+// node_modules. Installing on every run would slow each hook run and would also run `prepare`.
 const installMissingDepsCommand = '[ -d node_modules ] || bun install --frozen-lockfile || exit';
 
 const scripts = {
@@ -346,6 +346,7 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
   postMergeCommands.push(
     String.raw`run_if_changed "(package\.json|bun\.lock|bunfig\.toml|\.npmrc|patches/)" "${installCommand}${rmNextDirectories}"`
   );
+  postMergeCommands.push(installMissingDepsCommand);
   // Vite's dependency cache in node_modules/.vite self-invalidates on lockfile / patches /
   // config / NODE_ENV changes (see Vite's dep pre-bundling docs), so the residual stale case is
   // install-layout changes (bunfig.toml linker, .npmrc): they change the installed tree without
