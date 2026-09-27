@@ -20,12 +20,10 @@ export function errorify(obj: unknown): Error {
  */
 export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
-  try {
-    return String(error);
-  } catch {
-    // e.g. an object without a prototype, which has no `toString`
-    return Object.prototype.toString.call(error);
-  }
+  // `String` throws for an object without a prototype, and both throw for a proxy whose traps throw.
+  return (
+    ignoreError(() => String(error)) ?? ignoreError(() => Object.prototype.toString.call(error)) ?? 'Unknown error'
+  );
 }
 
 /** Whether a thrown value carries the given `code`, such as a Node.js errno code (`ENOENT`, `EEXIST`, ...). */

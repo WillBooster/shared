@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
-import { escapeRegExp } from '@willbooster/shared-lib/src';
+import { escapeRegExp, getErrorMessage } from '@willbooster/shared-lib/src';
 import { treeKill } from '@willbooster/shared-lib-node/src';
 
 import type { Project } from '../project.js';
@@ -98,7 +98,7 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   } catch (error) {
     // Errors must unwind through this try (never `process.exit` inside it): the restore below is
     // the only thing that undoes the bunfig/package.json mutations.
-    console.error(chalk.red(String(error instanceof Error ? error.message : error)));
+    console.error(chalk.red(getErrorMessage(error)));
     exitCode = 1;
   } finally {
     // On failure or interruption, restore byte-for-byte: semantic-release may have left PARTIAL

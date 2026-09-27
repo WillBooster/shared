@@ -119,7 +119,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     try {
       resolvedConfig = resolveWranglerConfigForEnv(project, envName);
     } catch (error) {
-      console.error(chalk.red(String(error instanceof Error ? error.message : error)));
+      console.error(chalk.red(getErrorMessage(error)));
       process.exit(1);
     }
     if (!resolvedConfig) {

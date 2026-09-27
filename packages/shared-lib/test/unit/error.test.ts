@@ -47,4 +47,13 @@ test('getErrorMessage answers the message of an Error and a string for any other
   expect(getErrorMessage(new TypeError('bad'))).toBe('bad');
   expect(getErrorMessage('plain')).toBe('plain');
   expect(getErrorMessage(Object.create(null))).toBe('[object Object]');
+  const throwingProxy = new Proxy(
+    {},
+    {
+      get() {
+        throw new Error('trap');
+      },
+    }
+  );
+  expect(getErrorMessage(throwingProxy)).toBe('Unknown error');
 });
