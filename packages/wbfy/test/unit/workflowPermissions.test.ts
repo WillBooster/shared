@@ -143,6 +143,26 @@ test('removes a generated force-sync caller when sync becomes an inline job', as
   });
 });
 
+test('keeps a valid force-sync caller beside an inline sync job', async () => {
+  await withTempWorkflowsRepo('wbfy-valid-force-sync-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    fs.writeFileSync(
+      path.join(workflowsPath, 'sync.yml'),
+      `jobs:\n  sync:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`
+    );
+    const filePath = path.join(workflowsPath, 'sync-force.yml');
+    const content = `jobs:\n  sync-force:\n    uses: WillBooster/reusable-workflows/.github/workflows/sync.yml@main\n    with:\n      sync_params_without_dest: --force special-source\n`;
+    fs.writeFileSync(filePath, content);
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+
+    expect(fs.existsSync(filePath)).toBe(true);
+    expect(readWorkflow(workflowsPath, 'sync-force.yml').jobs['sync-force']?.uses).toBe(
+      'WillBooster/reusable-workflows/.github/workflows/sync.yml@main'
+    );
+  });
+});
+
 test('generated close-comment callers are removed', async () => {
   await withTempWorkflowsRepo('wbfy-workflow-close-comment-', async (dirPath, workflowsPath) => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));

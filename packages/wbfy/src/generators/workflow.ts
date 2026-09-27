@@ -295,14 +295,14 @@ export function isReusableWorkflowsRepo(repository?: string): boolean {
  * Whether every job of the workflow file calls the named WillBooster reusable workflow (owner
  * restricted via parseOrgReusableWorkflowCall). Used to decide whether wbfy owns a file enough to
  * delete it: unparsable files and files with any other job return false — deleting a whole
- * workflow on a loose match would be too aggressive. Only force-sync cleanup includes hybrid
- * inline jobs because that file is itself generated from sync.
+ * workflow on a loose match would be too aggressive. Force-sync cleanup targets only hybrids
+ * left by the template merge; a valid standalone caller may be repository-owned.
  */
 export function jobsAllCallReusableWorkflow(
   workflowsPath: string,
   fileName: string,
   workflowName: string,
-  includeInline = false
+  inlineOnly = false
 ): boolean {
   if (!fileName.endsWith('.yml')) return false;
   let content: string;
@@ -315,7 +315,9 @@ export function jobsAllCallReusableWorkflow(
     !!job &&
     typeof job.uses === 'string' &&
     parseOrgReusableWorkflowCall(job.uses)?.workflowName === workflowName &&
-    (includeInline || (job['runs-on'] === undefined && job.steps === undefined));
+    (inlineOnly
+      ? job['runs-on'] !== undefined || job.steps !== undefined
+      : job['runs-on'] === undefined && job.steps === undefined);
   try {
     const workflow = yaml.load(content) as Workflow | undefined;
     if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
