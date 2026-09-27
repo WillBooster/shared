@@ -15,8 +15,6 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { runAllInPool } from '../utils/promisePool.js';
 
-const ENGLISH_NOTE = ' Write the title and body in English, even when the request was made in another language.';
-
 const generateTemplates = (prLanguageNote: string, issueLanguageNote: string): Record<string, string> => ({
   'pull_request_template.md': `
 Close #<IssueNumber>
@@ -63,9 +61,9 @@ export async function generateGitHubTemplates(config: PackageConfig): Promise<vo
       getDefaultProseLanguage(config) === 'Japanese'
         ? [
             ' Write the title in English and the body in Japanese, keeping the headings as they are.',
-            ' Write in Japanese (an English title is also fine), keeping the headings as they are.',
+            ' Write in Japanese, keeping the headings as they are.',
           ]
-        : [ENGLISH_NOTE, ENGLISH_NOTE];
+        : [' Write in English.', ' Write in English.'];
     await runAllInPool(
       Object.entries(generateTemplates(prLanguageNote, issueLanguageNote)).map(([fileName, content]) => {
         const filePath = path.resolve(config.dirPath, '.github', fileName);
