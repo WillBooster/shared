@@ -459,14 +459,17 @@ async function writeWorkflowYaml(
   if (!isReusableWorkflow && !repairedInlineJob) return;
   const testJob = newSettings.jobs.test;
   if (kind === 'test' && oldSettings && testJob && (testJob['runs-on'] !== undefined || testJob.steps !== undefined)) {
-    // The test template's permissions serve callee-only checks; unrelated reusable siblings
-    // receive their own job-level scope. A matching scope on an already-inline source is explicit,
-    // while a prior hybrid caller may carry the template's injected scope.
+    // The test template's permissions serve callee-only checks. Move its scope to reusable
+    // siblings before removing it from an inline job; a prior hybrid caller may carry the
+    // template's injected scope, while an already-inline source may set its own scope.
     const templatePermissions = (workflows[kind as keyof typeof workflows] as Workflow | undefined)?.permissions;
     if (
       !oldSettings.permissions ||
       (oldSettings.jobs.test?.uses && isDeepStrictEqual(oldSettings.permissions, templatePermissions))
     ) {
+      for (const job of Object.values(newSettings.jobs)) {
+        if (job?.uses && !job.permissions && templatePermissions) job.permissions = { ...templatePermissions };
+      }
       delete newSettings.permissions;
     } else {
       newSettings.permissions = oldSettings.permissions;

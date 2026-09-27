@@ -251,6 +251,32 @@ test('scopes a reusable test sibling without granting its permissions to the inl
   });
 });
 
+test('moves template permissions to reusable siblings without their own scope', async () => {
+  await withTempWorkflowsRepo('wbfy-other-reusable-siblings-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    fs.writeFileSync(
+      path.join(workflowsPath, 'test.yml'),
+      `jobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n  release-nightly:\n    uses: WillBooster/reusable-workflows/.github/workflows/release.yml@main\n  external:\n    uses: OtherOrg/actions/.github/workflows/test.yml@main\n`
+    );
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+
+    const workflow = readWorkflow(workflowsPath, 'test.yml');
+    expect(workflow.permissions).toBeUndefined();
+    expect(siblingJobSchema.parse(workflow.jobs.test)).toEqual({
+      'runs-on': 'ubuntu-latest',
+      steps: [{ run: 'echo preserved' }],
+    });
+    for (const jobName of ['release-nightly', 'external']) {
+      expect(workflow.jobs[jobName]?.permissions).toEqual({
+        actions: 'write',
+        contents: 'write',
+        'pull-requests': 'read',
+      });
+    }
+  });
+});
+
 test('preserves permissions explicitly set on an inline test workflow', async () => {
   await withTempWorkflowsRepo('wbfy-explicit-test-permissions-', async (dirPath, workflowsPath) => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
