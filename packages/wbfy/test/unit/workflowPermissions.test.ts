@@ -57,6 +57,37 @@ test('generated callers scope permissions without changing preserved sibling job
   });
 });
 
+test('preserves an inline test job when its name matches the reusable template', async () => {
+  await withTempWorkflowsRepo('wbfy-inline-test-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    const filePath = path.join(workflowsPath, 'test.yml');
+    fs.writeFileSync(filePath, `jobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`);
+    const config = createConfig({ dirPath, isRoot: true, isPublicRepo: true });
+
+    await generateWorkflows(config);
+    expect(siblingJobSchema.parse(readWorkflow(workflowsPath, 'test.yml').jobs.test)).toEqual({
+      'runs-on': 'ubuntu-latest',
+      steps: [{ run: 'echo preserved' }],
+    });
+
+    await generateWorkflows(config);
+    expect(siblingJobSchema.parse(readWorkflow(workflowsPath, 'test.yml').jobs.test)).toEqual({
+      'runs-on': 'ubuntu-latest',
+      steps: [{ run: 'echo preserved' }],
+    });
+
+    fs.writeFileSync(
+      filePath,
+      `jobs:\n  test:\n    uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n    with:\n      github_hosted_runner: true\n    secrets:\n      GH_TOKEN: inherited\n`
+    );
+    await generateWorkflows(config);
+    expect(siblingJobSchema.parse(readWorkflow(workflowsPath, 'test.yml').jobs.test)).toEqual({
+      'runs-on': 'ubuntu-latest',
+      steps: [{ run: 'echo preserved' }],
+    });
+  });
+});
+
 test('generated close-comment callers are removed', async () => {
   await withTempWorkflowsRepo('wbfy-workflow-close-comment-', async (dirPath, workflowsPath) => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));

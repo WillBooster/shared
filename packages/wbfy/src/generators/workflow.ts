@@ -382,7 +382,17 @@ async function writeWorkflowYaml(
   }
 
   let isReusableWorkflow = false;
+  let repairedInlineJob = false;
   for (const job of Object.values(newSettings.jobs)) {
+    // A repository may already have a same-named inline job. The template's reusable `uses`
+    // must not be merged into it: GitHub rejects jobs with both `uses` and `runs-on`/`steps`.
+    // This also repairs hybrid jobs emitted by older wbfy versions on their next run.
+    if (job && (job['runs-on'] !== undefined || job.steps !== undefined) && job.uses !== undefined) {
+      delete job.uses;
+      delete job.with;
+      delete job.secrets;
+      repairedInlineJob = true;
+    }
     // Ignore empty jobs (a bare `jobName:` parses as null), non-reusable workflows, and other
     // organizations' reusable workflows: a same-named `reusable-workflows` repository elsewhere
     // follows a different contract, and normalizing its callers (secret injection/removal,
@@ -392,7 +402,7 @@ async function writeWorkflowYaml(
     normalizeJob(config, job, kind);
     isReusableWorkflow = true;
   }
-  if (!isReusableWorkflow) return;
+  if (!isReusableWorkflow && !repairedInlineJob) return;
 
   // Deploy callers need no repository writes: the called reusable workflow inherits the caller's
   // token permissions, repositories default the token to write, and the reusable deploy workflow
