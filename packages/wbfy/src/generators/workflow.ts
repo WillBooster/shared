@@ -358,6 +358,12 @@ async function writeWorkflowYaml(
       console.warn(`Skipped generating ${filePath} because the existing content is not a workflow.`);
       return;
     }
+    if (kind === 'test-rust' && config.cargoTomlDirPaths.length === 0) {
+      // Without Rust, only a prior hybrid caller needs repair. Other same-named workflows are
+      // custom files and must not acquire the template's Rust test job.
+      const rustJob = oldSettings.jobs?.['test-rust'];
+      if (!rustJob?.uses || (rustJob['runs-on'] === undefined && rustJob.steps === undefined)) return;
+    }
     newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
   }
 

@@ -108,6 +108,19 @@ test('keeps an inline Rust test when Rust code is removed', async () => {
   });
 });
 
+test('leaves a custom same-named workflow alone without Rust code', async () => {
+  await withTempWorkflowsRepo('wbfy-custom-test-rust-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    const filePath = path.join(workflowsPath, 'test-rust.yml');
+    const content = `jobs:\n  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`;
+    fs.writeFileSync(filePath, content);
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true, cargoTomlDirPaths: [] }));
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(content);
+  });
+});
+
 test('removes a generated force-sync caller when sync becomes an inline job', async () => {
   await withTempWorkflowsRepo('wbfy-inline-sync-', async (dirPath, workflowsPath) => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
