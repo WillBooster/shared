@@ -39,6 +39,7 @@ minimumReleaseAgeExcludes = [
   "@willbooster/shared-lib-node",
   "@willbooster/shared-lib-react",
   "@willbooster/tree-sitter-bash",
+  "@willbooster/tree-sitter-kotlin",
   "@willbooster/wb",
   "@willbooster/wbfy",
   "agent-runtime-kit",
