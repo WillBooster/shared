@@ -83,10 +83,12 @@ it.each(['bytes', 'lines'])(
   'bounds failure output by %s and preserves the full log and exit code',
   async (limit) => {
     const dir = await createFixture();
+    // The marker shares stdout with the preceding output: wb reads stdout and stderr through separate
+    // pipes, so a marker on stderr can arrive first and fall outside the retained tail.
     await fs.writeFile(
       path.join(dir, 'generate.ts'),
       `console.log(${JSON.stringify(limit === 'bytes' ? 'LARGE_MARKER'.repeat(20_000) : Array.from({ length: 200 }, (_, i) => `FAILURE_LINE_${i}`).join('\n'))});
-console.error('LAST_FAILURE_MARKER');
+console.log('LAST_FAILURE_MARKER');
 process.exit(7);`
     );
     const result = runCli(dir, ['verify']);
