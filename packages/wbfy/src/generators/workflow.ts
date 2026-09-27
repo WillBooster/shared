@@ -434,9 +434,13 @@ async function writeWorkflowYaml(
   const testJob = newSettings.jobs.test;
   if (kind === 'test' && oldSettings && testJob && (testJob['runs-on'] !== undefined || testJob.steps !== undefined)) {
     // The test template's permissions serve callee-only checks; unrelated reusable siblings
-    // receive their own job-level scope. Release and sync still need template write permissions.
+    // receive their own job-level scope. A matching scope on an already-inline source is explicit,
+    // while a prior hybrid caller may carry the template's injected scope.
     const templatePermissions = (workflows[kind as keyof typeof workflows] as Workflow | undefined)?.permissions;
-    if (!oldSettings.permissions || isDeepStrictEqual(oldSettings.permissions, templatePermissions)) {
+    if (
+      !oldSettings.permissions ||
+      (oldSettings.jobs.test?.uses && isDeepStrictEqual(oldSettings.permissions, templatePermissions))
+    ) {
       delete newSettings.permissions;
     } else {
       newSettings.permissions = oldSettings.permissions;
