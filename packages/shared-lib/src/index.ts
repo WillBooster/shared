@@ -2,6 +2,7 @@ export { getAppEnv } from './appEnv.js';
 export { chunk } from './array.js';
 export { ensureTruthy } from './assert.js';
 export { forEachConcurrently, mapConcurrently } from './concurrency.js';
+export { sha256HexAsync, timingSafeEqualStringAsync } from './crypto.js';
 export {
   BUG_ISSUE_SECTIONS,
   CHANGE_ISSUE_SECTIONS,
