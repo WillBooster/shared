@@ -350,6 +350,10 @@ async function writeWorkflowYaml(
       console.warn(`Skipped generating ${filePath} because the existing content is not a workflow.`);
       return;
     }
+    const existingJob = oldSettings.jobs?.[kind];
+    if (newSettings.jobs?.[kind]?.uses && existingJob && !parseOrgReusableWorkflowCall(existingJob.uses)) {
+      return;
+    }
     newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
   }
 
