@@ -11,6 +11,9 @@ test('sha256HexAsync matches the digests node:crypto has already stored', async 
   }
   const bytes = new Uint8Array([0, 1, 254, 255]);
   expect(await sha256HexAsync(bytes)).toBe(createHash('sha256').update(bytes).digest('hex'));
+  const sharedBytes = new Uint8Array(new SharedArrayBuffer(bytes.length));
+  sharedBytes.set(bytes);
+  expect(await sha256HexAsync(sharedBytes)).toBe(createHash('sha256').update(bytes).digest('hex'));
 });
 
 test('timingSafeEqualStringAsync compares strings of any lengths', async () => {

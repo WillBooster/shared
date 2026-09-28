@@ -3,9 +3,9 @@
  * Cloudflare Workers; the result equals Node.js's `createHash('sha256').update(data).digest('hex')`.
  */
 export async function sha256HexAsync(data: string | Uint8Array): Promise<string> {
-  const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
-  // Node.js `Buffer`s are typed as `ArrayBufferLike`-backed; WebCrypto rejects a `SharedArrayBuffer`-backed view at runtime.
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as Uint8Array<ArrayBuffer>));
+  // Copying into a fresh `ArrayBuffer` also accepts a `SharedArrayBuffer`-backed view, which WebCrypto rejects.
+  const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
