@@ -75,3 +75,18 @@ test('getErrorMessage answers the message of an Error and a string for any other
   );
   expect(getErrorMessage(throwingPrototypeProxy)).toBe('[object Object]');
 });
+
+test('getErrorMessage answers the fallback instead of the string form of a thrown non-Error', () => {
+  expect(getErrorMessage(new Error('bad'), 'Failed')).toBe('bad');
+  expect(getErrorMessage('plain', 'Failed')).toBe('Failed');
+  expect(getErrorMessage(undefined, 'Failed')).toBe('Failed');
+  const throwingProxy = new Proxy(
+    {},
+    {
+      getPrototypeOf() {
+        throw new Error('prototype');
+      },
+    }
+  );
+  expect(getErrorMessage(throwingProxy, 'Failed')).toBe('Failed');
+});

@@ -15,14 +15,15 @@ export function errorify(obj: unknown): Error {
 }
 
 /**
- * Returns the message of a thrown `Error`, or the string form of any other thrown value.
- * Never throws, so it is safe to call in a catch block.
+ * Returns the message of a thrown `Error`; for any other thrown value, `fallback` if given, or else its string form.
+ * `fallback` is also returned when reading the message throws. Never throws, so it is safe to call in a catch block.
  */
-export function getErrorMessage(error: unknown): string {
+export function getErrorMessage(error: unknown, fallback?: string): string {
   // `String` throws for an object without a prototype, and even `instanceof`, a `message` getter, and
   // `Object.prototype.toString` throw for a proxy or object whose traps or getters throw.
   return (
-    ignoreError(() => (error instanceof Error ? error.message : String(error))) ??
+    ignoreError(() => (error instanceof Error ? error.message : (fallback ?? String(error)))) ??
+    fallback ??
     ignoreError(() => Object.prototype.toString.call(error)) ??
     'Unknown error'
   );
