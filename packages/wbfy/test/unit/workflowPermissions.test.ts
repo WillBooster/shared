@@ -27,6 +27,18 @@ const siblingJobSchema = z.strictObject({
   steps: z.tuple([z.strictObject({ run: z.literal('echo preserved') })]),
 });
 
+test('preserves an inline test workflow instead of adding a reusable call to its job', async () => {
+  await withTempWorkflowsRepo('wbfy-inline-test-', async (dirPath, workflowsPath) => {
+    const filePath = path.join(workflowsPath, 'test.yml');
+    const workflow = `name: Test\non:\n  pull_request:\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo test\n`;
+    fs.writeFileSync(filePath, workflow);
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(workflow);
+  });
+});
+
 test('generated callers scope permissions without changing preserved sibling jobs', async () => {
   await withTempWorkflowsRepo('wbfy-workflow-permissions-', async (dirPath, workflowsPath) => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
