@@ -23,11 +23,13 @@ export const noChineseKorean: TextlintKernelRule['rule'] = ({ getSource, locator
     [Syntax.Str](node) {
       check(node, getSource(node));
     },
-    // Slidev decks lay out prose in block HTML; blank out comments, which hold speaker notes, while keeping offsets.
+    // Slidev decks lay out prose in block HTML; blank out comments (speaker notes) and code while keeping offsets.
     [Syntax.Html](node) {
       check(
         node,
-        getSource(node).replaceAll(/<!--[\s\S]*?-->/g, (comment) => ' '.repeat(comment.length))
+        getSource(node).replaceAll(/<!--[\s\S]*?-->|<(code|pre|script|style)\b[\s\S]*?<\/\1\s*>/gi, (nonProse) =>
+          ' '.repeat(nonProse.length)
+        )
       );
     },
   };
