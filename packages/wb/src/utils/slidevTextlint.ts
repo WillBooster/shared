@@ -10,10 +10,13 @@ import noInvalidControlCharacter from '@textlint-rule/textlint-rule-no-invalid-c
 import noHankakuKana from 'textlint-rule-no-hankaku-kana';
 import noZeroWidthSpaces from 'textlint-rule-no-zero-width-spaces';
 
+import { noChineseKorean } from './noChineseKoreanRule.js';
+
 const rules: TextlintKernelRule[] = [
   { ruleId: 'no-invalid-control-character', rule: moduleInterop(noInvalidControlCharacter) },
   { ruleId: 'no-hankaku-kana', rule: moduleInterop(noHankakuKana) },
   { ruleId: 'no-zero-width-spaces', rule: moduleInterop(noZeroWidthSpaces) },
+  { ruleId: 'no-chinese-korean', rule: noChineseKorean },
 ];
 
 export async function lintSlidevText(deckPath: string, workspaceRoot: string): Promise<number> {
