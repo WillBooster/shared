@@ -78,6 +78,11 @@ test('getErrorMessage answers the message of an Error and a string for any other
 
 test('getErrorMessage answers the fallback instead of the string form of a thrown non-Error', () => {
   expect(getErrorMessage(new Error('bad'), 'Failed')).toBe('bad');
+  // A drop-in for `error instanceof Error ? error.message : fallback`, so an empty message is kept.
+  // oxlint-disable-next-line unicorn/error-message -- the empty message is the case under test.
+  const emptyMessageError = new Error('');
+  expect(getErrorMessage(emptyMessageError, 'Failed')).toBe('');
+  expect(getErrorMessage(emptyMessageError)).toBe('');
   expect(getErrorMessage('plain', 'Failed')).toBe('Failed');
   expect(getErrorMessage(undefined, 'Failed')).toBe('Failed');
   const throwingProxy = new Proxy(
