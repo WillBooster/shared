@@ -195,7 +195,7 @@ the working directory (or `--working-dir`). Page selection within a deck is not 
 decks before running tests, without applying fixes.
 
 The bundled textlint rules check half-width kana, invalid control characters,
-and zero-width spaces (U+200B). Numeric inch marks, sentence fragments, omitted final punctuation, long technical terms,
+zero-width spaces (U+200B), and Chinese or Korean text mixed into Japanese. Numeric inch marks, sentence fragments, omitted final punctuation, long technical terms,
 polite/plain style, sentence length, and cautious wording are allowed. No local
 textlint configuration or extra textlint installation is needed; repository
 `.textlintrc` files do not affect these slide checks.
@@ -206,7 +206,8 @@ lines, columns, and rule names. Slidev's parser rejects import paths outside tho
 roots before reading them. This check compares paths without resolving symlink
 targets. Slidev frontmatter,
 comments/speaker notes, and code are excluded. Parsing uses the standard Markdown
-textlint plugin; raw HTML blocks and HTML tag attributes are not checked. Slidev-specific
+textlint plugin; raw HTML blocks and HTML tag attributes are checked only for Chinese
+or Korean text, excluding `<code>`, `<pre>`, `<script>`, and `<style>` elements. Slidev-specific
 syntax is not interpreted: Vue expressions and MDC attributes may be checked
 when the Markdown parser treats their source as prose (for example,
 `{{ "ﾃｽﾄ" }}` or `[visible]{title="ﾃｽﾄ"}`). Half-width kana is checked in plain paragraph and list text, but not in headings
