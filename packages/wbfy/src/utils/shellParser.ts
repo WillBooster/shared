@@ -1,9 +1,12 @@
-import Bash from '@willbooster/tree-sitter-bash';
-import Parser from 'tree-sitter';
+import { fileURLToPath } from 'node:url';
 
-type Node = Parser.SyntaxNode;
+import { Language, type Node, Parser } from 'web-tree-sitter';
 
-let parser: Parser | undefined;
+await Parser.init();
+const parser = new Parser();
+parser.setLanguage(
+  await Language.load(fileURLToPath(import.meta.resolve('@willbooster/tree-sitter-bash/tree-sitter-bash.wasm')))
+);
 
 /**
  * Returns the unquoted words (command name first) of every simple command in a Bash script, including those nested
@@ -12,14 +15,19 @@ let parser: Parser | undefined;
  * bodies are skipped because they run only when called.
  */
 export function parseShellCommands(script: string): string[][] | undefined {
-  parser ??= createParser();
-  const { rootNode } = parser.parse(script);
-  if (rootNode.hasError) return;
-  return rootNode.descendantsOfType('command').flatMap((command) => {
-    const name = command.childForFieldName('name');
-    if (!name || isInFunctionBody(command)) return [];
-    return [[name, ...command.childrenForFieldName('argument')].map((word) => unquoteWord(word))];
-  });
+  const tree = parser.parse(script);
+  if (!tree) return;
+  try {
+    if (tree.rootNode.hasError) return;
+    return tree.rootNode.descendantsOfType('command').flatMap((command) => {
+      const name = command.childForFieldName('name');
+      if (!name || isInFunctionBody(command)) return [];
+      return [[name, ...command.childrenForFieldName('argument')].map((word) => unquoteWord(word))];
+    });
+  } finally {
+    // web-tree-sitter allocates trees in Wasm memory, which garbage collection does not reclaim.
+    tree.delete();
+  }
 }
 
 function isInFunctionBody(node: Node): boolean {
@@ -27,12 +35,6 @@ function isInFunctionBody(node: Node): boolean {
     if (ancestor.type === 'function_definition') return true;
   }
   return false;
-}
-
-function createParser(): Parser {
-  const parser = new Parser();
-  parser.setLanguage(Bash as Parser.Language);
-  return parser;
 }
 
 function unquoteWord(node: Node): string {
