@@ -15,19 +15,13 @@ parser.setLanguage(
  * bodies are skipped because they run only when called.
  */
 export function parseShellCommands(script: string): string[][] | undefined {
-  const tree = parser.parse(script);
-  if (!tree) return;
-  try {
-    if (tree.rootNode.hasError) return;
-    return tree.rootNode.descendantsOfType('command').flatMap((command) => {
-      const name = command.childForFieldName('name');
-      if (!name || isInFunctionBody(command)) return [];
-      return [[name, ...command.childrenForFieldName('argument')].map((word) => unquoteWord(word))];
-    });
-  } finally {
-    // web-tree-sitter allocates trees in Wasm memory, which garbage collection does not reclaim.
-    tree.delete();
-  }
+  const rootNode = parser.parse(script)?.rootNode;
+  if (!rootNode || rootNode.hasError) return;
+  return rootNode.descendantsOfType('command').flatMap((command) => {
+    const name = command.childForFieldName('name');
+    if (!name || isInFunctionBody(command)) return [];
+    return [[name, ...command.childrenForFieldName('argument')].map((word) => unquoteWord(word))];
+  });
 }
 
 function isInFunctionBody(node: Node): boolean {
