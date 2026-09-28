@@ -207,7 +207,7 @@ it('reports Chinese and Korean text while allowing Japanese kanji', async () => 
     const deck = path.join(dir, 'intro.slidev.md');
     await fs.writeFile(
       deck,
-      '# 研究背景\n\n- 剝がれた部分を𠮟る\n- 这个方法\n- 改善한다\n- `这个`\n\n<div class="grid">\n  <div>说明</div>\n</div>\n\n<!-- 这个 -->\n\n<pre><code>这个</code></pre>\n\n<script setup>\nconst label = "这个";\n</script>\n\n![这个图](image.png)\n\n```ts\nconst label = "这个";\n```\n'
+      '# 研究背景\n\n- 剝がれた部分を𠮟る\n- 这个方法\n- 改善한다\n- `这个`\n\n<div class="grid">\n  <div>说明</div>\n</div>\n\n<!-- 这个 -->\n\n<pre><code>这个</code></pre>\n\n<script setup>\nconst label = "这个";\n</script>\n\n![这个图](image.png)\n\n```ts\nconst label = "这个";\n```\n\nインライン <code>这个</code> コード\n\n<style>\n.说明 { color: red; }\n</style>\n'
     );
     const result = spawnSync('node', [cliPath, 'slidev-check', deck], {
       cwd: dir,
