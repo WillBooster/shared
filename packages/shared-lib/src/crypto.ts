@@ -10,11 +10,12 @@ export async function sha256HexAsync(data: string | Uint8Array): Promise<string>
 }
 
 /**
- * Compares strings, e.g. a received API key against the expected one, with WebCrypto in time independent of their
- * lengths and of where they differ, so it runs in browsers and Cloudflare Workers.
+ * Compares strings, e.g. a received API key against the expected one, with WebCrypto, so it runs in browsers and
+ * Cloudflare Workers. Neither a length check nor an early exit reveals where they differ; only hashing each string
+ * takes time proportional to its length, as in `shared-lib-node`'s `timingSafeEqualString`.
  */
 export async function timingSafeEqualStringAsync(actual: string, expected: string): Promise<boolean> {
-  // Hashing gives equal-length inputs, so the loop below reveals neither length nor the first differing position.
+  // Hashing gives equal-length inputs, so the loop below needs no length check and never exits early.
   const [actualDigest, expectedDigest] = await Promise.all([digestCodeUnits(actual), digestCodeUnits(expected)]);
   let difference = 0;
   for (let i = 0; i < actualDigest.length; i++) {
