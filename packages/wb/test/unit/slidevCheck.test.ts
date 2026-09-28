@@ -207,7 +207,7 @@ it('reports Chinese and Korean text while allowing Japanese kanji', async () => 
     const deck = path.join(dir, 'intro.slidev.md');
     await fs.writeFile(
       deck,
-      '# 研究背景\n\n- 剝がれた部分を𠮟る\n- 这个方法\n- 改善한다\n- `这个`\n\n<div class="grid">\n  <div>说明</div>\n</div>\n\n<!-- 这个 -->\n\n<pre><code>这个</code></pre>\n\n<script setup>\nconst label = "这个";\n</script>\n'
+      '# 研究背景\n\n- 剝がれた部分を𠮟る\n- 这个方法\n- 改善한다\n- `这个`\n\n<div class="grid">\n  <div>说明</div>\n</div>\n\n<!-- 这个 -->\n\n<pre><code>这个</code></pre>\n\n<script setup>\nconst label = "这个";\n</script>\n\n![这个图](image.png)\n'
     );
     const result = spawnSync('node', [cliPath, 'slidev-check', deck], {
       cwd: dir,
@@ -218,7 +218,8 @@ it('reports Chinese and Korean text while allowing Japanese kanji', async () => 
     expect(result.stderr).toContain(`${deck}:4:3: Chinese or Korean text "这个"`);
     expect(result.stderr).toContain(`${deck}:5:5: Chinese or Korean text "한다"`);
     expect(result.stderr).toContain(`${deck}:9:8: Chinese or Korean text "说"`);
-    expect(result.stderr.match(/\(no-chinese-korean\)/g)).toHaveLength(3);
+    expect(result.stderr).toContain(`${deck}:20:3: Chinese or Korean text "这个图"`);
+    expect(result.stderr.match(/\(no-chinese-korean\)/g)).toHaveLength(4);
     expect(result.stdout).not.toContain('Command:');
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
