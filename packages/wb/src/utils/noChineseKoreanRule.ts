@@ -17,7 +17,7 @@ export const noChineseKorean: TextlintKernelRule['rule'] = ({ getSource, locator
       for (const [start, end] of codeRanges) {
         text = text.slice(0, start) + ' '.repeat(end - start) + text.slice(end);
       }
-      text = text.replaceAll(/<!--[\s\S]*?-->|<(code|pre|script|style)\b[\s\S]*?<\/\1\s*>/gi, (nonProse) =>
+      text = text.replaceAll(/<!--[\s\S]*?-->|<(code|pre|script|style)(?=[\s/>])[\s\S]*?<\/\1\s*>/gi, (nonProse) =>
         ' '.repeat(nonProse.length)
       );
       const ranges: [number, number][] = [];
