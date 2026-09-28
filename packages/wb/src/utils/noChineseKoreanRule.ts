@@ -1,9 +1,8 @@
 import { findForeignCjkCharactersInJapanese } from '@willbooster/shared-lib/src';
 import type { TextlintKernelRule } from '@textlint/kernel';
 
-export const noChineseKorean: TextlintKernelRule['rule'] = ({ getSource, locator, report, RuleError, Syntax }) => ({
-  [Syntax.Str](node) {
-    const text = getSource(node);
+export const noChineseKorean: TextlintKernelRule['rule'] = ({ getSource, locator, report, RuleError, Syntax }) => {
+  const check = (node: Parameters<typeof report>[0], text: string): void => {
     const ranges: [number, number][] = [];
     for (const { 0: char, index } of text.matchAll(/./gu)) {
       if (findForeignCjkCharactersInJapanese(char).length === 0) continue;
@@ -19,5 +18,17 @@ export const noChineseKorean: TextlintKernelRule['rule'] = ({ getSource, locator
         })
       );
     }
-  },
-});
+  };
+  return {
+    [Syntax.Str](node) {
+      check(node, getSource(node));
+    },
+    // Slidev decks lay out prose in block HTML; blank out comments, which hold speaker notes, while keeping offsets.
+    [Syntax.Html](node) {
+      check(
+        node,
+        getSource(node).replaceAll(/<!--[\s\S]*?-->/g, (comment) => ' '.repeat(comment.length))
+      );
+    },
+  };
+};
