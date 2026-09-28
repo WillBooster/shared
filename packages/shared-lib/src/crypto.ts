@@ -25,11 +25,11 @@ export async function timingSafeEqualStringAsync(actual: string, expected: strin
 }
 
 async function digestCodeUnits(text: string): Promise<Uint8Array> {
-  // UTF-16LE keeps every code unit, while UTF-8 would turn distinct lone surrogates into the same U+FFFD.
-  const bytes = new DataView(new ArrayBuffer(text.length * 2));
+  // UTF-16 keeps every code unit, while UTF-8 would turn distinct lone surrogates into the same U+FFFD.
+  const codeUnits = new Uint16Array(text.length);
   for (let i = 0; i < text.length; i++) {
     // oxlint-disable-next-line unicorn/prefer-code-point -- a code point would merge a surrogate pair into one value.
-    bytes.setUint16(i * 2, text.charCodeAt(i), true);
+    codeUnits[i] = text.charCodeAt(i);
   }
-  return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', codeUnits));
 }
