@@ -180,7 +180,11 @@ async function waitForDeployment(
 
 async function printDeploymentLogs(context: RailwayContext, envName: string, args: string[]): Promise<void> {
   const ret = await spawnRailway(context, ['logs', ...args], envName, 'inherit', CALL_TIMEOUT_MS);
-  if (ret.status !== 0) console.warn(chalk.yellow(`railway logs failed (exit ${ret.status}).`));
+  if (ret.status === null) {
+    console.warn(chalk.yellow(`railway logs did not answer within ${CALL_TIMEOUT_MS / 1000} seconds.`));
+  } else if (ret.status !== 0) {
+    console.warn(chalk.yellow(`railway logs failed (exit ${ret.status}).`));
+  }
 }
 
 async function createRailwayContext(project: Project): Promise<RailwayContext> {
