@@ -55,8 +55,10 @@ const deploymentListSchema = z.array(z.object({ id: z.string(), status: z.string
 const SUCCEEDED_STATUSES = new Set(['SUCCESS', 'SLEEPING']);
 const FAILED_STATUSES = new Set(['FAILED', 'CRASHED', 'REMOVED', 'REMOVING', 'SKIPPED']);
 const POLL_INTERVAL_MS = 5000;
-// Bounds each CLI call after `railway up`, so a stalled one cannot hang the deploy. A status poll is
-// further capped by the remaining deploy deadline; the log fetches after the verdict are not.
+// Railway creates the apply-triggered deployment seconds after `config apply` returns.
+const APPLIED_DEPLOYMENT_TIMEOUT_MS = 60_000;
+// Bounds each deployment poll and log fetch, so a stalled one cannot hang the deploy. A poll is further
+// capped by the remaining wait deadline; the log fetches after the verdict are not.
 const CALL_TIMEOUT_MS = 60_000;
 const deployTimeoutSecondsSchema = z.coerce.number().positive().default(1800);
 
@@ -69,9 +71,10 @@ interface RailwayContext {
 
 /**
  * Deploy the service `railwayTarget.services[WB_ENV]` from `.railway/railway.ts`: check the IaC
- * plan, sync fnox values, apply the re-checked plan when it has changes or claims ownership, then
- * `railway up` and wait until the created deployment succeeds. With `--dry-run`, only check the
- * plan of every environment in `railwayTarget.services`, never changing Railway.
+ * plan, sync fnox values, apply the re-checked plan when it has changes or claims ownership and wait
+ * until the deployment it triggers exists, then `railway up` and wait until the created deployment
+ * succeeds. With `--dry-run`, only check the plan of every environment in `railwayTarget.services`,
+ * never changing Railway.
  */
 export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, project: Project): Promise<void> {
   const context = await createRailwayContext(project);
@@ -107,12 +110,16 @@ export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, p
   await syncVariables(context, argv, envName, serviceName);
   const { planPath, needsApply, rejection } = await planAndCheck(context, envName);
   if (rejection) exitWithError(rejection);
-  // Applying a plan with changes always triggers a deployment of the previous image (the CLI has no
-  // option to skip it), which `railway up` then supersedes; skipping a plan the CLI would treat as a
-  // noop keeps one deployment.
-  if (needsApply) await runRailway(context, ['config', 'apply', '--plan', planPath, '--yes'], envName);
-
   const targetArgs = [`--project=${context.projectId}`, `--environment=${envName}`, `--service=${serviceName}`];
+  // Applying a plan with changes triggers a deployment of the previous image (the CLI has no option to
+  // skip it), which `railway up` must supersede; skipping a plan the CLI would treat as a noop keeps one
+  // deployment.
+  if (needsApply) {
+    const listedOutput = await runRailway(context, deploymentListArgs(targetArgs), envName, 'pipe');
+    const knownIds = new Set(deploymentListSchema.parse(JSON.parse(listedOutput)).map(({ id }) => id));
+    await runRailway(context, ['config', 'apply', '--plan', planPath, '--yes'], envName);
+    await waitForAppliedDeployment(context, envName, targetArgs, knownIds);
+  }
   // `railway up --ci` exits non-zero when its log stream breaks, and may exit 0 before the deployment
   // finishes, so the verdict comes from the created deployment's status instead of its exit code.
   const upOutput = await runRailway(context, ['up', '--detach', '--json', ...targetArgs], envName, 'pipe');
@@ -126,6 +133,40 @@ export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, p
   console.info(chalk.green(`[${envName}] Railway deployment ${deploymentId} succeeded.`));
 }
 
+/**
+ * Wait until a deployment missing from `knownIds` appears, so that `railway up` creates the newest
+ * deployment. `config apply` returns before Railway creates the deployment it triggers; one created
+ * after `railway up`'s supersedes the uploaded code.
+ */
+async function waitForAppliedDeployment(
+  context: RailwayContext,
+  envName: string,
+  targetArgs: string[],
+  knownIds: Set<string>
+): Promise<void> {
+  const deadline = Date.now() + APPLIED_DEPLOYMENT_TIMEOUT_MS;
+  for (;;) {
+    if (Date.now() >= deadline) {
+      // Such an apply may change only other services or ownership metadata.
+      console.warn(
+        chalk.yellow(
+          `[${envName}] No deployment triggered by config apply appeared within ${APPLIED_DEPLOYMENT_TIMEOUT_MS / 1000} seconds; running railway up.`
+        )
+      );
+      return;
+    }
+    const deployments = await listDeployments(context, envName, targetArgs, deadline);
+    const deployment = deployments?.find(({ id }) => !knownIds.has(id));
+    if (deployment) {
+      console.info(
+        `[${envName}] config apply triggered Railway deployment ${deployment.id} (${deployment.status}); railway up supersedes it.`
+      );
+      return;
+    }
+    await sleepUntilNextPoll(deadline);
+  }
+}
+
 /** Poll the deployment until it reaches a terminal status; return why it failed, if it did. */
 async function waitForDeployment(
   context: RailwayContext,
@@ -137,45 +178,62 @@ async function waitForDeployment(
   const deadline = Date.now() + timeoutSeconds * 1000;
   let lastStatus: string | undefined;
   for (;;) {
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) {
+    if (Date.now() >= deadline) {
       return `Railway deployment ${deploymentId} did not finish within ${timeoutSeconds} seconds (last status: ${lastStatus ?? 'not listed'}); check it on Railway before deploying again. WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS overrides the timeout.`;
     }
-    const ret = await spawnRailway(
-      context,
-      ['deployment', 'list', '--json', '--limit=20', ...targetArgs],
-      envName,
-      'pipe',
-      Math.min(CALL_TIMEOUT_MS, remainingMs)
-    );
-    // A transient API error or malformed output must not fail a deployment that is still running.
-    let deployments: z.infer<typeof deploymentListSchema> | undefined;
-    if (ret.status === 0) {
-      try {
-        deployments = deploymentListSchema.parse(JSON.parse(ret.stdout));
-      } catch (error) {
-        console.warn(chalk.yellow(`railway deployment list printed unexpected output: ${String(error)}`));
-      }
-    } else if (ret.status === null) {
-      // The per-call timeout stopped the poll; when that timeout was the deadline, the check above reports it.
-      if (Date.now() < deadline) {
-        console.warn(chalk.yellow(`railway deployment list did not answer within ${CALL_TIMEOUT_MS / 1000} seconds.`));
-      }
-    } else {
-      console.warn(chalk.yellow(`railway deployment list failed (exit ${ret.status}): ${ret.stderr.trim()}`));
+    const deployments = await listDeployments(context, envName, targetArgs, deadline);
+    // The list holds only the newest deployments, so absence proves nothing; removal shows as a status.
+    const deployment = deployments?.find(({ id }) => id === deploymentId);
+    if (deployment && deployment.status !== lastStatus) {
+      lastStatus = deployment.status;
+      console.info(`[${envName}] Railway deployment ${deploymentId}: ${lastStatus}`);
+      if (SUCCEEDED_STATUSES.has(lastStatus)) return;
+      if (FAILED_STATUSES.has(lastStatus)) return `Railway deployment ${deploymentId} ended with ${lastStatus}.`;
     }
-    if (deployments) {
-      // The list holds only the newest deployments, so absence proves nothing; removal shows as a status.
-      const deployment = deployments.find(({ id }) => id === deploymentId);
-      if (deployment && deployment.status !== lastStatus) {
-        lastStatus = deployment.status;
-        console.info(`[${envName}] Railway deployment ${deploymentId}: ${lastStatus}`);
-        if (SUCCEEDED_STATUSES.has(lastStatus)) return;
-        if (FAILED_STATUSES.has(lastStatus)) return `Railway deployment ${deploymentId} ended with ${lastStatus}.`;
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.min(POLL_INTERVAL_MS, deadline - Date.now()))));
+    await sleepUntilNextPoll(deadline);
   }
+}
+
+/**
+ * List the newest deployments of the target service, or `undefined` after a warning: a transient API
+ * error or malformed output must not fail a deployment that is still running.
+ */
+async function listDeployments(
+  context: RailwayContext,
+  envName: string,
+  targetArgs: string[],
+  deadline: number
+): Promise<z.infer<typeof deploymentListSchema> | undefined> {
+  const ret = await spawnRailway(
+    context,
+    deploymentListArgs(targetArgs),
+    envName,
+    'pipe',
+    Math.max(1, Math.min(CALL_TIMEOUT_MS, deadline - Date.now()))
+  );
+  if (ret.status === 0) {
+    try {
+      return deploymentListSchema.parse(JSON.parse(ret.stdout));
+    } catch (error) {
+      console.warn(chalk.yellow(`railway deployment list printed unexpected output: ${String(error)}`));
+    }
+  } else if (ret.status === null) {
+    // The per-call timeout stopped the poll; when that timeout was the deadline, the caller reports it.
+    if (Date.now() < deadline) {
+      console.warn(chalk.yellow(`railway deployment list did not answer within ${CALL_TIMEOUT_MS / 1000} seconds.`));
+    }
+  } else {
+    console.warn(chalk.yellow(`railway deployment list failed (exit ${ret.status}): ${ret.stderr.trim()}`));
+  }
+  return undefined;
+}
+
+function deploymentListArgs(targetArgs: string[]): string[] {
+  return ['deployment', 'list', '--json', '--limit=20', ...targetArgs];
+}
+
+async function sleepUntilNextPoll(deadline: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.min(POLL_INTERVAL_MS, deadline - Date.now()))));
 }
 
 async function printDeploymentLogs(context: RailwayContext, envName: string, args: string[]): Promise<void> {

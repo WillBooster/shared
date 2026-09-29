@@ -154,12 +154,14 @@ describe('wb deploy for .railway/railway.ts', () => {
       'config plan',
       'variables --skip-deploys',
       'config plan',
+      'deployment list',
       'config apply',
+      'deployment list',
       'up --detach',
       'deployment list',
       'logs deployment-new',
     ]);
-    const [, firstPlan, variables, secondPlan, apply, up, deploymentList, logs] = calls;
+    const [, firstPlan, variables, secondPlan, , apply, , up, deploymentList, logs] = calls;
     expect(firstPlan?.env).toMatchObject({
       RAILWAY_PROJECT_ID: 'project-1',
       RAILWAY_ENVIRONMENT_ID: 'env-production',
@@ -219,12 +221,39 @@ describe('wb deploy for .railway/railway.ts', () => {
       'config plan',
       'variables --skip-deploys',
       'config plan',
+      'deployment list',
       'config apply',
+      'deployment list',
       'up --detach',
       'deployment list',
       'logs deployment-new',
     ]);
   });
+
+  it('runs railway up only after the deployment triggered by config apply appears', () => {
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_APPLIED_DEPLOYMENT_DELAY: '2',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('config apply triggered Railway deployment deployment-applied (BUILDING)');
+    expect(result.stdout).toContain('deployment-new: SUCCESS');
+    expect(readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '))).toEqual([
+      'environment list',
+      'config plan',
+      'variables --skip-deploys',
+      'config plan',
+      'deployment list',
+      'config apply',
+      'deployment list',
+      'deployment list',
+      'deployment list',
+      'up --detach',
+      'deployment list',
+      'logs deployment-new',
+    ]);
+  }, 60_000);
 
   it('succeeds once the created deployment reaches SUCCESS despite failed status polls and log fetches', () => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
@@ -446,8 +475,16 @@ if (args[0] === 'environment') {
 } else if (args[0] === 'up') {
   console.log(JSON.stringify({ deploymentId: 'deployment-new', logsUrl: 'https://railway.example/logs' }));
 } else if (args[0] === 'deployment') {
+  const calls = fs.readFileSync(logPath, 'utf8').trim().split('\\n').map((line) => JSON.parse(line).args);
+  const applyIndex = calls.findIndex((callArgs) => callArgs[0] === 'config' && callArgs[1] === 'apply');
+  const upIndex = calls.findIndex((callArgs) => callArgs[0] === 'up');
+  // Like Railway, the deployment that config apply triggers is created after the apply returns: here, at
+  // the (FAKE_RAILWAY_APPLIED_DEPLOYMENT_DELAY + 1)-th list call after the apply. The newer of it and the
+  // uploaded deployment supersedes the other.
+  const listIndexesAfterApply = applyIndex < 0 ? [] : calls.flatMap((callArgs, index) => (index > applyIndex && callArgs[0] === 'deployment' ? [index] : []));
+  const appliedIndex = listIndexesAfterApply[Number(process.env.FAKE_RAILWAY_APPLIED_DEPLOYMENT_DELAY || 0)];
   const statuses = (process.env.FAKE_RAILWAY_DEPLOYMENT_STATUSES || 'SUCCESS').split(',');
-  const pollCount = fs.readFileSync(logPath, 'utf8').trim().split('\\n').filter((line) => JSON.parse(line).args[0] === 'deployment').length;
+  const pollCount = upIndex < 0 ? 0 : calls.filter((callArgs, index) => index > upIndex && callArgs[0] === 'deployment').length;
   const status = statuses[Math.min(pollCount, statuses.length) - 1];
   if (status === 'HANG') {
     setInterval(() => {}, 1000);
@@ -456,7 +493,13 @@ if (args[0] === 'environment') {
     process.exit(1);
   } else {
     const deployments = [{ id: 'deployment-old', status: 'SUCCESS', createdAt: '2026-01-01T00:00:00Z', meta: null }];
-    if (status !== 'MISSING') deployments.unshift({ id: 'deployment-new', status, createdAt: '2026-01-02T00:00:00Z', meta: null });
+    if (appliedIndex !== undefined) {
+      deployments.unshift({ id: 'deployment-applied', status: upIndex >= 0 && appliedIndex < upIndex ? 'REMOVED' : 'BUILDING', createdAt: '2026-01-02T00:00:00Z', meta: null });
+    }
+    if (upIndex >= 0 && status !== 'MISSING') {
+      const superseded = applyIndex >= 0 && (appliedIndex === undefined || appliedIndex > upIndex);
+      deployments.unshift({ id: 'deployment-new', status: superseded ? 'REMOVED' : status, createdAt: '2026-01-03T00:00:00Z', meta: null });
+    }
     console.log(JSON.stringify(deployments, null, 2));
   }
 } else if (args[0] === 'logs') {
