@@ -96,6 +96,22 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(readCalls(projectDirPath).map((call) => call.args[0])).not.toContain('variables');
   });
 
+  it('deploys when a production key Railway supplies is not exported by fnox', async () => {
+    const fnoxPath = path.join(projectDirPath, 'fnox.toml');
+    const fnoxToml = await fs.readFile(fnoxPath, 'utf8');
+    await fs.writeFile(
+      fnoxPath,
+      fnoxToml
+        .replace('[secrets]\n', '[secrets]\nDATABASE_URL = { default = "file:./dev.db" }\n')
+        .replace('[profiles.production.secrets]\n', '[profiles.production.secrets]\nDATABASE_URL = { env = false }\n')
+    );
+
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], { WB_ENV: 'production' });
+
+    expect(result.status).toBe(0);
+    expect(readCalls(projectDirPath).map((call) => call.args[0])).toContain('up');
+  });
+
   it('plans every environment on --dry-run before failing', () => {
     const result = runWb(
       projectDirPath,

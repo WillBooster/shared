@@ -78,8 +78,8 @@ export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, p
     );
   }
   // Ordinary env loading only warns when fnox cannot resolve a secret; deploying would then keep
-  // stale values on Railway, so fail before changing anything.
-  await checkEnv(argv);
+  // stale values on Railway, so fail before changing anything. `env = false` keys are Railway's.
+  await checkEnv(argv, { exportedOnly: true });
   // Check before pushing anything, then re-plan: syncing variables changes the environment's config
   // etag, which invalidates the first plan file.
   const firstPlan = await planAndCheck(context, envName);
