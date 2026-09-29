@@ -50,7 +50,8 @@ const upResultSchema = z.object({ deploymentId: z.string().min(1) });
 
 const deploymentListSchema = z.array(z.object({ id: z.string(), status: z.string() }));
 
-// SLEEPING only follows SUCCESS. Every other status, including unknown ones, keeps polling until the timeout.
+// SLEEPING only follows SUCCESS. A status in neither set, including an unknown one, keeps polling until
+// the timeout.
 const SUCCEEDED_STATUSES = new Set(['SUCCESS', 'SLEEPING']);
 const FAILED_STATUSES = new Set(['FAILED', 'CRASHED', 'REMOVED', 'REMOVING', 'SKIPPED']);
 const POLL_INTERVAL_MS = 5000;
