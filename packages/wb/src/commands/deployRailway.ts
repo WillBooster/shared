@@ -57,11 +57,11 @@ const FAILED_STATUSES = new Set(['FAILED', 'CRASHED', 'REMOVED', 'REMOVING', 'SK
 const POLL_INTERVAL_MS = 5000;
 // Railway creates the apply-triggered deployment seconds after `config apply` returns.
 const APPLIED_DEPLOYMENT_TIMEOUT_MS = 60_000;
-// Bound each deployment list and log fetch, so a stalled one cannot hang the deploy. A deployment list is
-// further capped by the remaining wait deadline, and short enough that a stalled one leaves the wait
-// time for more polls.
-const DEPLOYMENT_LIST_TIMEOUT_MS = 15_000;
-const LOGS_TIMEOUT_MS = 60_000;
+// Bound each Railway call made while waiting, so a stalled one cannot hang the deploy. A deployment list
+// is further capped by the remaining wait deadline; one within the 60-second apply waits is kept short so
+// that a stalled one leaves the wait time for more polls.
+const CALL_TIMEOUT_MS = 60_000;
+const APPLY_WAIT_CALL_TIMEOUT_MS = 15_000;
 const deployTimeoutSecondsSchema = z.coerce.number().positive().default(1800);
 
 interface RailwayContext {
@@ -186,8 +186,8 @@ async function waitForAppliedDeployment(
 }
 
 /**
- * Poll the newest deployments of the target service until `find` returns a value, or return
- * `undefined` once `deadline` passes.
+ * Poll the newest deployments of the target service around `config apply` until `find` returns a
+ * value, or return `undefined` once `deadline` passes.
  */
 async function pollDeployments<T>(
   context: RailwayContext,
@@ -197,7 +197,7 @@ async function pollDeployments<T>(
   find: (deployments: z.infer<typeof deploymentListSchema>) => T | undefined
 ): Promise<T | undefined> {
   while (Date.now() < deadline) {
-    const deployments = await listDeployments(context, envName, targetArgs, deadline);
+    const deployments = await listDeployments(context, envName, targetArgs, deadline, APPLY_WAIT_CALL_TIMEOUT_MS);
     const found = deployments && find(deployments);
     if (found !== undefined) return found;
     await sleepUntilNextPoll(deadline);
@@ -219,7 +219,7 @@ async function waitForDeployment(
     if (Date.now() >= deadline) {
       return `Railway deployment ${deploymentId} did not finish within ${timeoutSeconds} seconds (last status: ${lastStatus ?? 'not listed'}); check it on Railway before deploying again. WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS overrides the timeout.`;
     }
-    const deployments = await listDeployments(context, envName, targetArgs, deadline);
+    const deployments = await listDeployments(context, envName, targetArgs, deadline, CALL_TIMEOUT_MS);
     // The list holds only the newest deployments, so absence proves nothing; removal shows as a status.
     const deployment = deployments?.find(({ id }) => id === deploymentId);
     if (deployment && deployment.status !== lastStatus) {
@@ -240,14 +240,15 @@ async function listDeployments(
   context: RailwayContext,
   envName: string,
   targetArgs: string[],
-  deadline: number
+  deadline: number,
+  callTimeoutMs: number
 ): Promise<z.infer<typeof deploymentListSchema> | undefined> {
   const ret = await spawnRailway(
     context,
     deploymentListArgs(targetArgs),
     envName,
     'pipe',
-    Math.max(1, Math.min(DEPLOYMENT_LIST_TIMEOUT_MS, deadline - Date.now()))
+    Math.max(1, Math.min(callTimeoutMs, deadline - Date.now()))
   );
   if (ret.status === 0) {
     try {
@@ -258,9 +259,7 @@ async function listDeployments(
   } else if (ret.status === null) {
     // The per-call timeout stopped the poll; when that timeout was the deadline, the caller reports it.
     if (Date.now() < deadline) {
-      console.warn(
-        chalk.yellow(`railway deployment list did not answer within ${DEPLOYMENT_LIST_TIMEOUT_MS / 1000} seconds.`)
-      );
+      console.warn(chalk.yellow(`railway deployment list did not answer within ${callTimeoutMs / 1000} seconds.`));
     }
   } else {
     console.warn(chalk.yellow(`railway deployment list failed (exit ${ret.status}): ${ret.stderr.trim()}`));
@@ -277,9 +276,9 @@ async function sleepUntilNextPoll(deadline: number): Promise<void> {
 }
 
 async function printDeploymentLogs(context: RailwayContext, envName: string, args: string[]): Promise<void> {
-  const ret = await spawnRailway(context, ['logs', ...args], envName, 'inherit', LOGS_TIMEOUT_MS);
+  const ret = await spawnRailway(context, ['logs', ...args], envName, 'inherit', CALL_TIMEOUT_MS);
   if (ret.status === null) {
-    console.warn(chalk.yellow(`railway logs did not answer within ${LOGS_TIMEOUT_MS / 1000} seconds.`));
+    console.warn(chalk.yellow(`railway logs did not answer within ${CALL_TIMEOUT_MS / 1000} seconds.`));
   } else if (ret.status !== 0) {
     console.warn(chalk.yellow(`railway logs failed (exit ${ret.status}).`));
   }
