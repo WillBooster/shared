@@ -26,8 +26,9 @@ Commands:
                                  then deploy code and secrets atomically. A
                                  Railway service (.railway/railway.ts): check
                                  the IaC plan, sync fnox variables, apply the
-                                 plan, then railway up; --dry-run only checks
-                                 the plan of every environment.
+                                 plan, then railway up and wait until the
+                                 created deployment succeeds; --dry-run only
+                                 checks the plan of every environment.
   wb dotenv [args..]             Load environment variables from fnox and run a
                                  command.
   wb gen-code                    Generate code for the current project

@@ -78,7 +78,7 @@ type DeployCommandArgv = ArgumentsCamelCase<DeployCommandOptions>;
 export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
   command: 'deploy',
   describe:
-    'Deploy to the WB_ENV environment. A Cloudflare Workers app (vinext or plain Worker): validate secrets, build, apply remote D1 migrations, then deploy code and secrets atomically. A Railway service (.railway/railway.ts): check the IaC plan, sync fnox variables, apply the plan, then railway up; --dry-run only checks the plan of every environment.',
+    'Deploy to the WB_ENV environment. A Cloudflare Workers app (vinext or plain Worker): validate secrets, build, apply remote D1 migrations, then deploy code and secrets atomically. A Railway service (.railway/railway.ts): check the IaC plan, sync fnox variables, apply the plan, then railway up and wait until the created deployment succeeds; --dry-run only checks the plan of every environment.',
   builder: (yargs) => yargs as unknown as Argv<DeployCommandOptions>,
   async handler(argv: DeployCommandArgv) {
     // A stray exported CLOUDFLARE_ENV would bake the wrong environment into the build and
