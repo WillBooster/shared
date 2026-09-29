@@ -119,10 +119,14 @@ describe('wb deploy for .railway/railway.ts', () => {
       'WB_ENV',
       'WB_VERSION',
     ]);
-    expect(variables?.args).toEqual(
-      expect.arrayContaining(['--service=app', '--environment=production', '--set', 'WB_VERSION=v1.2.3'])
-    );
-    expect(variables?.args).not.toContain('RAILWAY_RUN_UID=0');
+    const setValues = variables?.args.filter((_, index) => variables.args[index - 1] === '--set');
+    expect(variables?.args).toEqual(expect.arrayContaining(['--service=app', '--environment=production']));
+    expect(setValues?.toSorted()).toEqual([
+      'APP_URL=http://localhost',
+      'PRODUCTION_ONLY=value',
+      'WB_ENV=production',
+      'WB_VERSION=v1.2.3',
+    ]);
     // The first plan is invalidated by the variable sync, so only the re-checked plan may be applied.
     expect(readPlanPath(secondPlan)).not.toBe(readPlanPath(firstPlan));
     expect(apply?.args.slice(2)).toEqual(['--plan', readPlanPath(secondPlan), '--yes']);
