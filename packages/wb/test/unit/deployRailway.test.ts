@@ -212,24 +212,6 @@ describe('wb deploy for .railway/railway.ts', () => {
     ]);
   });
 
-  it('applies a re-checked plan without changes when it claims IaC ownership', () => {
-    const result = runWb(projectDirPath, ['deploy'], [], { WB_ENV: 'production', FAKE_RAILWAY_PLAN_CLAIM: '1' });
-
-    expect(result.status).toBe(0);
-    expect(readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '))).toEqual([
-      'environment list',
-      'config plan',
-      'variables --skip-deploys',
-      'config plan',
-      'deployment list',
-      'config apply',
-      'deployment list',
-      'up --detach',
-      'deployment list',
-      'logs deployment-new',
-    ]);
-  });
-
   it('runs railway up only after the deployment triggered by config apply appears', () => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
@@ -255,7 +237,9 @@ describe('wb deploy for .railway/railway.ts', () => {
     ]);
   }, 60_000);
 
-  it('runs railway up with a warning when no deployment triggered by config apply appears', () => {
+  // Whether Railway deploys the service for an ownership claim without changes is undocumented, so this
+  // covers the case where it does not.
+  it('applies a claim-only plan and runs railway up with a warning when no deployment appears', () => {
     const result = runWb(projectDirPath, ['deploy'], [], {
       WB_ENV: 'production',
       FAKE_RAILWAY_PLAN_CLAIM: '1',
@@ -265,7 +249,10 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('No deployment triggered by config apply appeared within 60 seconds');
     expect(result.stdout).toContain('deployment-new: SUCCESS');
-    expect(readCalls(projectDirPath).filter((call) => call.args[0] === 'up')).toHaveLength(1);
+    const commands = readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '));
+    expect(commands).toContain('config apply');
+    expect(commands.indexOf('config apply')).toBeLessThan(commands.indexOf('up --detach'));
+    expect(commands.filter((command) => command === 'up --detach')).toHaveLength(1);
   }, 90_000);
 
   it('succeeds once the created deployment reaches SUCCESS despite failed status polls and log fetches', () => {
