@@ -198,6 +198,20 @@ describe('wb deploy for .railway/railway.ts', () => {
     ]);
   });
 
+  it('applies a re-checked plan without changes when it claims IaC ownership', () => {
+    const result = runWb(projectDirPath, ['deploy'], [], { WB_ENV: 'production', FAKE_RAILWAY_PLAN_CLAIM: '1' });
+
+    expect(result.status).toBe(0);
+    expect(readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '))).toEqual([
+      'environment list',
+      'config plan',
+      'variables --skip-deploys',
+      'config plan',
+      'config apply',
+      'up --ci',
+    ]);
+  });
+
   it('reports a failed variable sync with the CLI error but never its stdout', () => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
@@ -271,6 +285,8 @@ function runWb(
         changeSet: { changes: planChanges },
         destructive:
           env.FAKE_RAILWAY_PLAN_DESTRUCTIVE === '1' || planChanges.some((change) => change.severity === 'destructive'),
+        // Like the real CLI, the artifact omits `claim` unless it is true.
+        ...(env.FAKE_RAILWAY_PLAN_CLAIM === '1' && { claim: true }),
       }),
       ...env,
     },
