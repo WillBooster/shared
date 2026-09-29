@@ -76,7 +76,10 @@ export function getGenCodeScripts(project: Project): string[] {
     // so a fresh checkout with no runtime .dev.vars (e.g. CI) still types every secret. Without it a
     // bare `wrangler types` yields an `Env` missing every secret and the type-aware generators/linters
     // below fail (e.g. "Property 'AUTH_SECRET' does not exist on type 'Env'").
-    scripts.push(`${wranglerTypesScript} --env-file ${workerTypesEnvPath}`);
+    // `< /dev/null`: with a TTY stdin, wrangler asks follow-up questions after writing the types
+    // (e.g. whether to update Cloudflare agent skills), and gen-code runs as `postinstall` inside
+    // git hooks where nobody answers, so `git pull` hangs indefinitely.
+    scripts.push(`${wranglerTypesScript} --env-file ${workerTypesEnvPath} < /dev/null`);
   }
   // Yarn-era Blitz repositories need `blitz codegen` for the route manifest (node_modules/.blitz)
   // that @blitzjs/next's type declarations re-export; install scripts do not run it

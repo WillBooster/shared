@@ -10,7 +10,7 @@ import { Project } from '../../src/project.js';
 // `wrangler types` reads its secret key names from the stub generateWorkerTypesEnvStub writes; the
 // script here just points wrangler at that stub via --env-file.
 const WORKER_TYPES_ENV = path.join('.wrangler', 'worker-types.env');
-const WRANGLER_TYPES = `YARN wrangler types --env-file ${WORKER_TYPES_ENV}`;
+const WRANGLER_TYPES = `YARN wrangler types --env-file ${WORKER_TYPES_ENV} < /dev/null`;
 
 describe('getGenCodeScripts', () => {
   it('generates worker types first, before the other generators', async () => {
