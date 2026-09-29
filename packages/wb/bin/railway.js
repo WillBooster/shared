@@ -3,8 +3,9 @@
  *
  * Every variable `wb deploy` syncs from fnox is declared with `preserve()`, so Railway keeps the
  * value `wb deploy` pushed and plans a deletion for any variable neither here nor in fnox.
- * `railwayOnlyVariables` adds values that only Railway reads: literals or `railway/iac` references
- * such as a linked database's `DATABASE_URL` (never secrets, which belong in fnox).
+ * `railwayOnlyVariables` adds values Railway supplies: literals that only Railway reads, or
+ * `railway/iac` references such as a linked database's `DATABASE_URL`. Such a key must not be
+ * exported by the deployed fnox profile (e.g. `KEY = { env = false }` in its profile table).
  *
  * @param {() => unknown} preserve `preserve` from `railway/iac`.
  * @param {Record<string, unknown>} [railwayOnlyVariables]
