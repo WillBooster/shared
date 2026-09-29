@@ -49,13 +49,7 @@ export function collectFnoxKeyNamesForProfile(
   const configs = findAncestorFnoxConfigPaths(projectDirPath, rootDirPath)
     .toReversed()
     .map((configPath) => parseFnoxConfig(configPath));
-  // Null-prototype record: fnox accepts `__proto__` as an ordinary key.
-  const effectiveEntries: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
-  // As in `fnox export`, every profile table beats every base table, so an ancestor's profile entry
-  // overrides a nearer config's base entry.
-  for (const config of configs) Object.assign(effectiveEntries, config.secrets);
-  for (const config of configs) Object.assign(effectiveEntries, config.profiles?.[profileName]?.secrets);
-  return Object.entries(effectiveEntries)
+  return Object.entries(overlayFnoxEntries(configs, profileName))
     .filter(([, entry]) => {
       const env = typeof entry === 'object' && entry !== null ? (entry as { env?: unknown }).env : undefined;
       return env !== false && env !== 'exec';
@@ -100,13 +94,7 @@ export function collectPlaintextFnoxValues(
     }
     return config;
   });
-  // Null-prototype records: fnox accepts `__proto__` as an ordinary key, and Object.assign on a
-  // default-prototype object would treat it as the legacy prototype setter and drop the entry.
-  const effectiveEntries: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
-  for (const config of configs) Object.assign(effectiveEntries, config.secrets);
-  if (profileName) {
-    for (const config of configs) Object.assign(effectiveEntries, config.profiles?.[profileName]?.secrets);
-  }
+  const effectiveEntries = overlayFnoxEntries(configs, profileName);
 
   const values: Record<string, string> = Object.create(null) as Record<string, string>;
   for (const [keyName, entry] of Object.entries(effectiveEntries)) {
@@ -141,6 +129,23 @@ export function collectPlaintextFnoxValues(
     values[keyName] = defaultValue;
   }
   return resolvePlaintextReferences(values);
+}
+
+/**
+ * The effective secret entries of root-most-first `configs` for `profileName`, with fnox's own
+ * precedence: every base `[secrets]` table from the root to the nearest config, then every
+ * `[profiles.<profileName>.secrets]` table in the same order — so an ancestor's profile entry
+ * beats a nearer config's base entry (verified with `fnox export`).
+ */
+function overlayFnoxEntries(configs: readonly FnoxConfig[], profileName: string | undefined): Record<string, unknown> {
+  // Null-prototype records: fnox accepts `__proto__` as an ordinary key, and Object.assign on a
+  // default-prototype object would treat it as the legacy prototype setter and drop the entry.
+  const effectiveEntries: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const config of configs) Object.assign(effectiveEntries, config.secrets);
+  if (profileName) {
+    for (const config of configs) Object.assign(effectiveEntries, config.profiles?.[profileName]?.secrets);
+  }
+  return effectiveEntries;
 }
 
 /**
