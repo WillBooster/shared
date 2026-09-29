@@ -77,6 +77,24 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(readCalls(projectDirPath).map((call) => call.args[0])).toEqual(['environment', 'config']);
   });
 
+  it('refuses to deploy when fnox cannot resolve a secret', async () => {
+    const fnoxPath = path.join(projectDirPath, 'fnox.toml');
+    const fnoxToml = await fs.readFile(fnoxPath, 'utf8');
+    await fs.writeFile(
+      fnoxPath,
+      fnoxToml.replace(
+        '[secrets]\n',
+        '[secrets]\nBROKEN_SECRET = { provider = "age", value = "not-an-age-ciphertext" }\n'
+      )
+    );
+
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], { WB_ENV: 'production' });
+
+    expect(result.status).not.toBe(0);
+    expect(readCalls(projectDirPath).map((call) => call.args[0])).not.toContain('up');
+    expect(readCalls(projectDirPath).map((call) => call.args[0])).not.toContain('variables');
+  });
+
   it('plans every environment on --dry-run before failing', () => {
     const result = runWb(
       projectDirPath,

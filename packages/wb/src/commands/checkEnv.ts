@@ -23,9 +23,11 @@ export const checkEnvCommand: CommandModule<
   },
 };
 
-export async function checkEnv(
-  argv: ArgumentsCamelCase<InferredOptionTypes<typeof checkEnvBuilder & typeof sharedOptionsBuilder>>
-): Promise<void> {
+export type CheckEnvArgv = ArgumentsCamelCase<
+  InferredOptionTypes<typeof checkEnvBuilder & typeof sharedOptionsBuilder>
+>;
+
+export async function checkEnv(argv: CheckEnvArgv): Promise<void> {
   const project = findSelfProject(argv);
   if (!project) {
     console.error(chalk.red('No project found.'));

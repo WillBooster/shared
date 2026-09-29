@@ -10,6 +10,8 @@ import chalk from 'chalk';
 import { z } from 'zod';
 
 import type { Project } from '../project.js';
+import type { CheckEnvArgv } from './checkEnv.js';
+import { checkEnv } from './checkEnv.js';
 import { collectFnoxKeyNamesForProfile } from '../utils/fnoxToml.js';
 import { isNonRailwayKey, pushRailwayVariables, resolveRailwayVariables } from './railwayEnv.js';
 
@@ -54,7 +56,7 @@ interface RailwayContext {
  * plan, sync fnox values, apply the re-checked plan, then `railway up`. With `--dry-run`, only
  * check the plan of every environment in `railwayTarget.services`, never changing Railway.
  */
-export async function deployRailway(argv: EnvReaderOptions & { dryRun?: boolean }, project: Project): Promise<void> {
+export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, project: Project): Promise<void> {
   const context = await createRailwayContext(project);
 
   if (argv.dryRun) {
@@ -75,6 +77,9 @@ export async function deployRailway(argv: EnvReaderOptions & { dryRun?: boolean 
       `WB_ENV (${envName}) must be one of the environments in railwayTarget.services: ${Object.keys(context.services).join(', ')}.`
     );
   }
+  // Ordinary env loading only warns when fnox cannot resolve a secret; deploying would then keep
+  // stale values on Railway, so fail before changing anything.
+  await checkEnv(argv);
   // Check before pushing anything, then re-plan: syncing variables changes the environment's config
   // etag, which invalidates the first plan file.
   const firstPlan = await planAndCheck(context, envName);
