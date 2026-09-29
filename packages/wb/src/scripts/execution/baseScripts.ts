@@ -325,7 +325,7 @@ export abstract class BaseScripts {
     const port = project.env.PORT;
     return `${this.waitApp(
       project
-    )} || ${buildWaitOnLoopbackCommand(port)} && YARN wb open-cli http://\${HOST:-localhost}:${port}`;
+    )} || ${buildWaitOnLoopbackCommand(port)} && YARN wb open-cli --optional http://\${HOST:-localhost}:${port}`;
   }
 }
 

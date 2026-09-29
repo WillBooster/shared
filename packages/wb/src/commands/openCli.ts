@@ -11,16 +11,32 @@ const argumentsBuilder = {
   },
 } as const;
 
-export const openCliCommand: CommandModule<unknown, InferredOptionTypes<typeof argumentsBuilder>> = {
+const optionalBuilder = {
+  optional: {
+    description: 'Continue when the default application cannot be opened',
+    type: 'boolean',
+  },
+} as const;
+
+export const openCliCommand: CommandModule<
+  unknown,
+  InferredOptionTypes<typeof argumentsBuilder & typeof optionalBuilder>
+> = {
   command: 'open-cli <target>',
   describe: 'Open a URL or file in its default application',
   builder: (yargs: Argv<unknown>) =>
-    yargs.positional('target', argumentsBuilder.target) as Argv<InferredOptionTypes<typeof argumentsBuilder>>,
+    yargs.options(optionalBuilder).positional('target', argumentsBuilder.target) as Argv<
+      InferredOptionTypes<typeof argumentsBuilder & typeof optionalBuilder>
+    >,
   async handler(argv) {
     try {
       if (!argv.target) throw new Error('A URL or file is required.');
       await openTarget(argv.target);
     } catch (error) {
+      if (argv.optional && argv.target) {
+        console.warn(chalk.yellow(`Could not open ${argv.target}: ${getErrorMessage(error)}. Open it manually.`));
+        return;
+      }
       console.error(chalk.red(getErrorMessage(error)));
       process.exit(1);
     }
