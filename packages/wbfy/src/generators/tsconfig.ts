@@ -364,10 +364,12 @@ function addIncludesForFrameworkProject(settings: TsConfigJson, config: PackageC
   // Omitting include lets framework tsconfigs keep TypeScript's default
   // "all TS/TSX files" behavior, which already covers scripts.
   if (!settings.include) return;
+  const includeCount = settings.include.length;
   addIncludePath(settings, 'scripts/**/*');
   // Include wildcards skip dot directories, so framework globs such as `**/*.ts` never reach `.railway/`.
   if (hasRailwayIac(config)) addIncludePath(settings, '.railway/**/*');
-  settings.include.sort();
+  // Sorting an unchanged include would rewrite an already-clean tsconfig and drop its comments.
+  if (settings.include.length > includeCount) settings.include.sort();
 }
 
 function hasRailwayIac(config: PackageConfig): boolean {

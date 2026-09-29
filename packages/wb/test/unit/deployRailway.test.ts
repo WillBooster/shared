@@ -186,7 +186,11 @@ describe('wb deploy for .railway/railway.ts', () => {
   });
 
   it('skips config apply when the re-checked plan has no changes, so railway up is the only deployment', () => {
-    const result = runWb(projectDirPath, ['deploy'], [], { WB_ENV: 'production' });
+    // The first plan has a change that the variable sync resolves, so only the re-checked plan is empty.
+    const result = runWb(projectDirPath, ['deploy'], [safeVariableSet], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_RECHECKED_PLAN: JSON.stringify({ changeSet: { changes: [] }, destructive: false }),
+    });
 
     expect(result.status).toBe(0);
     expect(readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '))).toEqual([
@@ -353,7 +357,8 @@ export default () => ({ env: railwayVariables(() => ({ type: 'preserve' }), { AR
     `#!/usr/bin/env node
 const fs = require('node:fs');
 const args = process.argv.slice(2);
-fs.appendFileSync(${JSON.stringify(path.join(projectDirPath, 'railway-calls.jsonl'))}, JSON.stringify({ args, env: process.env }) + '\\n');
+const logPath = ${JSON.stringify(path.join(projectDirPath, 'railway-calls.jsonl'))};
+fs.appendFileSync(logPath, JSON.stringify({ args, env: process.env }) + '\\n');
 if (args[0] === 'environment') {
   console.log(JSON.stringify({ environments: [{ id: 'env-production', name: 'production' }, { id: 'env-staging', name: 'staging' }] }));
 } else if (args[0] === 'variables' && process.env.FAKE_RAILWAY_VARIABLES_FAIL) {
@@ -361,8 +366,12 @@ if (args[0] === 'environment') {
   console.error('railway variables error');
   process.exit(1);
 } else if (args[0] === 'config' && args[1] === 'plan') {
+  const isRecheck = fs.readFileSync(logPath, 'utf8').trim().split('\\n').some((line) => JSON.parse(line).args[0] === 'variables');
   // Like the real CLI, the --out artifact and the stdout report have different shapes.
-  fs.writeFileSync(args[args.indexOf('--out') + 1], process.env.FAKE_RAILWAY_PLAN);
+  fs.writeFileSync(
+    args[args.indexOf('--out') + 1],
+    (isRecheck && process.env.FAKE_RAILWAY_RECHECKED_PLAN) || process.env.FAKE_RAILWAY_PLAN
+  );
   console.log(JSON.stringify({ ok: true, changeSet: { changes: [] }, diagnostics: [] }));
 }
 `,
