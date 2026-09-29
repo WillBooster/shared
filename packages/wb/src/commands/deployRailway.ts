@@ -158,16 +158,12 @@ async function waitForAppliedDeployment(
   targetArgs: string[],
   knownIds: Set<string>
 ): Promise<void> {
-  let listed = false;
   const deployment = await pollDeployments(
     context,
     envName,
     targetArgs,
     Date.now() + APPLIED_DEPLOYMENT_TIMEOUT_MS,
-    (deployments) => {
-      listed = true;
-      return deployments.find(({ id }) => !knownIds.has(id));
-    }
+    (deployments) => deployments.find(({ id }) => !knownIds.has(id))
   );
   if (deployment) {
     console.info(
@@ -175,12 +171,9 @@ async function waitForAppliedDeployment(
     );
     return;
   }
-  const seconds = APPLIED_DEPLOYMENT_TIMEOUT_MS / 1000;
   console.warn(
     chalk.yellow(
-      listed
-        ? `[${envName}] No deployment triggered by config apply appeared within ${seconds} seconds; running railway up.`
-        : `[${envName}] Could not list the Railway deployments within ${seconds} seconds to find the one triggered by config apply; running railway up.`
+      `[${envName}] No deployment triggered by config apply was seen within ${APPLIED_DEPLOYMENT_TIMEOUT_MS / 1000} seconds; running railway up.`
     )
   );
 }

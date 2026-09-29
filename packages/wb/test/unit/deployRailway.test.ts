@@ -260,7 +260,7 @@ describe('wb deploy for .railway/railway.ts', () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain('No deployment triggered by config apply appeared within 60 seconds');
+    expect(result.stderr).toContain('No deployment triggered by config apply was seen within 60 seconds');
     expect(result.stdout).toContain('deployment-new: SUCCESS');
     const commands = readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '));
     expect(commands).toContain('config apply');
