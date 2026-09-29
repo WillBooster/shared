@@ -72,9 +72,10 @@ interface RailwayContext {
 /**
  * Deploy the service `railwayTarget.services[WB_ENV]` from `.railway/railway.ts`: check the IaC
  * plan, sync fnox values, apply the re-checked plan when it has changes or claims ownership and wait
- * until the deployment it triggers exists, then `railway up` and wait until the created deployment
- * succeeds. With `--dry-run`, only check the plan of every environment in `railwayTarget.services`,
- * never changing Railway.
+ * up to 60 seconds for a deployment of the service it triggers (an apply that changes only other
+ * services or ownership metadata may trigger none), then `railway up` and wait until the created
+ * deployment succeeds. With `--dry-run`, only check the plan of every environment in
+ * `railwayTarget.services`, never changing Railway.
  */
 export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, project: Project): Promise<void> {
   const context = await createRailwayContext(project);
@@ -147,7 +148,6 @@ async function waitForAppliedDeployment(
   const deadline = Date.now() + APPLIED_DEPLOYMENT_TIMEOUT_MS;
   for (;;) {
     if (Date.now() >= deadline) {
-      // Such an apply may change only other services or ownership metadata.
       console.warn(
         chalk.yellow(
           `[${envName}] No deployment triggered by config apply appeared within ${APPLIED_DEPLOYMENT_TIMEOUT_MS / 1000} seconds; running railway up.`
