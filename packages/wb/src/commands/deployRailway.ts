@@ -121,7 +121,7 @@ export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, p
   await applyRecheckedPlan(context, envName, serviceName, targetArgs);
   // `railway up --ci` exits non-zero when its log stream breaks, and may exit 0 before the deployment
   // finishes, so the verdict comes from the created deployment's status instead of its exit code.
-  const upOutput = await runRailway(context, ['up', '--detach', '--json', ...targetArgs], envName, 'pipe');
+  const upOutput = await runRailway(context, ['up', '--detach', '--json', ...targetArgs], envName);
   const { deploymentId } = upResultSchema.parse(JSON.parse(upOutput));
   const failure = await waitForDeployment(context, envName, targetArgs, deploymentId, timeoutSeconds);
   await printDeploymentLogs(context, envName, [deploymentId, '--build', '--lines=1000', ...targetArgs]);
@@ -342,7 +342,7 @@ async function planAndCheck(
   envName: string
 ): Promise<{ planPath: string; needsApply: boolean; rejection?: string }> {
   const planPath = createPlanPath(envName);
-  const output = await runRailway(context, ['config', 'plan', '--json', '--out', planPath], envName, 'pipe');
+  const output = await runRailway(context, ['config', 'plan', '--json', '--out', planPath], envName);
   for (const diagnostic of planReportSchema.parse(JSON.parse(output)).diagnostics ?? []) {
     console.warn(chalk.yellow(`[${envName}] ${diagnostic.severity}: ${diagnostic.message}`));
   }
@@ -404,18 +404,11 @@ async function syncVariables(
   );
 }
 
-async function runRailway(
-  context: RailwayContext,
-  args: string[],
-  envName: string,
-  stdio: 'inherit' | 'pipe' = 'inherit'
-): Promise<string> {
-  const ret = await spawnRailway(context, args, envName, stdio);
+async function runRailway(context: RailwayContext, args: string[], envName: string): Promise<string> {
+  const ret = await spawnRailway(context, args, envName, 'pipe');
   if (ret.status !== 0) {
-    if (stdio === 'pipe') {
-      console.error(ret.stdout.trim());
-      console.error(ret.stderr.trim());
-    }
+    console.error(ret.stdout.trim());
+    console.error(ret.stderr.trim());
     exitWithRailwayError(args, ret.status);
   }
   return ret.stdout;
