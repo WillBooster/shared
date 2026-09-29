@@ -66,6 +66,17 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(readCalls(projectDirPath).map((call) => call.args[0])).toEqual(['environment', 'config']);
   });
 
+  it('rejects a plan artifact marked destructive even when its changes look safe', () => {
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_PLAN_DESTRUCTIVE: '1',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('marked destructive');
+    expect(readCalls(projectDirPath).map((call) => call.args[0])).toEqual(['environment', 'config']);
+  });
+
   it('rejects resource creation and unknown change kinds', () => {
     const result = runWb(
       projectDirPath,
@@ -190,7 +201,8 @@ function runWb(
       TMPDIR: process.env.TMPDIR,
       FAKE_RAILWAY_PLAN: JSON.stringify({
         changeSet: { changes: planChanges },
-        destructive: planChanges.some((change) => change.severity === 'destructive'),
+        destructive:
+          env.FAKE_RAILWAY_PLAN_DESTRUCTIVE === '1' || planChanges.some((change) => change.severity === 'destructive'),
       }),
       ...env,
     },
