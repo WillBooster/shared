@@ -171,10 +171,12 @@ async function createRailwayProject(projectDirPath: string): Promise<void> {
 WB_ENV = { default = "development" }
 APP_URL = { default = "http://localhost" }
 RAILWAY_RUN_UID = { default = "0" }
+NOT_EXPORTED_IN_PRODUCTION = { default = "value" }
 
 [profiles.production.secrets]
 WB_ENV = { default = "production" }
 PRODUCTION_ONLY = { default = "value" }
+NOT_EXPORTED_IN_PRODUCTION = { default = "value", env = false }
 
 [profiles.staging.secrets]
 WB_ENV = { default = "staging" }

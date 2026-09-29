@@ -36,26 +36,30 @@ export function findAncestorFnoxConfigPaths(projectDirPath: string, rootDirPath:
 }
 
 /**
- * The names of the variables fnox exports for `profileName`: the base `[secrets]` plus
- * `[profiles.<profileName>.secrets]` of every config in the ancestor chain, excluding entries fnox
- * does not export (`env = false` / `"exec"`). Reads key names only, so it needs no age key.
+ * The names of the variables fnox exports for `profileName`: the effective entries (base
+ * `[secrets]` overlaid by `[profiles.<profileName>.secrets]`, ancestor configs overlaid by nearer
+ * ones — fnox's own precedence), excluding those fnox does not export (`env = false` / `"exec"`).
+ * Reads key names only, so it needs no age key.
  */
 export function collectFnoxKeyNamesForProfile(
   projectDirPath: string,
   rootDirPath: string,
   profileName: string
 ): string[] {
-  const keyNames = new Set<string>();
-  for (const configPath of findAncestorFnoxConfigPaths(projectDirPath, rootDirPath)) {
-    const config = parseFnoxConfig(configPath);
-    for (const secrets of [config.secrets, config.profiles?.[profileName]?.secrets]) {
-      for (const [keyName, entry] of Object.entries(secrets ?? {})) {
-        const env = typeof entry === 'object' && entry !== null ? (entry as { env?: unknown }).env : undefined;
-        if (env !== false && env !== 'exec') keyNames.add(keyName);
-      }
-    }
-  }
-  return [...keyNames].toSorted((a, b) => a.localeCompare(b));
+  const configs = findAncestorFnoxConfigPaths(projectDirPath, rootDirPath)
+    .toReversed()
+    .map((configPath) => parseFnoxConfig(configPath));
+  // Null-prototype record: fnox accepts `__proto__` as an ordinary key.
+  const effectiveEntries: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const config of configs) Object.assign(effectiveEntries, config.secrets);
+  for (const config of configs) Object.assign(effectiveEntries, config.profiles?.[profileName]?.secrets);
+  return Object.entries(effectiveEntries)
+    .filter(([, entry]) => {
+      const env = typeof entry === 'object' && entry !== null ? (entry as { env?: unknown }).env : undefined;
+      return env !== false && env !== 'exec';
+    })
+    .map(([keyName]) => keyName)
+    .toSorted((a, b) => a.localeCompare(b));
 }
 
 export function parseFnoxConfig(configPath: string): FnoxConfig {
