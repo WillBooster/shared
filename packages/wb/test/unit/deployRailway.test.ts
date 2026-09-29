@@ -237,6 +237,19 @@ describe('wb deploy for .railway/railway.ts', () => {
     ]);
   }, 60_000);
 
+  it('retries a failed deployment list before config apply and a stalled one after it', () => {
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_PRE_UP_LIST_RESULTS: 'ERROR,,HANG',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('railway deployment list failed (exit 1)');
+    expect(result.stderr).toContain('railway deployment list did not answer within 15 seconds.');
+    expect(result.stdout).toContain('config apply triggered Railway deployment deployment-applied');
+    expect(result.stdout).toContain('deployment-new: SUCCESS');
+  }, 60_000);
+
   // Whether Railway deploys the service for an ownership claim without changes is undocumented, so this
   // covers the case where it does not.
   it('applies a claim-only plan and runs railway up with a warning when no deployment appears', () => {
@@ -485,7 +498,11 @@ if (args[0] === 'environment') {
   const appliedIndex = listIndexesAfterApply[Number(process.env.FAKE_RAILWAY_APPLIED_DEPLOYMENT_DELAY || 0)];
   const statuses = (process.env.FAKE_RAILWAY_DEPLOYMENT_STATUSES || 'SUCCESS').split(',');
   const pollCount = upIndex < 0 ? 0 : calls.filter((callArgs, index) => index > upIndex && callArgs[0] === 'deployment').length;
-  const status = statuses[Math.min(pollCount, statuses.length) - 1];
+  // FAKE_RAILWAY_PRE_UP_LIST_RESULTS injects faults into the list calls before railway up, in call order.
+  const preUpListCount = calls.filter((callArgs) => callArgs[0] === 'deployment').length;
+  const status = upIndex < 0
+    ? (process.env.FAKE_RAILWAY_PRE_UP_LIST_RESULTS || '').split(',')[preUpListCount - 1]
+    : statuses[Math.min(pollCount, statuses.length) - 1];
   if (status === 'HANG') {
     setInterval(() => {}, 1000);
   } else if (status === 'ERROR') {

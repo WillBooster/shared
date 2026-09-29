@@ -57,9 +57,11 @@ const FAILED_STATUSES = new Set(['FAILED', 'CRASHED', 'REMOVED', 'REMOVING', 'SK
 const POLL_INTERVAL_MS = 5000;
 // Railway creates the apply-triggered deployment seconds after `config apply` returns.
 const APPLIED_DEPLOYMENT_TIMEOUT_MS = 60_000;
-// Bounds each deployment poll and log fetch, so a stalled one cannot hang the deploy. A poll is further
-// capped by the remaining wait deadline; the log fetches after the verdict are not.
-const CALL_TIMEOUT_MS = 60_000;
+// Bound each deployment list and log fetch, so a stalled one cannot hang the deploy. A deployment list is
+// further capped by the remaining wait deadline, and short enough that a stalled one leaves the wait
+// time for more polls.
+const DEPLOYMENT_LIST_TIMEOUT_MS = 15_000;
+const LOGS_TIMEOUT_MS = 60_000;
 const deployTimeoutSecondsSchema = z.coerce.number().positive().default(1800);
 
 interface RailwayContext {
@@ -116,8 +118,19 @@ export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, p
   // skip it), which `railway up` must supersede; skipping a plan the CLI would treat as a noop keeps one
   // deployment.
   if (needsApply) {
-    const listedOutput = await runRailway(context, deploymentListArgs(targetArgs), envName, 'pipe', CALL_TIMEOUT_MS);
-    const knownIds = new Set(deploymentListSchema.parse(JSON.parse(listedOutput)).map(({ id }) => id));
+    // Only a list taken before the apply tells the deployment it triggers apart from earlier ones.
+    const knownIds = await pollDeployments(
+      context,
+      envName,
+      targetArgs,
+      Date.now() + APPLIED_DEPLOYMENT_TIMEOUT_MS,
+      (deployments) => new Set(deployments.map(({ id }) => id))
+    );
+    if (!knownIds) {
+      exitWithError(
+        `Could not list the Railway deployments of ${serviceName} within ${APPLIED_DEPLOYMENT_TIMEOUT_MS / 1000} seconds; the Railway plan was not applied.`
+      );
+    }
     await runRailway(context, ['config', 'apply', '--plan', planPath, '--yes'], envName);
     await waitForAppliedDeployment(context, envName, targetArgs, knownIds);
   }
@@ -145,26 +158,51 @@ async function waitForAppliedDeployment(
   targetArgs: string[],
   knownIds: Set<string>
 ): Promise<void> {
-  const deadline = Date.now() + APPLIED_DEPLOYMENT_TIMEOUT_MS;
-  for (;;) {
-    if (Date.now() >= deadline) {
-      console.warn(
-        chalk.yellow(
-          `[${envName}] No deployment triggered by config apply appeared within ${APPLIED_DEPLOYMENT_TIMEOUT_MS / 1000} seconds; running railway up.`
-        )
-      );
-      return;
+  let listed = false;
+  const deployment = await pollDeployments(
+    context,
+    envName,
+    targetArgs,
+    Date.now() + APPLIED_DEPLOYMENT_TIMEOUT_MS,
+    (deployments) => {
+      listed = true;
+      return deployments.find(({ id }) => !knownIds.has(id));
     }
+  );
+  if (deployment) {
+    console.info(
+      `[${envName}] config apply triggered Railway deployment ${deployment.id} (${deployment.status}); railway up supersedes it.`
+    );
+    return;
+  }
+  const seconds = APPLIED_DEPLOYMENT_TIMEOUT_MS / 1000;
+  console.warn(
+    chalk.yellow(
+      listed
+        ? `[${envName}] No deployment triggered by config apply appeared within ${seconds} seconds; running railway up.`
+        : `[${envName}] Could not list the Railway deployments within ${seconds} seconds to find the one triggered by config apply; running railway up.`
+    )
+  );
+}
+
+/**
+ * Poll the newest deployments of the target service until `find` returns a value, or return
+ * `undefined` once `deadline` passes.
+ */
+async function pollDeployments<T>(
+  context: RailwayContext,
+  envName: string,
+  targetArgs: string[],
+  deadline: number,
+  find: (deployments: z.infer<typeof deploymentListSchema>) => T | undefined
+): Promise<T | undefined> {
+  while (Date.now() < deadline) {
     const deployments = await listDeployments(context, envName, targetArgs, deadline);
-    const deployment = deployments?.find(({ id }) => !knownIds.has(id));
-    if (deployment) {
-      console.info(
-        `[${envName}] config apply triggered Railway deployment ${deployment.id} (${deployment.status}); railway up supersedes it.`
-      );
-      return;
-    }
+    const found = deployments && find(deployments);
+    if (found !== undefined) return found;
     await sleepUntilNextPoll(deadline);
   }
+  return undefined;
 }
 
 /** Poll the deployment until it reaches a terminal status; return why it failed, if it did. */
@@ -196,7 +234,7 @@ async function waitForDeployment(
 
 /**
  * List the newest deployments of the target service, or `undefined` after a warning: a transient API
- * error or malformed output must not fail a deployment that is still running.
+ * error or malformed output must not fail the deploy, so the callers poll again.
  */
 async function listDeployments(
   context: RailwayContext,
@@ -209,7 +247,7 @@ async function listDeployments(
     deploymentListArgs(targetArgs),
     envName,
     'pipe',
-    Math.max(1, Math.min(CALL_TIMEOUT_MS, deadline - Date.now()))
+    Math.max(1, Math.min(DEPLOYMENT_LIST_TIMEOUT_MS, deadline - Date.now()))
   );
   if (ret.status === 0) {
     try {
@@ -220,7 +258,9 @@ async function listDeployments(
   } else if (ret.status === null) {
     // The per-call timeout stopped the poll; when that timeout was the deadline, the caller reports it.
     if (Date.now() < deadline) {
-      console.warn(chalk.yellow(`railway deployment list did not answer within ${CALL_TIMEOUT_MS / 1000} seconds.`));
+      console.warn(
+        chalk.yellow(`railway deployment list did not answer within ${DEPLOYMENT_LIST_TIMEOUT_MS / 1000} seconds.`)
+      );
     }
   } else {
     console.warn(chalk.yellow(`railway deployment list failed (exit ${ret.status}): ${ret.stderr.trim()}`));
@@ -237,9 +277,9 @@ async function sleepUntilNextPoll(deadline: number): Promise<void> {
 }
 
 async function printDeploymentLogs(context: RailwayContext, envName: string, args: string[]): Promise<void> {
-  const ret = await spawnRailway(context, ['logs', ...args], envName, 'inherit', CALL_TIMEOUT_MS);
+  const ret = await spawnRailway(context, ['logs', ...args], envName, 'inherit', LOGS_TIMEOUT_MS);
   if (ret.status === null) {
-    console.warn(chalk.yellow(`railway logs did not answer within ${CALL_TIMEOUT_MS / 1000} seconds.`));
+    console.warn(chalk.yellow(`railway logs did not answer within ${LOGS_TIMEOUT_MS / 1000} seconds.`));
   } else if (ret.status !== 0) {
     console.warn(chalk.yellow(`railway logs failed (exit ${ret.status}).`));
   }
@@ -342,10 +382,9 @@ async function runRailway(
   context: RailwayContext,
   args: string[],
   envName: string,
-  stdio: 'inherit' | 'pipe' = 'inherit',
-  timeoutMs?: number
+  stdio: 'inherit' | 'pipe' = 'inherit'
 ): Promise<string> {
-  const ret = await spawnRailway(context, args, envName, stdio, timeoutMs);
+  const ret = await spawnRailway(context, args, envName, stdio);
   if (ret.status !== 0) {
     if (stdio === 'pipe') console.error(ret.stdout.trim());
     console.error(ret.stderr.trim());
