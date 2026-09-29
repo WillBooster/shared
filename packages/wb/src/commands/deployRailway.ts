@@ -156,6 +156,11 @@ async function waitForDeployment(
       } catch (error) {
         console.warn(chalk.yellow(`railway deployment list printed unexpected output: ${String(error)}`));
       }
+    } else if (ret.status === null) {
+      // The per-call timeout stopped the poll; when that timeout was the deadline, the check above reports it.
+      if (Date.now() < deadline) {
+        console.warn(chalk.yellow(`railway deployment list did not answer within ${CALL_TIMEOUT_MS / 1000} seconds.`));
+      }
     } else {
       console.warn(chalk.yellow(`railway deployment list failed (exit ${ret.status}): ${ret.stderr.trim()}`));
     }

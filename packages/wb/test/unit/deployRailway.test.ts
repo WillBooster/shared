@@ -283,6 +283,7 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('deployment-new did not finish within 1 seconds (last status: not listed)');
     expect(result.stderr).not.toContain('TimeoutNegativeWarning');
+    expect(result.stderr).not.toContain('railway deployment list');
   });
 
   it('reports a failed variable sync with the CLI error but never its stdout', () => {
