@@ -110,7 +110,7 @@ function generateAgentInstruction(
   const railwayInstruction = !rootConfig.isRailway
     ? ''
     : fs.existsSync(path.resolve(rootConfig.dirPath, '.railway', 'railway.ts'))
-      ? '\n- `.railway/railway.ts` holds the Railway project ID, the service per environment, and the service configuration; secrets and values the application reads stay in `fnox.toml`. `wb deploy` applies it and deploys, and `wb deploy --dry-run` only checks the plan.'
+      ? "\n- `.railway/railway.ts` holds the Railway project ID, the service per environment, the service configuration, and the variables Railway supplies (e.g. a linked database's `DATABASE_URL`, which the deployed fnox profile must not export); every other secret and application-read value stays in `fnox.toml`. `wb deploy` applies it and deploys, and `wb deploy --dry-run` only checks the plan."
       : '\n- Railway project information is in the deploy workflows under `.github/workflows`.';
   const playwrightTestServerInstruction = hasPlaywrightTestServer(allConfigs)
     ? `\n- Use \`${packageManager} wb start --mode test\` to launch a web server for debugging or testing.`
