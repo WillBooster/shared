@@ -53,7 +53,7 @@ interface RailwayContext {
 
 /**
  * Deploy the service `railwayTarget.services[WB_ENV]` from `.railway/railway.ts`: check the IaC
- * plan, sync fnox values, apply the re-checked plan, then `railway up`. With `--dry-run`, only
+ * plan, sync fnox values, apply the re-checked plan when it has changes, then `railway up`. With `--dry-run`, only
  * check the plan of every environment in `railwayTarget.services`, never changing Railway.
  */
 export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, project: Project): Promise<void> {
@@ -85,9 +85,11 @@ export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, p
   const firstPlan = await planAndCheck(context, envName);
   if (firstPlan.rejection) exitWithError(firstPlan.rejection);
   await syncVariables(context, argv, envName, serviceName);
-  const { planPath, rejection } = await planAndCheck(context, envName);
+  const { planPath, changeCount, rejection } = await planAndCheck(context, envName);
   if (rejection) exitWithError(rejection);
-  await runRailway(context, ['config', 'apply', '--plan', planPath, '--yes'], envName);
+  // Applying a plan with changes always triggers a deployment of the previous image (the CLI has no
+  // option to skip it), which `railway up` then supersedes; skipping an empty plan keeps one deployment.
+  if (changeCount > 0) await runRailway(context, ['config', 'apply', '--plan', planPath, '--yes'], envName);
   await runRailway(
     context,
     ['up', '--ci', `--project=${context.projectId}`, `--environment=${envName}`, `--service=${serviceName}`],
@@ -124,7 +126,7 @@ async function createRailwayContext(project: Project): Promise<RailwayContext> {
 async function planAndCheck(
   context: RailwayContext,
   envName: string
-): Promise<{ planPath: string; rejection?: string }> {
+): Promise<{ planPath: string; changeCount: number; rejection?: string }> {
   const planPath = createPlanPath(envName);
   const output = await runRailway(context, ['config', 'plan', '--json', '--out', planPath], envName, 'pipe');
   for (const diagnostic of planReportSchema.parse(JSON.parse(output)).diagnostics ?? []) {
@@ -140,17 +142,19 @@ async function planAndCheck(
   if (plan.destructive && rejectedChanges.length === 0) {
     return {
       planPath,
+      changeCount: changes.length,
       rejection: `The Railway plan for ${envName} is marked destructive although none of its changes is.`,
     };
   }
   if (rejectedChanges.length > 0) {
     return {
       planPath,
+      changeCount: changes.length,
       rejection: `The Railway plan for ${envName} contains changes that need a human decision:\n${rejectedChanges.map((change) => `- ${change.summary}`).join('\n')}\nDeclare what Railway should keep: a volume, domain, or service in ${RAILWAY_IAC_FILE_PATH}; a variable in fnox, or in railwayOnlyVariables when Railway supplies it (including RAILWAY_*, NIXPACKS_*, and CI keys). Delete it on Railway by hand only when it is no longer needed.`,
     };
   }
   console.info(chalk.green(`[${envName}] The Railway plan has ${changes.length} allowed change(s).`));
-  return { planPath };
+  return { planPath, changeCount: changes.length };
 }
 
 let planDirPath: string | undefined;

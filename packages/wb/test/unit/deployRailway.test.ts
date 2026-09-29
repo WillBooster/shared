@@ -185,6 +185,19 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(up?.args).toEqual(['up', '--ci', '--project=project-1', '--environment=production', '--service=app']);
   });
 
+  it('skips config apply when the re-checked plan has no changes, so railway up is the only deployment', () => {
+    const result = runWb(projectDirPath, ['deploy'], [], { WB_ENV: 'production' });
+
+    expect(result.status).toBe(0);
+    expect(readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '))).toEqual([
+      'environment list',
+      'config plan',
+      'variables --skip-deploys',
+      'config plan',
+      'up --ci',
+    ]);
+  });
+
   it('reports a failed variable sync with the CLI error but never its stdout', () => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',

@@ -63,6 +63,9 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       // type-aware linting still needs them covered by the project config.
       addIncludePath(newSettings, 'prisma/**/*');
     }
+    if (fs.existsSync(path.resolve(config.dirPath, '.railway', 'railway.ts'))) {
+      addIncludePath(newSettings, '.railway/**/*');
+    }
 
     const filePath = path.resolve(config.dirPath, 'tsconfig.json');
     const existingContent = await fsUtil.readFileIfExists(filePath);
