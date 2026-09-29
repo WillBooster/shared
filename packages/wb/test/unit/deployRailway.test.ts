@@ -155,9 +155,11 @@ describe('wb deploy for .railway/railway.ts', () => {
       'variables --skip-deploys',
       'config plan',
       'config apply',
-      'up --ci',
+      'up --detach',
+      'deployment list',
+      'logs deployment-new',
     ]);
-    const [, firstPlan, variables, secondPlan, apply, up] = calls;
+    const [, firstPlan, variables, secondPlan, apply, up, deploymentList, logs] = calls;
     expect(firstPlan?.env).toMatchObject({
       RAILWAY_PROJECT_ID: 'project-1',
       RAILWAY_ENVIRONMENT_ID: 'env-production',
@@ -182,7 +184,106 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(readPlanPath(secondPlan)).not.toBe(readPlanPath(firstPlan));
     expect(apply?.args.slice(2)).toEqual(['--plan', readPlanPath(secondPlan), '--yes']);
     expect(fsSync.existsSync(path.dirname(readPlanPath(secondPlan)))).toBe(false);
-    expect(up?.args).toEqual(['up', '--ci', '--project=project-1', '--environment=production', '--service=app']);
+    const targetArgs = ['--project=project-1', '--environment=production', '--service=app'];
+    expect(up?.args).toEqual(['up', '--detach', '--json', ...targetArgs]);
+    expect(deploymentList?.args).toEqual(['deployment', 'list', '--json', '--limit=20', ...targetArgs]);
+    expect(logs?.args).toEqual(['logs', 'deployment-new', '--build', '--lines=1000', ...targetArgs]);
+    expect(result.stdout).toContain('fake build log');
+  });
+
+  it('skips config apply when the re-checked plan has no changes, so railway up is the only deployment', () => {
+    // The first plan has a change that the variable sync resolves, so only the re-checked plan is empty.
+    const result = runWb(projectDirPath, ['deploy'], [safeVariableSet], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_RECHECKED_PLAN: JSON.stringify({ changeSet: { changes: [] }, destructive: false }),
+    });
+
+    expect(result.status).toBe(0);
+    expect(readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '))).toEqual([
+      'environment list',
+      'config plan',
+      'variables --skip-deploys',
+      'config plan',
+      'up --detach',
+      'deployment list',
+      'logs deployment-new',
+    ]);
+  });
+
+  it('applies a re-checked plan without changes when it claims IaC ownership', () => {
+    const result = runWb(projectDirPath, ['deploy'], [], { WB_ENV: 'production', FAKE_RAILWAY_PLAN_CLAIM: '1' });
+
+    expect(result.status).toBe(0);
+    expect(readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '))).toEqual([
+      'environment list',
+      'config plan',
+      'variables --skip-deploys',
+      'config plan',
+      'config apply',
+      'up --detach',
+      'deployment list',
+      'logs deployment-new',
+    ]);
+  });
+
+  it('succeeds once the created deployment reaches SUCCESS despite failed status polls and log fetches', () => {
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'ERROR,BUILDING,SUCCESS',
+      FAKE_RAILWAY_LOGS_FAIL: '1',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('deployment-new: BUILDING');
+    expect(result.stdout).toContain('deployment-new: SUCCESS');
+    expect(readCalls(projectDirPath).filter((call) => call.args[0] === 'up')).toHaveLength(1);
+  }, 60_000);
+
+  it('fails with the build and deploy logs when the created deployment fails', () => {
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'FAILED',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('Railway deployment deployment-new ended with FAILED.');
+    expect(result.stdout).toContain('fake build log');
+    expect(result.stdout).toContain('fake deploy log');
+  });
+
+  it('keeps waiting while the created deployment is missing from the newest deployments', () => {
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'DEPLOYING,MISSING,SUCCESS',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('deployment-new: SUCCESS');
+  }, 60_000);
+
+  it('fails when the created deployment does not finish within the timeout', () => {
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'BUILDING',
+      WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS: '1',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('deployment-new did not finish within 1 seconds (last status: BUILDING)');
+    expect(result.stderr).not.toContain('railway deployment list failed');
+  });
+
+  it('fails at the timeout even when a status poll never returns', () => {
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'HANG',
+      WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS: '1',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('deployment-new did not finish within 1 seconds (last status: not listed)');
+    expect(result.stderr).not.toContain('TimeoutNegativeWarning');
+    expect(result.stderr).not.toContain('railway deployment list');
   });
 
   it('reports a failed variable sync with the CLI error but never its stdout', () => {
@@ -258,6 +359,8 @@ function runWb(
         changeSet: { changes: planChanges },
         destructive:
           env.FAKE_RAILWAY_PLAN_DESTRUCTIVE === '1' || planChanges.some((change) => change.severity === 'destructive'),
+        // Like the real CLI, the artifact omits `claim` unless it is true.
+        ...(env.FAKE_RAILWAY_PLAN_CLAIM === '1' && { claim: true }),
       }),
       ...env,
     },
@@ -324,7 +427,8 @@ export default () => ({ env: railwayVariables(() => ({ type: 'preserve' }), { AR
     `#!/usr/bin/env node
 const fs = require('node:fs');
 const args = process.argv.slice(2);
-fs.appendFileSync(${JSON.stringify(path.join(projectDirPath, 'railway-calls.jsonl'))}, JSON.stringify({ args, env: process.env }) + '\\n');
+const logPath = ${JSON.stringify(path.join(projectDirPath, 'railway-calls.jsonl'))};
+fs.appendFileSync(logPath, JSON.stringify({ args, env: process.env }) + '\\n');
 if (args[0] === 'environment') {
   console.log(JSON.stringify({ environments: [{ id: 'env-production', name: 'production' }, { id: 'env-staging', name: 'staging' }] }));
 } else if (args[0] === 'variables' && process.env.FAKE_RAILWAY_VARIABLES_FAIL) {
@@ -332,9 +436,32 @@ if (args[0] === 'environment') {
   console.error('railway variables error');
   process.exit(1);
 } else if (args[0] === 'config' && args[1] === 'plan') {
+  const isRecheck = fs.readFileSync(logPath, 'utf8').trim().split('\\n').some((line) => JSON.parse(line).args[0] === 'variables');
   // Like the real CLI, the --out artifact and the stdout report have different shapes.
-  fs.writeFileSync(args[args.indexOf('--out') + 1], process.env.FAKE_RAILWAY_PLAN);
+  fs.writeFileSync(
+    args[args.indexOf('--out') + 1],
+    (isRecheck && process.env.FAKE_RAILWAY_RECHECKED_PLAN) || process.env.FAKE_RAILWAY_PLAN
+  );
   console.log(JSON.stringify({ ok: true, changeSet: { changes: [] }, diagnostics: [] }));
+} else if (args[0] === 'up') {
+  console.log(JSON.stringify({ deploymentId: 'deployment-new', logsUrl: 'https://railway.example/logs' }));
+} else if (args[0] === 'deployment') {
+  const statuses = (process.env.FAKE_RAILWAY_DEPLOYMENT_STATUSES || 'SUCCESS').split(',');
+  const pollCount = fs.readFileSync(logPath, 'utf8').trim().split('\\n').filter((line) => JSON.parse(line).args[0] === 'deployment').length;
+  const status = statuses[Math.min(pollCount, statuses.length) - 1];
+  if (status === 'HANG') {
+    setInterval(() => {}, 1000);
+  } else if (status === 'ERROR') {
+    console.error('railway deployment list error');
+    process.exit(1);
+  } else {
+    const deployments = [{ id: 'deployment-old', status: 'SUCCESS', createdAt: '2026-01-01T00:00:00Z', meta: null }];
+    if (status !== 'MISSING') deployments.unshift({ id: 'deployment-new', status, createdAt: '2026-01-02T00:00:00Z', meta: null });
+    console.log(JSON.stringify(deployments, null, 2));
+  }
+} else if (args[0] === 'logs') {
+  if (process.env.FAKE_RAILWAY_LOGS_FAIL) process.exit(1);
+  console.log(args.includes('--build') ? 'fake build log' : 'fake deploy log');
 }
 `,
     { mode: 0o755 }
