@@ -116,6 +116,19 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(up?.args).toEqual(['up', '--ci', '--project=project-1', '--environment=production', '--service=app']);
   });
 
+  it('refuses a railwayTarget without any environment', async () => {
+    await fs.writeFile(
+      path.join(projectDirPath, '.railway', 'railway.ts'),
+      `export const railwayTarget = { projectId: 'project-1', services: {} };\n`
+    );
+
+    const result = runWb(projectDirPath, ['deploy', '--dry-run'], [safeUpdate], { WB_ENV: 'test' });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('declare at least one <environment>: <service name>');
+    expect(readCalls(projectDirPath)).toEqual([]);
+  });
+
   it('refuses a deploy workflow RAILWAY_PROJECT_ID that differs from railwayTarget', () => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',

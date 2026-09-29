@@ -17,7 +17,9 @@ export const RAILWAY_IAC_FILE_PATH = '.railway/railway.ts';
 
 const railwayTargetSchema = z.object({
   projectId: z.string().min(1),
-  services: z.record(z.string(), z.string().min(1)),
+  services: z
+    .record(z.string(), z.string().min(1))
+    .refine((services) => Object.keys(services).length > 0, 'declare at least one <environment>: <service name>'),
 });
 
 const environmentListSchema = z.object({
@@ -117,7 +119,7 @@ async function planAndCheck(context: RailwayContext, envName: string): Promise<s
   );
   if (rejectedChanges.length > 0) {
     exitWithError(
-      `The Railway plan for ${envName} contains changes that need a human decision (e.g. declare a deleted variable in fnox, or delete it on Railway by hand):\n${rejectedChanges.map((change) => `- ${change.summary}`).join('\n')}`
+      `The Railway plan for ${envName} contains changes that need a human decision:\n${rejectedChanges.map((change) => `- ${change.summary}`).join('\n')}\nDeclare what Railway should keep: a volume, domain, or service in ${RAILWAY_IAC_FILE_PATH}; a variable in fnox, or in railwayOnlyVariables when Railway supplies it (including RAILWAY_*, NIXPACKS_*, and CI keys). Delete it on Railway by hand only when it is no longer needed.`
     );
   }
   console.info(chalk.green(`[${envName}] The Railway plan has ${changes.length} allowed change(s).`));
