@@ -95,7 +95,7 @@ describe('wb deploy for .railway/railway.ts', () => {
       'config apply',
       'up --ci',
     ]);
-    const [, firstPlan, variables, , apply, up] = calls;
+    const [, firstPlan, variables, secondPlan, apply, up] = calls;
     expect(firstPlan?.env).toMatchObject({
       RAILWAY_PROJECT_ID: 'project-1',
       RAILWAY_ENVIRONMENT_ID: 'env-production',
@@ -112,7 +112,9 @@ describe('wb deploy for .railway/railway.ts', () => {
       expect.arrayContaining(['--service=app', '--environment=production', '--set', 'WB_VERSION=v1.2.3'])
     );
     expect(variables?.args).not.toContain('RAILWAY_RUN_UID=0');
-    expect(apply?.args.slice(2)).toEqual(['--plan', expect.stringMatching(/plan\.json$/), '--yes']);
+    // The first plan is invalidated by the variable sync, so only the re-checked plan may be applied.
+    expect(readPlanPath(secondPlan)).not.toBe(readPlanPath(firstPlan));
+    expect(apply?.args.slice(2)).toEqual(['--plan', readPlanPath(secondPlan), '--yes']);
     expect(up?.args).toEqual(['up', '--ci', '--project=project-1', '--environment=production', '--service=app']);
   });
 
@@ -162,6 +164,10 @@ function runWb(
       ...env,
     },
   });
+}
+
+function readPlanPath(call: RailwayCall | undefined): string {
+  return call?.args[call.args.indexOf('--out') + 1] ?? '';
 }
 
 function readCalls(projectDirPath: string): RailwayCall[] {
