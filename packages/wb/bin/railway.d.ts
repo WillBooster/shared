@@ -1,4 +1,4 @@
-export function railwayVariables<T>(
+export function railwayVariables<T, V = string>(
   preserve: () => T,
-  railwayOnlyVariables?: Record<string, string>
-): Record<string, T | string>;
+  railwayOnlyVariables?: Record<string, V>
+): Record<string, T | V>;
