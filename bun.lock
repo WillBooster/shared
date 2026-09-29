@@ -168,6 +168,7 @@
         "smol-toml": "1.8.0",
         "textlint-rule-no-zero-width-spaces": "1.0.1",
         "yargs": "18.1.0",
+        "zod": "4.6.5",
       },
       "devDependencies": {
         "@slidev/parser": "53.0.0",

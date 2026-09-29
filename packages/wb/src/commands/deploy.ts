@@ -17,6 +17,7 @@ import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isCI } from '../utils/ci.js';
 import { buildShellEnvironmentAssignment, shellEscapeArgument } from '../utils/shell.js';
 import { findWranglerConfigPath } from '../utils/wrangler.js';
+import { deployRailway, RAILWAY_IAC_FILE_PATH } from './deployRailway.js';
 import type { ResolvedWranglerConfig, WranglerD1Database } from '../utils/wranglerConfig.js';
 import { resolveWranglerConfigForEnv, selectD1MigrationMechanisms } from '../utils/wranglerConfig.js';
 
@@ -77,7 +78,7 @@ type DeployCommandArgv = ArgumentsCamelCase<DeployCommandOptions>;
 export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
   command: 'deploy',
   describe:
-    'Deploy a Cloudflare Workers app (vinext or plain Worker) to the WB_ENV environment: validate secrets, build, apply remote D1 migrations, then deploy code and secrets atomically.',
+    'Deploy to the WB_ENV environment. A Cloudflare Workers app (vinext or plain Worker): validate secrets, build, apply remote D1 migrations, then deploy code and secrets atomically. A Railway service (.railway/railway.ts): check the IaC plan, sync fnox variables, apply the plan, then railway up; --dry-run only checks the plan of every environment.',
   builder: (yargs) => yargs as unknown as Argv<DeployCommandOptions>,
   async handler(argv: DeployCommandArgv) {
     // A stray exported CLOUDFLARE_ENV would bake the wrong environment into the build and
@@ -91,9 +92,17 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       console.error(chalk.red('No project found.'));
       process.exit(1);
     }
+    if (fs.existsSync(path.join(project.dirPath, RAILWAY_IAC_FILE_PATH))) {
+      await deployRailway(argv, project);
+      return;
+    }
     const wranglerConfigPath = findWranglerConfigPath(project);
     if (!wranglerConfigPath) {
-      console.error(chalk.red('wb deploy currently supports only Cloudflare Workers apps (no wrangler config found).'));
+      console.error(
+        chalk.red(
+          `wb deploy supports only Cloudflare Workers apps (a wrangler config) and Railway services (${RAILWAY_IAC_FILE_PATH}).`
+        )
+      );
       process.exit(1);
     }
     const envName = project.env.WB_ENV;

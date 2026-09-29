@@ -673,6 +673,14 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
   const requiredPermissions = calledReusableWorkflow ? reusableWorkflowPermissions[calledReusableWorkflow] : undefined;
   if (requiredPermissions) job.permissions = { ...requiredPermissions };
+  if (secrets && calledReusableWorkflow === 'test') {
+    // The callee's "Test deploy script" step runs `wb deploy --dry-run`, which plans the Railway IaC.
+    if (fs.existsSync(path.resolve(config.dirPath, '.railway', 'railway.ts'))) {
+      secrets.RAILWAY_API_TOKEN = '${{ secrets.RAILWAY_API_TOKEN }}';
+    } else {
+      delete secrets.RAILWAY_API_TOKEN;
+    }
+  }
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
     // The callee routes public (default-registry) installs through the Takumi Guard
     // malicious-package-blocking proxy when this token resolves; an unset organization secret

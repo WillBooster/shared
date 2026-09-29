@@ -35,6 +35,29 @@ export function findAncestorFnoxConfigPaths(projectDirPath: string, rootDirPath:
   return configPaths;
 }
 
+/**
+ * The names of the variables fnox exports for `profileName`: the base `[secrets]` plus
+ * `[profiles.<profileName>.secrets]` of every config in the ancestor chain, excluding entries fnox
+ * does not export (`env = false` / `"exec"`). Reads key names only, so it needs no age key.
+ */
+export function collectFnoxKeyNamesForProfile(
+  projectDirPath: string,
+  rootDirPath: string,
+  profileName: string
+): string[] {
+  const keyNames = new Set<string>();
+  for (const configPath of findAncestorFnoxConfigPaths(projectDirPath, rootDirPath)) {
+    const config = parseFnoxConfig(configPath);
+    for (const secrets of [config.secrets, config.profiles?.[profileName]?.secrets]) {
+      for (const [keyName, entry] of Object.entries(secrets ?? {})) {
+        const env = typeof entry === 'object' && entry !== null ? (entry as { env?: unknown }).env : undefined;
+        if (env !== false && env !== 'exec') keyNames.add(keyName);
+      }
+    }
+  }
+  return [...keyNames].toSorted((a, b) => a.localeCompare(b));
+}
+
 export function parseFnoxConfig(configPath: string): FnoxConfig {
   return parseToml(fs.readFileSync(configPath, 'utf8')) as FnoxConfig;
 }

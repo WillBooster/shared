@@ -20,11 +20,14 @@ Commands:
                                  environments with this command to fail fast on
                                  missing secrets.
   wb concurrently <commands...>  Run commands concurrently
-  wb deploy                      Deploy a Cloudflare Workers app (vinext or
-                                 plain Worker) to the WB_ENV environment:
-                                 validate secrets, build, apply remote D1
-                                 migrations, then deploy code and secrets
-                                 atomically.
+  wb deploy                      Deploy to the WB_ENV environment. A Cloudflare
+                                 Workers app (vinext or plain Worker): validate
+                                 secrets, build, apply remote D1 migrations,
+                                 then deploy code and secrets atomically. A
+                                 Railway service (.railway/railway.ts): check
+                                 the IaC plan, sync fnox variables, apply the
+                                 plan, then railway up; --dry-run only checks
+                                 the plan of every environment.
   wb dotenv [args..]             Load environment variables from fnox and run a
                                  command.
   wb gen-code                    Generate code for the current project
