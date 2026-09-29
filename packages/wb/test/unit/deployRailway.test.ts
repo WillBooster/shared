@@ -10,6 +10,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, setDefaultTimeo
 import { buildWb } from '../helpers/build.js';
 
 const binIndexPath = fileURLToPath(new URL('../../bin/index.js', import.meta.url));
+const wbPackageDirPath = fileURLToPath(new URL('../..', import.meta.url));
 // The released CLI runs under node (bin/index.js's shebang), not the bun test runner's runtime.
 const nodePath = Bun.which('node');
 if (!nodePath) throw new Error('node must be on PATH.');
@@ -183,10 +184,19 @@ WB_ENV = { default = "test" }
 `
   );
   await fs.mkdir(path.join(projectDirPath, '.railway'));
+  // The fixture mirrors a real file: `railwayVariables` runs inside the default export, which only the
+  // Railway CLI evaluates, so `wb` can import the module for `railwayTarget` before passing the names.
   await fs.writeFile(
     path.join(projectDirPath, '.railway', 'railway.ts'),
-    `export const railwayTarget = { projectId: 'project-1', services: { production: 'app', staging: 'app-staging' } };\n`
+    `import { railwayVariables } from '@willbooster/wb/bin/railway.js';
+
+export const railwayTarget = { projectId: 'project-1', services: { production: 'app', staging: 'app-staging' } };
+
+export default () => ({ env: railwayVariables(() => ({ type: 'preserve' }), { ARCH: 'x86_64' }) });
+`
   );
+  await fs.mkdir(path.join(projectDirPath, 'node_modules', '@willbooster'), { recursive: true });
+  await fs.symlink(wbPackageDirPath, path.join(projectDirPath, 'node_modules', '@willbooster', 'wb'));
   const cliDirPath = path.join(projectDirPath, 'node_modules', '@railway', 'cli');
   await fs.mkdir(path.join(cliDirPath, 'bin'), { recursive: true });
   await fs.writeFile(path.join(cliDirPath, 'package.json'), JSON.stringify({ name: '@railway/cli' }));
