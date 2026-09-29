@@ -136,12 +136,16 @@ async function waitForDeployment(
   const deadline = Date.now() + timeoutSeconds * 1000;
   let lastStatus: string | undefined;
   for (;;) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      return `Railway deployment ${deploymentId} did not finish within ${timeoutSeconds} seconds (last status: ${lastStatus ?? 'not listed'}); check it on Railway before deploying again. WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS overrides the timeout.`;
+    }
     const ret = await spawnRailway(
       context,
       ['deployment', 'list', '--json', '--limit=20', ...targetArgs],
       envName,
       'pipe',
-      Math.max(1, Math.min(CALL_TIMEOUT_MS, deadline - Date.now()))
+      Math.min(CALL_TIMEOUT_MS, remainingMs)
     );
     // A transient API error or malformed output must not fail a deployment that is still running.
     let deployments: z.infer<typeof deploymentListSchema> | undefined;
@@ -164,11 +168,7 @@ async function waitForDeployment(
         if (FAILED_STATUSES.has(lastStatus)) return `Railway deployment ${deploymentId} ended with ${lastStatus}.`;
       }
     }
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) {
-      return `Railway deployment ${deploymentId} did not finish within ${timeoutSeconds} seconds (last status: ${lastStatus ?? 'not listed'}); check it on Railway before deploying again. WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS overrides the timeout.`;
-    }
-    await new Promise((resolve) => setTimeout(resolve, Math.min(POLL_INTERVAL_MS, remainingMs)));
+    await new Promise((resolve) => setTimeout(resolve, Math.min(POLL_INTERVAL_MS, deadline - Date.now())));
   }
 }
 

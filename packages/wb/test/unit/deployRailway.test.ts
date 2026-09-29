@@ -270,6 +270,7 @@ describe('wb deploy for .railway/railway.ts', () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('deployment-new did not finish within 1 seconds (last status: BUILDING)');
+    expect(result.stderr).not.toContain('railway deployment list failed');
   });
 
   it('fails at the timeout even when a status poll never returns', () => {
