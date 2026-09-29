@@ -132,6 +132,19 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(readCalls(projectDirPath).map((call) => call.args[0])).not.toContain('up');
   });
 
+  it('ignores RAILWAY_ENVIRONMENT_ID and RAILWAY_SERVICE_ID inherited from a deploy workflow', () => {
+    const result = runWb(projectDirPath, ['deploy', '--dry-run'], [safeUpdate], {
+      WB_ENV: 'production',
+      RAILWAY_ENVIRONMENT_ID: 'production',
+      RAILWAY_SERVICE_ID: 'service-from-workflow',
+    });
+
+    expect(result.status).toBe(0);
+    const calls = readCalls(projectDirPath);
+    for (const call of calls) expect(call.env.RAILWAY_SERVICE_ID).toBeUndefined();
+    expect(calls.map((call) => call.env.RAILWAY_ENVIRONMENT_ID)).toEqual([undefined, 'env-production', 'env-staging']);
+  });
+
   it('refuses a railwayTarget without any environment', async () => {
     await fs.writeFile(
       path.join(projectDirPath, '.railway', 'railway.ts'),
