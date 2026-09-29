@@ -168,7 +168,7 @@ async function waitForDeployment(
         if (FAILED_STATUSES.has(lastStatus)) return `Railway deployment ${deploymentId} ended with ${lastStatus}.`;
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, Math.min(POLL_INTERVAL_MS, deadline - Date.now())));
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.min(POLL_INTERVAL_MS, deadline - Date.now()))));
   }
 }
 
