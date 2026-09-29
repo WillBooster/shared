@@ -67,21 +67,14 @@ export const railwayEnvCommand: CommandModule<unknown, RailwayEnvCommandOptions>
       return;
     }
 
-    const keyNames = entries.map(([key]) => key);
     if (argv.dryRun) {
       console.info(
-        chalk.cyan(`Would sync ${entries.length} variable(s) to Railway (${envName}): ${keyNames.join(', ')}`)
+        chalk.cyan(
+          `Would sync ${entries.length} variable(s) to Railway (${envName}): ${entries.map(([key]) => key).join(', ')}`
+        )
       );
       return;
     }
-
-    // The Railway CLI reads auth (RAILWAY_API_TOKEN) and defaults from the environment; pass the
-    // project/service/environment explicitly when available so the command works unattended in CI.
-    const contextArgs: string[] = ['--skip-deploys'];
-    if (project.env.RAILWAY_PROJECT_ID) contextArgs.push(`--project=${project.env.RAILWAY_PROJECT_ID}`);
-    if (project.env.RAILWAY_SERVICE_ID) contextArgs.push(`--service=${project.env.RAILWAY_SERVICE_ID}`);
-    contextArgs.push(`--environment=${envName}`);
-    const setArgs = entries.flatMap(([key, value]) => ['--set', `${key}=${value}`]);
 
     const cliCheck = await prepareRailwayCli(project.dirPath, project.env);
     if (cliCheck.status !== 0) {
@@ -91,23 +84,48 @@ export const railwayEnvCommand: CommandModule<unknown, RailwayEnvCommandOptions>
       process.exit(cliCheck.status ?? 1);
     }
 
-    // stdio: 'pipe' keeps the Railway CLI's variable listing (which echoes values) out of CI logs;
-    // this command only ever prints key names, never values.
-    const ret = await spawnAsync('bunx', ['@railway/cli', 'variables', ...contextArgs, ...setArgs], {
+    // The Railway CLI reads auth (RAILWAY_API_TOKEN) and defaults from the environment; pass the
+    // project/service/environment explicitly when available so the command works unattended in CI.
+    const targetArgs: string[] = [];
+    if (project.env.RAILWAY_PROJECT_ID) targetArgs.push(`--project=${project.env.RAILWAY_PROJECT_ID}`);
+    if (project.env.RAILWAY_SERVICE_ID) targetArgs.push(`--service=${project.env.RAILWAY_SERVICE_ID}`);
+    targetArgs.push(`--environment=${envName}`);
+    await pushRailwayVariables(['bunx', '@railway/cli'], targetArgs, entries, envName, {
       cwd: project.dirPath,
       env: project.env,
-      stdio: 'pipe',
-      killOnExit: true,
     });
-    if (ret.status !== 0) {
-      console.error(
-        chalk.red(`Failed to sync environment variables to Railway (exit ${ret.status}). Keys: ${keyNames.join(', ')}`)
-      );
-      process.exit(ret.status ?? 1);
-    }
-    console.info(chalk.green(`Synced ${entries.length} variable(s) to Railway (${envName}): ${keyNames.join(', ')}`));
   },
 };
+
+/** Set `entries` on a Railway service without redeploying it; exits on failure. */
+export async function pushRailwayVariables(
+  command: readonly [string, ...string[]],
+  targetArgs: readonly string[],
+  entries: readonly (readonly [string, string])[],
+  envName: string,
+  options: { cwd: string; env: NodeJS.ProcessEnv }
+): Promise<void> {
+  const [executable, ...commandArgs] = command;
+  const keyNames = entries.map(([key]) => key).join(', ');
+  // stdio: 'pipe' keeps the Railway CLI's variable listing (which echoes values) out of CI logs;
+  // only key names are ever printed.
+  const ret = await spawnAsync(
+    executable,
+    [
+      ...commandArgs,
+      'variables',
+      '--skip-deploys',
+      ...targetArgs,
+      ...entries.flatMap(([key, value]) => ['--set', `${key}=${value}`]),
+    ],
+    { ...options, stdio: 'pipe', killOnExit: true }
+  );
+  if (ret.status !== 0) {
+    console.error(chalk.red(`Failed to sync environment variables to Railway (exit ${ret.status}). Keys: ${keyNames}`));
+    process.exit(ret.status ?? 1);
+  }
+  console.info(chalk.green(`Synced ${entries.length} variable(s) to Railway (${envName}): ${keyNames}`));
+}
 
 /** The fnox-declared variables of the current WB_ENV to push to Railway, with their effective values. */
 export function resolveRailwayVariables(argv: EnvReaderOptions, project: Project): [string, string][] {

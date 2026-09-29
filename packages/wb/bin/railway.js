@@ -1,5 +1,7 @@
 /**
  * Build the `env` of a Railway service in `.railway/railway.ts`, evaluated through `wb deploy`.
+ * Call it inside the function passed to `defineRailway` (which only the Railway CLI evaluates), never
+ * at module scope: `wb` imports the file for `railwayTarget` before it passes the variable names.
  *
  * Every variable `wb deploy` syncs from fnox is declared with `preserve()`, so Railway keeps the
  * value `wb deploy` pushed and plans a deletion for any variable neither here nor in fnox.
@@ -14,7 +16,9 @@
 export function railwayVariables(preserve, railwayOnlyVariables = {}) {
   const namesJson = process.env.WB_RAILWAY_VARIABLE_NAMES;
   if (namesJson === undefined) {
-    throw new Error('Evaluate .railway/railway.ts through `wb deploy`, which passes the fnox variable names.');
+    throw new Error(
+      'railwayVariables() needs the fnox variable names that `wb deploy` passes to the Railway CLI: call it inside the function passed to defineRailway, not at module scope, and plan through `wb deploy`.'
+    );
   }
   const names = JSON.parse(namesJson);
   const duplicatedNames = names.filter((name) => Object.hasOwn(railwayOnlyVariables, name));

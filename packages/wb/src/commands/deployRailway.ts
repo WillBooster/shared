@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import type { Project } from '../project.js';
 import { collectFnoxKeyNamesForProfile } from '../utils/fnoxToml.js';
-import { isNonRailwayKey, resolveRailwayVariables } from './railwayEnv.js';
+import { isNonRailwayKey, pushRailwayVariables, resolveRailwayVariables } from './railwayEnv.js';
 
 export const RAILWAY_IAC_FILE_PATH = '.railway/railway.ts';
 
@@ -133,22 +133,12 @@ async function syncVariables(
   const variables = new Map(resolveRailwayVariables(argv, context.project));
   if (context.project.env.WB_VERSION) variables.set('WB_VERSION', context.project.env.WB_VERSION);
   if (variables.size === 0) return;
-  // stdio: 'pipe' keeps the Railway CLI's variable listing (which echoes values) out of CI logs.
-  await runRailway(
-    context,
-    [
-      'variables',
-      '--skip-deploys',
-      `--project=${context.projectId}`,
-      `--environment=${envName}`,
-      `--service=${serviceName}`,
-      ...[...variables].flatMap(([key, value]) => ['--set', `${key}=${value}`]),
-    ],
+  await pushRailwayVariables(
+    [context.binaryPath],
+    [`--project=${context.projectId}`, `--environment=${envName}`, `--service=${serviceName}`],
+    [...variables],
     envName,
-    'pipe'
-  );
-  console.info(
-    chalk.green(`Synced ${variables.size} variable(s) to Railway (${envName}): ${[...variables.keys()].join(', ')}`)
+    { cwd: context.project.dirPath, env: await buildRailwayEnv(context, envName) }
   );
 }
 
@@ -166,8 +156,7 @@ async function runRailway(
     killOnExit: true,
   });
   if (ret.status !== 0) {
-    // The stdout of a failed `variables` call may echo variable values.
-    if (stdio === 'pipe' && args[0] !== 'variables') console.error(ret.stdout.trim());
+    if (stdio === 'pipe') console.error(ret.stdout.trim());
     console.error(ret.stderr.trim());
     exitWithError(`railway ${args.slice(0, 2).join(' ')} failed (exit ${ret.status}).`);
   }
