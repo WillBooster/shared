@@ -77,6 +77,19 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(readCalls(projectDirPath).map((call) => call.args[0])).toEqual(['environment', 'config']);
   });
 
+  it('plans every environment on --dry-run before failing', () => {
+    const result = runWb(
+      projectDirPath,
+      ['deploy', '--dry-run'],
+      [{ summary: 'Delete variable app.OLD_KEY', severity: 'destructive', kind: 'variable.delete' }],
+      { WB_ENV: 'test' }
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('The Railway plan for production contains');
+    expect(result.stderr).toContain('The Railway plan for staging contains');
+  });
+
   it('rejects resource creation and unknown change kinds', () => {
     const result = runWb(
       projectDirPath,

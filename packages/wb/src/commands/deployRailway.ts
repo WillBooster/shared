@@ -58,9 +58,13 @@ export async function deployRailway(argv: EnvReaderOptions & { dryRun?: boolean 
   const context = await createRailwayContext(project);
 
   if (argv.dryRun) {
+    // Plan every environment before failing, so one run reports every rejected change.
+    const rejections: string[] = [];
     for (const envName of Object.keys(context.services)) {
-      await planAndCheck(context, envName);
+      const { rejection } = await planAndCheck(context, envName);
+      if (rejection) rejections.push(rejection);
     }
+    if (rejections.length > 0) exitWithError(rejections.join('\n'));
     return;
   }
 
@@ -73,9 +77,11 @@ export async function deployRailway(argv: EnvReaderOptions & { dryRun?: boolean 
   }
   // Check before pushing anything, then re-plan: syncing variables changes the environment's config
   // etag, which invalidates the first plan file.
-  await planAndCheck(context, envName);
+  const firstPlan = await planAndCheck(context, envName);
+  if (firstPlan.rejection) exitWithError(firstPlan.rejection);
   await syncVariables(context, argv, envName, serviceName);
-  const planPath = await planAndCheck(context, envName);
+  const { planPath, rejection } = await planAndCheck(context, envName);
+  if (rejection) exitWithError(rejection);
   await runRailway(context, ['config', 'apply', '--plan', planPath, '--yes'], envName);
   await runRailway(
     context,
@@ -109,8 +115,11 @@ async function createRailwayContext(project: Project): Promise<RailwayContext> {
   return { project, ...result.data, binaryPath: path.join(path.dirname(packageJsonPath), 'bin', 'railway') };
 }
 
-/** Plan `envName` and exit unless every change is allowed; returns the saved plan file. */
-async function planAndCheck(context: RailwayContext, envName: string): Promise<string> {
+/** Plan `envName` and check the saved plan file; `rejection` explains why it must not be applied. */
+async function planAndCheck(
+  context: RailwayContext,
+  envName: string
+): Promise<{ planPath: string; rejection?: string }> {
   const planPath = createPlanPath(envName);
   const output = await runRailway(context, ['config', 'plan', '--json', '--out', planPath], envName, 'pipe');
   for (const diagnostic of planReportSchema.parse(JSON.parse(output)).diagnostics ?? []) {
@@ -124,15 +133,19 @@ async function planAndCheck(context: RailwayContext, envName: string): Promise<s
     (change) => change.severity !== 'safe' || !ALLOWED_CHANGE_KINDS.has(change.kind)
   );
   if (plan.destructive && rejectedChanges.length === 0) {
-    exitWithError(`The Railway plan for ${envName} is marked destructive although none of its changes is.`);
+    return {
+      planPath,
+      rejection: `The Railway plan for ${envName} is marked destructive although none of its changes is.`,
+    };
   }
   if (rejectedChanges.length > 0) {
-    exitWithError(
-      `The Railway plan for ${envName} contains changes that need a human decision:\n${rejectedChanges.map((change) => `- ${change.summary}`).join('\n')}\nDeclare what Railway should keep: a volume, domain, or service in ${RAILWAY_IAC_FILE_PATH}; a variable in fnox, or in railwayOnlyVariables when Railway supplies it (including RAILWAY_*, NIXPACKS_*, and CI keys). Delete it on Railway by hand only when it is no longer needed.`
-    );
+    return {
+      planPath,
+      rejection: `The Railway plan for ${envName} contains changes that need a human decision:\n${rejectedChanges.map((change) => `- ${change.summary}`).join('\n')}\nDeclare what Railway should keep: a volume, domain, or service in ${RAILWAY_IAC_FILE_PATH}; a variable in fnox, or in railwayOnlyVariables when Railway supplies it (including RAILWAY_*, NIXPACKS_*, and CI keys). Delete it on Railway by hand only when it is no longer needed.`,
+    };
   }
   console.info(chalk.green(`[${envName}] The Railway plan has ${changes.length} allowed change(s).`));
-  return planPath;
+  return { planPath };
 }
 
 let planDirPath: string | undefined;
