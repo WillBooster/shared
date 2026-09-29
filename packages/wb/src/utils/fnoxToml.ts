@@ -36,9 +36,9 @@ export function findAncestorFnoxConfigPaths(projectDirPath: string, rootDirPath:
 }
 
 /**
- * The names of the variables fnox exports for `profileName`: the effective entries (base
- * `[secrets]` overlaid by `[profiles.<profileName>.secrets]`, ancestor configs overlaid by nearer
- * ones — fnox's own precedence), excluding those fnox does not export (`env = false` / `"exec"`).
+ * The names of the variables fnox exports for `profileName`: the effective entries (each config's
+ * base `[secrets]` overlaid by its `[profiles.<profileName>.secrets]`, ancestor configs overlaid by
+ * nearer ones — fnox's own precedence), excluding those fnox does not export (`env = false` / `"exec"`).
  * Reads key names only, so it needs no age key.
  */
 export function collectFnoxKeyNamesForProfile(
@@ -51,8 +51,10 @@ export function collectFnoxKeyNamesForProfile(
     .map((configPath) => parseFnoxConfig(configPath));
   // Null-prototype record: fnox accepts `__proto__` as an ordinary key.
   const effectiveEntries: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
-  for (const config of configs) Object.assign(effectiveEntries, config.secrets);
-  for (const config of configs) Object.assign(effectiveEntries, config.profiles?.[profileName]?.secrets);
+  // A nearer config's base entry overrides an ancestor's profile entry, as in `fnox export`.
+  for (const config of configs) {
+    Object.assign(effectiveEntries, config.secrets, config.profiles?.[profileName]?.secrets);
+  }
   return Object.entries(effectiveEntries)
     .filter(([, entry]) => {
       const env = typeof entry === 'object' && entry !== null ? (entry as { env?: unknown }).env : undefined;
