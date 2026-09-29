@@ -23,9 +23,15 @@ export const checkEnvCommand: CommandModule<
   },
 };
 
-export async function checkEnv(
-  argv: ArgumentsCamelCase<InferredOptionTypes<typeof checkEnvBuilder & typeof sharedOptionsBuilder>>
-): Promise<void> {
+export type CheckEnvArgv = ArgumentsCamelCase<
+  InferredOptionTypes<typeof checkEnvBuilder & typeof sharedOptionsBuilder>
+>;
+
+/**
+ * `exportedOnly` checks only the variables fnox exports for the profile, skipping `env = false`
+ * entries (e.g. keys a deployment platform supplies instead of fnox).
+ */
+export async function checkEnv(argv: CheckEnvArgv, { exportedOnly = false } = {}): Promise<void> {
   const project = findSelfProject(argv);
   if (!project) {
     console.error(chalk.red('No project found.'));
@@ -43,7 +49,7 @@ export async function checkEnv(
   // `--if-missing error` makes unresolvable secrets (e.g. a missing age identity) a hard failure,
   // unlike the tolerant default used for ordinary env loading.
   const exitCode = await runWithSpawn(
-    `fnox export --all --format json --no-daemon --if-missing error --profile ${profile} > /dev/null`,
+    `fnox export${exportedOnly ? '' : ' --all'} --format json --no-daemon --if-missing error --profile ${profile} > /dev/null`,
     project,
     argv,
     { exitIfFailed: false }

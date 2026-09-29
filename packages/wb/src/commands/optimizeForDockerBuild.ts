@@ -29,6 +29,7 @@ import {
 } from '../utils/privateRegistry.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
+import { RAILWAY_IAC_FILE_PATH } from './deployRailway.js';
 import { type GenDockerEnvCommandArgv, generateDockerEnv } from './genDockerEnv.js';
 import { collectManifests, materializePrivatePackages } from './setupPrivatePackages.js';
 
@@ -176,7 +177,7 @@ function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { roo
     // repository (including ones whose image is built elsewhere), so using it here would turn
     // the lint on circularly.
     const railwayConfigured = candidateDirPaths.some((dirPath) =>
-      ['railway.toml', 'railway.json'].some((name) => fs.existsSync(path.join(dirPath, name)))
+      ['railway.toml', 'railway.json', RAILWAY_IAC_FILE_PATH].some((name) => fs.existsSync(path.join(dirPath, name)))
     );
     const problems = lintDockerfile(dockerfileText, { railwayConfigured });
     if (problems.length > 0) {
