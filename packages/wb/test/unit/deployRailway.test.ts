@@ -115,6 +115,7 @@ describe('wb deploy for .railway/railway.ts', () => {
     // The first plan is invalidated by the variable sync, so only the re-checked plan may be applied.
     expect(readPlanPath(secondPlan)).not.toBe(readPlanPath(firstPlan));
     expect(apply?.args.slice(2)).toEqual(['--plan', readPlanPath(secondPlan), '--yes']);
+    expect(fsSync.existsSync(path.dirname(readPlanPath(secondPlan)))).toBe(false);
     expect(up?.args).toEqual(['up', '--ci', '--project=project-1', '--environment=production', '--service=app']);
   });
 

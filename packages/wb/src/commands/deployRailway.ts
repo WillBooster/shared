@@ -106,7 +106,7 @@ async function createRailwayContext(project: Project): Promise<RailwayContext> {
 
 /** Plan `envName` and exit unless every change is allowed; returns the saved plan file. */
 async function planAndCheck(context: RailwayContext, envName: string): Promise<string> {
-  const planPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wb-railway-')), 'plan.json');
+  const planPath = createPlanPath(envName);
   const output = await runRailway(context, ['config', 'plan', '--json', '--out', planPath], envName, 'pipe');
   const plan = planSchema.parse(JSON.parse(output));
   for (const diagnostic of plan.diagnostics ?? []) {
@@ -124,6 +124,20 @@ async function planAndCheck(context: RailwayContext, envName: string): Promise<s
   }
   console.info(chalk.green(`[${envName}] The Railway plan has ${changes.length} allowed change(s).`));
   return planPath;
+}
+
+let planDirPath: string | undefined;
+let planCount = 0;
+
+function createPlanPath(envName: string): string {
+  if (!planDirPath) {
+    const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-railway-'));
+    // An 'exit' listener also runs on wb's process.exit() error paths, which skip `finally` blocks.
+    process.once('exit', () => fs.rmSync(dirPath, { force: true, recursive: true }));
+    planDirPath = dirPath;
+  }
+  planCount++;
+  return path.join(planDirPath, `${envName}-${planCount}.json`);
 }
 
 async function syncVariables(
