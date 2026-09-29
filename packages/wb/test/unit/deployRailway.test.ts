@@ -19,6 +19,7 @@ beforeAll(buildWb, 120_000);
 setDefaultTimeout(30_000);
 
 const safeUpdate = { summary: 'Update app deploy.healthcheckPath', severity: 'safe', kind: 'resource.update' };
+const safeVariableSet = { summary: 'Set variable app.ARCH', severity: 'safe', kind: 'variable.set' };
 
 describe('wb deploy for .railway/railway.ts', () => {
   let projectDirPath: string;
@@ -43,8 +44,8 @@ describe('wb deploy for .railway/railway.ts', () => {
       'config plan',
     ]);
     expect(calls.filter((call) => call.args[0] === 'config').map((call) => call.env.WB_ENV)).toEqual([
-      'production',
       'staging',
+      'production',
     ]);
   });
 
@@ -125,7 +126,10 @@ describe('wb deploy for .railway/railway.ts', () => {
   });
 
   it('syncs fnox values, applies the re-checked plan, and deploys the mapped service', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], { WB_ENV: 'production', WB_VERSION: 'v1.2.3' });
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate, safeVariableSet], {
+      WB_ENV: 'production',
+      WB_VERSION: 'v1.2.3',
+    });
 
     expect(result.status).toBe(0);
     const calls = readCalls(projectDirPath);
@@ -188,7 +192,7 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(result.status).toBe(0);
     const calls = readCalls(projectDirPath);
     for (const call of calls) expect(call.env.RAILWAY_SERVICE_ID).toBeUndefined();
-    expect(calls.map((call) => call.env.RAILWAY_ENVIRONMENT_ID)).toEqual([undefined, 'env-production', 'env-staging']);
+    expect(calls.map((call) => call.env.RAILWAY_ENVIRONMENT_ID)).toEqual([undefined, 'env-staging', 'env-production']);
   });
 
   it('refuses a railwayTarget without any environment', async () => {
@@ -289,7 +293,7 @@ WB_ENV = { default = "test" }
     path.join(projectDirPath, '.railway', 'railway.ts'),
     `import { railwayVariables } from '@willbooster/wb/bin/railway.js';
 
-export const railwayTarget = { projectId: 'project-1', services: { production: 'app', staging: 'app-staging' } };
+export const railwayTarget = { projectId: 'project-1', services: { staging: 'app-staging', production: 'app' } };
 
 export default () => ({ env: railwayVariables(() => ({ type: 'preserve' }), { ARCH: 'x86_64' }) });
 `
