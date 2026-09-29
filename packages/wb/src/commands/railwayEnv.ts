@@ -121,6 +121,9 @@ export async function pushRailwayVariables(
     { ...options, stdio: 'pipe', killOnExit: true }
   );
   if (ret.status !== 0) {
+    // stderr carries the CLI's error; stdout (the variable listing) may echo values.
+    const detail = ret.stderr.trim();
+    if (detail) console.error(detail);
     console.error(chalk.red(`Failed to sync environment variables to Railway (exit ${ret.status}). Keys: ${keyNames}`));
     process.exit(ret.status ?? 1);
   }

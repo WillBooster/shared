@@ -28,6 +28,6 @@ describe('railwayVariables', () => {
   });
 
   it('rejects an evaluation that wb deploy did not start', () => {
-    expect(() => railwayVariables(preserve)).toThrow('inside the function passed to defineRailway');
+    expect(() => railwayVariables(preserve)).toThrow('inside the default-exported function');
   });
 });
