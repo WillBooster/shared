@@ -54,7 +54,8 @@ const deploymentListSchema = z.array(z.object({ id: z.string(), status: z.string
 const SUCCEEDED_STATUSES = new Set(['SUCCESS', 'SLEEPING']);
 const FAILED_STATUSES = new Set(['FAILED', 'CRASHED', 'REMOVED', 'REMOVING', 'SKIPPED']);
 const POLL_INTERVAL_MS = 5000;
-// Bounds each status poll and log fetch, so a stalled CLI call cannot outlive the deploy timeout.
+// Bounds each CLI call after `railway up`, so a stalled one cannot hang the deploy. A status poll is
+// further capped by the remaining deploy deadline; the log fetches after the verdict are not.
 const CALL_TIMEOUT_MS = 60_000;
 const deployTimeoutSecondsSchema = z.coerce.number().positive().default(1800);
 
