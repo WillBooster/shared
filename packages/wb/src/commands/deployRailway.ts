@@ -54,6 +54,8 @@ const deploymentListSchema = z.array(z.object({ id: z.string(), status: z.string
 const SUCCEEDED_STATUSES = new Set(['SUCCESS', 'SLEEPING']);
 const FAILED_STATUSES = new Set(['FAILED', 'CRASHED', 'REMOVED', 'REMOVING', 'SKIPPED']);
 const POLL_INTERVAL_MS = 5000;
+// Bounds each status poll and log fetch, so a stalled CLI call cannot outlive the deploy timeout.
+const CALL_TIMEOUT_MS = 60_000;
 const deployTimeoutSecondsSchema = z.coerce.number().positive().default(1800);
 
 interface RailwayContext {
@@ -90,6 +92,9 @@ export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, p
       `WB_ENV (${envName}) must be one of the environments in railwayTarget.services: ${Object.keys(context.services).join(', ')}.`
     );
   }
+  // Parse before changing anything: a malformed timeout must not abort a deploy after `railway up`.
+  // An empty value, as a workflow passes for an unset variable, means the default.
+  const timeoutSeconds = deployTimeoutSecondsSchema.parse(project.env.WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS || undefined);
   // Ordinary env loading only warns when fnox cannot resolve a secret; deploying would then keep
   // stale values on Railway, so fail before changing anything. `env = false` keys are Railway's.
   await checkEnv(argv, { exportedOnly: true });
@@ -110,7 +115,7 @@ export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, p
   // finishes, so the verdict comes from the created deployment's status instead of its exit code.
   const upOutput = await runRailway(context, ['up', '--detach', '--json', ...targetArgs], envName, 'pipe');
   const { deploymentId } = upResultSchema.parse(JSON.parse(upOutput));
-  const failure = await waitForDeployment(context, envName, targetArgs, deploymentId);
+  const failure = await waitForDeployment(context, envName, targetArgs, deploymentId, timeoutSeconds);
   await printDeploymentLogs(context, envName, [deploymentId, '--build', '--lines=1000', ...targetArgs]);
   if (failure) {
     await printDeploymentLogs(context, envName, [deploymentId, '--deployment', '--lines=200', ...targetArgs]);
@@ -124,9 +129,9 @@ async function waitForDeployment(
   context: RailwayContext,
   envName: string,
   targetArgs: string[],
-  deploymentId: string
+  deploymentId: string,
+  timeoutSeconds: number
 ): Promise<string | undefined> {
-  const timeoutSeconds = deployTimeoutSecondsSchema.parse(context.project.env.WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS);
   const deadline = Date.now() + timeoutSeconds * 1000;
   let lastStatus: string | undefined;
   for (;;) {
@@ -134,10 +139,22 @@ async function waitForDeployment(
       context,
       ['deployment', 'list', '--json', '--limit=20', ...targetArgs],
       envName,
-      'pipe'
+      'pipe',
+      Math.max(1, Math.min(CALL_TIMEOUT_MS, deadline - Date.now()))
     );
+    // A transient API error or malformed output must not fail a deployment that is still running.
+    let deployments: z.infer<typeof deploymentListSchema> | undefined;
     if (ret.status === 0) {
-      const deployment = deploymentListSchema.parse(JSON.parse(ret.stdout)).find(({ id }) => id === deploymentId);
+      try {
+        deployments = deploymentListSchema.parse(JSON.parse(ret.stdout));
+      } catch (error) {
+        console.warn(chalk.yellow(`railway deployment list printed unexpected output: ${String(error)}`));
+      }
+    } else {
+      console.warn(chalk.yellow(`railway deployment list failed (exit ${ret.status}): ${ret.stderr.trim()}`));
+    }
+    if (deployments) {
+      const deployment = deployments.find(({ id }) => id === deploymentId);
       if (!deployment && lastStatus) {
         return `Railway deployment ${deploymentId} disappeared from the deployment list (last status: ${lastStatus}).`;
       }
@@ -147,9 +164,6 @@ async function waitForDeployment(
         if (SUCCEEDED_STATUSES.has(lastStatus)) return;
         if (FAILED_STATUSES.has(lastStatus)) return `Railway deployment ${deploymentId} ended with ${lastStatus}.`;
       }
-    } else {
-      // A transient API error must not fail a deployment that is still running.
-      console.warn(chalk.yellow(`railway deployment list failed (exit ${ret.status}): ${ret.stderr.trim()}`));
     }
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) {
@@ -160,7 +174,7 @@ async function waitForDeployment(
 }
 
 async function printDeploymentLogs(context: RailwayContext, envName: string, args: string[]): Promise<void> {
-  const ret = await spawnRailway(context, ['logs', ...args], envName, 'inherit');
+  const ret = await spawnRailway(context, ['logs', ...args], envName, 'inherit', CALL_TIMEOUT_MS);
   if (ret.status !== 0) console.warn(chalk.yellow(`railway logs failed (exit ${ret.status}).`));
 }
 
@@ -276,13 +290,15 @@ async function spawnRailway(
   context: RailwayContext,
   args: string[],
   envName: string,
-  stdio: 'inherit' | 'pipe'
+  stdio: 'inherit' | 'pipe',
+  timeoutMs?: number
 ): Promise<Awaited<ReturnType<typeof spawnAsync>>> {
   return spawnAsync(context.binaryPath, args, {
     cwd: context.project.dirPath,
     env: await buildRailwayEnv(context, envName),
     stdio,
     killOnExit: true,
+    timeout: timeoutMs,
   });
 }
 

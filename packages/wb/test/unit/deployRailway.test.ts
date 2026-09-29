@@ -272,6 +272,17 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(result.stderr).toContain('deployment-new did not finish within 1 seconds (last status: BUILDING)');
   });
 
+  it('fails at the timeout even when a status poll never returns', () => {
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'HANG',
+      WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS: '1',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('deployment-new did not finish within 1 seconds (last status: not listed)');
+  });
+
   it('reports a failed variable sync with the CLI error but never its stdout', () => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
@@ -435,13 +446,16 @@ if (args[0] === 'environment') {
   const statuses = (process.env.FAKE_RAILWAY_DEPLOYMENT_STATUSES || 'SUCCESS').split(',');
   const pollCount = fs.readFileSync(logPath, 'utf8').trim().split('\\n').filter((line) => JSON.parse(line).args[0] === 'deployment').length;
   const status = statuses[Math.min(pollCount, statuses.length) - 1];
-  if (status === 'ERROR') {
+  if (status === 'HANG') {
+    setInterval(() => {}, 1000);
+  } else if (status === 'ERROR') {
     console.error('railway deployment list error');
     process.exit(1);
+  } else {
+    const deployments = [{ id: 'deployment-old', status: 'SUCCESS', createdAt: '2026-01-01T00:00:00Z', meta: null }];
+    if (status !== 'MISSING') deployments.unshift({ id: 'deployment-new', status, createdAt: '2026-01-02T00:00:00Z', meta: null });
+    console.log(JSON.stringify(deployments, null, 2));
   }
-  const deployments = [{ id: 'deployment-old', status: 'SUCCESS', createdAt: '2026-01-01T00:00:00Z', meta: null }];
-  if (status !== 'MISSING') deployments.unshift({ id: 'deployment-new', status, createdAt: '2026-01-02T00:00:00Z', meta: null });
-  console.log(JSON.stringify(deployments, null, 2));
 } else if (args[0] === 'logs') {
   if (process.env.FAKE_RAILWAY_LOGS_FAIL) process.exit(1);
   console.log(args.includes('--build') ? 'fake build log' : 'fake deploy log');
