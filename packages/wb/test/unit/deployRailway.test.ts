@@ -178,7 +178,7 @@ interface RailwayCall {
 function runWb(
   projectDirPath: string,
   args: string[],
-  planChanges: unknown[],
+  planChanges: { summary: string; severity: string; kind: string }[],
   env: Record<string, string> = {}
 ): childProcess.SpawnSyncReturns<string> {
   return childProcess.spawnSync(nodePath!, [binIndexPath, ...args], {
@@ -188,7 +188,10 @@ function runWb(
       PATH: process.env.PATH,
       HOME: process.env.HOME,
       TMPDIR: process.env.TMPDIR,
-      FAKE_RAILWAY_PLAN: JSON.stringify({ changeSet: { changes: planChanges }, diagnostics: [] }),
+      FAKE_RAILWAY_PLAN: JSON.stringify({
+        changeSet: { changes: planChanges },
+        destructive: planChanges.some((change) => change.severity === 'destructive'),
+      }),
       ...env,
     },
   });
@@ -262,8 +265,9 @@ if (args[0] === 'environment') {
   console.error('railway variables error');
   process.exit(1);
 } else if (args[0] === 'config' && args[1] === 'plan') {
+  // Like the real CLI, the --out artifact and the stdout report have different shapes.
   fs.writeFileSync(args[args.indexOf('--out') + 1], process.env.FAKE_RAILWAY_PLAN);
-  console.log(process.env.FAKE_RAILWAY_PLAN);
+  console.log(JSON.stringify({ ok: true, changeSet: { changes: [] }, diagnostics: [] }));
 }
 `,
     { mode: 0o755 }

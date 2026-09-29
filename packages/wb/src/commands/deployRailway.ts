@@ -26,11 +26,16 @@ const environmentListSchema = z.object({
   environments: z.array(z.object({ id: z.string(), name: z.string() })),
 });
 
-const planSchema = z.object({
+const planReportSchema = z.object({
+  diagnostics: z.array(z.object({ severity: z.string(), message: z.string() })).nullish(),
+});
+
+// The `--out` artifact that `config apply --plan` applies; its shape differs from the stdout report.
+const planArtifactSchema = z.object({
   changeSet: z.object({
     changes: z.array(z.object({ summary: z.string(), severity: z.string(), kind: z.string() })),
   }),
-  diagnostics: z.array(z.object({ severity: z.string(), message: z.string() })).nullish(),
+  destructive: z.boolean(),
 });
 
 // Everything else (variable deletions, volume detachments, resource creation or deletion, and kinds
@@ -108,15 +113,19 @@ async function createRailwayContext(project: Project): Promise<RailwayContext> {
 async function planAndCheck(context: RailwayContext, envName: string): Promise<string> {
   const planPath = createPlanPath(envName);
   const output = await runRailway(context, ['config', 'plan', '--json', '--out', planPath], envName, 'pipe');
-  const plan = planSchema.parse(JSON.parse(output));
-  for (const diagnostic of plan.diagnostics ?? []) {
+  for (const diagnostic of planReportSchema.parse(JSON.parse(output)).diagnostics ?? []) {
     console.warn(chalk.yellow(`[${envName}] ${diagnostic.severity}: ${diagnostic.message}`));
   }
+  // Check the artifact that `config apply` applies, not the stdout report.
+  const plan = planArtifactSchema.parse(JSON.parse(fs.readFileSync(planPath, 'utf8')));
   const { changes } = plan.changeSet;
   for (const change of changes) console.info(`[${envName}] ${change.severity} ${change.kind}: ${change.summary}`);
   const rejectedChanges = changes.filter(
     (change) => change.severity !== 'safe' || !ALLOWED_CHANGE_KINDS.has(change.kind)
   );
+  if (plan.destructive && rejectedChanges.length === 0) {
+    exitWithError(`The Railway plan for ${envName} is marked destructive although none of its changes is.`);
+  }
   if (rejectedChanges.length > 0) {
     exitWithError(
       `The Railway plan for ${envName} contains changes that need a human decision:\n${rejectedChanges.map((change) => `- ${change.summary}`).join('\n')}\nDeclare what Railway should keep: a volume, domain, or service in ${RAILWAY_IAC_FILE_PATH}; a variable in fnox, or in railwayOnlyVariables when Railway supplies it (including RAILWAY_*, NIXPACKS_*, and CI keys). Delete it on Railway by hand only when it is no longer needed.`
