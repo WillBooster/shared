@@ -251,15 +251,15 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(result.stdout).toContain('fake deploy log');
   });
 
-  it('fails when the created deployment disappears from the list before succeeding', () => {
+  it('keeps waiting while the created deployment is missing from the newest deployments', () => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
-      FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'DEPLOYING,MISSING',
+      FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'DEPLOYING,MISSING,SUCCESS',
     });
 
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain('disappeared from the deployment list (last status: DEPLOYING)');
-  });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('deployment-new: SUCCESS');
+  }, 60_000);
 
   it('fails when the created deployment does not finish within the timeout', () => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {

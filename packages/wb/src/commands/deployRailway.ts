@@ -154,10 +154,8 @@ async function waitForDeployment(
       console.warn(chalk.yellow(`railway deployment list failed (exit ${ret.status}): ${ret.stderr.trim()}`));
     }
     if (deployments) {
+      // The list holds only the newest deployments, so absence proves nothing; removal shows as a status.
       const deployment = deployments.find(({ id }) => id === deploymentId);
-      if (!deployment && lastStatus) {
-        return `Railway deployment ${deploymentId} disappeared from the deployment list (last status: ${lastStatus}).`;
-      }
       if (deployment && deployment.status !== lastStatus) {
         lastStatus = deployment.status;
         console.info(`[${envName}] Railway deployment ${deploymentId}: ${lastStatus}`);
