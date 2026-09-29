@@ -118,6 +118,19 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(up?.args).toEqual(['up', '--ci', '--project=project-1', '--environment=production', '--service=app']);
   });
 
+  it('reports a failed variable sync with the CLI error but never its stdout', () => {
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_VARIABLES_FAIL: '1',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('railway variables error');
+    expect(result.stderr).toContain('Failed to sync environment variables to Railway');
+    expect(`${result.stdout}${result.stderr}`).not.toContain('SECRET_VALUE_LISTING');
+    expect(readCalls(projectDirPath).map((call) => call.args[0])).not.toContain('up');
+  });
+
   it('refuses a railwayTarget without any environment', async () => {
     await fs.writeFile(
       path.join(projectDirPath, '.railway', 'railway.ts'),
@@ -160,6 +173,7 @@ function runWb(
     env: {
       PATH: process.env.PATH,
       HOME: process.env.HOME,
+      TMPDIR: process.env.TMPDIR,
       FAKE_RAILWAY_PLAN: JSON.stringify({ changeSet: { changes: planChanges }, diagnostics: [] }),
       ...env,
     },
@@ -229,6 +243,10 @@ const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(path.join(projectDirPath, 'railway-calls.jsonl'))}, JSON.stringify({ args, env: process.env }) + '\\n');
 if (args[0] === 'environment') {
   console.log(JSON.stringify({ environments: [{ id: 'env-production', name: 'production' }, { id: 'env-staging', name: 'staging' }] }));
+} else if (args[0] === 'variables' && process.env.FAKE_RAILWAY_VARIABLES_FAIL) {
+  console.log('SECRET_VALUE_LISTING');
+  console.error('railway variables error');
+  process.exit(1);
 } else if (args[0] === 'config' && args[1] === 'plan') {
   fs.writeFileSync(args[args.indexOf('--out') + 1], process.env.FAKE_RAILWAY_PLAN);
   console.log(process.env.FAKE_RAILWAY_PLAN);

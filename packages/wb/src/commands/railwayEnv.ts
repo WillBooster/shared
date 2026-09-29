@@ -107,8 +107,8 @@ export async function pushRailwayVariables(
 ): Promise<void> {
   const [executable, ...commandArgs] = command;
   const keyNames = entries.map(([key]) => key).join(', ');
-  // stdio: 'pipe' keeps the Railway CLI's variable listing (which echoes values) out of CI logs;
-  // only key names are ever printed.
+  // stdio: 'pipe' keeps the Railway CLI's stdout, a variable listing that echoes values, out of CI
+  // logs: wb prints only key names plus the CLI's stderr, which carries its error.
   const ret = await spawnAsync(
     executable,
     [
@@ -121,7 +121,6 @@ export async function pushRailwayVariables(
     { ...options, stdio: 'pipe', killOnExit: true }
   );
   if (ret.status !== 0) {
-    // stderr carries the CLI's error; stdout (the variable listing) may echo values.
     const detail = ret.stderr.trim();
     if (detail) console.error(detail);
     console.error(chalk.red(`Failed to sync environment variables to Railway (exit ${ret.status}). Keys: ${keyNames}`));
