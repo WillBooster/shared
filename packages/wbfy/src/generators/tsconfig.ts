@@ -63,6 +63,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       // type-aware linting still needs them covered by the project config.
       addIncludePath(newSettings, 'prisma/**/*');
     }
+    if (hasRailwayIac(config)) addIncludePath(newSettings, '.railway/**/*');
 
     const filePath = path.resolve(config.dirPath, 'tsconfig.json');
     const existingContent = await fsUtil.readFileIfExists(filePath);
@@ -313,7 +314,7 @@ async function normalizeFrameworkTsconfig(config: PackageConfig): Promise<void> 
   const originalSettingsJson = JSON.stringify(settings);
   normalizeNextTsconfigModuleSettings(settings);
   normalizeNextTsconfigPathAliases(settings.compilerOptions);
-  addScriptsIncludeForFrameworkProject(settings);
+  addIncludesForFrameworkProject(settings, config);
   addUndiciTypesPathMapping(settings, config);
   // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
   // already-clean tsconfig.json survive wbfy runs.
@@ -359,14 +360,20 @@ function addUndiciTypesPathMapping(settings: TsConfigJson, config: PackageConfig
   };
 }
 
-function addScriptsIncludeForFrameworkProject(settings: TsConfigJson): void {
+function addIncludesForFrameworkProject(settings: TsConfigJson, config: PackageConfig): void {
   // Omitting include lets framework tsconfigs keep TypeScript's default
   // "all TS/TSX files" behavior, which already covers scripts.
   if (!settings.include) return;
-  if (settings.include.includes('scripts/**/*')) return;
+  const includeCount = settings.include.length;
+  addIncludePath(settings, 'scripts/**/*');
+  // Include wildcards skip dot directories, so framework globs such as `**/*.ts` never reach `.railway/`.
+  if (hasRailwayIac(config)) addIncludePath(settings, '.railway/**/*');
+  // Sorting an unchanged include would rewrite an already-clean tsconfig and drop its comments.
+  if (settings.include.length > includeCount) settings.include.sort();
+}
 
-  settings.include.push('scripts/**/*');
-  settings.include.sort();
+function hasRailwayIac(config: PackageConfig): boolean {
+  return fs.existsSync(path.resolve(config.dirPath, '.railway', 'railway.ts'));
 }
 
 function normalizeNextTsconfigModuleSettings(settings: TsConfigJson): void {
