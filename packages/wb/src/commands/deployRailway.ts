@@ -57,9 +57,10 @@ const FAILED_STATUSES = new Set(['FAILED', 'CRASHED', 'REMOVED', 'REMOVING', 'SK
 const POLL_INTERVAL_MS = 5000;
 // Railway creates the apply-triggered deployment seconds after `config apply` returns.
 const APPLIED_DEPLOYMENT_TIMEOUT_MS = 60_000;
-// Bound each Railway call made while waiting, so a stalled one cannot hang the deploy. A deployment list
-// is further capped by the remaining wait deadline; one within the 60-second apply waits is kept short so
-// that a stalled one leaves the wait time for more polls.
+// Bound each deployment list and log fetch, so a stalled one cannot hang the deploy. A deployment list is
+// further capped by the remaining wait deadline, and one around `config apply` is kept short so that a
+// stalled one leaves the 60-second wait time for more polls; the log fetches after the verdict are not
+// capped by a deadline.
 const CALL_TIMEOUT_MS = 60_000;
 const APPLY_WAIT_CALL_TIMEOUT_MS = 15_000;
 const deployTimeoutSecondsSchema = z.coerce.number().positive().default(1800);
@@ -226,8 +227,9 @@ async function waitForDeployment(
 }
 
 /**
- * List the newest deployments of the target service, or `undefined` after a warning: a transient API
- * error or malformed output must not fail the deploy, so the callers poll again.
+ * List the newest deployments of the target service, or `undefined` after a warning (none when
+ * `deadline` cut the call, which the caller reports): a transient API error or malformed output must
+ * not fail the deploy, so the callers poll again.
  */
 async function listDeployments(
   context: RailwayContext,
