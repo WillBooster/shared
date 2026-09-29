@@ -115,7 +115,7 @@ export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, p
   // skip it), which `railway up` must supersede; skipping a plan the CLI would treat as a noop keeps one
   // deployment.
   if (needsApply) {
-    const listedOutput = await runRailway(context, deploymentListArgs(targetArgs), envName, 'pipe');
+    const listedOutput = await runRailway(context, deploymentListArgs(targetArgs), envName, 'pipe', CALL_TIMEOUT_MS);
     const knownIds = new Set(deploymentListSchema.parse(JSON.parse(listedOutput)).map(({ id }) => id));
     await runRailway(context, ['config', 'apply', '--plan', planPath, '--yes'], envName);
     await waitForAppliedDeployment(context, envName, targetArgs, knownIds);
@@ -342,9 +342,10 @@ async function runRailway(
   context: RailwayContext,
   args: string[],
   envName: string,
-  stdio: 'inherit' | 'pipe' = 'inherit'
+  stdio: 'inherit' | 'pipe' = 'inherit',
+  timeoutMs?: number
 ): Promise<string> {
-  const ret = await spawnRailway(context, args, envName, stdio);
+  const ret = await spawnRailway(context, args, envName, stdio, timeoutMs);
   if (ret.status !== 0) {
     if (stdio === 'pipe') console.error(ret.stdout.trim());
     console.error(ret.stderr.trim());
