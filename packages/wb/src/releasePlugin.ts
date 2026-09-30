@@ -8,7 +8,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { z } from 'zod';
+
 import {
+  assertDefaultTagFormat,
   buildScriptPath,
   findOrCreateDraftRelease,
   publishRelease,
@@ -26,6 +29,8 @@ interface Context {
 
 export function verifyConditions(pluginConfig: unknown, { cwd, env }: Context): void {
   releasePluginConfigSchema.parse(pluginConfig);
+  // semantic-release passes its options, including `tagFormat`, along with the plugin's own.
+  assertDefaultTagFormat(z.object({ tagFormat: z.unknown() }).parse(pluginConfig).tagFormat);
   for (const name of ['GITHUB_REPOSITORY', 'GITHUB_TOKEN']) {
     if (!env[name]) throw new Error(`${name} is not set.`);
   }
@@ -42,7 +47,7 @@ export async function prepare(
   }: Context & { nextRelease: { gitHead: string; gitTag: string; name: string; notes?: string; version: string } }
 ): Promise<void> {
   const config = releasePluginConfigSchema.parse(pluginConfig);
-  runBuildScript(cwd, env, nextRelease.version);
+  await runBuildScript(cwd, env, nextRelease.version);
   const draft = await findOrCreateDraftRelease(createGitHubClient(env), nextRelease);
   await publishRelease({ config, cwd, env, logger, draft, version: nextRelease.version });
 }

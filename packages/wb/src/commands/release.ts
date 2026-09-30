@@ -46,8 +46,6 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   // multi-semantic-release walks the workspaces itself.
   const project = projects.root;
 
-  if (!(await handlePendingReleasesIfConfigured(project, argv))) return;
-
   // Maps a mutated file to its pre-release content (raw bytes — bun.lockb is binary); `undefined`
   // marks a file that did not exist and must be deleted on restore (e.g. a created lockfile).
   const modifiedFiles = new Map<string, Buffer | undefined>();
@@ -79,27 +77,30 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   let exitCode = 0;
   let releaseRanSuccessfully = false;
   try {
-    if (await releasePublishesToNpm(project)) {
-      await prepareNpmCompatibleLayout(project, argv, modifiedFiles, activeChild);
-    } else {
-      // The hoisted reinstall and workspace-range rewrite exist solely so npm (which the
-      // @semantic-release/npm plugin shells out to) can digest the checkout; without that plugin
-      // the release runs directly on the isolated layout (issue #1000).
-      console.info(
-        chalk.cyan(
-          'Skipping the hoisted reinstall because the semantic-release configuration does not include @semantic-release/npm.'
-        )
-      );
+    // Completing or deferring to a pending release replaces semantic-release in this run.
+    if (await handlePendingReleasesIfConfigured(project, argv, activeChild)) {
+      if (await releasePublishesToNpm(project)) {
+        await prepareNpmCompatibleLayout(project, argv, modifiedFiles, activeChild);
+      } else {
+        // The hoisted reinstall and workspace-range rewrite exist solely so npm (which the
+        // @semantic-release/npm plugin shells out to) can digest the checkout; without that plugin
+        // the release runs directly on the isolated layout (issue #1000).
+        console.info(
+          chalk.cyan(
+            'Skipping the hoisted reinstall because the semantic-release configuration does not include @semantic-release/npm.'
+          )
+        );
+      }
+      // A signal may have arrived between children (nothing to forward to at that instant), so it
+      // must be checked explicitly before anything publishes.
+      if (receivedSignal) {
+        throw new Error(`Aborted by ${receivedSignal} before running the release.`);
+      }
+      exitCode = await runSemanticRelease(project, argv, activeChild);
+      // Recorded separately from receivedSignal: a signal arriving AFTER a successful publish must
+      // not demote the restore to byte-for-byte (that would revert the published version bumps).
+      releaseRanSuccessfully = exitCode === 0;
     }
-    // A signal may have arrived between children (nothing to forward to at that instant), so it
-    // must be checked explicitly before anything publishes.
-    if (receivedSignal) {
-      throw new Error(`Aborted by ${receivedSignal} before running the release.`);
-    }
-    exitCode = await runSemanticRelease(project, argv, activeChild);
-    // Recorded separately from receivedSignal: a signal arriving AFTER a successful publish must
-    // not demote the restore to byte-for-byte (that would revert the published version bumps).
-    releaseRanSuccessfully = exitCode === 0;
   } catch (error) {
     // Errors must unwind through this try (never `process.exit` inside it): the restore below is
     // the only thing that undoes the bunfig/package.json mutations.
@@ -142,25 +143,26 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
 }
 
 /** Returns whether the release continues with semantic-release. */
-async function handlePendingReleasesIfConfigured(project: Project, argv: ReleaseArgv): Promise<boolean> {
+async function handlePendingReleasesIfConfigured(
+  project: Project,
+  argv: ReleaseArgv,
+  activeChild: ActiveChildRef
+): Promise<boolean> {
   const config = readSemanticReleaseConfig(project.dirPath, project.packageJson);
   if (typeof config !== 'object' || !Array.isArray(config.plugins)) return true;
   const plugin = config.plugins.find((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === releasePluginName);
   if (plugin === undefined) return true;
 
-  try {
-    return await handlePendingReleases({
-      config: releasePluginConfigSchema.parse(Array.isArray(plugin) ? plugin[1] : {}),
-      cwd: project.dirPath,
-      env: project.env,
-      releaseBranches: config.branches,
-      wbDryRun: !!argv.dryRun,
-      forwardedArgs: getForwardedArgs(argv),
-    });
-  } catch (error) {
-    console.error(chalk.red(getErrorMessage(error)));
-    process.exit(1);
-  }
+  return await handlePendingReleases({
+    config: releasePluginConfigSchema.parse(Array.isArray(plugin) ? plugin[1] : {}),
+    cwd: project.dirPath,
+    env: project.env,
+    releaseBranches: config.branches,
+    tagFormat: config.tagFormat,
+    wbDryRun: !!argv.dryRun,
+    forwardedArgs: getForwardedArgs(argv),
+    activeChild,
+  });
 }
 
 function getForwardedArgs(argv: ReleaseArgv): string[] {
@@ -268,6 +270,7 @@ interface SemanticReleaseConfig {
   branches?: unknown;
   extends?: unknown;
   plugins?: unknown;
+  tagFormat?: unknown;
 }
 
 function readSemanticReleaseConfig(

@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { z } from 'zod';
 
 import {
+  assertDefaultTagFormat,
   fetchPublishedCommits,
   findDraftRelease,
   listPendingReleases,
@@ -17,11 +18,13 @@ import {
   releasePluginName,
   runBuildScript,
 } from './draftRelease.js';
-import type { ReleasePluginConfig } from './draftRelease.js';
+import type { ChildTracker, ReleasePluginConfig } from './draftRelease.js';
 import { createGitHubClient } from './http.js';
 import type { GitHubClient } from './http.js';
 
 const pendingBranchPrefix = 'release-pending/';
+// The release workflow file, which the registries trust for publishing.
+const releaseWorkflowRoute = 'actions/workflows/release.yml';
 
 interface PendingReleaseContext {
   config: ReleasePluginConfig;
@@ -30,6 +33,7 @@ interface PendingReleaseContext {
   github: GitHubClient;
   head: string;
   dryRun: boolean;
+  activeChild: ChildTracker;
 }
 
 /**
@@ -41,24 +45,28 @@ export async function handlePendingReleases({
   cwd,
   env,
   releaseBranches,
+  tagFormat,
   wbDryRun,
   forwardedArgs,
+  activeChild,
 }: {
   config: ReleasePluginConfig;
   cwd: string;
   env: Record<string, string | undefined>;
   releaseBranches: unknown;
+  tagFormat: unknown;
   wbDryRun: boolean;
   forwardedArgs: string[];
+  activeChild: ChildTracker;
 }): Promise<boolean> {
   const { dryRun, branch: branchOption } = parseForwardedArgs(forwardedArgs, env);
+  assertDefaultTagFormat(tagFormat);
   const releaseBranch = branchOption ?? parseReleaseBranch(releaseBranches);
   const github = createGitHubClient(env);
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
-  const context = { config, cwd, env, github, head, dryRun: wbDryRun || dryRun };
-  // The release workflow file, which the registries trust for publishing.
+  const context = { config, cwd, env, github, head, dryRun: wbDryRun || dryRun, activeChild };
   const dispatch = (ref: string): Promise<unknown> =>
-    github('POST', 'actions/workflows/release.yml/dispatches', { ref });
+    github('POST', `${releaseWorkflowRoute}/dispatches`, { ref }, () => findActiveRun(github, ref));
 
   const refName = env.GITHUB_REF_NAME;
   if (refName?.startsWith(pendingBranchPrefix)) {
@@ -120,7 +128,7 @@ function parseForwardedArgs(
 }
 
 async function completePendingRelease(context: PendingReleaseContext, tag: string): Promise<void> {
-  const { config, cwd, env, github, head, dryRun } = context;
+  const { config, cwd, env, github, head, dryRun, activeChild } = context;
   const draft = await findDraftRelease(github, tag);
   if (!draft) {
     // A previous attempt of this run published it; this attempt still hands over to the release branch.
@@ -135,8 +143,8 @@ async function completePendingRelease(context: PendingReleaseContext, tag: strin
     return;
   }
   const version = tag.replace(/^v/, '');
-  runBuildScript(cwd, env, version);
-  await publishRelease({ config, cwd, env, logger: console, draft, version });
+  await runBuildScript(cwd, env, version, activeChild);
+  await publishRelease({ config, cwd, env, logger: console, draft, version, tracker: activeChild });
 }
 
 /** Returns whether a pending release of an older commit must be completed before releasing this commit. */
@@ -164,6 +172,11 @@ async function deferToPendingRelease(
     }
 
     const branch = `${pendingBranchPrefix}${draft.tag_name}`;
+    // A re-run after a dispatch whose response was lost must not start a second run publishing the same version.
+    if (await findActiveRun(github, branch)) {
+      console.info(`A run on ${branch} is completing the release; that run releases this commit next.`);
+      return true;
+    }
     if (dryRun) {
       console.info(`Would dispatch a run on ${branch} to complete the release before releasing this commit.`);
       return true;
@@ -174,6 +187,14 @@ async function deferToPendingRelease(
     return true;
   }
   return false;
+}
+
+/** Returns a queued or running release workflow run on `branch`, which completes what a dispatch on it would. */
+async function findActiveRun(github: GitHubClient, branch: string): Promise<unknown> {
+  const { workflow_runs: runs } = z
+    .object({ workflow_runs: z.array(z.object({ status: z.string() })) })
+    .parse(await github('GET', `${releaseWorkflowRoute}/runs?branch=${encodeURIComponent(branch)}`));
+  return runs.find((run) => run.status !== 'completed');
 }
 
 async function createBranch(github: GitHubClient, branch: string, commit: string): Promise<void> {

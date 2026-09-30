@@ -84,7 +84,14 @@ function respond(state, method, url, body) {
     delete state.refs[ref];
     return new Response(null, { status: 204 });
   }
-  if (method === 'POST' && route === 'actions/workflows/release.yml/dispatches') return new Response(null, { status: 204 });
+  if (method === 'POST' && route === 'actions/workflows/release.yml/dispatches') {
+    state.runs.push({ branch: body.ref, status: 'queued' });
+    return new Response(null, { status: 204 });
+  }
+  if (method === 'GET' && route.startsWith('actions/workflows/release.yml/runs?branch=')) {
+    const branch = decodeURIComponent(route.split('=')[1]);
+    return Response.json({ workflow_runs: state.runs.filter((run) => run.branch === branch) });
+  }
   if (url.startsWith('https://registry.npmjs.org/')) {
     const commit = state.npmCommits[url.split('/').at(-1)];
     return commit ? Response.json({ gitHead: commit }) : new Response('', { status: 404 });
@@ -133,6 +140,8 @@ interface RunOptions {
   plugin?: boolean;
   // `default` omits the option, so that semantic-release applies its default branches.
   branches?: unknown[] | 'default';
+  tagFormat?: string;
+  runs?: { branch: string; status: string }[];
 }
 
 interface RunResult {
@@ -155,6 +164,8 @@ function runRelease(
     crate = 'release-test',
     plugin = true,
     branches = ['main'],
+    tagFormat,
+    runs = [],
   }: RunOptions = {}
 ): RunResult {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-release-plugin-test-'));
@@ -174,6 +185,7 @@ function runRelease(
       'pkg/package.json': JSON.stringify({ name: '@willbooster/release-test', version: '0.0.0-semantically-released' }),
       '.releaserc.json': JSON.stringify({
         ...(branches !== 'default' && { branches }),
+        ...(tagFormat && { tagFormat }),
         plugins: [
           '@semantic-release/commit-analyzer',
           '@semantic-release/release-notes-generator',
@@ -227,6 +239,7 @@ function runRelease(
         ),
         // The release workflow runs on an existing branch.
         refs: { [`refs/heads/${refName}`]: head },
+        runs,
         failures,
       })
     );
@@ -620,6 +633,50 @@ for (const failure of ['drop', 'serverError'] as const) {
     timeout
   );
 }
+
+test(
+  'a real run returns a dispatch that GitHub processed before the connection dropped without repeating it',
+  () => {
+    const result = runRelease([], {
+      drafts: olderDrafts,
+      npmCommits: olderNpmCommits,
+      failures: { 'POST /actions/workflows/release.yml/dispatches': 'dropAfterProcessing' },
+    });
+
+    expect(result.status, result.output).toBe(0);
+    expect(writesOf(result)).toEqual(deferralWrites);
+  },
+  timeout
+);
+
+test(
+  'a re-run does not dispatch again while a run is completing the pending release',
+  () => {
+    const result = runRelease([], {
+      drafts: olderDrafts,
+      npmCommits: olderNpmCommits,
+      runs: [{ branch: 'release-pending/v1.0.2', status: 'in_progress' }],
+    });
+
+    expect(result.status, result.output).toBe(0);
+    expect(result.output).toContain('A run on release-pending/v1.0.2 is completing the release');
+    expect(writesOf(result)).toEqual(['DELETE releases/1']);
+    expect(result.remoteTags).toEqual([]);
+  },
+  timeout
+);
+
+test(
+  'a custom tagFormat is refused before any request',
+  () => {
+    const result = runRelease(['--dry-run'], { tagFormat: 'release-$' + '{version}' });
+
+    expect(result.status).not.toBe(0);
+    expect(result.output).toContain("requires semantic-release's default tagFormat");
+    expect(result.requests).toEqual([]);
+  },
+  timeout
+);
 
 test(
   'a real run reports why creating the pending-release branch failed',

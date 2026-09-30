@@ -5,7 +5,8 @@
 // failed release computes the same version and skips each registry that already holds it from the same commit;
 // `wb release` completes a release left pending when a newer commit reaches the branch (see pendingRelease.ts).
 
-import { execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -43,8 +44,35 @@ export interface Logger {
 
 type Env = Record<string, string | undefined>;
 
-export function runBuildScript(cwd: string, env: Env, version: string): void {
-  execFileSync(path.join(cwd, buildScriptPath), [version], { cwd, env, stdio: 'inherit' });
+/** Holds the running child process so that `wb release`'s signal handler can terminate it. */
+export interface ChildTracker {
+  current: ChildProcess | undefined;
+}
+
+/** A later run reads the version back from the tag of a pending draft by removing the `v`. */
+export function assertDefaultTagFormat(tagFormat: unknown): void {
+  if (tagFormat !== undefined && tagFormat !== 'v${version}') {
+    throw new Error(`${releasePluginName} requires semantic-release's default tagFormat \`v\${version}\`.`);
+  }
+}
+
+export async function runBuildScript(cwd: string, env: Env, version: string, tracker?: ChildTracker): Promise<void> {
+  await run(path.join(cwd, buildScriptPath), [version], cwd, env, tracker);
+}
+
+/**
+ * Runs a command asynchronously rather than with `execFileSync`, which would block the event loop, so that `wb release`'s
+ * signal handler can terminate a build or publish when the release is cancelled.
+ */
+async function run(command: string, args: string[], cwd: string, env: Env, tracker?: ChildTracker): Promise<void> {
+  const code = await new Promise<number | null>((resolve, reject) => {
+    const child = spawn(command, args, { cwd, env, stdio: 'inherit' });
+    if (tracker) tracker.current = child;
+    child.on('error', reject).on('exit', resolve);
+  }).finally(() => {
+    if (tracker) tracker.current = undefined;
+  });
+  if (code !== 0) throw new Error(`${command} ${args.join(' ')} exited with ${code}.`);
 }
 
 /** Returns the draft release of `gitTag` that this release flow created, creating it if absent. */
@@ -76,6 +104,7 @@ export async function publishRelease({
   logger,
   draft,
   version,
+  tracker,
 }: {
   config: ReleasePluginConfig;
   cwd: string;
@@ -83,23 +112,21 @@ export async function publishRelease({
   logger: Logger;
   draft: Release;
   version: string;
+  tracker?: ChildTracker;
 }): Promise<void> {
   const gitHead = draft.target_commitish;
   const pkgDir = path.resolve(cwd, pkgRoot);
-  const run = (command: string, args: string[], dir: string): void => {
-    execFileSync(command, args, { cwd: dir, env, stdio: 'inherit' });
-  };
   const publishedCommits = await fetchPublishedCommits({ crate, cwd, pkgRoot, version });
   const targets = publishedCommits.map((target) => ({
     ...target,
     ...(target.registry === 'crates.io' && crate
       ? {
-          dryRun: async () => run('cargo', ['publish', '--dry-run', '--allow-dirty', '-p', crate], cwd),
-          publish: () => publishCrate(crate, cwd, env),
+          dryRun: () => run('cargo', ['publish', '--dry-run', '--allow-dirty', '-p', crate], cwd, env, tracker),
+          publish: () => publishCrate(crate, cwd, env, tracker),
         }
       : {
-          dryRun: async () => run('npm', ['publish', '--dry-run'], pkgDir),
-          publish: async () => run('npm', ['publish'], pkgDir),
+          dryRun: () => run('npm', ['publish', '--dry-run'], pkgDir, env, tracker),
+          publish: () => run('npm', ['publish'], pkgDir, env, tracker),
         }),
   }));
   for (const { commit, name } of targets) {
@@ -181,7 +208,7 @@ async function fetchPublishedCommit(
  * Publishes the crate with crates.io's trusted publishing, exchanging the GitHub Actions OIDC token for a short-lived
  * crates.io token. crates.io matches the caller's `release.yml` workflow, not the reusable workflow it calls.
  */
-async function publishCrate(crate: string, cwd: string, env: Env): Promise<void> {
+async function publishCrate(crate: string, cwd: string, env: Env, tracker?: ChildTracker): Promise<void> {
   const { value: jwt } = z.object({ value: z.string() }).parse(
     await fetchJson(`${env.ACTIONS_ID_TOKEN_REQUEST_URL}&audience=crates.io`, {
       headers: { Authorization: `Bearer ${env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` },
@@ -202,11 +229,13 @@ async function publishCrate(crate: string, cwd: string, env: Env): Promise<void>
   );
   try {
     // The release versions that script/build-release writes are not committed.
-    execFileSync('cargo', ['publish', '-p', crate, '--allow-dirty'], {
+    await run(
+      'cargo',
+      ['publish', '-p', crate, '--allow-dirty'],
       cwd,
-      env: { ...env, CARGO_REGISTRY_TOKEN: token },
-      stdio: 'inherit',
-    });
+      { ...env, CARGO_REGISTRY_TOKEN: token },
+      tracker
+    );
   } finally {
     // Revocation is best-effort (the token expires on its own); its failure must not fail an already-done publish.
     const response = await fetchWithRetry(tokensUrl, {
