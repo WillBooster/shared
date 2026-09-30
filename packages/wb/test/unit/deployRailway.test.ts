@@ -326,11 +326,13 @@ describe('wb deploy for .railway/railway.ts', () => {
     });
 
     expect(result.status).toBe(0);
-    // Each line appears once: the line railway up printed is not repeated, and the missed ones follow.
+    // Each line appears once: the line railway up printed is not repeated, the missed ones follow, and a line
+    // older than the newest one fetched still arrives on the next fetch.
     expect(result.stdout.match(/fake build log \d/g)).toEqual([
       'fake build log 1',
       'fake build log 2',
       'fake build log 3',
+      'fake build log 4',
     ]);
     expect(result.stdout).toContain(
       'railway up ended (exit 0) before wb could confirm that Railway deployment deployment-new finished; checking its status again.'
@@ -673,6 +675,8 @@ if (args[0] === 'environment') {
       { timestamp: at(1000), message: 'fake build log 1', level: 'info' },
       { timestamp: at(3000), message: '\\u001b[32mfake build log 2\\u001b[0m\\r\\n', level: 'info' },
       { timestamp: at(2000), message: 'fake build log 3', level: 'info' },
+      // Railway may deliver a line later than a newer one, so it appears from the second fetch on.
+      ...(calls.filter((call) => call.args[0] === 'logs').length > 1 ? [{ timestamp: at(1500), message: 'fake build log 4', level: 'info' }] : []),
     ].filter((entry) => Date.parse(entry.timestamp) >= since);
     for (const entry of entries) console.log(JSON.stringify(entry));
   } else {
