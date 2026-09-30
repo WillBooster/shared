@@ -10,7 +10,7 @@ import { clearProjectCaches } from '../../src/project.js';
 /**
  * Creates a fixture directory that the calling test file removes in `afterAll`, so concurrent test
  * files never copy fixtures over each other's directories. Call it at the test file's top level: the
- * hook attaches to the scope being collected, and without --parallel all test files share this
+ * hook attaches to the scope being collected, and the test files that one process runs share this
  * module, so a hook registered here at import time would run after the first importing file only.
  */
 export function createTempDir(): string {
