@@ -53,7 +53,7 @@ ${renderSectionTemplate(CHANGE_ISSUE_SECTIONS)}
 export async function generateGitHubTemplates(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateGitHubTemplates', async () => {
     // Templates are repository-level files, so a direct workspace-child invocation must not create them.
-    if (!config.isWillBoosterRepo || !config.isRoot) {
+    if (!config.isRoot) {
       return;
     }
 
