@@ -321,7 +321,8 @@ async function runRailwayUp(
  * checks are infrequent, and each one that is not rate-limited prints the build logs `railway up` missed.
  * The first check always gets a short call time, even when `railway up` used up the time. A check that
  * Railway rate-limits proves nothing, so it backs off and, past `deadline`, keeps the wait going for at
- * most another timeout; nothing waited on runs past the deadline in force.
+ * most another timeout. While the status is unknown, nothing waited on runs past the deadline in force;
+ * once it is terminal, the build log backfill only explains the verdict and has just its own call timeout.
  */
 async function waitForDeployment(
   context: RailwayContext,
