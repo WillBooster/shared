@@ -130,7 +130,7 @@ function parseForwardedArgs(
     const arg = args[index]!;
     if (arg === '--dry-run' || arg === '-d') {
       dryRun = true;
-    } else if (arg === '--branches' && /^[^-,][^,]*$/.test(args[index + 1] ?? '')) {
+    } else if (arg === '--branches' && branch === undefined && /^[^-,][^,]*$/.test(args[index + 1] ?? '')) {
       branch = args[++index];
     } else if (arg !== '--debug' && arg !== '--no-ci') {
       throw new Error(

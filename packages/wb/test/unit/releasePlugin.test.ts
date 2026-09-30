@@ -625,6 +625,7 @@ for (const args of [
   ['--', '--ci=false'],
   ['--', '--branches'],
   ['--', '--branches', 'main,next'],
+  ['--', '--branches', 'main', '--branches', 'next'],
   ['main'],
 ]) {
   test(
