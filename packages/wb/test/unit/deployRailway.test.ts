@@ -157,11 +157,9 @@ describe('wb deploy for .railway/railway.ts', () => {
       'deployment list',
       'config apply',
       'deployment list',
-      'up --ci',
-      'deployment list',
-      'logs deployment-new',
+      'up --json',
     ]);
-    const [, firstPlan, variables, secondPlan, , apply, , up, deploymentList] = calls;
+    const [, firstPlan, variables, secondPlan, , apply, , up] = calls;
     expect(firstPlan?.env).toMatchObject({
       RAILWAY_PROJECT_ID: 'project-1',
       RAILWAY_ENVIRONMENT_ID: 'env-production',
@@ -187,16 +185,12 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(apply?.args.slice(2)).toEqual(['--plan', readPlanPath(secondPlan), '--yes']);
     expect(fsSync.existsSync(path.dirname(readPlanPath(secondPlan)))).toBe(false);
     const targetArgs = ['--project=project-1', '--environment=production', '--service=app'];
-    expect(up?.args).toEqual(['up', '--ci', ...targetArgs]);
-    expect(deploymentList?.args).toEqual(['deployment', 'list', '--json', '--limit=20', ...targetArgs]);
-    expect(result.stdout).toContain('fake build log 3\nDeploy complete\n');
-    // The build logs fetched after the verdict repeat no line railway up printed.
-    expect(result.stdout.match(/fake build log \d/g)).toEqual([
-      'fake build log 1',
-      'fake build log 2',
-      'fake build log 3',
-    ]);
-    expect(result.stdout).toContain('Railway deployment deployment-new succeeded.');
+    expect(up?.args).toEqual(['up', '--json', ...targetArgs]);
+    // Only the message of each JSON log line is printed, and the final status line is not.
+    expect(result.stdout).toContain(
+      'fake build log 1\nunpacking archive\n\u001B[32mfake build log 2\u001B[0m\nfake build log 3\n[production] The Railway deployment succeeded.'
+    );
+    expect(result.stdout).not.toContain('"status"');
   });
 
   it('skips config apply when the re-checked plan has no changes, so railway up is the only deployment', () => {
@@ -212,9 +206,7 @@ describe('wb deploy for .railway/railway.ts', () => {
       'config plan',
       'variables --skip-deploys',
       'config plan',
-      'up --ci',
-      'deployment list',
-      'logs deployment-new',
+      'up --json',
     ]);
   });
 
@@ -239,9 +231,7 @@ describe('wb deploy for .railway/railway.ts', () => {
       'deployment list',
       'config apply',
       'deployment list',
-      'up --ci',
-      'deployment list',
-      'logs deployment-new',
+      'up --json',
     ]);
     const [rejectedApply, freshPlan, , apply] = calls.slice(5);
     expect(apply?.args.slice(2)).toEqual(['--plan', readPlanPath(freshPlan), '--yes']);
@@ -270,7 +260,7 @@ describe('wb deploy for .railway/railway.ts', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('config apply triggered Railway deployment deployment-applied (BUILDING)');
-    expect(result.stdout).toContain('deployment-new: SUCCESS');
+    expect(result.stdout).toContain('The Railway deployment succeeded.');
     expect(readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '))).toEqual([
       'environment list',
       'config plan',
@@ -281,9 +271,7 @@ describe('wb deploy for .railway/railway.ts', () => {
       'deployment list',
       'deployment list',
       'deployment list',
-      'up --ci',
-      'deployment list',
-      'logs deployment-new',
+      'up --json',
     ]);
   }, 60_000);
 
@@ -297,7 +285,7 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(result.stderr).toContain('railway deployment list failed (exit 1)');
     expect(result.stderr).toContain('railway deployment list did not answer within 15 seconds.');
     expect(result.stdout).toContain('config apply triggered Railway deployment deployment-applied');
-    expect(result.stdout).toContain('deployment-new: SUCCESS');
+    expect(result.stdout).toContain('The Railway deployment succeeded.');
   }, 60_000);
 
   // Whether Railway deploys the service for an ownership claim without changes is undocumented, so this
@@ -311,128 +299,95 @@ describe('wb deploy for .railway/railway.ts', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toContain('No deployment triggered by config apply was seen within 60 seconds');
-    expect(result.stdout).toContain('deployment-new: SUCCESS');
+    expect(result.stdout).toContain('The Railway deployment succeeded.');
     const commands = readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '));
     expect(commands).toContain('config apply');
-    expect(commands.indexOf('config apply')).toBeLessThan(commands.indexOf('up --ci'));
-    expect(commands.filter((command) => command === 'up --ci')).toHaveLength(1);
+    expect(commands.indexOf('config apply')).toBeLessThan(commands.indexOf('up --json'));
+    expect(commands.filter((command) => command === 'up --json')).toHaveLength(1);
   }, 90_000);
 
-  it('backfills the build logs railway up missed and checks the status at low frequency, backing off when rate-limited', () => {
+  it('finds the created deployment when railway up ends without the status line, backing off when rate-limited', () => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_UP: 'DISCONNECT',
-      FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'BUILDING,RATELIMIT,SUCCESS',
+      FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'RATELIMIT,SUCCESS',
     });
 
     expect(result.status).toBe(0);
-    // Each line appears once: the line railway up printed is not repeated, the missed ones follow, and a line
-    // older than the newest one fetched still arrives on the next fetch.
-    expect(result.stdout.match(/fake build log \d/g)).toEqual([
-      'fake build log 1',
-      'fake build log 2',
-      'fake build log 3',
-      'fake build log 4',
-    ]);
-    expect(result.stdout).toContain(
-      'railway up ended (exit 0) before wb could confirm that Railway deployment deployment-new finished; checking its status again.'
-    );
+    expect(result.stderr).toContain("railway up ended (exit 1) without reporting the deployment's result");
     expect(result.stderr).toContain('Railway rate-limited the status check; checking again in 60 seconds.');
+    expect(result.stdout).toContain('Railway deployment deployment-new: SUCCESS');
+    // The build logs are fetched once after the verdict.
+    expect(result.stdout).toContain('fake build log 4\n');
     expect(result.stdout).toContain('Railway deployment deployment-new succeeded.');
     const calls = readCalls(projectDirPath);
     const commands = calls.map((call) => call.args.slice(0, 2).join(' '));
-    expect(commands.slice(commands.indexOf('up --ci'))).toEqual([
-      'up --ci',
-      'deployment list',
-      'logs deployment-new',
+    expect(commands.slice(commands.indexOf('up --json'))).toEqual([
+      'up --json',
       'deployment list',
       'deployment list',
       'logs deployment-new',
     ]);
-    // Checks run every 30 seconds, and the rate-limited one waits twice as long before the next.
-    const [, firstCheck, secondCheck, thirdCheck] = calls
-      .slice(commands.indexOf('up --ci'))
-      .filter((call) => call.args[0] === 'deployment' || call.args[0] === 'up');
-    expect((secondCheck?.time ?? 0) - (firstCheck?.time ?? 0)).toBeGreaterThanOrEqual(30_000);
-    expect((thirdCheck?.time ?? 0) - (secondCheck?.time ?? 0)).toBeGreaterThanOrEqual(60_000);
-    const logs = calls.find((call) => call.args[0] === 'logs');
+    const [firstCheck, secondCheck, logs] = calls.slice(commands.indexOf('up --json') + 1);
+    expect((secondCheck?.time ?? 0) - (firstCheck?.time ?? 0)).toBeGreaterThanOrEqual(60_000);
     expect(logs?.args).toEqual(expect.arrayContaining(['--build', '--json', '--lines=5000']));
-    expect(logs?.args.some((arg) => arg.startsWith('--since='))).toBe(true);
-  }, 150_000);
+  }, 120_000);
 
-  it('succeeds despite failed status checks and build log fetches while the deployment is missing', () => {
+  it.each<{ name: string; env: Record<string, string>; message: string }>([
+    { name: 'none', env: { FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'MISSING' }, message: 'but found 0;' },
+    {
+      name: 'more than one',
+      env: { FAKE_RAILWAY_OTHER_DEPLOYMENT: '1' },
+      message: 'but found 2 (deployment-other, deployment-new);',
+    },
+  ])('fails when $name of the deployments was created since railway up started', ({ env, message }) => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_UP: 'DISCONNECT',
-      FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'ERROR,MISSING,SUCCESS',
-      FAKE_RAILWAY_LOGS_FAIL: '1',
+      ...env,
     });
 
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain('railway deployment list failed (exit 1)');
-    expect(result.stderr).toContain('railway logs failed (exit 1); the build logs above may be incomplete.');
-    expect(result.stdout).toContain('deployment-new: SUCCESS');
-    expect(readCalls(projectDirPath).filter((call) => call.args[0] === 'up')).toHaveLength(1);
-  }, 120_000);
-
-  it('stops railway up once it falls back to polling the status itself', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
-      WB_ENV: 'production',
-      FAKE_RAILWAY_UP: 'POLLING',
-    });
-
-    expect(result.status).toBe(0);
-    expect(result.stderr).toContain('Waiting on the deployment status instead');
-    expect(result.stdout).toContain('Railway deployment deployment-new succeeded.');
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`Expected one Railway deployment created since railway up started, ${message}`);
+    const commands = readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '));
+    expect(commands.slice(commands.indexOf('up --json'))).toEqual(['up --json', 'deployment list']);
   });
 
-  it('fails with the deploy logs when the created deployment fails', () => {
+  it('fails when railway up reports that the deployment failed', () => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_UP: 'FAILED',
-      FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'FAILED',
     });
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('Railway deployment deployment-new ended with FAILED.');
-    expect(result.stdout.match(/fake build log \d/g)).toEqual([
-      'fake build log 1',
-      'fake build log 2',
-      'fake build log 3',
-    ]);
-    expect(result.stdout).toContain('fake deploy log');
-  });
-
-  it('fails without checking any deployment when railway up prints no deployment ID', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], { WB_ENV: 'production', FAKE_RAILWAY_UP: 'NO_ID' });
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("railway up ended (exit 0) without printing the created deployment's ID");
-    const commands = readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '));
-    expect(commands.at(-1)).toBe('up --ci');
+    expect(result.stdout).toContain('fake build log 3');
+    expect(result.stderr).toContain('railway up reported the Railway deployment as failed (exit 1).');
+    expect(readCalls(projectDirPath).at(-1)?.args[0]).toBe('up');
   });
 
   it('fails when the created deployment does not finish within the timeout', () => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
+      FAKE_RAILWAY_UP: 'HANG',
       FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'BUILDING',
       WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS: '1',
     });
 
     expect(result.status).toBe(1);
+    expect(result.stderr).toContain('railway up ended (stopped at the deploy timeout)');
     expect(result.stderr).toContain('deployment-new did not finish within 1 seconds (last status: BUILDING)');
-    expect(result.stderr).not.toContain('railway deployment list failed');
   });
 
-  it('fails at the timeout even when a status poll never returns', () => {
+  it('fails at the timeout even when a status check never returns', () => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
+      FAKE_RAILWAY_UP: 'HANG',
       FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'HANG',
       WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS: '1',
     });
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('deployment-new did not finish within 1 seconds (last status: not listed)');
+    expect(result.stderr).toContain('did not finish within 1 seconds (last status: not listed)');
     expect(result.stderr).toContain('railway deployment list did not answer within 15 seconds.');
     expect(result.stderr).not.toContain('TimeoutNegativeWarning');
   });
@@ -607,21 +562,23 @@ if (args[0] === 'environment') {
     process.exit(1);
   }
 } else if (args[0] === 'up') {
-  // FAKE_RAILWAY_UP selects how railway up --ci ends: DISCONNECT loses the log stream before the deployment
-  // finishes, POLLING falls back to the CLI's own status polling, NO_ID never prints the build logs URL.
+  // Like railway up --json, each build log line is a JSON object, and progress lines also carry a status.
+  // FAKE_RAILWAY_UP selects how it ends: FAILED reports a failed deployment, DISCONNECT ends without the
+  // final status line, and HANG never ends.
   const mode = process.env.FAKE_RAILWAY_UP || '';
-  console.log('Indexing...');
-  if (mode !== 'NO_ID') console.log('  Build Logs: https://railway.example/project/project-1/service/app?id=deployment-new&');
-  console.log('fake build log 1');
-  if (mode === 'DISCONNECT' || mode === 'NO_ID') process.exit(0);
-  if (mode === 'POLLING') {
-    console.error('Failed to stream build logs: connection reset');
-    console.error('Waiting on the deployment status instead…');
+  const log = (message, extra) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'info', message, ...extra }));
+  log('fake build log 1');
+  log('unpacking archive', { source: 'railway.progress', status: 'complete' });
+  if (mode === 'DISCONNECT') {
+    console.error(JSON.stringify({ error: 'connection reset' }));
+    process.exit(1);
+  }
+  if (mode === 'HANG') {
     setInterval(() => {}, 1000);
   } else {
-    console.log('fake build log 2');
-    console.log('fake build log 3');
-    console.log(mode === 'FAILED' ? 'Deploy failed' : 'Deploy complete');
+    log('\\u001b[32mfake build log 2\\u001b[0m\\r\\n');
+    log('fake build log 3');
+    console.log(JSON.stringify(mode === 'FAILED' ? { status: 'failed', error: 'build failed' } : { status: 'success' }));
     process.exit(mode === 'FAILED' ? 1 : 0);
   }
 } else if (args[0] === 'deployment') {
@@ -658,29 +615,17 @@ if (args[0] === 'environment') {
     if (upIndex >= 0 && status !== 'MISSING') {
       const applyTriggersDeployment = applyIndex >= 0 && process.env.FAKE_RAILWAY_APPLIED_DEPLOYMENT_DELAY !== 'never';
       const superseded = applyTriggersDeployment && (appliedIndex === undefined || appliedIndex > upIndex);
-      deployments.unshift({ id: 'deployment-new', status: superseded ? 'REMOVED' : status, createdAt: '2026-01-03T00:00:00Z', meta: null });
+      const createdAt = new Date(JSON.parse(fs.readFileSync(logPath, 'utf8').trim().split('\\n')[upIndex]).time + 500).toISOString();
+      deployments.unshift({ id: 'deployment-new', status: superseded ? 'REMOVED' : status, createdAt, meta: null });
+      // FAKE_RAILWAY_OTHER_DEPLOYMENT adds a deployment that is also created after railway up started.
+      if (process.env.FAKE_RAILWAY_OTHER_DEPLOYMENT) deployments.unshift({ id: 'deployment-other', status: 'BUILDING', createdAt, meta: null });
     }
     console.log(JSON.stringify(deployments, null, 2));
   }
 } else if (args[0] === 'logs') {
   if (process.env.FAKE_RAILWAY_LOGS_FAIL) process.exit(1);
-  const calls = fs.readFileSync(logPath, 'utf8').trim().split('\\n').map((line) => JSON.parse(line));
-  if (args.includes('--build')) {
-    // Like Railway's build logs, the lines are dated during the deployment, the timestamps are not monotonic,
-    // and a message may carry colors and a CRLF.
-    const upTime = calls.find((call) => call.args[0] === 'up').time;
-    const at = (offsetMs) => new Date(upTime + offsetMs).toISOString().replace('Z', '123456Z');
-    const since = Date.parse(args.find((arg) => arg.startsWith('--since=')).slice('--since='.length));
-    const entries = [
-      { timestamp: at(1000), message: 'fake build log 1', level: 'info' },
-      { timestamp: at(3000), message: '\\u001b[32mfake build log 2\\u001b[0m\\r\\n', level: 'info' },
-      { timestamp: at(2000), message: 'fake build log 3', level: 'info' },
-      // Railway may deliver a line later than a newer one, so it appears from the second fetch on.
-      ...(calls.filter((call) => call.args[0] === 'logs').length > 1 ? [{ timestamp: at(1500), message: 'fake build log 4', level: 'info' }] : []),
-    ].filter((entry) => Date.parse(entry.timestamp) >= since);
-    for (const entry of entries) console.log(JSON.stringify(entry));
-  } else {
-    console.log('fake deploy log');
+  for (const message of ['fake build log 1', 'fake build log 2', 'fake build log 3', 'fake build log 4']) {
+    console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'info', message }));
   }
 }
 `,
