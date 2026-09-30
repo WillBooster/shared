@@ -159,6 +159,7 @@ describe('wb deploy for .railway/railway.ts', () => {
       'deployment list',
       'up --ci',
       'deployment list',
+      'logs deployment-new',
     ]);
     const [, firstPlan, variables, secondPlan, , apply, , up, deploymentList] = calls;
     expect(firstPlan?.env).toMatchObject({
@@ -189,6 +190,12 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(up?.args).toEqual(['up', '--ci', ...targetArgs]);
     expect(deploymentList?.args).toEqual(['deployment', 'list', '--json', '--limit=20', ...targetArgs]);
     expect(result.stdout).toContain('fake build log 3\nDeploy complete\n');
+    // The build logs fetched after the verdict repeat no line railway up printed.
+    expect(result.stdout.match(/fake build log \d/g)).toEqual([
+      'fake build log 1',
+      'fake build log 2',
+      'fake build log 3',
+    ]);
     expect(result.stdout).toContain('Railway deployment deployment-new succeeded.');
   });
 
@@ -207,6 +214,7 @@ describe('wb deploy for .railway/railway.ts', () => {
       'config plan',
       'up --ci',
       'deployment list',
+      'logs deployment-new',
     ]);
   });
 
@@ -233,6 +241,7 @@ describe('wb deploy for .railway/railway.ts', () => {
       'deployment list',
       'up --ci',
       'deployment list',
+      'logs deployment-new',
     ]);
     const [rejectedApply, freshPlan, , apply] = calls.slice(5);
     expect(apply?.args.slice(2)).toEqual(['--plan', readPlanPath(freshPlan), '--yes']);
@@ -274,6 +283,7 @@ describe('wb deploy for .railway/railway.ts', () => {
       'deployment list',
       'up --ci',
       'deployment list',
+      'logs deployment-new',
     ]);
   }, 60_000);
 
@@ -333,6 +343,7 @@ describe('wb deploy for .railway/railway.ts', () => {
       'logs deployment-new',
       'deployment list',
       'deployment list',
+      'logs deployment-new',
     ]);
     const logs = calls.find((call) => call.args[0] === 'logs');
     expect(logs?.args).toEqual(expect.arrayContaining(['--build', '--json', '--lines=5000']));

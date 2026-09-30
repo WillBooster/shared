@@ -317,8 +317,8 @@ async function runRailwayUp(
 
 /**
  * Check the status of the deployment `railway up` created until it is terminal; return why it failed, if
- * it did. `railway up` usually ends when the deployment finishes, so one check suffices; otherwise each
- * infrequent check also prints the build logs `railway up` missed. A check that Railway rate-limits proves
+ * it did. `railway up` usually ends when the deployment finishes, so one check suffices; otherwise the
+ * checks are infrequent. Each check that is not rate-limited prints the build logs `railway up` missed. A check that Railway rate-limits proves
  * nothing, so it backs off and, past `deadline`, keeps the wait going for at most another timeout.
  */
 async function waitForDeployment(
@@ -343,11 +343,11 @@ async function waitForDeployment(
       lastStatus = status;
       console.info(`[${envName}] Railway deployment ${deploymentId}: ${status}`);
     }
+    // `railway up` exits 0 both after the verdict and after losing its log stream, so every verdict prints
+    // the build logs it missed.
+    if (status && (SUCCEEDED_STATUSES.has(status) || FAILED_STATUSES.has(status))) await printMissedBuildLogs();
     if (status && SUCCEEDED_STATUSES.has(status)) return;
-    if (status && FAILED_STATUSES.has(status)) {
-      await printMissedBuildLogs();
-      return `Railway deployment ${deploymentId} ended with ${status}.`;
-    }
+    if (status && FAILED_STATUSES.has(status)) return `Railway deployment ${deploymentId} ended with ${status}.`;
     if (checkCount === 1) {
       console.info(
         `[${envName}] railway up ended (${up.exitDescription}) before Railway deployment ${deploymentId} finished; checking its status every ${STATUS_CHECK_INTERVAL_MS / 1000} seconds.`
