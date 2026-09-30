@@ -17,7 +17,6 @@ import {
   publishRelease,
   releasePluginName,
   runBuildScript,
-  throwIfSignalled,
 } from './draftRelease.js';
 import type { ChildTracker, ReleasePluginConfig } from './draftRelease.js';
 import { createGitHubClient } from './http.js';
@@ -64,11 +63,7 @@ export async function handlePendingReleases({
   const { dryRun, branch: branchOption } = parseForwardedArgs(forwardedArgs, env);
   assertDefaultTagFormat(tagFormat);
   const releaseBranch = branchOption ?? parseReleaseBranch(releaseBranches);
-  const client = createGitHubClient(env);
-  const github: GitHubClient = (method, ...rest) => {
-    if (method !== 'GET') throwIfSignalled(activeChild);
-    return client(method, ...rest);
-  };
+  const github = createGitHubClient(env);
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
   const context = { config, cwd, env, github, head, dryRun: wbDryRun || dryRun, activeChild };
   const dispatch = (ref: string): Promise<unknown> =>

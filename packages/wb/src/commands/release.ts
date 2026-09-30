@@ -56,10 +56,10 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   // and a publish — completed), so a signal targeted at this process alone still cancels the
   // child promptly.
   let receivedSignal: NodeJS.Signals | undefined;
+  let completingPendingRelease = false;
   const activeChild: ActiveChildRef = { current: undefined };
   const signalHandler = (signal: NodeJS.Signals): void => {
     receivedSignal = signal;
-    activeChild.receivedSignal = signal;
     // treeKill (not child.kill): semantic-release and bun install spawn their own subprocesses
     // (npm publish, git push, ...), which must not keep publishing after wb reports cancellation.
     // treeKill THROWS (missing/timing-out `ps`, EPERM), and an exception escaping a signal
@@ -71,6 +71,12 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
       console.error(chalk.red(`Failed to terminate the release child process tree: ${String(error)}`));
       activeChild.current?.kill(signal);
     }
+    // The pending-release step has modified no file to restore, so it stops at once instead of starting its next
+    // publish or GitHub write (including a retry) after the cancellation.
+    if (completingPendingRelease) {
+      for (const guardedSignal of guardedSignals) process.off(guardedSignal, signalHandler);
+      process.kill(process.pid, signal);
+    }
   };
   const guardedSignals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
   for (const signal of guardedSignals) process.on(signal, signalHandler);
@@ -78,8 +84,11 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   let exitCode = 0;
   let releaseRanSuccessfully = false;
   try {
+    completingPendingRelease = true;
+    const runsSemanticRelease = await handlePendingReleasesIfConfigured(project, argv, activeChild);
+    completingPendingRelease = false;
     // Completing or deferring to a pending release replaces semantic-release in this run.
-    if (await handlePendingReleasesIfConfigured(project, argv, activeChild)) {
+    if (runsSemanticRelease) {
       if (await releasePublishesToNpm(project)) {
         await prepareNpmCompatibleLayout(project, argv, modifiedFiles, activeChild);
       } else {
@@ -176,7 +185,6 @@ function getForwardedArgs(argv: ReleaseArgv): string[] {
 
 interface ActiveChildRef {
   current: child_process.ChildProcess | undefined;
-  receivedSignal?: NodeJS.Signals;
 }
 
 /**

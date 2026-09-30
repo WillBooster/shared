@@ -143,6 +143,8 @@ interface RunOptions {
   tagFormat?: string;
   extendsConfig?: string;
   runs?: { branch: string; status: string }[];
+  // Sends SIGTERM to wb once script/build-release starts, which then runs for seconds.
+  cancelDuringBuild?: boolean;
 }
 
 interface RunResult {
@@ -168,6 +170,7 @@ function runRelease(
     tagFormat,
     extendsConfig,
     runs = [],
+    cancelDuringBuild = false,
   }: RunOptions = {}
 ): RunResult {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-release-plugin-test-'));
@@ -197,7 +200,10 @@ function runRelease(
       }),
       '.gitignore': 'node_modules\n',
     });
-    writeFiles(repoDirPath, { 'script/build-release': logTool('build-release') }, 0o755);
+    const buildScript = cancelDuringBuild
+      ? `${logTool('build-release')}sleep 5\nprintf '{"tool":"build-release finished"}\\n' >> "$RELEASE_TEST_LOG"\n`
+      : logTool('build-release');
+    writeFiles(repoDirPath, { 'script/build-release': buildScript }, 0o755);
     writeFiles(binDirPath, { npm: logTool('npm'), cargo: logTool('cargo') }, 0o755);
     fs.mkdirSync(path.join(repoDirPath, 'node_modules', '.bin'), { recursive: true });
     fs.mkdirSync(path.join(repoDirPath, 'node_modules', '@willbooster'));
@@ -247,29 +253,41 @@ function runRelease(
       })
     );
 
-    const result = spawnSync(nodePath as string, [path.join(wbDirPath, 'bin', 'index.js'), 'release', ...args], {
-      cwd: repoDirPath,
-      encoding: 'utf8',
-      // Only what a release job provides, so that semantic-release detects no CI service (e.g., a pull request run
-      // of the test itself) and git reads no user configuration.
-      env: {
-        ...gitEnv,
-        PATH: `${binDirPath}${path.delimiter}${process.env.PATH}`,
-        HOME: dirPath,
-        CI: inCi ? 'true' : '',
-        GITHUB_ACTIONS: '',
-        GITHUB_EVENT_NAME: '',
-        GITHUB_REF: '',
-        GITHUB_REF_NAME: refName,
-        GITHUB_REPOSITORY: repository,
-        GITHUB_TOKEN: 'fake',
-        ACTIONS_ID_TOKEN_REQUEST_URL: oidcUrl,
-        ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'fake',
-        NODE_OPTIONS: `--import=${path.join(dirPath, 'fakeApi.mjs')}`,
-        RELEASE_TEST_LOG: logPath,
-        RELEASE_TEST_STATE: statePath,
-      },
-    });
+    const wbCommand = [nodePath as string, path.join(wbDirPath, 'bin', 'index.js'), 'release', ...args];
+    const result = spawnSync(
+      cancelDuringBuild ? 'sh' : wbCommand[0]!,
+      cancelDuringBuild
+        ? [
+            '-c',
+            '"$@" & pid=$!; until grep -q build-release "$RELEASE_TEST_LOG"; do sleep 0.1; done; kill -TERM $pid; wait $pid; code=$?; sleep 6; exit $code',
+            'sh',
+            ...wbCommand,
+          ]
+        : wbCommand.slice(1),
+      {
+        cwd: repoDirPath,
+        encoding: 'utf8',
+        // Only what a release job provides, so that semantic-release detects no CI service (e.g., a pull request run
+        // of the test itself) and git reads no user configuration.
+        env: {
+          ...gitEnv,
+          PATH: `${binDirPath}${path.delimiter}${process.env.PATH}`,
+          HOME: dirPath,
+          CI: inCi ? 'true' : '',
+          GITHUB_ACTIONS: '',
+          GITHUB_EVENT_NAME: '',
+          GITHUB_REF: '',
+          GITHUB_REF_NAME: refName,
+          GITHUB_REPOSITORY: repository,
+          GITHUB_TOKEN: 'fake',
+          ACTIONS_ID_TOKEN_REQUEST_URL: oidcUrl,
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'fake',
+          NODE_OPTIONS: `--import=${path.join(dirPath, 'fakeApi.mjs')}`,
+          RELEASE_TEST_LOG: logPath,
+          RELEASE_TEST_STATE: statePath,
+        },
+      }
+    );
     const requests = fs
       .readFileSync(logPath, 'utf8')
       .split('\n')
@@ -462,6 +480,21 @@ for (const [crateCommits, crate] of [
     timeout
   );
 }
+
+test(
+  'a cancelled run on a pending-release branch terminates the build and starts nothing after it',
+  () => {
+    const result = runRelease([], {
+      refName: 'release-pending/v1.0.2',
+      drafts: [{ id: 3, tag_name: 'v1.0.2', target_commitish: headCommit }],
+      cancelDuringBuild: true,
+    });
+
+    expect(result.status).toBe(128 + 15);
+    expect(writesOf(result)).toEqual(['build-release 1.0.2']);
+  },
+  timeout
+);
 
 test(
   'a real run on a pending-release branch retries deleting the branch after a dropped connection',

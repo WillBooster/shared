@@ -44,17 +44,9 @@ export interface Logger {
 
 type Env = Record<string, string | undefined>;
 
-/**
- * Holds the running child process so that `wb release`'s signal handler can terminate it, and the signal it received,
- * after which no further command or GitHub write starts.
- */
+/** Holds the running child process so that `wb release`'s signal handler can terminate it. */
 export interface ChildTracker {
   current: ChildProcess | undefined;
-  receivedSignal?: NodeJS.Signals;
-}
-
-export function throwIfSignalled(tracker: ChildTracker | undefined): void {
-  if (tracker?.receivedSignal) throw new Error(`Aborted by ${tracker.receivedSignal}.`);
 }
 
 /** A later run reads the version back from the tag of a pending draft by removing the `v`. */
@@ -73,7 +65,6 @@ export async function runBuildScript(cwd: string, env: Env, version: string, tra
  * signal handler can terminate a build or publish when the release is cancelled.
  */
 async function run(command: string, args: string[], cwd: string, env: Env, tracker?: ChildTracker): Promise<void> {
-  throwIfSignalled(tracker);
   const code = await new Promise<number | null>((resolve, reject) => {
     const child = spawn(command, args, { cwd, env, stdio: 'inherit' });
     if (tracker) tracker.current = child;
@@ -153,7 +144,6 @@ export async function publishRelease({
   }
 
   // Publishing the draft creates the tag, so semantic-release's tag push that follows changes nothing.
-  throwIfSignalled(tracker);
   const release = releaseSchema.parse(
     await createGitHubClient(env)('PATCH', `releases/${draft.id}`, {
       draft: false,
