@@ -60,21 +60,6 @@ export async function runBuildScript(cwd: string, env: Env, version: string, tra
   await run(path.join(cwd, buildScriptPath), [version], cwd, env, tracker);
 }
 
-/**
- * Runs a command asynchronously rather than with `execFileSync`, which would block the event loop, so that `wb release`'s
- * signal handler can terminate a build or publish when the release is cancelled.
- */
-async function run(command: string, args: string[], cwd: string, env: Env, tracker?: ChildTracker): Promise<void> {
-  const code = await new Promise<number | null>((resolve, reject) => {
-    const child = spawn(command, args, { cwd, env, stdio: 'inherit' });
-    if (tracker) tracker.current = child;
-    child.on('error', reject).on('exit', resolve);
-  }).finally(() => {
-    if (tracker) tracker.current = undefined;
-  });
-  if (code !== 0) throw new Error(`${command} ${args.join(' ')} exited with ${code}.`);
-}
-
 /** Returns the draft release of `gitTag` that this release flow created, creating it if absent. */
 export async function findOrCreateDraftRelease(
   github: GitHubClient,
@@ -94,6 +79,17 @@ export async function findOrCreateDraftRelease(
     throw new Error(`The draft release ${gitTag} targets ${draft.target_commitish}, not ${gitHead}.`);
   }
   return draft;
+}
+
+export async function findDraftRelease(github: GitHubClient, gitTag: string): Promise<Release | undefined> {
+  const drafts = await listPendingReleases(github);
+  return drafts.find((release) => release.tag_name === gitTag);
+}
+
+/** Returns the draft releases that this release flow created, which GitHub lists before the published releases. */
+export async function listPendingReleases(github: GitHubClient): Promise<Release[]> {
+  const releases = z.array(releaseSchema).parse(await github('GET', 'releases?per_page=100'));
+  return releases.filter((release) => release.draft && release.body?.endsWith(pendingMarker));
 }
 
 /** Publishes the version to every registry that does not hold it yet, and then publishes the draft release. */
@@ -252,13 +248,17 @@ async function fetchJson(url: string, init: RequestInit, repeatable = false): Pr
   return response.json();
 }
 
-/** Returns the draft releases that this release flow created, which GitHub lists before the published releases. */
-export async function listPendingReleases(github: GitHubClient): Promise<Release[]> {
-  const releases = z.array(releaseSchema).parse(await github('GET', 'releases?per_page=100'));
-  return releases.filter((release) => release.draft && release.body?.endsWith(pendingMarker));
-}
-
-export async function findDraftRelease(github: GitHubClient, gitTag: string): Promise<Release | undefined> {
-  const drafts = await listPendingReleases(github);
-  return drafts.find((release) => release.tag_name === gitTag);
+/**
+ * Runs a command asynchronously rather than with `execFileSync`, which would block the event loop, so that `wb release`'s
+ * signal handler can terminate a build or publish when the release is cancelled.
+ */
+async function run(command: string, args: string[], cwd: string, env: Env, tracker?: ChildTracker): Promise<void> {
+  const code = await new Promise<number | null>((resolve, reject) => {
+    const child = spawn(command, args, { cwd, env, stdio: 'inherit' });
+    if (tracker) tracker.current = child;
+    child.on('error', reject).on('exit', resolve);
+  }).finally(() => {
+    if (tracker) tracker.current = undefined;
+  });
+  if (code !== 0) throw new Error(`${command} ${args.join(' ')} exited with ${code}.`);
 }

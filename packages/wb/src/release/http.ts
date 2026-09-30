@@ -8,6 +8,13 @@ const defaultRateLimitDelay = 60;
 // A rate limit that lasts longer fails the run instead, which a re-run completes.
 const maxRetryDelay = 300;
 
+export interface RetryOptions {
+  /** Looks for what a POST that may have been processed created. */
+  findCreated?: () => Promise<unknown>;
+  /** Whether a POST may be repeated after a failure that the server may have processed. */
+  repeatable?: boolean;
+}
+
 export type GitHubClient = (method: string, route: string, body?: unknown, options?: RetryOptions) => Promise<unknown>;
 
 /**
@@ -29,13 +36,6 @@ export function createGitHubClient(env: Record<string, string | undefined>): Git
     if (!response.ok) throw new Error(`${method} ${route} failed: ${response.status} ${await response.text()}`);
     return response.status === 204 ? undefined : response.json();
   };
-}
-
-export interface RetryOptions {
-  /** Looks for what a POST that may have been processed created. */
-  findCreated?: () => Promise<unknown>;
-  /** Whether a POST may be repeated after a failure that the server may have processed. */
-  repeatable?: boolean;
 }
 
 /**
