@@ -118,19 +118,10 @@ function generateAgentInstruction(
   const coAuthorInstruction = rootConfig.isWillBoosterRepo
     ? `\n  - End your commit message with a blank line followed by \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`, the only AI attribution to add.`
     : '';
-  // Keyed on the repository classification rather than on the template files' presence: the same
-  // run writes the templates for WillBooster / WillBoosterLab repositories before this generator
-  // runs, and hand-added templates elsewhere belong to AGENTS_EXTRA.md.
-  const prTemplateInstruction = rootConfig.isWillBoosterRepo
-    ? `\n${PULL_REQUEST_BODY_RULES.replaceAll(/^/gm, '  ')}`
-    : '';
-  // Gated like prTemplateInstruction: the section it names exists only where the template is generated.
-  const requirementsExemption = rootConfig.isWillBoosterRepo
-    ? " other than the PR body's Requirements section (which states what is currently asked for rather than what the code contains)"
-    : '';
-  const issueTemplateInstruction = rootConfig.isWillBoosterRepo
-    ? `\n- When creating an issue:\n${ISSUE_TEMPLATE_RULES.replaceAll(/^/gm, '  ')}`
-    : '';
+  const prTemplateInstruction = `\n${PULL_REQUEST_BODY_RULES.replaceAll(/^/gm, '  ')}`;
+  const requirementsExemption =
+    " other than the PR body's Requirements section (which states what is currently asked for rather than what the code contains)";
+  const issueTemplateInstruction = `\n- When creating an issue:\n${ISSUE_TEMPLATE_RULES.replaceAll(/^/gm, '  ')}`;
   const languageInstruction =
     getDefaultProseLanguage(rootConfig) === 'Japanese'
       ? `\n- Unless instructed otherwise, write issues, PR bodies, review comments, and documentation for people (README, \`docs/\`) in Japanese, and every other artifact (including commit messages, PR titles, identifiers, code comments, JSDoc, and agent instructions) in English, ${LANGUAGE_BOUND_TEXT_EXCEPTION}.`
