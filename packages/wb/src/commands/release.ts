@@ -11,6 +11,8 @@ import { treeKill } from '@willbooster/shared-lib-node/src';
 
 import type { Project } from '../project.js';
 import { findRootAndSelfProjects, findWorkspacePackageDirs } from '../project.js';
+import { releasePluginConfigSchema, releasePluginName } from '../release/draftRelease.js';
+import { handlePendingReleases } from '../release/pendingRelease.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { prependNodeModulesBinToPath } from '../utils/binPath.js';
 import { isCI } from '../utils/ci.js';
@@ -26,7 +28,8 @@ export const releaseCommand: CommandModule = {
     'Run semantic-release (or multi-semantic-release) so that repositories using Bun isolated installs can publish to npm: ' +
     "reinstall with the hoisted linker (npm cannot walk Bun's isolated node_modules layout), " +
     'rewrite `workspace:` ranges npm cannot parse, run the release, then restore the modified files. ' +
-    'Extra arguments (e.g. `--debug`, after `--`) are forwarded to the release command.',
+    'Extra arguments (e.g. `--debug`, after `--`) are forwarded to the release command. ' +
+    `With the ${releasePluginName} semantic-release plugin, first complete a release that a failed run left pending.`,
   builder: (yargs: Argv<unknown>) => yargs.parserConfiguration({ 'populate--': true }),
   async handler(argv) {
     await release(argv as ReleaseArgv);
@@ -42,6 +45,8 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   // semantic-release must run at the repository root: it reads the git repo and, for monorepos,
   // multi-semantic-release walks the workspaces itself.
   const project = projects.root;
+
+  if (!(await handlePendingReleasesIfConfigured(project, argv))) return;
 
   // Maps a mutated file to its pre-release content (raw bytes — bun.lockb is binary); `undefined`
   // marks a file that did not exist and must be deleted on restore (e.g. a created lockfile).
@@ -136,6 +141,32 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   }
 }
 
+/** Returns whether the release continues with semantic-release. */
+async function handlePendingReleasesIfConfigured(project: Project, argv: ReleaseArgv): Promise<boolean> {
+  const config = readSemanticReleaseConfig(project.dirPath, project.packageJson);
+  if (typeof config !== 'object' || !Array.isArray(config.plugins)) return true;
+  const plugin = config.plugins.find((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === releasePluginName);
+  if (plugin === undefined) return true;
+
+  try {
+    return await handlePendingReleases({
+      config: releasePluginConfigSchema.parse(Array.isArray(plugin) ? plugin[1] : {}),
+      cwd: project.dirPath,
+      env: project.env,
+      releaseBranches: config.branches,
+      wbDryRun: !!argv.dryRun,
+      forwardedArgs: getForwardedArgs(argv),
+    });
+  } catch (error) {
+    console.error(chalk.red(getErrorMessage(error)));
+    process.exit(1);
+  }
+}
+
+function getForwardedArgs(argv: ReleaseArgv): string[] {
+  return [...(argv.args ?? []), ...(argv['--'] ?? [])].map(String);
+}
+
 interface ActiveChildRef {
   current: child_process.ChildProcess | undefined;
 }
@@ -225,6 +256,24 @@ function readExplicitSemanticReleasePlugins(
   dirPath: string,
   packageJson: PackageJson | undefined
 ): readonly unknown[] | undefined | 'unknown' {
+  const config = readSemanticReleaseConfig(dirPath, packageJson);
+  if (config === 'unknown') return config;
+  if (!config) return undefined;
+  if (Array.isArray(config.plugins)) return config.plugins;
+  // An `extends` preset may contribute its own plugin list, which cannot be resolved statically.
+  return config.extends === undefined ? undefined : 'unknown';
+}
+
+interface SemanticReleaseConfig {
+  branches?: unknown;
+  extends?: unknown;
+  plugins?: unknown;
+}
+
+function readSemanticReleaseConfig(
+  dirPath: string,
+  packageJson: PackageJson | undefined
+): SemanticReleaseConfig | undefined | 'unknown' {
   // cosmiconfig searches package.json's `release` key BEFORE any rc/config file; a missing or
   // unreadable package.json just falls through to the file search places.
   if (packageJson === undefined) {
@@ -234,7 +283,7 @@ function readExplicitSemanticReleasePlugins(
       packageJson = undefined;
     }
   }
-  let config = (packageJson as { release?: { plugins?: unknown; extends?: unknown } } | undefined)?.release;
+  let config = (packageJson as { release?: SemanticReleaseConfig } | undefined)?.release;
   if (config === undefined) {
     for (const { fileName, jsonParseable } of semanticReleaseConfigSearchPlaces) {
       const configPath = path.join(dirPath, fileName);
@@ -248,10 +297,7 @@ function readExplicitSemanticReleasePlugins(
       break;
     }
   }
-  if (!config || typeof config !== 'object') return undefined;
-  if (Array.isArray(config.plugins)) return config.plugins;
-  // An `extends` preset may contribute its own plugin list, which cannot be resolved statically.
-  return config.extends === undefined ? undefined : 'unknown';
+  return config && typeof config === 'object' ? config : undefined;
 }
 
 /**
@@ -492,7 +538,7 @@ function collectWorkspaceDependencies(
 }
 
 async function runSemanticRelease(project: Project, argv: ReleaseArgv, activeChild: ActiveChildRef): Promise<number> {
-  const forwardedArgs = [...(argv.args ?? []), ...(argv['--'] ?? [])].map(String);
+  const forwardedArgs = getForwardedArgs(argv);
   // The PACKAGE name (for `bunx`/`yarn dlx`, which fetch a package) and the BIN name (for the
   // local node_modules/.bin lookup) differ for the scoped forks: `bunx multi-semantic-release`
   // would fetch the unrelated unscoped npm package instead of e.g. @anolilab's fork.
