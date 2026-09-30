@@ -71,22 +71,21 @@ export async function handlePendingReleases({
   const dispatch = async (ref: string): Promise<void> => {
     if (await findActiveRun(github, ref)) {
       console.info(`A queued run on ${ref} takes over.`);
-      return;
+    } else if (context.dryRun) {
+      console.info(`Would dispatch a run on ${ref}.`);
+    } else {
+      await github('POST', `${releaseWorkflowRoute}/dispatches`, { ref }, () => findActiveRun(github, ref));
+      console.info(`Dispatched a run on ${ref}.`);
     }
-    await github('POST', `${releaseWorkflowRoute}/dispatches`, { ref }, () => findActiveRun(github, ref));
-    console.info(`Dispatched a run on ${ref}.`);
   };
 
   const refName = env.GITHUB_REF_NAME;
   if (refName?.startsWith(pendingBranchPrefix)) {
     await completePendingRelease(context, refName.slice(pendingBranchPrefix.length));
-    if (context.dryRun) {
-      console.info(`Would dispatch a run on ${releaseBranch} and delete the branch ${refName}.`);
-    } else {
-      await dispatch(releaseBranch);
-      // After the dispatch, since the reusable workflow skips re-runs on a deleted branch.
-      await github('DELETE', `git/refs/heads/${refName}`);
-    }
+    await dispatch(releaseBranch);
+    // After the dispatch, since the reusable workflow skips re-runs on a deleted branch.
+    if (context.dryRun) console.info(`Would delete the branch ${refName}.`);
+    else await github('DELETE', `git/refs/heads/${refName}`);
     return false;
   }
   return !(await deferToPendingRelease(context, dispatch));
@@ -183,12 +182,9 @@ async function deferToPendingRelease(
     }
 
     const branch = `${pendingBranchPrefix}${draft.tag_name}`;
-    if (dryRun) {
-      console.info(`Would dispatch a run on ${branch} to complete the release before releasing this commit.`);
-      return true;
-    }
-    await createBranch(github, branch, commit);
-    // That run releases this commit next.
+    if (dryRun) console.info(`Would create the branch ${branch} at ${commit}.`);
+    else await createBranch(github, branch, commit);
+    // That run completes the release and then releases this commit.
     await dispatch(branch);
     return true;
   }

@@ -557,9 +557,8 @@ for (const [args, releaseBranch] of [
 
       expect(result.status, result.output).toBe(0);
       expect(result.output).toContain('Would build and publish the pending release v1.0.2');
-      expect(result.output).toContain(
-        `Would dispatch a run on ${releaseBranch} and delete the branch release-pending/v1.0.2`
-      );
+      expect(result.output).toContain(`Would dispatch a run on ${releaseBranch}.`);
+      expect(result.output).toContain('Would delete the branch release-pending/v1.0.2.');
       expect(writesOf(result)).toEqual([]);
     },
     timeout
@@ -573,7 +572,7 @@ for (const branches of [[{ name: 'main', channel: 'latest' }], 'main']) {
       const result = runRelease(['--dry-run'], { refName: 'release-pending/v1.0.2', branches });
 
       expect(result.status, result.output).toBe(0);
-      expect(result.output).toContain('Would dispatch a run on main and delete the branch release-pending/v1.0.2');
+      expect(result.output).toContain('Would dispatch a run on main.');
     },
     timeout
   );
@@ -680,6 +679,22 @@ test(
 
     expect(result.status, result.output).toBe(0);
     expect(writesOf(result)).toEqual(deferralWrites);
+  },
+  timeout
+);
+
+test(
+  'a dry run reports that a queued run on the pending-release branch takes over',
+  () => {
+    const result = runRelease(['--dry-run'], {
+      drafts: olderDrafts,
+      npmCommits: olderNpmCommits,
+      runs: [{ branch: 'release-pending/v1.0.2', status: 'queued' }],
+    });
+
+    expect(result.status, result.output).toBe(0);
+    expect(result.output).toContain('A queued run on release-pending/v1.0.2 takes over.');
+    expect(writesOf(result)).toEqual([]);
   },
   timeout
 );
