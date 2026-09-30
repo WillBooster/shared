@@ -52,7 +52,7 @@ export async function handlePendingReleases({
   forwardedArgs: string[];
 }): Promise<boolean> {
   const { dryRun, branch: branchOption } = parseForwardedArgs(forwardedArgs, env);
-  const releaseBranch = branchOption ?? z.array(z.string()).min(1).parse(releaseBranches)[0]!;
+  const releaseBranch = branchOption ?? parseReleaseBranch(releaseBranches);
   const github = createGitHubClient(env);
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
   const context = { config, cwd, env, github, head, dryRun: wbDryRun || dryRun };
@@ -73,6 +73,21 @@ export async function handlePendingReleases({
     return false;
   }
   return !(await deferToPendingRelease(context, dispatch));
+}
+
+/**
+ * Returns the branch that a run completing a pending release dispatches the release workflow on next. semantic-release's
+ * default `branches` name several candidates and no single release branch, so the configuration must name it first.
+ */
+function parseReleaseBranch(branches: unknown): string {
+  const first = z.tuple([z.union([z.string(), z.object({ name: z.string() })])], z.unknown()).safeParse(branches)
+    .data?.[0];
+  if (first === undefined) {
+    throw new Error(
+      `${releasePluginName} requires the semantic-release option \`branches\` to name the release branch first.`
+    );
+  }
+  return typeof first === 'string' ? first : first.name;
 }
 
 /**

@@ -131,6 +131,8 @@ interface RunOptions {
   failures?: Record<string, Failure>;
   crate?: string;
   plugin?: boolean;
+  // `default` omits the option, so that semantic-release applies its default branches.
+  branches?: unknown[] | 'default';
 }
 
 interface RunResult {
@@ -152,6 +154,7 @@ function runRelease(
     failures = {},
     crate = 'release-test',
     plugin = true,
+    branches = ['main'],
   }: RunOptions = {}
 ): RunResult {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-release-plugin-test-'));
@@ -170,7 +173,7 @@ function runRelease(
       'package.json': JSON.stringify({ name: 'release-test', private: true }),
       'pkg/package.json': JSON.stringify({ name: '@willbooster/release-test', version: '0.0.0-semantically-released' }),
       '.releaserc.json': JSON.stringify({
-        branches: ['main'],
+        ...(branches !== 'default' && { branches }),
         plugins: [
           '@semantic-release/commit-analyzer',
           '@semantic-release/release-notes-generator',
@@ -513,6 +516,32 @@ for (const [args, releaseBranch] of [
     timeout
   );
 }
+
+test(
+  'a dry run on a pending-release branch dispatches on the name of an object-valued release branch',
+  () => {
+    const result = runRelease(['--dry-run'], {
+      refName: 'release-pending/v1.0.2',
+      branches: [{ name: 'main', channel: 'latest' }],
+    });
+
+    expect(result.status, result.output).toBe(0);
+    expect(result.output).toContain('Would dispatch a run on main and delete the branch release-pending/v1.0.2');
+  },
+  timeout
+);
+
+test(
+  "semantic-release's default branches are refused before any request",
+  () => {
+    const result = runRelease(['--dry-run'], { branches: 'default' });
+
+    expect(result.status).not.toBe(0);
+    expect(result.output).toContain('to name the release branch first');
+    expect(result.requests).toEqual([]);
+  },
+  timeout
+);
 
 test(
   'a semantic-release dry run with --debug and no pending release writes nothing',
