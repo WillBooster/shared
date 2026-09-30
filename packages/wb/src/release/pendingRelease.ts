@@ -66,8 +66,16 @@ export async function handlePendingReleases({
   const github = createGitHubClient(env);
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
   const context = { config, cwd, env, github, head, dryRun: wbDryRun || dryRun, activeChild };
-  const dispatch = (ref: string): Promise<unknown> =>
-    github('POST', `${releaseWorkflowRoute}/dispatches`, { ref }, () => findActiveRun(github, ref));
+  // A run on `ref` that has not started yet does what a dispatch would, so a re-run after a lost response or a failure
+  // after the dispatch never queues a second run, which on a pending-release branch would publish the version again.
+  const dispatch = async (ref: string): Promise<void> => {
+    if (await findActiveRun(github, ref)) {
+      console.info(`A queued run on ${ref} takes over.`);
+      return;
+    }
+    await github('POST', `${releaseWorkflowRoute}/dispatches`, { ref }, () => findActiveRun(github, ref));
+    console.info(`Dispatched a run on ${ref}.`);
+  };
 
   const refName = env.GITHUB_REF_NAME;
   if (refName?.startsWith(pendingBranchPrefix)) {
@@ -153,7 +161,7 @@ async function completePendingRelease(context: PendingReleaseContext, tag: strin
 /** Returns whether a pending release of an older commit must be completed before releasing this commit. */
 async function deferToPendingRelease(
   { config, cwd, github, head, dryRun }: PendingReleaseContext,
-  dispatch: (ref: string) => Promise<unknown>
+  dispatch: (ref: string) => Promise<void>
 ): Promise<boolean> {
   // Oldest first, since versions are released in order.
   const drafts = await listPendingReleases(github);
@@ -175,18 +183,13 @@ async function deferToPendingRelease(
     }
 
     const branch = `${pendingBranchPrefix}${draft.tag_name}`;
-    // A re-run after a dispatch whose response was lost must not queue a second run publishing the same version.
-    if (await findActiveRun(github, branch)) {
-      console.info(`A run on ${branch} is completing the release; that run releases this commit next.`);
-      return true;
-    }
     if (dryRun) {
       console.info(`Would dispatch a run on ${branch} to complete the release before releasing this commit.`);
       return true;
     }
     await createBranch(github, branch, commit);
+    // That run releases this commit next.
     await dispatch(branch);
-    console.info(`Dispatched a run on ${branch} to complete the release; that run releases this commit next.`);
     return true;
   }
   return false;

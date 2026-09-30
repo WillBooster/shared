@@ -685,6 +685,18 @@ test(
 );
 
 test(
+  'a re-run on a pending-release branch does not dispatch the release branch again while a run on it is queued',
+  () => {
+    const result = runRelease([], { refName: 'release-pending/v1.0.2', runs: [{ branch: 'main', status: 'queued' }] });
+
+    expect(result.status, result.output).toBe(0);
+    expect(result.output).toContain('A queued run on main takes over.');
+    expect(writesOf(result)).toEqual(['DELETE git/refs/heads/release-pending/v1.0.2']);
+  },
+  timeout
+);
+
+test(
   'a dropped handoff dispatch is not taken for a release-branch run that has already started',
   () => {
     const result = runRelease([], {
@@ -709,8 +721,8 @@ test(
     });
 
     expect(result.status, result.output).toBe(0);
-    expect(result.output).toContain('A run on release-pending/v1.0.2 is completing the release');
-    expect(writesOf(result)).toEqual(['DELETE releases/1']);
+    expect(result.output).toContain('A queued run on release-pending/v1.0.2 takes over.');
+    expect(writesOf(result)).toEqual(['DELETE releases/1', createPendingBranch]);
     expect(result.remoteTags).toEqual([]);
   },
   timeout
