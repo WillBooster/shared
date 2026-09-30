@@ -88,7 +88,9 @@ export async function handlePendingReleases({
  * default `branches` name several candidates and no single release branch, so the configuration must name it first.
  */
 function parseReleaseBranch(branches: unknown): string {
-  const first = z.tuple([z.union([z.string(), z.object({ name: z.string() })])], z.unknown()).safeParse(branches)
+  // semantic-release also accepts a single branch outside an array.
+  const branchList = Array.isArray(branches) || branches === undefined ? branches : [branches];
+  const first = z.tuple([z.union([z.string(), z.object({ name: z.string() })])], z.unknown()).safeParse(branchList)
     .data?.[0];
   if (first === undefined) {
     throw new Error(

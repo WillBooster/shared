@@ -139,7 +139,7 @@ interface RunOptions {
   crate?: string;
   plugin?: boolean;
   // `default` omits the option, so that semantic-release applies its default branches.
-  branches?: unknown[] | 'default';
+  branches?: unknown;
   tagFormat?: string;
   runs?: { branch: string; status: string }[];
 }
@@ -530,19 +530,18 @@ for (const [args, releaseBranch] of [
   );
 }
 
-test(
-  'a dry run on a pending-release branch dispatches on the name of an object-valued release branch',
-  () => {
-    const result = runRelease(['--dry-run'], {
-      refName: 'release-pending/v1.0.2',
-      branches: [{ name: 'main', channel: 'latest' }],
-    });
+for (const branches of [[{ name: 'main', channel: 'latest' }], 'main']) {
+  test(
+    `a dry run on a pending-release branch dispatches on the release branch of ${JSON.stringify(branches)}`,
+    () => {
+      const result = runRelease(['--dry-run'], { refName: 'release-pending/v1.0.2', branches });
 
-    expect(result.status, result.output).toBe(0);
-    expect(result.output).toContain('Would dispatch a run on main and delete the branch release-pending/v1.0.2');
-  },
-  timeout
-);
+      expect(result.status, result.output).toBe(0);
+      expect(result.output).toContain('Would dispatch a run on main and delete the branch release-pending/v1.0.2');
+    },
+    timeout
+  );
+}
 
 test(
   "semantic-release's default branches are refused before any request",
