@@ -8,19 +8,15 @@ const defaultRateLimitDelay = 60;
 // A rate limit that lasts longer fails the run instead, which a re-run completes.
 const maxRetryDelay = 300;
 
-export type GitHubClient = (
-  method: string,
-  route: string,
-  body?: unknown,
-  findCreated?: () => Promise<unknown>
-) => Promise<unknown>;
+export type GitHubClient = (method: string, route: string, body?: unknown, options?: RetryOptions) => Promise<unknown>;
 
 /**
  * The returned client never repeats a POST after a failure that GitHub may have processed, since a listing cannot prove
- * that the POST created nothing. `findCreated` then looks for what it created, which the client returns if found.
+ * that the POST created nothing, unless the POST is `repeatable`. `findCreated` then looks for what it created, which
+ * the client returns if found.
  */
 export function createGitHubClient(env: Record<string, string | undefined>): GitHubClient {
-  return async (method, route, body, findCreated) => {
+  return async (method, route, body, options) => {
     const response = await fetchWithRetry(
       `https://api.github.com/repos/${env.GITHUB_REPOSITORY}/${route}`,
       {
@@ -28,7 +24,7 @@ export function createGitHubClient(env: Record<string, string | undefined>): Git
         headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${env.GITHUB_TOKEN}` },
         ...(body !== undefined && { body: JSON.stringify(body) }),
       },
-      { findCreated }
+      options
     );
     if (!response.ok) throw new Error(`${method} ${route} failed: ${response.status} ${await response.text()}`);
     return response.status === 204 ? undefined : response.json();

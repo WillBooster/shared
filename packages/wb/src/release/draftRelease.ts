@@ -87,7 +87,7 @@ export async function findOrCreateDraftRelease(
         'POST',
         'releases',
         { tag_name: gitTag, target_commitish: gitHead, name, body: `${notes ?? ''}${pendingMarker}`, draft: true },
-        () => findDraftRelease(github, gitTag)
+        { findCreated: () => findDraftRelease(github, gitTag) }
       )
     );
   if (draft.target_commitish !== gitHead) {

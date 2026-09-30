@@ -74,7 +74,12 @@ export async function handlePendingReleases({
     } else if (context.dryRun) {
       console.info(`Would dispatch a run on ${ref}.`);
     } else {
-      await github('POST', `${releaseWorkflowRoute}/dispatches`, { ref }, () => findActiveRun(github, ref));
+      await github(
+        'POST',
+        `${releaseWorkflowRoute}/dispatches`,
+        { ref },
+        { findCreated: () => findActiveRun(github, ref) }
+      );
       console.info(`Dispatched a run on ${ref}.`);
     }
   };
@@ -205,7 +210,8 @@ async function findActiveRun(github: GitHubClient, branch: string): Promise<unkn
 
 async function createBranch(github: GitHubClient, branch: string, commit: string): Promise<void> {
   try {
-    await github('POST', 'git/refs', { ref: `refs/heads/${branch}`, sha: commit });
+    // GitHub refuses to create an existing reference, so a repeated POST cannot create a second one.
+    await github('POST', 'git/refs', { ref: `refs/heads/${branch}`, sha: commit }, { repeatable: true });
   } catch (error) {
     // An earlier attempt created it.
     const existing = await github('GET', `git/ref/heads/${branch}`).catch(() => {});

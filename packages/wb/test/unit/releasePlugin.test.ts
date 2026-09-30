@@ -445,6 +445,8 @@ test(
     expect(writesOf(result)).toEqual([
       'DELETE releases/1',
       'DELETE releases/1',
+      // The repeated POST finds the branch the dropped one created.
+      createPendingBranch,
       createPendingBranch,
       dispatchPendingBranch,
       dispatchPendingBranch,
@@ -759,6 +761,26 @@ for (const [options, message] of [
     timeout
   );
 }
+
+test(
+  'a real run repeats creating the pending-release branch after a server error',
+  () => {
+    const result = runRelease([], {
+      drafts: olderDrafts,
+      npmCommits: olderNpmCommits,
+      failures: { 'POST /git/refs': 'serverError' },
+    });
+
+    expect(result.status, result.output).toBe(0);
+    expect(writesOf(result)).toEqual([
+      'DELETE releases/1',
+      createPendingBranch,
+      createPendingBranch,
+      dispatchPendingBranch,
+    ]);
+  },
+  timeout
+);
 
 test(
   'a real run reports why creating the pending-release branch failed',
