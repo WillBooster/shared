@@ -76,6 +76,9 @@ Commands:
                                  run the release, then restore the modified
                                  files. Extra arguments (e.g. `--debug`, after
                                  `--`) are forwarded to the release command.
+                                 With the @willbooster/wb/release-plugin
+                                 semantic-release plugin, first complete a
+                                 release that a failed run left pending.
   wb retry [command] [args...]   Retry the given command until it succeeds
   wb run [args..]                Load environment variables and run a script
                                  with the project runtime.

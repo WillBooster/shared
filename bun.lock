@@ -186,6 +186,7 @@
         "oxfmt": "0.68.0",
         "oxlint": "1.83.0",
         "oxlint-tsgolint": "7.0.2002",
+        "semantic-release": "25.0.9",
         "sort-package-json": "4.0.0",
         "textlint-rule-no-hankaku-kana": "2.0.1",
         "type-fest": "5.10.0",

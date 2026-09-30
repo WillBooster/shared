@@ -10,6 +10,10 @@
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
   "type": "module",
+  "exports": {
+    "./bin/*": "./bin/*",
+    "./release-plugin": "./dist/releasePlugin.js"
+  },
   "bin": {
     "wb": "bin/index.js"
   },
@@ -19,7 +23,7 @@
     "dist/"
   ],
   "scripts": {
-    "build": "bun run start buildIfNeeded --command 'bun build-ts app'",
+    "build": "bun run start buildIfNeeded --command 'bun build-ts app --input src/index.ts src/releasePlugin.ts'",
     "cleanup": "bun wb lint --fix --format",
     "format": "bun wb lint --format",
     "lint": "bun wb lint",
@@ -66,6 +70,7 @@
     "oxfmt": "0.68.0",
     "oxlint": "1.83.0",
     "oxlint-tsgolint": "7.0.2002",
+    "semantic-release": "25.0.9",
     "sort-package-json": "4.0.0",
     "textlint-rule-no-hankaku-kana": "2.0.1",
     "type-fest": "5.10.0",
