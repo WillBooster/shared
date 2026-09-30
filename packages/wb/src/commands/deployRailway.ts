@@ -318,8 +318,10 @@ async function runRailwayUp(
 /**
  * Check the status of the deployment `railway up` created until it is terminal; return why it failed, if
  * it did. `railway up` usually ends when the deployment finishes, so one check suffices; otherwise the
- * checks are infrequent. Each check that is not rate-limited prints the build logs `railway up` missed. A check that Railway rate-limits proves
- * nothing, so it backs off and, past `deadline`, keeps the wait going for at most another timeout.
+ * checks are infrequent, and each one that is not rate-limited prints the build logs `railway up` missed.
+ * The first check always gets a short call time, even when `railway up` used up the time. A check that
+ * Railway rate-limits proves nothing, so it backs off and, past `deadline`, keeps the wait going for at
+ * most another timeout; nothing waited on runs past the deadline in force.
  */
 async function waitForDeployment(
   context: RailwayContext,
@@ -332,10 +334,14 @@ async function waitForDeployment(
 ): Promise<string | undefined> {
   const printMissedBuildLogs = createBuildLogBackfill(context, envName, targetArgs, deploymentId, up);
   const rateLimitedDeadline = deadline + timeoutSeconds * 1000;
+  let waitDeadline = Math.max(deadline, Date.now() + SHORT_CALL_TIMEOUT_MS);
   let intervalMs = STATUS_CHECK_INTERVAL_MS;
   let lastStatus: string | undefined;
   for (let checkCount = 1; ; checkCount++) {
-    const callTimeoutMs = Math.min(CALL_TIMEOUT_MS, Math.max(SHORT_CALL_TIMEOUT_MS, deadline - Date.now()));
+    if (checkCount > 1 && Date.now() >= waitDeadline) {
+      return `Railway deployment ${deploymentId} did not finish within ${timeoutSeconds} seconds (last status: ${lastStatus ?? 'not listed'}); check it on Railway before deploying again. WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS overrides the timeout.`;
+    }
+    const callTimeoutMs = Math.min(CALL_TIMEOUT_MS, waitDeadline - Date.now());
     const { deployments, rateLimited } = await listDeployments(context, envName, targetArgs, callTimeoutMs);
     // The list holds only the newest deployments, so absence proves nothing; removal shows as a status.
     const status = deployments?.find(({ id }) => id === deploymentId)?.status;
@@ -345,7 +351,9 @@ async function waitForDeployment(
     }
     // `railway up` exits 0 both after the verdict and after losing its log stream, so every verdict prints
     // the build logs it missed.
-    if (status && (SUCCEEDED_STATUSES.has(status) || FAILED_STATUSES.has(status))) await printMissedBuildLogs();
+    if (status && (SUCCEEDED_STATUSES.has(status) || FAILED_STATUSES.has(status))) {
+      await printMissedBuildLogs(CALL_TIMEOUT_MS);
+    }
     if (status && SUCCEEDED_STATUSES.has(status)) return;
     if (status && FAILED_STATUSES.has(status)) return `Railway deployment ${deploymentId} ended with ${status}.`;
     if (checkCount === 1) {
@@ -353,11 +361,9 @@ async function waitForDeployment(
         `[${envName}] railway up ended (${up.exitDescription}) before Railway deployment ${deploymentId} finished; checking its status every ${STATUS_CHECK_INTERVAL_MS / 1000} seconds.`
       );
     }
-    if (!rateLimited) await printMissedBuildLogs();
-    const waitDeadline = rateLimited ? rateLimitedDeadline : deadline;
-    if (Date.now() >= waitDeadline) {
-      return `Railway deployment ${deploymentId} did not finish within ${timeoutSeconds} seconds (last status: ${lastStatus ?? 'not listed'}); check it on Railway before deploying again. WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS overrides the timeout.`;
-    }
+    waitDeadline = rateLimited ? rateLimitedDeadline : deadline;
+    const remainingMs = waitDeadline - Date.now();
+    if (!rateLimited && remainingMs > 0) await printMissedBuildLogs(Math.min(CALL_TIMEOUT_MS, remainingMs));
     intervalMs = rateLimited ? Math.min(intervalMs * 2, MAX_STATUS_CHECK_INTERVAL_MS) : STATUS_CHECK_INTERVAL_MS;
     if (rateLimited) {
       console.warn(
@@ -380,13 +386,13 @@ function createBuildLogBackfill(
   targetArgs: string[],
   deploymentId: string,
   up: RailwayUpResult
-): () => Promise<void> {
+): (timeoutMs: number) => Promise<void> {
   const seenEntries = new Set<string>();
   let newestTimestamp = up.startedAt;
-  return async () => {
+  return async (timeoutMs) => {
     const since = new Date(newestTimestamp - BACKFILL_OVERLAP_MS).toISOString();
     const args = ['logs', deploymentId, '--build', '--json', `--since=${since}`, '--lines=5000', ...targetArgs];
-    const ret = await spawnRailway(context, args, envName, 'pipe', CALL_TIMEOUT_MS);
+    const ret = await spawnRailway(context, args, envName, 'pipe', timeoutMs);
     if (ret.status !== 0) {
       console.warn(
         chalk.yellow(

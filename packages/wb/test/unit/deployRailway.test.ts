@@ -345,6 +345,12 @@ describe('wb deploy for .railway/railway.ts', () => {
       'deployment list',
       'logs deployment-new',
     ]);
+    // Checks run every 30 seconds, and the rate-limited one waits twice as long before the next.
+    const [, firstCheck, secondCheck, thirdCheck] = calls
+      .slice(commands.indexOf('up --ci'))
+      .filter((call) => call.args[0] === 'deployment' || call.args[0] === 'up');
+    expect((secondCheck?.time ?? 0) - (firstCheck?.time ?? 0)).toBeGreaterThanOrEqual(30_000);
+    expect((thirdCheck?.time ?? 0) - (secondCheck?.time ?? 0)).toBeGreaterThanOrEqual(60_000);
     const logs = calls.find((call) => call.args[0] === 'logs');
     expect(logs?.args).toEqual(expect.arrayContaining(['--build', '--json', '--lines=5000']));
     expect(logs?.args.some((arg) => arg.startsWith('--since='))).toBe(true);
@@ -481,6 +487,7 @@ describe('wb deploy for .railway/railway.ts', () => {
 interface RailwayCall {
   args: string[];
   env: Record<string, string>;
+  time: number;
 }
 
 function runWb(
@@ -569,7 +576,7 @@ export default () => ({ env: railwayVariables(() => ({ type: 'preserve' }), { AR
 const fs = require('node:fs');
 const args = process.argv.slice(2);
 const logPath = ${JSON.stringify(path.join(projectDirPath, 'railway-calls.jsonl'))};
-fs.appendFileSync(logPath, JSON.stringify({ args, env: process.env }) + '\\n');
+fs.appendFileSync(logPath, JSON.stringify({ args, env: process.env, time: Date.now() }) + '\\n');
 if (args[0] === 'environment') {
   console.log(JSON.stringify({ environments: [{ id: 'env-production', name: 'production' }, { id: 'env-staging', name: 'staging' }] }));
 } else if (args[0] === 'variables' && process.env.FAKE_RAILWAY_VARIABLES_FAIL) {
@@ -653,13 +660,18 @@ if (args[0] === 'environment') {
   }
 } else if (args[0] === 'logs') {
   if (process.env.FAKE_RAILWAY_LOGS_FAIL) process.exit(1);
+  const calls = fs.readFileSync(logPath, 'utf8').trim().split('\\n').map((line) => JSON.parse(line));
   if (args.includes('--build')) {
-    // Like Railway's build logs, the timestamps are not monotonic and a message may carry colors and a CRLF.
+    // Like Railway's build logs, the lines are dated during the deployment, the timestamps are not monotonic,
+    // and a message may carry colors and a CRLF.
+    const upTime = calls.find((call) => call.args[0] === 'up').time;
+    const at = (offsetMs) => new Date(upTime + offsetMs).toISOString().replace('Z', '123456Z');
+    const since = Date.parse(args.find((arg) => arg.startsWith('--since=')).slice('--since='.length));
     const entries = [
-      { timestamp: '2026-01-03T00:00:01.000000001Z', message: 'fake build log 1', level: 'info' },
-      { timestamp: '2026-01-03T00:00:03.000000003Z', message: '\\u001b[32mfake build log 2\\u001b[0m\\r\\n', level: 'info' },
-      { timestamp: '2026-01-03T00:00:02.000000002Z', message: 'fake build log 3', level: 'info' },
-    ];
+      { timestamp: at(1000), message: 'fake build log 1', level: 'info' },
+      { timestamp: at(3000), message: '\\u001b[32mfake build log 2\\u001b[0m\\r\\n', level: 'info' },
+      { timestamp: at(2000), message: 'fake build log 3', level: 'info' },
+    ].filter((entry) => Date.parse(entry.timestamp) >= since);
     for (const entry of entries) console.log(JSON.stringify(entry));
   } else {
     console.log('fake deploy log');
