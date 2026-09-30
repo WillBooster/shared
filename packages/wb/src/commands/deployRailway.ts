@@ -293,8 +293,7 @@ async function runRailwayUp(
     stop('stopped at the deploy timeout');
   }, deadline - startedAt);
   const result: RailwayUpResult = { exitDescription: '', startedAt, printedLineCounts: new Map() };
-  const handleLine = (line: string, output: NodeJS.WriteStream): void => {
-    output.write(`${line}\n`);
+  const handleLine = (line: string): void => {
     result.deploymentId ??= BUILD_LOGS_URL_PATTERN.exec(line)?.[1];
     const displayLine = toDisplayLine(line);
     if (displayLine) {
@@ -302,12 +301,22 @@ async function runRailwayUp(
     }
     if (line.includes(CLI_STATUS_POLLING_MESSAGE)) stop('stopped by wb, which checks the status itself');
   };
-  readline.createInterface({ input: proc.stdout }).on('line', (line) => {
-    handleLine(line, process.stdout);
-  });
-  readline.createInterface({ input: proc.stderr }).on('line', (line) => {
-    handleLine(line, process.stderr);
-  });
+  for (const [input, output] of [
+    [proc.stdout, process.stdout],
+    [proc.stderr, process.stderr],
+  ] as const) {
+    const lines = readline.createInterface({ input });
+    lines.on('line', (line) => {
+      // Stop reading while a slow consumer of wb's output catches up, instead of buffering without bound.
+      if (!output.write(`${line}\n`)) {
+        lines.pause();
+        output.once('drain', () => {
+          lines.resume();
+        });
+      }
+      handleLine(line);
+    });
+  }
   const [status, signal] = (await once(proc, 'close')) as [number | null, NodeJS.Signals | null];
   clearTimeout(timer);
   process.off('exit', stopOnExit);
