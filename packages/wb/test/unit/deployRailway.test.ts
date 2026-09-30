@@ -623,7 +623,6 @@ if (args[0] === 'environment') {
     console.log(JSON.stringify(deployments, null, 2));
   }
 } else if (args[0] === 'logs') {
-  if (process.env.FAKE_RAILWAY_LOGS_FAIL) process.exit(1);
   for (const message of ['fake build log 1', 'fake build log 2', 'fake build log 3', 'fake build log 4']) {
     console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'info', message }));
   }
