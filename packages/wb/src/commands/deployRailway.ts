@@ -6,7 +6,6 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 import { pathToFileURL } from 'node:url';
-import { stripVTControlCharacters } from 'node:util';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
@@ -50,9 +49,13 @@ const planArtifactSchema = z.object({
 // a newer Railway CLI may introduce) needs a human decision, so the check fails closed.
 const ALLOWED_CHANGE_KINDS = new Set(['resource.update', 'variable.set']);
 
-const deploymentListSchema = z.array(z.object({ id: z.string(), status: z.string() }));
+const deploymentListSchema = z.array(z.object({ id: z.string(), status: z.string(), createdAt: z.string() }));
 
-const buildLogEntrySchema = z.object({ timestamp: z.string(), message: z.string() });
+// `railway up --json` and `railway logs --json` print one such object per log line.
+const logLineSchema = z.object({ message: z.string() });
+// `railway up --json` ends with this line once the deployment succeeds, fails, or crashes. Progress log lines
+// also carry a `status`, so a line with a `message` is always a log line.
+const upStatusLineSchema = z.object({ status: z.enum(['success', 'failed', 'crashed']) });
 
 // SLEEPING only follows SUCCESS. A status in neither set, including an unknown one, keeps checking until
 // the timeout.
@@ -67,21 +70,10 @@ const APPLIED_DEPLOYMENT_TIMEOUT_MS = 60_000;
 const STATUS_CHECK_INTERVAL_MS = 30_000;
 const MAX_STATUS_CHECK_INTERVAL_MS = 300_000;
 const RATE_LIMIT_PATTERN = /ratelimit/i;
-// Bound each deployment list and log fetch, so a stalled one cannot hang the deploy. A deployment list is
-// further capped by the remaining wait deadline, but never below the short timeout after `railway up`, so
-// the verdict gets a check even when `railway up` used up the time; one around `config apply` is kept short
-// so that a stalled one leaves the 60-second wait time for more polls.
+// Bound each deployment list and log fetch, so a stalled one cannot hang the deploy. One around
+// `config apply` is kept short so that a stalled one leaves the 60-second wait time for more polls.
 const CALL_TIMEOUT_MS = 60_000;
 const SHORT_CALL_TIMEOUT_MS = 15_000;
-// `railway up --ci` prints the build logs URL, whose `id` parameter is the created deployment's ID, before
-// streaming the build logs.
-const BUILD_LOGS_URL_PATTERN = /Build Logs: \S*[?&]id=([\w-]+)/;
-// `railway up --ci` prints this when its log or status stream fails, then polls the status every 5 seconds
-// until the deployment finishes; wb's own checks are far less frequent, so it stops the CLI instead.
-const CLI_STATUS_POLLING_MESSAGE = 'Waiting on the deployment status instead';
-// Build log timestamps are not monotonic because build steps run in parallel, so a backfill starts this much
-// before the newest line already seen and skips the lines seen before.
-const BACKFILL_OVERLAP_MS = 60_000;
 // Railway occasionally rejects a fresh plan with this message although nothing changed the environment
 // since the plan, apparently from a stale read on its side; a rejected apply changes nothing.
 const STALE_PLAN_MESSAGE = 'The environment changed since this plan was computed';
@@ -90,11 +82,10 @@ const STALE_PLAN_RETRY_DELAY_MS = 5000;
 const deployTimeoutSecondsSchema = z.coerce.number().positive().default(1800);
 
 interface RailwayUpResult {
-  deploymentId?: string;
+  status?: z.infer<typeof upStatusLineSchema>['status'];
+  exitCode: number | null;
   exitDescription: string;
   startedAt: number;
-  /** How many times `railway up` printed each line, as `toDisplayLine` normalizes it. */
-  printedLineCounts: Map<string, number>;
 }
 
 interface RailwayContext {
@@ -107,10 +98,11 @@ interface RailwayContext {
 /**
  * Deploy the service `railwayTarget.services[WB_ENV]` from `.railway/railway.ts`: check the IaC
  * plan, sync fnox values, apply the re-checked plan when it has changes or claims ownership (re-planning
- * and re-checking when Railway rejects the plan as stale) and wait up to 60 seconds for a deployment of the service it triggers (an apply that changes only other
- * services or ownership metadata may trigger none), then `railway up`, printing its build logs
- * live, and wait until the created deployment succeeds. With `--dry-run`, only check the plan of every environment in
- * `railwayTarget.services`, never changing Railway.
+ * and re-checking when Railway rejects the plan as stale) and wait up to 60 seconds for a deployment of the
+ * service it triggers (an apply that changes only other services or ownership metadata may trigger none),
+ * then `railway up --json`, printing its build logs live, and judge the deploy by the status line it ends
+ * with. With `--dry-run`, only check the plan of every environment in `railwayTarget.services`, never
+ * changing Railway.
  */
 export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, project: Project): Promise<void> {
   const context = await createRailwayContext(project);
@@ -148,17 +140,19 @@ export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, p
   await applyRecheckedPlan(context, envName, serviceName, targetArgs);
   const deadline = Date.now() + timeoutSeconds * 1000;
   const up = await runRailwayUp(context, envName, targetArgs, deadline);
-  if (!up.deploymentId) {
-    exitWithError(
-      `railway up ended (${up.exitDescription}) without printing the created deployment's ID; check the service on Railway before deploying again.`
-    );
+  if (up.status === 'success' && up.exitCode === 0) {
+    console.info(chalk.green(`[${envName}] The Railway deployment succeeded.`));
+    return;
   }
-  const { deploymentId } = up;
-  const failure = await waitForDeployment(context, envName, targetArgs, up, deploymentId, deadline, timeoutSeconds);
-  if (failure) {
-    await printDeploymentLogs(context, envName, [deploymentId, '--deployment', '--lines=200', ...targetArgs]);
-    exitWithError(failure);
+  if (up.status) {
+    exitWithError(`railway up reported the Railway deployment as ${up.status} (${up.exitDescription}).`);
   }
+  console.warn(
+    chalk.yellow(
+      `[${envName}] railway up ended (${up.exitDescription}) without reporting the deployment's result; checking it on Railway.`
+    )
+  );
+  const deploymentId = await waitForDeployment(context, envName, targetArgs, up.startedAt, deadline, timeoutSeconds);
   console.info(chalk.green(`[${envName}] Railway deployment ${deploymentId} succeeded.`));
 }
 
@@ -263,10 +257,8 @@ async function pollDeployments<T>(
 }
 
 /**
- * Run `railway up --ci`, printing its output as it arrives. Its exit code and output never decide the
- * deploy: the CLI may exit before the deployment finishes, e.g. when its log stream breaks, so the caller
- * checks the created deployment's status. It is stopped at `deadline`, and as soon as it falls back to
- * frequent status polling.
+ * Run `railway up --json`, printing the message of each build log line as it arrives, and return the
+ * status of its final line, if it printed one. It is stopped at `deadline`.
  */
 async function runRailwayUp(
   context: RailwayContext,
@@ -275,120 +267,99 @@ async function runRailwayUp(
   deadline: number
 ): Promise<RailwayUpResult> {
   const startedAt = Date.now();
-  const proc = childProcess.spawn(context.binaryPath, ['up', '--ci', ...targetArgs], {
+  const proc = childProcess.spawn(context.binaryPath, ['up', '--json', ...targetArgs], {
     cwd: context.project.dirPath,
     env: await buildRailwayEnv(context, envName),
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', 'pipe', 'inherit'],
   });
-  let stoppedReason: string | undefined;
-  const stop = (reason: string): void => {
-    stoppedReason ??= reason;
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
     proc.kill();
-  };
+  }, deadline - startedAt);
   const stopOnExit = (): void => {
     proc.kill();
   };
   process.once('exit', stopOnExit);
-  const timer = setTimeout(() => {
-    stop('stopped at the deploy timeout');
-  }, deadline - startedAt);
-  const result: RailwayUpResult = { exitDescription: '', startedAt, printedLineCounts: new Map() };
-  const handleLine = (line: string): void => {
-    result.deploymentId ??= BUILD_LOGS_URL_PATTERN.exec(line)?.[1];
-    const displayLine = toDisplayLine(line);
-    if (displayLine) {
-      result.printedLineCounts.set(displayLine, (result.printedLineCounts.get(displayLine) ?? 0) + 1);
+  let status: RailwayUpResult['status'];
+  const lines = readline.createInterface({ input: proc.stdout });
+  let waitingForDrain = false;
+  lines.on('line', (line) => {
+    const json = parseJson(line);
+    const logLine = logLineSchema.safeParse(json);
+    const statusLine = upStatusLineSchema.safeParse(json);
+    if (!logLine.success && statusLine.success) {
+      status = statusLine.data.status;
+      return;
     }
-    if (line.includes(CLI_STATUS_POLLING_MESSAGE)) stop('stopped by wb, which checks the status itself');
-  };
-  for (const [input, output] of [
-    [proc.stdout, process.stdout],
-    [proc.stderr, process.stderr],
-  ] as const) {
-    const lines = readline.createInterface({ input });
-    let waitingForDrain = false;
-    lines.on('line', (line) => {
-      // Stop reading while a slow consumer of wb's output catches up, instead of buffering without bound.
-      // Lines readline already buffered still arrive after pause(), so only the first one waits for drain.
-      if (!output.write(`${line}\n`) && !waitingForDrain) {
-        waitingForDrain = true;
-        lines.pause();
-        output.once('drain', () => {
-          waitingForDrain = false;
-          lines.resume();
-        });
-      }
-      handleLine(line);
-    });
-  }
-  let status: number | null;
+    // Stop reading while a slow consumer of wb's output catches up, instead of buffering without bound.
+    // Lines readline already buffered still arrive after pause(), so only the first one waits for drain.
+    if (!process.stdout.write(`${logLine.success ? logLine.data.message.trimEnd() : line}\n`) && !waitingForDrain) {
+      waitingForDrain = true;
+      lines.pause();
+      process.stdout.once('drain', () => {
+        waitingForDrain = false;
+        lines.resume();
+      });
+    }
+  });
+  let exitCode: number | null;
   let signal: NodeJS.Signals | null;
   try {
-    [status, signal] = (await once(proc, 'close')) as [number | null, NodeJS.Signals | null];
+    [exitCode, signal] = (await once(proc, 'close')) as [number | null, NodeJS.Signals | null];
   } finally {
     clearTimeout(timer);
     process.off('exit', stopOnExit);
   }
-  result.exitDescription = stoppedReason ?? (status === null ? `signal ${signal}` : `exit ${status}`);
-  return result;
+  const exitDescription = timedOut
+    ? 'stopped at the deploy timeout'
+    : exitCode === null
+      ? `signal ${signal}`
+      : `exit ${exitCode}`;
+  return { status, exitCode, exitDescription, startedAt };
 }
 
 /**
- * Check the status of the deployment `railway up` created until it is terminal; return why it failed, if
- * it did. `railway up` usually ends when the deployment finishes, so one check suffices; otherwise the
- * checks are infrequent, and each one that is not rate-limited prints the build logs `railway up` missed.
- * The first check always gets a short call time, even when `railway up` used up the time. A check that
- * Railway rate-limits proves nothing, so it backs off and, past `deadline`, keeps the wait going for at
- * most another timeout. While the status is unknown, nothing waited on runs past the deadline in force,
- * and a backfill never takes the time the last check needs; once the status is terminal, the build log
- * backfill only explains the verdict and has just its own call timeout.
+ * Identify the deployment `railway up` created as the only one of the service created since `upStartedAt`
+ * (the deploy workflow serializes deploys to a service), check its status until it is terminal, print its
+ * build logs, and return its ID if it succeeded. A rate-limited check doubles the interval to the next one.
  */
 async function waitForDeployment(
   context: RailwayContext,
   envName: string,
   targetArgs: string[],
-  up: RailwayUpResult,
-  deploymentId: string,
+  upStartedAt: number,
   deadline: number,
   timeoutSeconds: number
-): Promise<string | undefined> {
-  const printMissedBuildLogs = createBuildLogBackfill(context, envName, targetArgs, deploymentId, up);
-  const rateLimitedDeadline = deadline + timeoutSeconds * 1000;
-  let waitDeadline = Math.max(deadline, Date.now() + SHORT_CALL_TIMEOUT_MS);
-  let intervalMs = STATUS_CHECK_INTERVAL_MS;
+): Promise<string> {
+  let deploymentId: string | undefined;
   let lastStatus: string | undefined;
-  const timeoutMessage = (): string =>
-    `Railway deployment ${deploymentId} did not finish within ${timeoutSeconds} seconds (last status: ${lastStatus ?? 'not listed'}); check it on Railway before deploying again. WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS overrides the timeout.`;
-  for (let checkCount = 1; ; checkCount++) {
-    const callTimeoutMs = Math.min(CALL_TIMEOUT_MS, waitDeadline - Date.now());
-    // A suspended or delayed process may wake after the deadline.
-    if (callTimeoutMs <= 0) return timeoutMessage();
+  let intervalMs = STATUS_CHECK_INTERVAL_MS;
+  for (;;) {
+    // The first check runs even when `railway up` used up the time; a later one starts early enough to
+    // finish by the deadline, so no verdict arrives after it.
+    const callTimeoutMs = Math.max(SHORT_CALL_TIMEOUT_MS, Math.min(CALL_TIMEOUT_MS, deadline - Date.now()));
     const { deployments, rateLimited } = await listDeployments(context, envName, targetArgs, callTimeoutMs);
-    // The list holds only the newest deployments, so absence proves nothing; removal shows as a status.
-    const status = deployments?.find(({ id }) => id === deploymentId)?.status;
-    if (status && status !== lastStatus) {
-      lastStatus = status;
-      console.info(`[${envName}] Railway deployment ${deploymentId}: ${status}`);
+    if (deployments) {
+      deploymentId ??= identifyCreatedDeployment(deployments, upStartedAt);
+      // The list holds only the newest deployments, so absence proves nothing; removal shows as a status.
+      const status = deployments.find(({ id }) => id === deploymentId)?.status;
+      if (status && status !== lastStatus) {
+        lastStatus = status;
+        console.info(`[${envName}] Railway deployment ${deploymentId}: ${status}`);
+      }
+      if (status && (SUCCEEDED_STATUSES.has(status) || FAILED_STATUSES.has(status))) {
+        await printBuildLogs(context, envName, targetArgs, deploymentId);
+        if (FAILED_STATUSES.has(status)) exitWithError(`Railway deployment ${deploymentId} ended with ${status}.`);
+        return deploymentId;
+      }
     }
-    // `railway up` exits 0 both after the verdict and after losing its log stream, so every verdict prints
-    // the build logs it missed.
-    if (status && (SUCCEEDED_STATUSES.has(status) || FAILED_STATUSES.has(status))) {
-      await printMissedBuildLogs(CALL_TIMEOUT_MS);
-    }
-    if (status && SUCCEEDED_STATUSES.has(status)) return;
-    if (status && FAILED_STATUSES.has(status)) return `Railway deployment ${deploymentId} ended with ${status}.`;
-    if (checkCount === 1) {
-      console.info(
-        `[${envName}] railway up ended (${up.exitDescription}) before wb could confirm that Railway deployment ${deploymentId} finished; checking its status again.`
+    const lastCheckStart = deadline - SHORT_CALL_TIMEOUT_MS;
+    if (Date.now() >= lastCheckStart) {
+      exitWithError(
+        `Railway deployment ${deploymentId ?? 'created by railway up'} did not finish within ${timeoutSeconds} seconds (last status: ${lastStatus ?? 'not listed'}); check it on Railway before deploying again. WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS overrides the timeout.`
       );
     }
-    waitDeadline = rateLimited ? rateLimitedDeadline : deadline;
-    // The last check starts early enough to finish by the deadline, so nothing else may use that time.
-    const lastCheckStart = waitDeadline - SHORT_CALL_TIMEOUT_MS;
-    if (Date.now() >= lastCheckStart) {
-      return timeoutMessage();
-    }
-    if (!rateLimited) await printMissedBuildLogs(Math.min(CALL_TIMEOUT_MS, lastCheckStart - Date.now()));
     intervalMs = rateLimited ? Math.min(intervalMs * 2, MAX_STATUS_CHECK_INTERVAL_MS) : STATUS_CHECK_INTERVAL_MS;
     if (rateLimited) {
       console.warn(
@@ -401,59 +372,46 @@ async function waitForDeployment(
   }
 }
 
-/**
- * Return a function that prints the build log lines of the deployment that neither `railway up` nor an
- * earlier call printed. A log fetch failure only warns: the verdict comes from the status.
- */
-function createBuildLogBackfill(
+function identifyCreatedDeployment(deployments: z.infer<typeof deploymentListSchema>, upStartedAt: number): string {
+  const candidates = deployments.filter(({ createdAt }) => Date.parse(createdAt) >= upStartedAt);
+  const [candidate] = candidates;
+  if (candidates.length !== 1 || !candidate) {
+    exitWithError(
+      `Expected one Railway deployment created since railway up started, but found ${candidates.length}${candidates.length > 0 ? ` (${candidates.map(({ id }) => id).join(', ')})` : ''}; check the service on Railway before deploying again.`
+    );
+  }
+  return candidate.id;
+}
+
+/** Print the build logs of the deployment; a failure only warns, since the verdict comes from the status. */
+async function printBuildLogs(
   context: RailwayContext,
   envName: string,
   targetArgs: string[],
-  deploymentId: string,
-  up: RailwayUpResult
-): (timeoutMs: number) => Promise<void> {
-  const seenEntries = new Set<string>();
-  let newestTimestamp = up.startedAt;
-  return async (timeoutMs) => {
-    const since = new Date(newestTimestamp - BACKFILL_OVERLAP_MS).toISOString();
-    const args = ['logs', deploymentId, '--build', '--json', `--since=${since}`, '--lines=5000', ...targetArgs];
-    const ret = await spawnRailway(context, args, envName, 'pipe', timeoutMs);
-    if (ret.status !== 0) {
-      console.warn(
-        chalk.yellow(
-          `railway logs failed (${ret.status === null ? 'timed out' : `exit ${ret.status}`}); the build logs above may be incomplete.`
-        )
-      );
-      return;
-    }
-    for (const jsonLine of ret.stdout.split('\n')) {
-      const entry = parseBuildLogEntry(jsonLine);
-      const key = entry && `${entry.timestamp} ${entry.message}`;
-      if (!entry || !key || seenEntries.has(key)) continue;
-      seenEntries.add(key);
-      newestTimestamp = Math.max(newestTimestamp, Date.parse(entry.timestamp) || 0);
-      for (const line of entry.message.split(/\r?\n|\r/)) {
-        const displayLine = toDisplayLine(line);
-        if (!displayLine) continue;
-        const printedCount = up.printedLineCounts.get(displayLine) ?? 0;
-        if (printedCount > 0) up.printedLineCounts.set(displayLine, printedCount - 1);
-        else console.info(displayLine);
-      }
-    }
-  };
-}
-
-function parseBuildLogEntry(jsonLine: string): z.infer<typeof buildLogEntrySchema> | undefined {
-  try {
-    return buildLogEntrySchema.parse(JSON.parse(jsonLine));
-  } catch {
-    return undefined;
+  deploymentId: string
+): Promise<void> {
+  const args = ['logs', deploymentId, '--build', '--json', '--lines=5000', ...targetArgs];
+  const ret = await spawnRailway(context, args, envName, 'pipe', CALL_TIMEOUT_MS);
+  if (ret.status !== 0) {
+    console.warn(
+      chalk.yellow(
+        `railway logs failed (${ret.status === null ? 'timed out' : `exit ${ret.status}`}); build logs are unavailable.`
+      )
+    );
+    return;
+  }
+  for (const line of ret.stdout.split('\n')) {
+    const logLine = logLineSchema.safeParse(parseJson(line));
+    if (logLine.success) console.info(logLine.data.message.trimEnd());
   }
 }
 
-/** Normalize a log line so that a line `railway up` printed matches the same line fetched as JSON. */
-function toDisplayLine(line: string): string {
-  return stripVTControlCharacters(line).trimEnd();
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -466,7 +424,13 @@ async function listDeployments(
   targetArgs: string[],
   callTimeoutMs: number
 ): Promise<{ deployments?: z.infer<typeof deploymentListSchema>; rateLimited: boolean }> {
-  const ret = await spawnRailway(context, deploymentListArgs(targetArgs), envName, 'pipe', callTimeoutMs);
+  const ret = await spawnRailway(
+    context,
+    ['deployment', 'list', '--json', '--limit=20', ...targetArgs],
+    envName,
+    'pipe',
+    callTimeoutMs
+  );
   if (ret.status === 0) {
     try {
       return { deployments: deploymentListSchema.parse(JSON.parse(ret.stdout)), rateLimited: false };
@@ -482,21 +446,8 @@ async function listDeployments(
   return { rateLimited: false };
 }
 
-function deploymentListArgs(targetArgs: string[]): string[] {
-  return ['deployment', 'list', '--json', '--limit=20', ...targetArgs];
-}
-
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
-}
-
-async function printDeploymentLogs(context: RailwayContext, envName: string, args: string[]): Promise<void> {
-  const ret = await spawnRailway(context, ['logs', ...args], envName, 'inherit', CALL_TIMEOUT_MS);
-  if (ret.status === null) {
-    console.warn(chalk.yellow(`railway logs did not answer within ${CALL_TIMEOUT_MS / 1000} seconds.`));
-  } else if (ret.status !== 0) {
-    console.warn(chalk.yellow(`railway logs failed (exit ${ret.status}).`));
-  }
 }
 
 async function createRailwayContext(project: Project): Promise<RailwayContext> {
@@ -610,13 +561,13 @@ async function spawnRailway(
   context: RailwayContext,
   args: string[],
   envName: string,
-  stdio: 'inherit' | 'pipe' | 'tee',
+  stdio: 'pipe' | 'tee',
   timeoutMs?: number
 ): Promise<Awaited<ReturnType<typeof spawnAsync>>> {
   return spawnAsync(context.binaryPath, args, {
     cwd: context.project.dirPath,
     env: await buildRailwayEnv(context, envName),
-    stdio: stdio === 'inherit' ? 'inherit' : 'pipe',
+    stdio: 'pipe',
     printingStdout: stdio === 'tee',
     printingStderr: stdio === 'tee',
     killOnExit: true,
