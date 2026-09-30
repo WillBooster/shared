@@ -317,9 +317,14 @@ async function runRailwayUp(
       handleLine(line);
     });
   }
-  const [status, signal] = (await once(proc, 'close')) as [number | null, NodeJS.Signals | null];
-  clearTimeout(timer);
-  process.off('exit', stopOnExit);
+  let status: number | null;
+  let signal: NodeJS.Signals | null;
+  try {
+    [status, signal] = (await once(proc, 'close')) as [number | null, NodeJS.Signals | null];
+  } finally {
+    clearTimeout(timer);
+    process.off('exit', stopOnExit);
+  }
   result.exitDescription = stoppedReason ?? (status === null ? `signal ${signal}` : `exit ${status}`);
   return result;
 }
