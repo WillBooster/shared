@@ -59,6 +59,7 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   const activeChild: ActiveChildRef = { current: undefined };
   const signalHandler = (signal: NodeJS.Signals): void => {
     receivedSignal = signal;
+    activeChild.receivedSignal = signal;
     // treeKill (not child.kill): semantic-release and bun install spawn their own subprocesses
     // (npm publish, git push, ...), which must not keep publishing after wb reports cancellation.
     // treeKill THROWS (missing/timing-out `ps`, EPERM), and an exception escaping a signal
@@ -175,6 +176,7 @@ function getForwardedArgs(argv: ReleaseArgv): string[] {
 
 interface ActiveChildRef {
   current: child_process.ChildProcess | undefined;
+  receivedSignal?: NodeJS.Signals;
 }
 
 /**

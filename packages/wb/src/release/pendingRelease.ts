@@ -17,6 +17,7 @@ import {
   publishRelease,
   releasePluginName,
   runBuildScript,
+  throwIfSignalled,
 } from './draftRelease.js';
 import type { ChildTracker, ReleasePluginConfig } from './draftRelease.js';
 import { createGitHubClient } from './http.js';
@@ -25,6 +26,7 @@ import type { GitHubClient } from './http.js';
 const pendingBranchPrefix = 'release-pending/';
 // The release workflow file, which the registries trust for publishing.
 const releaseWorkflowRoute = 'actions/workflows/release.yml';
+const notStartedStatuses = new Set(['pending', 'queued', 'requested', 'waiting']);
 
 interface PendingReleaseContext {
   config: ReleasePluginConfig;
@@ -62,7 +64,11 @@ export async function handlePendingReleases({
   const { dryRun, branch: branchOption } = parseForwardedArgs(forwardedArgs, env);
   assertDefaultTagFormat(tagFormat);
   const releaseBranch = branchOption ?? parseReleaseBranch(releaseBranches);
-  const github = createGitHubClient(env);
+  const client = createGitHubClient(env);
+  const github: GitHubClient = (method, ...rest) => {
+    if (method !== 'GET') throwIfSignalled(activeChild);
+    return client(method, ...rest);
+  };
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
   const context = { config, cwd, env, github, head, dryRun: wbDryRun || dryRun, activeChild };
   const dispatch = (ref: string): Promise<unknown> =>
@@ -174,7 +180,7 @@ async function deferToPendingRelease(
     }
 
     const branch = `${pendingBranchPrefix}${draft.tag_name}`;
-    // A re-run after a dispatch whose response was lost must not start a second run publishing the same version.
+    // A re-run after a dispatch whose response was lost must not queue a second run publishing the same version.
     if (await findActiveRun(github, branch)) {
       console.info(`A run on ${branch} is completing the release; that run releases this commit next.`);
       return true;
@@ -191,12 +197,16 @@ async function deferToPendingRelease(
   return false;
 }
 
-/** Returns a queued or running release workflow run on `branch`, which completes what a dispatch on it would. */
+/**
+ * Returns a release workflow run on `branch` that has not started yet. Since the release workflow's concurrency group
+ * runs one run at a time, such a run starts after this one and runs `wb release` at the branch head, which is what a
+ * dispatch on `branch` would do.
+ */
 async function findActiveRun(github: GitHubClient, branch: string): Promise<unknown> {
   const { workflow_runs: runs } = z
     .object({ workflow_runs: z.array(z.object({ status: z.string() })) })
     .parse(await github('GET', `${releaseWorkflowRoute}/runs?branch=${encodeURIComponent(branch)}`));
-  return runs.find((run) => run.status !== 'completed');
+  return runs.find((run) => notStartedStatuses.has(run.status));
 }
 
 async function createBranch(github: GitHubClient, branch: string, commit: string): Promise<void> {

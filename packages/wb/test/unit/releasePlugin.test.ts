@@ -652,12 +652,27 @@ test(
 );
 
 test(
-  'a re-run does not dispatch again while a run is completing the pending release',
+  'a dropped handoff dispatch is not taken for a release-branch run that has already started',
+  () => {
+    const result = runRelease([], {
+      refName: 'release-pending/v1.0.2',
+      runs: [{ branch: 'main', status: 'in_progress' }],
+      failures: { 'POST /actions/workflows/release.yml/dispatches': 'drop' },
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(writesOf(result)).toEqual(['POST actions/workflows/release.yml/dispatches {"ref":"main"}']);
+  },
+  timeout
+);
+
+test(
+  'a re-run does not dispatch again while a run is queued to complete the pending release',
   () => {
     const result = runRelease([], {
       drafts: olderDrafts,
       npmCommits: olderNpmCommits,
-      runs: [{ branch: 'release-pending/v1.0.2', status: 'in_progress' }],
+      runs: [{ branch: 'release-pending/v1.0.2', status: 'queued' }],
     });
 
     expect(result.status, result.output).toBe(0);
