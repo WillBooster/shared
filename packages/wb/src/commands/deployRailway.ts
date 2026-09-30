@@ -63,6 +63,11 @@ const APPLIED_DEPLOYMENT_TIMEOUT_MS = 60_000;
 // capped by a deadline.
 const CALL_TIMEOUT_MS = 60_000;
 const APPLY_WAIT_CALL_TIMEOUT_MS = 15_000;
+// Railway occasionally rejects a fresh plan with this message although nothing changed the environment
+// since the plan, apparently from a stale read on its side; a rejected apply changes nothing.
+const STALE_PLAN_MESSAGE = 'The environment changed since this plan was computed';
+const MAX_APPLY_ATTEMPTS = 3;
+const STALE_PLAN_RETRY_DELAY_MS = 5000;
 const deployTimeoutSecondsSchema = z.coerce.number().positive().default(1800);
 
 interface RailwayContext {
@@ -74,8 +79,8 @@ interface RailwayContext {
 
 /**
  * Deploy the service `railwayTarget.services[WB_ENV]` from `.railway/railway.ts`: check the IaC
- * plan, sync fnox values, apply the re-checked plan when it has changes or claims ownership and wait
- * up to 60 seconds for a deployment of the service it triggers (an apply that changes only other
+ * plan, sync fnox values, apply the re-checked plan when it has changes or claims ownership (re-planning
+ * and re-checking when Railway rejects the plan as stale) and wait up to 60 seconds for a deployment of the service it triggers (an apply that changes only other
  * services or ownership metadata may trigger none), then `railway up` and wait until the created
  * deployment succeeds. With `--dry-run`, only check the plan of every environment in
  * `railwayTarget.services`, never changing Railway.
@@ -112,13 +117,39 @@ export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, p
   const firstPlan = await planAndCheck(context, envName);
   if (firstPlan.rejection) exitWithError(firstPlan.rejection);
   await syncVariables(context, argv, envName, serviceName);
-  const { planPath, needsApply, rejection } = await planAndCheck(context, envName);
-  if (rejection) exitWithError(rejection);
   const targetArgs = [`--project=${context.projectId}`, `--environment=${envName}`, `--service=${serviceName}`];
-  // Applying a plan with changes triggers a deployment of the previous image (the CLI has no option to
-  // skip it), which `railway up` must supersede; skipping a plan the CLI would treat as a noop keeps one
-  // deployment.
-  if (needsApply) {
+  await applyRecheckedPlan(context, envName, serviceName, targetArgs);
+  // `railway up --ci` exits non-zero when its log stream breaks, and may exit 0 before the deployment
+  // finishes, so the verdict comes from the created deployment's status instead of its exit code.
+  const upOutput = await runRailway(context, ['up', '--detach', '--json', ...targetArgs], envName);
+  const { deploymentId } = upResultSchema.parse(JSON.parse(upOutput));
+  const failure = await waitForDeployment(context, envName, targetArgs, deploymentId, timeoutSeconds);
+  await printDeploymentLogs(context, envName, [deploymentId, '--build', '--lines=1000', ...targetArgs]);
+  if (failure) {
+    await printDeploymentLogs(context, envName, [deploymentId, '--deployment', '--lines=200', ...targetArgs]);
+    exitWithError(failure);
+  }
+  console.info(chalk.green(`[${envName}] Railway deployment ${deploymentId} succeeded.`));
+}
+
+/**
+ * Re-plan and re-check `envName`, apply the plan when it has changes or claims ownership, and wait for
+ * the deployment it triggers. A plan Railway rejects as stale is never applied again: a fresh plan is
+ * checked instead, up to `MAX_APPLY_ATTEMPTS` applies in total.
+ */
+async function applyRecheckedPlan(
+  context: RailwayContext,
+  envName: string,
+  serviceName: string,
+  targetArgs: string[]
+): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    const { planPath, needsApply, rejection } = await planAndCheck(context, envName);
+    if (rejection) exitWithError(rejection);
+    // Applying a plan with changes triggers a deployment of the previous image (the CLI has no option to
+    // skip it), which `railway up` must supersede; skipping a plan the CLI would treat as a noop keeps one
+    // deployment.
+    if (!needsApply) return;
     // Only a list taken before the apply tells the deployment it triggers apart from earlier ones.
     const knownIds = await pollDeployments(
       context,
@@ -132,20 +163,21 @@ export async function deployRailway(argv: CheckEnvArgv & { dryRun?: boolean }, p
         `Could not list the Railway deployments of ${serviceName} within ${APPLIED_DEPLOYMENT_TIMEOUT_MS / 1000} seconds; the Railway plan was not applied.`
       );
     }
-    await runRailway(context, ['config', 'apply', '--plan', planPath, '--yes'], envName);
-    await waitForAppliedDeployment(context, envName, targetArgs, knownIds);
+    const args = ['config', 'apply', '--plan', planPath, '--yes'];
+    const ret = await spawnRailway(context, args, envName, 'tee');
+    if (ret.status === 0) {
+      await waitForAppliedDeployment(context, envName, targetArgs, knownIds);
+      return;
+    }
+    if (attempt >= MAX_APPLY_ATTEMPTS || !ret.stderr.includes(STALE_PLAN_MESSAGE))
+      exitWithRailwayError(args, ret.status);
+    console.warn(
+      chalk.yellow(
+        `[${envName}] Railway rejected the plan as stale (apply attempt ${attempt}/${MAX_APPLY_ATTEMPTS}); re-planning in ${STALE_PLAN_RETRY_DELAY_MS / 1000} seconds.`
+      )
+    );
+    await new Promise((resolve) => setTimeout(resolve, STALE_PLAN_RETRY_DELAY_MS));
   }
-  // `railway up --ci` exits non-zero when its log stream breaks, and may exit 0 before the deployment
-  // finishes, so the verdict comes from the created deployment's status instead of its exit code.
-  const upOutput = await runRailway(context, ['up', '--detach', '--json', ...targetArgs], envName, 'pipe');
-  const { deploymentId } = upResultSchema.parse(JSON.parse(upOutput));
-  const failure = await waitForDeployment(context, envName, targetArgs, deploymentId, timeoutSeconds);
-  await printDeploymentLogs(context, envName, [deploymentId, '--build', '--lines=1000', ...targetArgs]);
-  if (failure) {
-    await printDeploymentLogs(context, envName, [deploymentId, '--deployment', '--lines=200', ...targetArgs]);
-    exitWithError(failure);
-  }
-  console.info(chalk.green(`[${envName}] Railway deployment ${deploymentId} succeeded.`));
 }
 
 /**
@@ -310,7 +342,7 @@ async function planAndCheck(
   envName: string
 ): Promise<{ planPath: string; needsApply: boolean; rejection?: string }> {
   const planPath = createPlanPath(envName);
-  const output = await runRailway(context, ['config', 'plan', '--json', '--out', planPath], envName, 'pipe');
+  const output = await runRailway(context, ['config', 'plan', '--json', '--out', planPath], envName);
   for (const diagnostic of planReportSchema.parse(JSON.parse(output)).diagnostics ?? []) {
     console.warn(chalk.yellow(`[${envName}] ${diagnostic.severity}: ${diagnostic.message}`));
   }
@@ -372,32 +404,33 @@ async function syncVariables(
   );
 }
 
-async function runRailway(
-  context: RailwayContext,
-  args: string[],
-  envName: string,
-  stdio: 'inherit' | 'pipe' = 'inherit'
-): Promise<string> {
-  const ret = await spawnRailway(context, args, envName, stdio);
+async function runRailway(context: RailwayContext, args: string[], envName: string): Promise<string> {
+  const ret = await spawnRailway(context, args, envName, 'pipe');
   if (ret.status !== 0) {
-    if (stdio === 'pipe') console.error(ret.stdout.trim());
+    console.error(ret.stdout.trim());
     console.error(ret.stderr.trim());
-    exitWithError(`railway ${args.slice(0, 2).join(' ')} failed (exit ${ret.status}).`);
+    exitWithRailwayError(args, ret.status);
   }
   return ret.stdout;
+}
+
+function exitWithRailwayError(args: string[], status: number | null): never {
+  exitWithError(`railway ${args.slice(0, 2).join(' ')} failed (exit ${status}).`);
 }
 
 async function spawnRailway(
   context: RailwayContext,
   args: string[],
   envName: string,
-  stdio: 'inherit' | 'pipe',
+  stdio: 'inherit' | 'pipe' | 'tee',
   timeoutMs?: number
 ): Promise<Awaited<ReturnType<typeof spawnAsync>>> {
   return spawnAsync(context.binaryPath, args, {
     cwd: context.project.dirPath,
     env: await buildRailwayEnv(context, envName),
-    stdio,
+    stdio: stdio === 'inherit' ? 'inherit' : 'pipe',
+    printingStdout: stdio === 'tee',
+    printingStderr: stdio === 'tee',
     killOnExit: true,
     timeout: timeoutMs,
   });

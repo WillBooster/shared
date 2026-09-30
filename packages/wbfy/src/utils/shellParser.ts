@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 
-import { Language, type Node, Parser } from 'web-tree-sitter';
+import { Language, type Node, Parser } from '@willbooster/web-tree-sitter';
 
 await Parser.init();
 const parser = new Parser();

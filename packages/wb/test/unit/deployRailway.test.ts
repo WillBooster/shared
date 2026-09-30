@@ -212,6 +212,50 @@ describe('wb deploy for .railway/railway.ts', () => {
     ]);
   });
 
+  it('re-plans, re-checks, and applies a fresh plan when Railway rejects the plan as stale', () => {
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_APPLY_RESULTS: 'STALE',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('Railway rejected the plan as stale (apply attempt 1/3)');
+    expect(result.stdout).toContain('config apply triggered Railway deployment deployment-applied');
+    const calls = readCalls(projectDirPath);
+    expect(calls.map((call) => call.args.slice(0, 2).join(' '))).toEqual([
+      'environment list',
+      'config plan',
+      'variables --skip-deploys',
+      'config plan',
+      'deployment list',
+      'config apply',
+      'config plan',
+      'deployment list',
+      'config apply',
+      'deployment list',
+      'up --detach',
+      'deployment list',
+      'logs deployment-new',
+    ]);
+    const [rejectedApply, freshPlan, , apply] = calls.slice(5);
+    expect(apply?.args.slice(2)).toEqual(['--plan', readPlanPath(freshPlan), '--yes']);
+    expect(rejectedApply?.args[3]).not.toBe(readPlanPath(freshPlan));
+  }, 60_000);
+
+  it('fails without re-planning when config apply fails for another reason', () => {
+    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+      WB_ENV: 'production',
+      FAKE_RAILWAY_APPLY_RESULTS: 'ERROR',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('railway config apply error');
+    expect(result.stderr).toContain('railway config apply failed (exit 1).');
+    expect(result.stderr).not.toContain('stale');
+    const commands = readCalls(projectDirPath).map((call) => call.args.slice(0, 2).join(' '));
+    expect(commands.slice(commands.indexOf('config apply'))).toEqual(['config apply']);
+  });
+
   it('runs railway up only after the deployment triggered by config apply appears', () => {
     const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
@@ -485,11 +529,24 @@ if (args[0] === 'environment') {
     (isRecheck && process.env.FAKE_RAILWAY_RECHECKED_PLAN) || process.env.FAKE_RAILWAY_PLAN
   );
   console.log(JSON.stringify({ ok: true, changeSet: { changes: [] }, diagnostics: [] }));
+} else if (args[0] === 'config' && args[1] === 'apply') {
+  const applyCount = fs.readFileSync(logPath, 'utf8').trim().split('\\n').filter((line) => JSON.parse(line).args[1] === 'apply').length;
+  // FAKE_RAILWAY_APPLY_RESULTS injects failures into the apply calls, in call order; a rejected apply creates no deployment.
+  const applyResult = (process.env.FAKE_RAILWAY_APPLY_RESULTS || '').split(',')[applyCount - 1];
+  if (applyResult === 'STALE') {
+    console.error('Error: The environment changed since this plan was computed. Run plan again.');
+    process.exit(1);
+  } else if (applyResult === 'ERROR') {
+    console.error('railway config apply error');
+    process.exit(1);
+  }
 } else if (args[0] === 'up') {
   console.log(JSON.stringify({ deploymentId: 'deployment-new', logsUrl: 'https://railway.example/logs' }));
 } else if (args[0] === 'deployment') {
   const calls = fs.readFileSync(logPath, 'utf8').trim().split('\\n').map((line) => JSON.parse(line).args);
-  const applyIndex = calls.findIndex((callArgs) => callArgs[0] === 'config' && callArgs[1] === 'apply');
+  const applyResults = (process.env.FAKE_RAILWAY_APPLY_RESULTS || '').split(',');
+  const applyIndexes = calls.flatMap((callArgs, index) => (callArgs[0] === 'config' && callArgs[1] === 'apply' ? [index] : []));
+  const applyIndex = applyIndexes.find((_, ordinal) => !applyResults[ordinal]) ?? -1;
   const upIndex = calls.findIndex((callArgs) => callArgs[0] === 'up');
   // Like Railway, the deployment that config apply triggers is created after the apply returns: here, at
   // the (FAKE_RAILWAY_APPLIED_DEPLOYMENT_DELAY + 1)-th list call after the apply, or never when it is
