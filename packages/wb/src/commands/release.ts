@@ -152,6 +152,10 @@ async function handlePendingReleasesIfConfigured(
   if (typeof config !== 'object' || !Array.isArray(config.plugins)) return true;
   const plugin = config.plugins.find((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === releasePluginName);
   if (plugin === undefined) return true;
+  // The pre-step reads `branches` and `tagFormat` from this configuration alone.
+  if (config.extends !== undefined) {
+    throw new Error(`${releasePluginName} requires a semantic-release configuration without \`extends\`.`);
+  }
 
   return await handlePendingReleases({
     config: releasePluginConfigSchema.parse(Array.isArray(plugin) ? plugin[1] : {}),

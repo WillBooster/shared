@@ -141,6 +141,7 @@ interface RunOptions {
   // `default` omits the option, so that semantic-release applies its default branches.
   branches?: unknown;
   tagFormat?: string;
+  extendsConfig?: string;
   runs?: { branch: string; status: string }[];
 }
 
@@ -165,6 +166,7 @@ function runRelease(
     plugin = true,
     branches = ['main'],
     tagFormat,
+    extendsConfig,
     runs = [],
   }: RunOptions = {}
 ): RunResult {
@@ -186,6 +188,7 @@ function runRelease(
       '.releaserc.json': JSON.stringify({
         ...(branches !== 'default' && { branches }),
         ...(tagFormat && { tagFormat }),
+        ...(extendsConfig && { extends: extendsConfig }),
         plugins: [
           '@semantic-release/commit-analyzer',
           '@semantic-release/release-notes-generator',
@@ -665,17 +668,22 @@ test(
   timeout
 );
 
-test(
-  'a custom tagFormat is refused before any request',
-  () => {
-    const result = runRelease(['--dry-run'], { tagFormat: 'release-$' + '{version}' });
+for (const [options, message] of [
+  [{ tagFormat: 'release-$' + '{version}' }, "requires semantic-release's default tagFormat"],
+  [{ extendsConfig: './shared-release-config.json' }, 'requires a semantic-release configuration without `extends`'],
+] as const) {
+  test(
+    `${JSON.stringify(options)} is refused before any request`,
+    () => {
+      const result = runRelease(['--dry-run'], { drafts: olderDrafts, npmCommits: olderNpmCommits, ...options });
 
-    expect(result.status).not.toBe(0);
-    expect(result.output).toContain("requires semantic-release's default tagFormat");
-    expect(result.requests).toEqual([]);
-  },
-  timeout
-);
+      expect(result.status).not.toBe(0);
+      expect(result.output).toContain(message);
+      expect(result.requests).toEqual([]);
+    },
+    timeout
+  );
+}
 
 test(
   'a real run reports why creating the pending-release branch failed',
