@@ -332,7 +332,9 @@ describe('wb deploy for .railway/railway.ts', () => {
       'fake build log 2',
       'fake build log 3',
     ]);
-    expect(result.stdout).toContain('railway up ended (exit 0) before Railway deployment deployment-new finished');
+    expect(result.stdout).toContain(
+      'railway up ended (exit 0) before wb could confirm that Railway deployment deployment-new finished; checking its status again.'
+    );
     expect(result.stderr).toContain('Railway rate-limited the status check; checking again in 60 seconds.');
     expect(result.stdout).toContain('Railway deployment deployment-new succeeded.');
     const calls = readCalls(projectDirPath);

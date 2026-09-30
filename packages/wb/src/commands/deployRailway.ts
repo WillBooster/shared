@@ -358,7 +358,7 @@ async function waitForDeployment(
     if (status && FAILED_STATUSES.has(status)) return `Railway deployment ${deploymentId} ended with ${status}.`;
     if (checkCount === 1) {
       console.info(
-        `[${envName}] railway up ended (${up.exitDescription}) before Railway deployment ${deploymentId} finished; checking its status every ${STATUS_CHECK_INTERVAL_MS / 1000} seconds.`
+        `[${envName}] railway up ended (${up.exitDescription}) before wb could confirm that Railway deployment ${deploymentId} finished; checking its status again.`
       );
     }
     waitDeadline = rateLimited ? rateLimitedDeadline : deadline;
