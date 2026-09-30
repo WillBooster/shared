@@ -321,8 +321,9 @@ async function runRailwayUp(
  * checks are infrequent, and each one that is not rate-limited prints the build logs `railway up` missed.
  * The first check always gets a short call time, even when `railway up` used up the time. A check that
  * Railway rate-limits proves nothing, so it backs off and, past `deadline`, keeps the wait going for at
- * most another timeout. While the status is unknown, nothing waited on runs past the deadline in force;
- * once it is terminal, the build log backfill only explains the verdict and has just its own call timeout.
+ * most another timeout. While the status is unknown, nothing waited on runs past the deadline in force,
+ * and a backfill never takes the time the last check needs; once the status is terminal, the build log
+ * backfill only explains the verdict and has just its own call timeout.
  */
 async function waitForDeployment(
   context: RailwayContext,
@@ -339,9 +340,6 @@ async function waitForDeployment(
   let intervalMs = STATUS_CHECK_INTERVAL_MS;
   let lastStatus: string | undefined;
   for (let checkCount = 1; ; checkCount++) {
-    if (checkCount > 1 && Date.now() >= waitDeadline) {
-      return `Railway deployment ${deploymentId} did not finish within ${timeoutSeconds} seconds (last status: ${lastStatus ?? 'not listed'}); check it on Railway before deploying again. WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS overrides the timeout.`;
-    }
     const callTimeoutMs = Math.min(CALL_TIMEOUT_MS, waitDeadline - Date.now());
     const { deployments, rateLimited } = await listDeployments(context, envName, targetArgs, callTimeoutMs);
     // The list holds only the newest deployments, so absence proves nothing; removal shows as a status.
@@ -363,8 +361,12 @@ async function waitForDeployment(
       );
     }
     waitDeadline = rateLimited ? rateLimitedDeadline : deadline;
-    const remainingMs = waitDeadline - Date.now();
-    if (!rateLimited && remainingMs > 0) await printMissedBuildLogs(Math.min(CALL_TIMEOUT_MS, remainingMs));
+    // The last check starts early enough to finish by the deadline, so nothing else may use that time.
+    const lastCheckStart = waitDeadline - SHORT_CALL_TIMEOUT_MS;
+    if (Date.now() >= lastCheckStart) {
+      return `Railway deployment ${deploymentId} did not finish within ${timeoutSeconds} seconds (last status: ${lastStatus ?? 'not listed'}); check it on Railway before deploying again. WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS overrides the timeout.`;
+    }
+    if (!rateLimited) await printMissedBuildLogs(Math.min(CALL_TIMEOUT_MS, lastCheckStart - Date.now()));
     intervalMs = rateLimited ? Math.min(intervalMs * 2, MAX_STATUS_CHECK_INTERVAL_MS) : STATUS_CHECK_INTERVAL_MS;
     if (rateLimited) {
       console.warn(
@@ -373,7 +375,7 @@ async function waitForDeployment(
         )
       );
     }
-    await sleep(Math.min(intervalMs, waitDeadline - Date.now()));
+    await sleep(Math.min(intervalMs, lastCheckStart - Date.now()));
   }
 }
 
