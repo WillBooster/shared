@@ -306,11 +306,15 @@ async function runRailwayUp(
     [proc.stderr, process.stderr],
   ] as const) {
     const lines = readline.createInterface({ input });
+    let waitingForDrain = false;
     lines.on('line', (line) => {
       // Stop reading while a slow consumer of wb's output catches up, instead of buffering without bound.
-      if (!output.write(`${line}\n`)) {
+      // Lines readline already buffered still arrive after pause(), so only the first one waits for drain.
+      if (!output.write(`${line}\n`) && !waitingForDrain) {
+        waitingForDrain = true;
         lines.pause();
         output.once('drain', () => {
+          waitingForDrain = false;
           lines.resume();
         });
       }
