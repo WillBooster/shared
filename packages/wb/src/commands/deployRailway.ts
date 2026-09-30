@@ -353,8 +353,12 @@ async function waitForDeployment(
   let waitDeadline = Math.max(deadline, Date.now() + SHORT_CALL_TIMEOUT_MS);
   let intervalMs = STATUS_CHECK_INTERVAL_MS;
   let lastStatus: string | undefined;
+  const timeoutMessage = (): string =>
+    `Railway deployment ${deploymentId} did not finish within ${timeoutSeconds} seconds (last status: ${lastStatus ?? 'not listed'}); check it on Railway before deploying again. WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS overrides the timeout.`;
   for (let checkCount = 1; ; checkCount++) {
     const callTimeoutMs = Math.min(CALL_TIMEOUT_MS, waitDeadline - Date.now());
+    // A suspended or delayed process may wake after the deadline.
+    if (callTimeoutMs <= 0) return timeoutMessage();
     const { deployments, rateLimited } = await listDeployments(context, envName, targetArgs, callTimeoutMs);
     // The list holds only the newest deployments, so absence proves nothing; removal shows as a status.
     const status = deployments?.find(({ id }) => id === deploymentId)?.status;
@@ -378,7 +382,7 @@ async function waitForDeployment(
     // The last check starts early enough to finish by the deadline, so nothing else may use that time.
     const lastCheckStart = waitDeadline - SHORT_CALL_TIMEOUT_MS;
     if (Date.now() >= lastCheckStart) {
-      return `Railway deployment ${deploymentId} did not finish within ${timeoutSeconds} seconds (last status: ${lastStatus ?? 'not listed'}); check it on Railway before deploying again. WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS overrides the timeout.`;
+      return timeoutMessage();
     }
     if (!rateLimited) await printMissedBuildLogs(Math.min(CALL_TIMEOUT_MS, lastCheckStart - Date.now()));
     intervalMs = rateLimited ? Math.min(intervalMs * 2, MAX_STATUS_CHECK_INTERVAL_MS) : STATUS_CHECK_INTERVAL_MS;
