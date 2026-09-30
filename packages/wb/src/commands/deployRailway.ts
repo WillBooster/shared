@@ -336,7 +336,8 @@ async function waitForDeployment(
   let lastStatus: string | undefined;
   let intervalMs = STATUS_CHECK_INTERVAL_MS;
   for (;;) {
-    // The first check runs even when `railway up` used up the time.
+    // The first check runs even when `railway up` used up the time; a later one starts early enough to
+    // finish by the deadline, so no verdict arrives after it.
     const callTimeoutMs = Math.max(SHORT_CALL_TIMEOUT_MS, Math.min(CALL_TIMEOUT_MS, deadline - Date.now()));
     const { deployments, rateLimited } = await listDeployments(context, envName, targetArgs, callTimeoutMs);
     if (deployments) {
@@ -353,7 +354,8 @@ async function waitForDeployment(
         return deploymentId;
       }
     }
-    if (Date.now() >= deadline) {
+    const lastCheckStart = deadline - SHORT_CALL_TIMEOUT_MS;
+    if (Date.now() >= lastCheckStart) {
       exitWithError(
         `Railway deployment ${deploymentId ?? 'created by railway up'} did not finish within ${timeoutSeconds} seconds (last status: ${lastStatus ?? 'not listed'}); check it on Railway before deploying again. WB_RAILWAY_DEPLOY_TIMEOUT_SECONDS overrides the timeout.`
       );
@@ -366,7 +368,7 @@ async function waitForDeployment(
         )
       );
     }
-    await sleep(Math.min(intervalMs, deadline - Date.now()));
+    await sleep(Math.min(intervalMs, lastCheckStart - Date.now()));
   }
 }
 
