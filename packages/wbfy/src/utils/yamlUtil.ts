@@ -24,7 +24,6 @@ function dumpYaml(value: unknown): string {
 
 function updateNode(node: unknown, value: unknown, source: string): Node {
   if (isMap(node) && isPlainObject(value)) {
-    moveLeadingCommentToFirstItem(node, node.items[0]?.key);
     // js-yaml omits undefined properties.
     node.items = Object.entries(value)
       .filter(([, itemValue]) => itemValue !== undefined)
@@ -32,6 +31,8 @@ function updateNode(node: unknown, value: unknown, source: string): Node {
         const pair = node.items.find((item) => isScalar(item.key) && item.key.value === key);
         if (!pair) return new Pair(createNode(key), createNode(itemValue));
         moveInlineCommentToKey(pair, source);
+        // Only a mapping under a key: `yaml` would print the comment of a sequence entry after its `- ` indicator.
+        if (isMap(pair.value)) moveLeadingCommentToFirstItem(pair.value, pair.value.items[0]?.key);
         pair.value = updateNode(pair.value, itemValue, source);
         return pair;
       });
@@ -81,8 +82,7 @@ function moveInlineCommentToKey({ key, value }: Pair, source: string): void {
 
 /**
  * `yaml` attaches the comment above the first entry of a nested collection to the collection, where it would stay when
- * that entry is removed. A sequence keeps it when its first entry is a collection, whose comment `yaml` would print
- * after the `- ` indicator.
+ * that entry is removed.
  */
 function moveLeadingCommentToFirstItem(node: YAMLMap | YAMLSeq, target: unknown): void {
   if (!node.commentBefore || !isNode(target)) return;

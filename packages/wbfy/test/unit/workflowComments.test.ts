@@ -76,6 +76,34 @@ jobs:
   });
 });
 
+test('leaves the comments of an unchanged inline job in a caller workflow as written', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-inline-job-comments-', async (dirPath, workflowsPath) => {
+    const filePath = path.join(workflowsPath, 'custom.yml');
+    const workflow = `name: Custom
+'on':
+  pull_request: null
+jobs:
+  semantic-pr:
+    uses: WillBooster/reusable-workflows/.github/workflows/semantic-pr.yml@main
+    permissions:
+      pull-requests: read
+      statuses: write
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      # check out first
+      - uses: actions/checkout@v4
+      # install deps
+      - run: bun i
+`;
+    fs.writeFileSync(filePath, workflow);
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(workflow);
+  });
+});
+
 test('removes the comments of a removed sequence entry with it', async () => {
   await withTempWorkflowsRepo('wbfy-workflow-sequence-comments-', async (dirPath, workflowsPath) => {
     const filePath = path.join(workflowsPath, 'test.yml');
