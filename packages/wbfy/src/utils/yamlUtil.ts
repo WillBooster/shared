@@ -73,7 +73,8 @@ function updateNode(node: unknown, value: unknown, source: string): Node {
  */
 function moveInlineCommentToKey({ key, value }: Pair, source: string): void {
   if (!isNode(key) || !key.range || !(isMap(value) || isSeq(value)) || !value.commentBefore || !value.range) return;
-  if (!/^[ \t]*:[ \t]*#/u.test(source.slice(key.range[1], value.range[0]))) return;
+  // The value's anchor and tag precede the comment on the key's line.
+  if (!/^[ \t]*:(?:[ \t]+[!&]\S*)*[ \t]+#/u.test(source.slice(key.range[1], value.range[0]))) return;
 
   const [inlineComment, ...commentLines] = value.commentBefore.split('\n');
   key.comment = inlineComment;
