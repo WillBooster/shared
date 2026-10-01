@@ -64,6 +64,8 @@ A repository that deviates from these rules is fixed manually (or by re-running 
 
 ## Standalone GitHub workflows
 
+- Deploy workflow updates preserve existing push `paths` and `paths-ignore` filters, including their absence. New or empty standalone staging workflows initially exclude `**.md` and `**/docs/**`; repositories whose deployed content includes documentation remove or customize these defaults.
+
 - Generated standalone test workflows capture and upload raw test logs only when the repository Actions variable `UPLOAD_TEST_LOG` is `true`, with 14-day artifact retention after success or failure. Enable this only for secret-free test output: artifact files do not receive GitHub's console secret masking.
 
 ## GitHub-side conventions (WillBooster / WillBoosterLab repositories)

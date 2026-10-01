@@ -371,11 +371,6 @@ async function writeWorkflowYaml(
       },
     };
     moveToBottom(newSettings, 'jobs');
-    if (newSettings.on?.push) {
-      newSettings.on.push['paths-ignore'] = [
-        ...new Set(['**.md', '**/docs/**', ...(newSettings.on.push['paths-ignore'] ?? [])]),
-      ];
-    }
   }
 
   if (kind === 'release' && newSettings.jobs.release && deployProductionFileName) {
