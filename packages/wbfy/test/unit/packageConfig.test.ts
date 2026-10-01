@@ -81,6 +81,10 @@ test('ignores Java sources that only gitignored clones contain', async () => {
     };
 
     expect(await generateDevDependencies('/examples/*/\n')).not.toHaveProperty('prettier-plugin-java');
+    // An allowlist whose `*` also matches the top level's own `.` path.
+    expect(await generateDevDependencies('*\n!*/\n!.gitignore\n!package.json\n')).not.toHaveProperty(
+      'prettier-plugin-java'
+    );
     expect(await generateDevDependencies('')).toHaveProperty('prettier-plugin-java');
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
