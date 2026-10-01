@@ -11,11 +11,12 @@ import { promisePool } from '../utils/promisePool.js';
 const gitOutputMaxBuffer = 64 * 1024 * 1024;
 
 // cf. https://bun.sh/guides/install/git-diff-bun-lockfile
-// `.gitignore -text` keeps the macOS template's `Icon\r\r` rule intact: `text=auto` normalization
+// `-text` keeps the macOS template's `Icon\r\r` rule of the ignore files intact: `text=auto` normalization
 // strips one CR per checkin, degrading the rule until it matches nothing.
 const newContent = `* text=auto
 
 .gitignore -text
+.prettierignore -text
 
 *.lockb binary diff=lockb
 *.vcproj text eol=crlf

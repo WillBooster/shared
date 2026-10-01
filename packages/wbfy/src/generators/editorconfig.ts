@@ -6,6 +6,8 @@ import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
+// The ignore files' macOS `Icon\r\r` rule ends in two CRs that are part of the pattern, which an editor applying
+// `end_of_line = lf` or `trim_trailing_whitespace = true` would strip.
 const newContent = `root = true
 
 [*]
@@ -24,6 +26,10 @@ indent_style = space
 
 ${generateExtensions(extensions.markdownLike)}
 max_line_length = off
+trim_trailing_whitespace = false
+
+[{.gitignore,.prettierignore}]
+end_of_line = unset
 trim_trailing_whitespace = false
 
 [{Makefile,*.mk}]
