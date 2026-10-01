@@ -14,10 +14,12 @@ import {
 } from '../../src/utils/privateRegistry.js';
 
 const tempDirPaths: string[] = [];
+const originalVerdaccioToken = process.env.VERDACCIO_TOKEN;
 
 afterEach(async () => {
   mock.restore();
-  delete process.env.VERDACCIO_TOKEN;
+  if (originalVerdaccioToken === undefined) delete process.env.VERDACCIO_TOKEN;
+  else process.env.VERDACCIO_TOKEN = originalVerdaccioToken;
   await Promise.all(tempDirPaths.splice(0).map((dirPath) => fs.promises.rm(dirPath, { recursive: true, force: true })));
 });
 
