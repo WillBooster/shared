@@ -352,8 +352,8 @@ export async function getPackageConfig(
         litestream: dockerfile.includes('install-litestream.sh'),
         react: !!dependencies.react,
         next: !!dependencies.next,
-        playwrightTest:
-          !!dependencies['@playwright/test'] || !!devDependencies['@playwright/test'] || !!devDependencies.playwright,
+        // A bare `playwright` is a library, e.g. the provider of `@vitest/browser-playwright`.
+        playwrightTest: !!dependencies['@playwright/test'] || !!devDependencies['@playwright/test'],
         playwrightRuntime: importsPlaywrightAtRuntime,
         prisma: !!dependencies['@prisma/client'] || !!devDependencies.prisma,
         pyright: !!devDependencies.pyright,

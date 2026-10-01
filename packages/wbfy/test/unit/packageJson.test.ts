@@ -640,6 +640,16 @@ test('regenerates a plain mise bridge script without inventing an env prefix', a
   expect(packageJson.scripts?.test).toBe('mise run test');
 });
 
+test('moves a playwright imported at runtime to dependencies without Playwright Test', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { devDependencies: { playwright: '1.63.0' } },
+    { depending: { ...createConfig().depending, playwrightRuntime: true }, isRoot: true }
+  );
+
+  expect(packageJson.dependencies?.playwright).toBe('1.63.0');
+  expect(packageJson.devDependencies?.playwright).toBeUndefined();
+});
+
 test('never generates --bun scripts', async () => {
   const withPlaywright = await generatePackageJsonFrom(
     { scripts: {} },
