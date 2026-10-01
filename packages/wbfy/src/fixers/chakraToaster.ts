@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 
+import { getGlobIgnore } from '@willbooster/shared-lib-node/src';
 import fg from 'fast-glob';
 
 import { logger } from '../logger.js';
@@ -13,7 +14,7 @@ export async function fixChakraToaster(config: PackageConfig): Promise<void> {
     const filePaths = await fg.glob('**/toaster.{ts,tsx}', {
       absolute: true,
       cwd: config.dirPath,
-      ignore: ['**/.*/**', '**/node_modules/**'],
+      ignore: ['**/.*/**', ...getGlobIgnore(config.dirPath)],
     });
     for (const filePath of filePaths) {
       const content = await fs.readFile(filePath, 'utf8');

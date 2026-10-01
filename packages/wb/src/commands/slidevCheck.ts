@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { globIgnore } from '@willbooster/shared-lib-node/src';
+import { getGlobIgnore } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import fg from 'fast-glob';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
@@ -46,7 +46,7 @@ export const slidevCheckCommand: CommandModule<unknown, SlidevCheckOptions> = {
 export function findSlidevDecks(project: Project): string[] {
   // Keep discovery identical to wbfy's dependency detection, including ignored fixture and build directories.
   return fg
-    .globSync('**/*.slidev.md', { dot: true, cwd: project.dirPath, ignore: globIgnore })
+    .globSync('**/*.slidev.md', { dot: true, cwd: project.dirPath, ignore: getGlobIgnore(project.dirPath) })
     .toSorted((a, b) => a.localeCompare(b));
 }
 
