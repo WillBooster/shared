@@ -22,8 +22,8 @@ export async function buildWb(): Promise<void> {
   if (runPathPrefix) await acquireLock(`${runPathPrefix}.lock`);
   try {
     if (runPathPrefix && fs.existsSync(`${runPathPrefix}.built`)) return;
-    // buildIfNeeded hashes the environment, so the per-worker IDs would make the next run rebuild whenever
-    // another worker builds first.
+    // Leaves out the worker ID: buildIfNeeded hashes the environment, so keeping it would record a cache
+    // that the next run misses whenever a different worker builds first.
     const { BUN_TEST_WORKER_ID: _bunWorkerId, JEST_WORKER_ID: _jestWorkerId, ...env } = process.env;
     const build = spawnSync('bun', ['run', 'build'], { encoding: 'utf8', env, timeout: 60_000 });
     expect(build.status, build.stdout + build.stderr).toBe(0);
