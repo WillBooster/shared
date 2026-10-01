@@ -273,7 +273,10 @@ export abstract class BaseScripts {
   validateTestSelection(_project: Project, _argv: TestArgv, _forwardedArgs: string[]): void {}
 
   testUnit(project: Project, argv: TestArgv): string {
-    return this.buildUnitRunnerCommand(project, argv, ['--parallel']);
+    // --no-isolate: in Bun 1.4.2, when the stdout/stderr writers of the global that --parallel's default isolation
+    // discards after each file are garbage-collected during a later spawnSync, that and every later spawnSync of the
+    // worker can miss its child's exit and hang until the test times out (https://github.com/oven-sh/bun/issues/34069).
+    return this.buildUnitRunnerCommand(project, argv, ['--parallel', '--no-isolate']);
   }
 
   /**
