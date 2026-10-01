@@ -19,10 +19,13 @@ test('marks tracked CRLF text for renormalization when introducing text attribut
     fs.writeFileSync(path.join(tempDirPath, 'Deleted.java'), 'class Deleted {\r\n}\r\n');
     fs.writeFileSync(path.join(tempDirPath, 'Main.java'), 'public class Main {\r\n}\r\n');
     fs.writeFileSync(path.join(tempDirPath, 'data.txt'), 'value\r\n');
+    fs.mkdirSync(path.join(tempDirPath, 'fixtures'));
+    fs.writeFileSync(path.join(tempDirPath, 'fixtures', 'cr.txt'), 'a\n\r\nb\n');
     fs.writeFileSync(path.join(tempDirPath, 'project.vcproj'), '<Project>\r\n</Project>\r\n');
-    git(tempDirPath, 'add', 'Deleted.java', 'Main.java', 'data.txt', 'project.vcproj');
+    git(tempDirPath, 'add', 'Deleted.java', 'Main.java', 'data.txt', 'fixtures', 'project.vcproj');
     git(tempDirPath, 'commit', '-m', 'test: add CRLF text');
     fs.rmSync(path.join(tempDirPath, 'Deleted.java'));
+    fs.writeFileSync(path.join(tempDirPath, 'fixtures', '.gitattributes'), '* text=auto eol=lf\n');
 
     await generateGitattributes(createConfig({ dirPath: tempDirPath }));
     renormalizeTrackedTextFiles(tempDirPath);
@@ -30,10 +33,12 @@ test('marks tracked CRLF text for renormalization when introducing text attribut
     expect(git(tempDirPath, 'ls-files', '--eol', 'Main.java')).toContain('attr/text eol=lf');
     expect(fs.readFileSync(path.join(tempDirPath, 'Main.java'), 'utf8')).not.toContain('\r\n');
     expect(fs.readFileSync(path.join(tempDirPath, 'data.txt'), 'utf8')).toContain('\r\n');
+    expect(fs.readFileSync(path.join(tempDirPath, 'fixtures', 'cr.txt'), 'utf8')).toBe('a\n\r\nb\n');
     expect(fs.readFileSync(path.join(tempDirPath, 'project.vcproj'), 'utf8')).not.toContain('\r\n');
     expect(git(tempDirPath, 'status', '--short')).toContain(' M Main.java');
     git(tempDirPath, 'add', '-A');
     expect(git(tempDirPath, 'ls-files', '--eol', 'Main.java')).toMatch(/^i\/lf\s/u);
+    expect(git(tempDirPath, 'ls-files', '--eol', 'fixtures/cr.txt')).toMatch(/^i\/mixed\s/u);
     expect(git(tempDirPath, 'ls-files', '--eol', 'project.vcproj')).toMatch(/^i\/lf\s/u);
     git(tempDirPath, 'commit', '-m', 'test: apply attributes');
     fs.rmSync(path.join(tempDirPath, 'project.vcproj'));
