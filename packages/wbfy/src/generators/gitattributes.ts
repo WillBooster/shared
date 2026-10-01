@@ -53,7 +53,9 @@ export function renormalizeTrackedTextFiles(dirPath: string): void {
     if (separatorIndex === -1) continue;
 
     const attributes = record.slice(0, separatorIndex);
-    if (!/^i\/(?:crlf|mixed)\s/u.test(attributes) || !/attr\/.*\beol=(?:lf|crlf)(?:\s|$)/u.test(attributes)) {
+    // Only `text` with `eol` converts a blob that already holds CR in the index: Git keeps such a blob under
+    // `text=auto`, even with `eol`, so CRs there are content (e.g. a fixture testing CR) and must stay.
+    if (!/^i\/(?:crlf|mixed)\s/u.test(attributes) || !/\sattr\/text eol=(?:lf|crlf)(?:\s|$)/u.test(attributes)) {
       continue;
     }
 
