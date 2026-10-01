@@ -61,16 +61,18 @@ test('accepts a documentation-only Git repository without a package.json', async
   }
 });
 
-test('ignores Java sources that only gitignored clones contain', async () => {
+test('ignores Java sources that only gitignored directories contain', async () => {
   const tempDirPath = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-')));
   try {
     childProcess.execFileSync('git', ['init', '--quiet'], { cwd: tempDirPath });
-    const javaFilePath = path.join(tempDirPath, 'examples', 'gentoo', 'files', 'Main.java');
-    fs.mkdirSync(path.dirname(javaFilePath), { recursive: true });
-    fs.writeFileSync(javaFilePath, 'class Main {}\n');
+    for (const javaFilePath of ['examples/gentoo/files/Main.java', 'packages/clone/src/Main.java']) {
+      fs.mkdirSync(path.join(tempDirPath, path.dirname(javaFilePath)), { recursive: true });
+      fs.writeFileSync(path.join(tempDirPath, javaFilePath), 'class Main {}\n');
+    }
+    fs.writeFileSync(path.join(tempDirPath, 'packages', 'clone', 'package.json'), '{}');
     const generateDevDependencies = async (gitignore: string): Promise<Record<string, string>> => {
       fs.writeFileSync(path.join(tempDirPath, '.gitignore'), gitignore);
-      fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+      fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }));
       const config = await getPackageConfig(tempDirPath);
       if (!config) throw new Error('unreachable');
       await generatePackageJson(config, config, true);
@@ -80,7 +82,10 @@ test('ignores Java sources that only gitignored clones contain', async () => {
       return packageJson.devDependencies ?? {};
     };
 
-    expect(await generateDevDependencies('/examples/*/\n')).not.toHaveProperty('prettier-plugin-java');
+    // The ignored workspace is still scanned as a workspace, from inside the ignored directory.
+    expect(await generateDevDependencies('/examples/*/\n/packages/clone/\n')).not.toHaveProperty(
+      'prettier-plugin-java'
+    );
     // An allowlist whose `*` also matches the top level's own `.` path.
     expect(await generateDevDependencies('*\n!*/\n!.gitignore\n!package.json\n')).not.toHaveProperty(
       'prettier-plugin-java'
