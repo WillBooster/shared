@@ -17,6 +17,7 @@ import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
 import { repoResolvesPrivatePackages } from '../utils/privatePackages.js';
 import { runAllInPool } from '../utils/promisePool.js';
 import { parseShellCommands } from '../utils/shellParser.js';
+import { dumpYamlOver } from '../utils/yamlUtil.js';
 import { assertPrivateWorkflowRunners } from './workflowRunnerPolicy.js';
 
 interface Workflow {
@@ -792,6 +793,5 @@ async function writeYaml(newSettings: Workflow, filePath: string): Promise<void>
   if (newSettings.permissions && Object.keys(newSettings.permissions).length === 0) {
     delete newSettings.permissions;
   }
-  const yamlText = yaml.dump(newSettings, { lineWidth: -1 });
-  await fsUtil.writeFileConfined(filePath, yamlText);
+  await fsUtil.writeFileConfined(filePath, dumpYamlOver(await fsUtil.readFileIfExists(filePath), newSettings));
 }
