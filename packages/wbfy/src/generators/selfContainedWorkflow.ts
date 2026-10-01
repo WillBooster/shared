@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import * as yaml from 'js-yaml';
+import { z } from 'zod';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -71,6 +72,19 @@ interface Workflow {
   >;
 }
 
+const deployTriggerSchema = z.object({
+  on: z
+    .object({
+      push: z
+        .object({
+          paths: z.array(z.string()).optional(),
+          'paths-ignore': z.array(z.string()).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+
 export async function generateSelfContainedWorkflows(
   rootConfig: PackageConfig,
   allPackageConfigs: PackageConfig[] = [rootConfig]
@@ -121,6 +135,15 @@ async function writeSelfContainedWorkflow(filePath: string, workflow: Workflow):
   // An empty or whitespace-only file carries no hand-written content, so it is treated as absent.
   if (oldContent !== undefined && oldContent.trim() !== '' && !oldContent.startsWith(selfContainedWorkflowMarker)) {
     return;
+  }
+
+  if (path.basename(filePath).startsWith('deploy') && workflow.on.push && oldContent?.trim()) {
+    const existingPush = deployTriggerSchema.parse(yaml.load(oldContent)).on?.push;
+    workflow.on.push = {
+      ...z.record(z.string(), z.unknown()).parse(workflow.on.push),
+      paths: existingPush?.paths,
+      'paths-ignore': existingPush?.['paths-ignore'],
+    };
   }
 
   const header = `${selfContainedWorkflowMarker} Remove this line to stop wbfy from overwriting this file.\n`;
