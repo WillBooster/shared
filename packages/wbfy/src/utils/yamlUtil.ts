@@ -12,7 +12,6 @@ export function dumpYamlOver(oldContent: string | undefined, value: object): str
   const document = parseDocument(oldContent);
   if (document.errors.length > 0 || !isMap(document.contents)) return dumpYaml(value);
 
-  // updateNode updates a mapping in place when the value is an object.
   updateNode(document.contents, value, oldContent);
   // Folding at a line width would split long values that `js-yaml` writes on one line.
   return document.toString({ flowCollectionPadding: false, lineWidth: 0 });
@@ -28,7 +27,7 @@ function updateNode(node: unknown, value: unknown, source: string): Node {
     node.items = Object.entries(value)
       .filter(([, itemValue]) => itemValue !== undefined)
       .map(([key, itemValue]) => {
-        const pair = node.items.find((item) => isScalar(item.key) && item.key.value === key);
+        const pair = node.items.find((item) => isScalar(item.key) && String(item.key.value) === key);
         if (!pair) return new Pair(createNode(key), createNode(itemValue));
         moveInlineCommentToKey(pair, source);
         // Only a mapping under a key: `yaml` would print the comment of a sequence entry after its `- ` indicator.
