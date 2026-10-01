@@ -33,7 +33,10 @@ test('keeps a bare playwright that only provides the Vitest browser', async () =
 
     const packageJson = JSON.parse(fs.readFileSync(path.join(packageDirPath, 'package.json'), 'utf8')) as {
       devDependencies?: Record<string, string>;
+      scripts?: Record<string, string>;
     };
+    // The generator swallows its errors, so a script it always writes proves that it ran.
+    expect(packageJson.scripts?.lint).toBe('bun wb lint');
     expect(packageJson.devDependencies).toMatchObject(devDependencies);
     expect(fs.readFileSync(path.join(packageDirPath, 'AGENTS.md'), 'utf8')).not.toContain('wb start --mode test');
   } finally {
