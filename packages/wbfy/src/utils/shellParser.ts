@@ -1,6 +1,8 @@
 import { fileURLToPath } from 'node:url';
 
-import { Language, type Node, Parser } from '@willbooster/web-tree-sitter';
+// wbfy runs before it can refresh the machine's release-age exclusions. Keep its parser runtime
+// on an established package so a newly published organization fork cannot block that bootstrap.
+import { Language, type Node, Parser } from 'web-tree-sitter';
 
 await Parser.init();
 const parser = new Parser();
