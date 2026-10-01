@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, expect, mock, spyOn, test } from 'bun:test';
 
 import { generateReadme, readAppliedWbfyVersionLabel, writeBadgeBlock } from '../../src/generators/readme.js';
+import { getPackageConfig } from '../../src/packageConfig.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
 import * as version from '../../src/utils/version.js';
 import { createConfig } from '../helpers/testConfig.js';
@@ -534,7 +535,7 @@ function mockNpmRegistry(publishedNames: string[]): void {
 
 const npmPublishingOverrides = {
   packageJson: { name: '@willbooster/wbfy' },
-  release: { branches: [], github: true, npm: true, npmPublishesRoot: true },
+  release: { branches: [], npm: true, npmPublishesRoot: true },
 };
 const npmBadge =
   '[![npm version](https://img.shields.io/npm/v/@willbooster/wbfy.svg)](https://www.npmjs.com/package/@willbooster/wbfy)';
@@ -549,6 +550,44 @@ test('adds an npm badge above the other badges for a published package', async (
     const content = await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides);
     expect(content).toBe(`# example\n\n${npmBadge}\n${badgeOf('1.2.3')}\n\nBody text.\n`);
     expect(await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides)).toBe(content);
+  });
+});
+
+test('adds the npm badges for a package that the wb release plugin publishes', async () => {
+  await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@willbooster/wbfy']);
+    spyOn(version, 'getWbfyVersionLabel').mockReturnValue('1.2.3');
+    // The packages/<name> layout keeps getPackageConfig from looking up a GitHub repository.
+    fs.writeFileSync(path.resolve(dirPath, 'package.json'), '{}');
+    const packageDirPath = path.resolve(dirPath, 'packages', 'wbfy');
+    fs.mkdirSync(packageDirPath, { recursive: true });
+    fs.writeFileSync(
+      path.resolve(packageDirPath, 'package.json'),
+      JSON.stringify({ name: '@willbooster/wbfy', license: 'Apache-2.0' })
+    );
+    fs.writeFileSync(
+      path.resolve(packageDirPath, '.releaserc.json'),
+      JSON.stringify({
+        branches: ['main'],
+        plugins: [
+          '@semantic-release/commit-analyzer',
+          ['@willbooster/wb/release-plugin', { crate: 'willbooster-wbfy', pkgRoot: '.' }],
+        ],
+      })
+    );
+    fs.writeFileSync(
+      path.resolve(packageDirPath, 'README.md'),
+      `# example\n\n${npmBadge}\n${licenseBadge}\n\nBody text.\n`
+    );
+    fsUtil.setRootDirPath(dirPath);
+
+    const config = await getPackageConfig(packageDirPath);
+    if (!config) throw new Error('getPackageConfig rejected the package.');
+    await generateReadme(config);
+
+    expect(fs.readFileSync(path.resolve(packageDirPath, 'README.md'), 'utf8')).toStartWith(
+      `# example\n\n${npmBadge}\n${licenseBadge}\n`
+    );
   });
 });
 

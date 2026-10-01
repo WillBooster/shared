@@ -87,10 +87,9 @@ export interface PackageConfig {
   };
   release: {
     branches: string[];
-    github: boolean;
     npm: boolean;
     /**
-     * An explicit `@semantic-release/npm` plugin entry publishes the root manifest itself
+     * An explicit npm-publishing plugin entry publishes the root manifest itself
      * (no pkgRoot redirection and npmPublish not disabled).
      */
     npmPublishesRoot: boolean;
@@ -112,6 +111,9 @@ const wbfyJsonSchema = z.object({
     })
     .optional(),
 });
+
+// wb's release plugin publishes the npm package in its required pkgRoot.
+const npmPublishingReleasePlugins = new Set(['@semantic-release/npm', '@willbooster/wb/release-plugin']);
 
 /**
  * The semantic-release config files wbfy expects, in cosmiconfig's resolution order (the leading
@@ -197,10 +199,11 @@ export async function getPackageConfig(
           const [pluginName, pluginOptions] = Array.isArray(pluginEntry) ? pluginEntry : [pluginEntry, undefined];
           if (typeof pluginName !== 'string') continue;
           releasePlugins.push(pluginName);
-          if (pluginName !== '@semantic-release/npm') continue;
+          if (!npmPublishingReleasePlugins.has(pluginName)) continue;
           // With pkgRoot the plugin publishes another manifest (it resolves pkgRoot against the
-          // repo root, so `.` and `./` both mean the root itself), and npmPublish: false
-          // disables publishing entirely; only the remaining shape proves the ROOT is published.
+          // repo root, so `.` and `./` both mean the root itself), and @semantic-release/npm's
+          // npmPublish: false disables publishing entirely; only the remaining shape proves the
+          // ROOT is published.
           const pkgRoot = pluginOptions?.pkgRoot;
           const publishesRoot =
             pluginOptions?.npmPublish !== false &&
@@ -215,8 +218,7 @@ export async function getPackageConfig(
       releasePluginsAreUnknown = true;
     }
     // Without an explicit plugin list, semantic-release's default list applies, which includes
-    // @semantic-release/npm and @semantic-release/github (mirrors releasePublishesToNpm in wb's
-    // release.ts).
+    // @semantic-release/npm.
     const usesSemanticRelease = !!(
       devDependencies['semantic-release'] ||
       releaseBranches.length > 0 ||
@@ -371,11 +373,8 @@ export async function getPackageConfig(
       },
       release: {
         branches: releaseBranches,
-        github: releasePluginsAreExplicit
-          ? releasePlugins.includes('@semantic-release/github') || releasePluginsAreUnknown
-          : usesSemanticRelease,
         npm: releasePluginsAreExplicit
-          ? releasePlugins.includes('@semantic-release/npm') || releasePluginsAreUnknown
+          ? releasePlugins.some((pluginName) => npmPublishingReleasePlugins.has(pluginName)) || releasePluginsAreUnknown
           : usesSemanticRelease,
         npmPublishesRoot: releaseNpmPluginPublishesRoot,
       },
