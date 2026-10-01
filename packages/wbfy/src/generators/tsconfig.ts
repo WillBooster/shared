@@ -35,7 +35,10 @@ const subJsonObj = {
   // directories belong to framework packages (Next.js/Blitz), which own their tsconfig
   // (generateTsconfig skips them), and checking framework sources under this project's compiler
   // options would produce false errors.
-  include: ['*.config.ts', 'scripts/**/*', 'src/**/*', 'test/**/*'],
+  // `*.config.mts` covers Vite-loaded configs (e.g. vitest.config.mts) of CommonJS packages (no
+  // `"type": "module"`, e.g. tree-sitter grammars), which use that extension so Node and Vite load
+  // them as ES modules.
+  include: ['*.config.mts', '*.config.ts', 'scripts/**/*', 'src/**/*', 'test/**/*'],
 };
 
 export async function generateTsconfig(config: PackageConfig): Promise<void> {
