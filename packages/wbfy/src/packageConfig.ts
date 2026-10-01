@@ -206,7 +206,7 @@ export async function getPackageConfig(
           // ROOT is published.
           const pkgRoot = pluginOptions?.pkgRoot;
           const publishesRoot =
-            pluginOptions?.npmPublish !== false &&
+            (pluginName !== '@semantic-release/npm' || pluginOptions?.npmPublish !== false) &&
             (pkgRoot === undefined ||
               (typeof pkgRoot === 'string' && path.resolve(dirPath, pkgRoot) === path.resolve(dirPath)));
           releaseNpmPluginPublishesRoot ||= publishesRoot;

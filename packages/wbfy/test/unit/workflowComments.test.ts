@@ -32,7 +32,7 @@ permissions:
 jobs:
   release:
     uses: WillBooster/reusable-workflows/.github/workflows/release.yml@main # the shared release
-    secrets:
+    secrets: # passed to the release job
       # removed by wbfy because no private package is resolved
       VERDACCIO_TOKEN: \${{ secrets.VERDACCIO_TOKEN }}
       GH_TOKEN: \${{ secrets.GITHUB_TOKEN }} # for semantic-release
@@ -69,7 +69,7 @@ jobs:
     uses: WillBooster/reusable-workflows/.github/workflows/release.yml@main # the shared release
     with:
       github_hosted_runner: true
-    secrets:
+    secrets: # passed to the release job
       GH_TOKEN: \${{ secrets.GITHUB_TOKEN }} # for semantic-release
       TAKUMI_GUARD_TOKEN: \${{ secrets.TAKUMI_GUARD_TOKEN }}
 `);

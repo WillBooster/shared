@@ -8,11 +8,12 @@ import type { Node, YAMLMap, YAMLSeq } from 'yaml';
  * `js-yaml` dumps them, which is also the whole output when `oldContent` is absent or not a parsable mapping.
  */
 export function dumpYamlOver(oldContent: string | undefined, value: object): string {
-  const document = parseDocument(oldContent ?? '');
+  if (oldContent === undefined) return dumpYaml(value);
+  const document = parseDocument(oldContent);
   if (document.errors.length > 0 || !isMap(document.contents)) return dumpYaml(value);
 
   // updateNode updates a mapping in place when the value is an object.
-  updateNode(document.contents, value);
+  updateNode(document.contents, value, oldContent);
   // Folding at a line width would split long values that `js-yaml` writes on one line.
   return document.toString({ flowCollectionPadding: false, lineWidth: 0 });
 }
@@ -21,7 +22,7 @@ function dumpYaml(value: unknown): string {
   return jsYaml.dump(value, { lineWidth: -1 });
 }
 
-function updateNode(node: unknown, value: unknown): Node {
+function updateNode(node: unknown, value: unknown, source: string): Node {
   if (isMap(node) && isPlainObject(value)) {
     moveLeadingCommentToFirstItem(node, node.items[0]?.key);
     // js-yaml omits undefined properties.
@@ -30,7 +31,8 @@ function updateNode(node: unknown, value: unknown): Node {
       .map(([key, itemValue]) => {
         const pair = node.items.find((item) => isScalar(item.key) && item.key.value === key);
         if (!pair) return new Pair(createNode(key), createNode(itemValue));
-        pair.value = updateNode(pair.value, itemValue);
+        moveInlineCommentToKey(pair, source);
+        pair.value = updateNode(pair.value, itemValue, source);
         return pair;
       });
     return node;
@@ -44,7 +46,7 @@ function updateNode(node: unknown, value: unknown): Node {
     node.items = value.map((itemValue, index) => {
       if (isPlainObject(itemValue)) {
         const item = oldItems[index];
-        return isMap(item) ? updateNode(item, itemValue) : createNode(itemValue);
+        return isMap(item) ? updateNode(item, itemValue, source) : createNode(itemValue);
       }
       const sameScalar = oldItems.find((item) => unusedItems.has(item) && isScalar(item) && item.value === itemValue);
       if (!sameScalar) return createNode(itemValue);
@@ -62,6 +64,19 @@ function updateNode(node: unknown, value: unknown): Node {
     newNode.spaceBefore = node.spaceBefore;
   }
   return newNode;
+}
+
+/**
+ * `yaml` attaches a comment that follows a key on its line to the key's mapping or sequence value, together with the
+ * comments above the value's first entry.
+ */
+function moveInlineCommentToKey({ key, value }: Pair, source: string): void {
+  if (!isNode(key) || !key.range || !(isMap(value) || isSeq(value)) || !value.commentBefore || !value.range) return;
+  if (!/^[ \t]*:[ \t]*#/u.test(source.slice(key.range[1], value.range[0]))) return;
+
+  const [inlineComment, ...commentLines] = value.commentBefore.split('\n');
+  key.comment = inlineComment;
+  value.commentBefore = commentLines.length > 0 ? commentLines.join('\n') : undefined;
 }
 
 /**
