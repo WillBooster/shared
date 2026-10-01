@@ -7,25 +7,29 @@ import { expect } from 'bun:test';
 /**
  * Builds dist/ for tests that run bin/index.js. Every such test file must call this in `beforeAll`:
  * `bun test --parallel` runs files in concurrent workers, and build-ts deletes dist/ before writing,
- * so an unserialized rebuild breaks another worker's CLI run. The lock serializes the builds, and
- * buildIfNeeded turns every build after the first into a no-op.
+ * so a rebuild breaks another worker's CLI run. The lock serializes the workers, and only the first
+ * of a run builds: buildIfNeeded alone would rebuild for a worker whose environment an earlier test
+ * file changed, since workers run their files in one global.
  */
 export async function buildWb(): Promise<void> {
   // Only workers of one parallel run race each other, so the lock is named after that run's
   // coordinator (the workers' parent), by PID plus start time since a PID alone is reused: a lock left
   // by a force-killed run then never matches a later run. No waiter ever removes a lock, since
   // deciding it is stale and removing it cannot be atomic.
-  const lockPath =
+  const runPathPrefix =
     process.env.BUN_TEST_WORKER_ID &&
-    path.resolve('node_modules', '.cache', `wb-test-build-${process.ppid}-${readStartTime(process.ppid)}.lock`);
-  if (lockPath) await acquireLock(lockPath);
+    path.resolve('node_modules', '.cache', `wb-test-build-${process.ppid}-${readStartTime(process.ppid)}`);
+  if (runPathPrefix) await acquireLock(`${runPathPrefix}.lock`);
   try {
-    // buildIfNeeded hashes the environment, so the per-worker IDs would make every worker rebuild.
+    if (runPathPrefix && fs.existsSync(`${runPathPrefix}.built`)) return;
+    // buildIfNeeded hashes the environment, so the per-worker IDs would make the next run rebuild whenever
+    // another worker builds first.
     const { BUN_TEST_WORKER_ID: _bunWorkerId, JEST_WORKER_ID: _jestWorkerId, ...env } = process.env;
     const build = spawnSync('bun', ['run', 'build'], { encoding: 'utf8', env, timeout: 60_000 });
     expect(build.status, build.stdout + build.stderr).toBe(0);
+    if (runPathPrefix) fs.writeFileSync(`${runPathPrefix}.built`, '');
   } finally {
-    if (lockPath) fs.rmSync(lockPath, { force: true });
+    if (runPathPrefix) fs.rmSync(`${runPathPrefix}.lock`, { force: true });
   }
 }
 

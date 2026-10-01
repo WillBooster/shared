@@ -9,14 +9,20 @@ import { clearProjectCaches } from '../../src/project.js';
 
 /**
  * Creates a fixture directory that the calling test file removes in `afterAll`, so concurrent test
- * files never copy fixtures over each other's directories. Call it at the test file's top level: the
- * hook attaches to the scope being collected, and the test files that one process runs share this
+ * files never copy fixtures over each other's directories, and restores `process.env` as it was when
+ * the file started, which `initializeProjectDirectory` changes. Call it at the test file's top level:
+ * the hook attaches to the scope being collected, and the test files that one process runs share this
  * module, so a hook registered here at import time would run after the first importing file only.
  */
 export function createTempDir(): string {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-test-'));
+  const originalEnv = { ...process.env };
   afterAll(() => {
     fs.rmSync(dirPath, { force: true, recursive: true });
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
   });
   return dirPath;
 }
