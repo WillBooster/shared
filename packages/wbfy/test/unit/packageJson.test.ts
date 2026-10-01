@@ -815,7 +815,7 @@ test('does not force private on a monorepo root released via @semantic-release/n
     {
       isRoot: true,
       doesContainSubPackageJsons: true,
-      release: { branches: ['main'], github: true, npm: true, npmPublishesRoot: false },
+      release: { branches: ['main'], npm: true, npmPublishesRoot: false },
     }
   );
 
@@ -828,7 +828,7 @@ test('allows a private monorepo root to become an explicitly published package',
     {
       isRoot: true,
       doesContainSubPackageJsons: true,
-      release: { branches: ['main'], github: true, npm: true, npmPublishesRoot: true },
+      release: { branches: ['main'], npm: true, npmPublishesRoot: true },
     }
   );
 

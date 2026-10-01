@@ -239,7 +239,7 @@ test('generates release and deploy workflows for wb-deploy scripts and semantic-
       isWillBoosterRepo: false,
       repository: 'github:someone/example',
       depending: { ...createConfig().depending, semanticRelease: true },
-      release: { branches: ['release'], github: true, npm: false, npmPublishesRoot: false },
+      release: { branches: ['release'], npm: false, npmPublishesRoot: false },
       packageJson: {
         scripts: {
           deploy: 'WB_ENV=production bun wb deploy',
@@ -332,7 +332,7 @@ test('hardens every install with the Takumi Guard proxy without exposing the tok
       isWillBoosterRepo: false,
       repository: 'github:someone/example',
       depending: { ...createConfig().depending, semanticRelease: true },
-      release: { branches: ['main'], github: true, npm: false, npmPublishesRoot: false },
+      release: { branches: ['main'], npm: false, npmPublishesRoot: false },
       packageJson: { scripts: { deploy: 'WB_ENV=production bun wb deploy' } },
     });
     await generateSelfContainedWorkflows(config);
