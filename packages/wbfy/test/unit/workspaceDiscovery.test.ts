@@ -74,6 +74,7 @@ test('derives root signals and root tsconfig coverage from an apps/*-only monore
     };
     // Exact arrays: the never-matching packages/* fallback must not leak into apps/*-only output.
     expect(tsconfig.include).toEqual([
+      '*.config.mts',
       '*.config.ts',
       'apps/*/*.config.ts',
       'apps/*/scripts/**/*',
