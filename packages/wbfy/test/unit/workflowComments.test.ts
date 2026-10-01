@@ -76,6 +76,39 @@ jobs:
   });
 });
 
+test('removes the comments of a removed sequence entry with it', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-sequence-comments-', async (dirPath, workflowsPath) => {
+    const filePath = path.join(workflowsPath, 'test.yml');
+    const head = `name: Test\n'on':\n  pull_request: null\n  push:\n    branches:\n`;
+    const tail = `concurrency:
+  group: \${{ github.workflow }}-\${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  actions: write
+  contents: write
+  pull-requests: read
+jobs:
+  test:
+    uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main
+    with:
+      github_hosted_runner: true
+    secrets:
+      GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+      TAKUMI_GUARD_TOKEN: \${{ secrets.TAKUMI_GUARD_TOKEN }}
+`;
+    fs.writeFileSync(
+      filePath,
+      `${head}      # for Renovate\n      - renovate/** # bot\n      # the main one\n      - main # keep\n  workflow_dispatch: null\n${tail}`
+    );
+
+    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(
+      `${head}      # the main one\n      - main # keep\n  workflow_dispatch: null\n${tail}`
+    );
+  });
+});
+
 test('keeps the comments of an existing force-sync workflow', async () => {
   await withTempWorkflowsRepo('wbfy-workflow-sync-comments-', async (dirPath, workflowsPath) => {
     const syncJob = `  sync:

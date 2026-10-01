@@ -1,6 +1,6 @@
 import * as jsYaml from 'js-yaml';
 import { isMap, isNode, isScalar, isSeq, Pair, parseDocument } from 'yaml';
-import type { Node, YAMLMap } from 'yaml';
+import type { Node, YAMLMap, YAMLSeq } from 'yaml';
 
 /**
  * Serializes `value` as the YAML text that replaces `oldContent`. The nodes of `oldContent` that `value` keeps keep
@@ -23,7 +23,7 @@ function dumpYaml(value: unknown): string {
 
 function updateNode(node: unknown, value: unknown): Node {
   if (isMap(node) && isPlainObject(value)) {
-    moveLeadingCommentToFirstKey(node);
+    moveLeadingCommentToFirstItem(node, node.items[0]?.key);
     // js-yaml omits undefined properties.
     node.items = Object.entries(value)
       .filter(([, itemValue]) => itemValue !== undefined)
@@ -36,7 +36,21 @@ function updateNode(node: unknown, value: unknown): Node {
     return node;
   }
   if (isSeq(node) && Array.isArray(value)) {
-    node.items = value.map((itemValue, index) => updateNode(node.items[index], itemValue));
+    const oldItems = node.items;
+    moveLeadingCommentToFirstItem(node, isScalar(oldItems[0]) ? oldItems[0] : undefined);
+    const unusedItems = new Set(oldItems);
+    // A scalar entry is identified by its value and a mapping entry by its position, so that the comments of a removed
+    // scalar entry go with it instead of landing on the entry that takes its position.
+    node.items = value.map((itemValue, index) => {
+      if (isPlainObject(itemValue)) {
+        const item = oldItems[index];
+        return isMap(item) ? updateNode(item, itemValue) : createNode(itemValue);
+      }
+      const sameScalar = oldItems.find((item) => unusedItems.has(item) && isScalar(item) && item.value === itemValue);
+      if (!sameScalar) return createNode(itemValue);
+      unusedItems.delete(sameScalar);
+      return sameScalar;
+    });
     return node;
   }
   if (isScalar(node) && node.value === value) return node;
@@ -51,11 +65,11 @@ function updateNode(node: unknown, value: unknown): Node {
 }
 
 /**
- * `yaml` attaches the comment above the first entry of a nested mapping to the mapping, where it would stay when that
- * entry is removed.
+ * `yaml` attaches the comment above the first entry of a nested collection to the collection, where it would stay when
+ * that entry is removed. A sequence keeps it when its first entry is a collection, whose comment `yaml` would print
+ * after the `- ` indicator.
  */
-function moveLeadingCommentToFirstKey(node: YAMLMap): void {
-  const target = node.items[0]?.key;
+function moveLeadingCommentToFirstItem(node: YAMLMap | YAMLSeq, target: unknown): void {
   if (!node.commentBefore || !isNode(target)) return;
   target.commentBefore = target.commentBefore ? `${node.commentBefore}\n${target.commentBefore}` : node.commentBefore;
   node.commentBefore = undefined;
