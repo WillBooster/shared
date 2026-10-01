@@ -557,16 +557,12 @@ test('adds the npm badges for a package that the wb release plugin publishes', a
   await withTempDir(async (dirPath) => {
     mockNpmRegistry(['@willbooster/wbfy']);
     spyOn(version, 'getWbfyVersionLabel').mockReturnValue('1.2.3');
-    // The packages/<name> layout keeps getPackageConfig from looking up a GitHub repository.
-    fs.writeFileSync(path.resolve(dirPath, 'package.json'), '{}');
-    const packageDirPath = path.resolve(dirPath, 'packages', 'wbfy');
-    fs.mkdirSync(packageDirPath, { recursive: true });
     fs.writeFileSync(
-      path.resolve(packageDirPath, 'package.json'),
+      path.resolve(dirPath, 'package.json'),
       JSON.stringify({ name: '@willbooster/wbfy', license: 'Apache-2.0' })
     );
     fs.writeFileSync(
-      path.resolve(packageDirPath, '.releaserc.json'),
+      path.resolve(dirPath, '.releaserc.json'),
       JSON.stringify({
         branches: ['main'],
         plugins: [
@@ -575,17 +571,15 @@ test('adds the npm badges for a package that the wb release plugin publishes', a
         ],
       })
     );
-    fs.writeFileSync(
-      path.resolve(packageDirPath, 'README.md'),
-      `# example\n\n${npmBadge}\n${licenseBadge}\n\nBody text.\n`
-    );
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${npmBadge}\n${licenseBadge}\n\nBody text.\n`);
     fsUtil.setRootDirPath(dirPath);
 
-    const config = await getPackageConfig(packageDirPath);
+    // isRoot: false skips the GitHub repository lookup.
+    const config = await getPackageConfig(dirPath, { isRoot: false });
     if (!config) throw new Error('getPackageConfig rejected the package.');
     await generateReadme(config);
 
-    expect(fs.readFileSync(path.resolve(packageDirPath, 'README.md'), 'utf8')).toStartWith(
+    expect(fs.readFileSync(path.resolve(dirPath, 'README.md'), 'utf8')).toStartWith(
       `# example\n\n${npmBadge}\n${licenseBadge}\n`
     );
   });
