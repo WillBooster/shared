@@ -17,10 +17,6 @@ export function dumpYamlOver(oldContent: string | undefined, value: object): str
   return document.toString({ flowCollectionPadding: false, lineWidth: 0 });
 }
 
-function dumpYaml(value: unknown): string {
-  return jsYaml.dump(value, { lineWidth: -1 });
-}
-
 function updateNode(node: unknown, value: unknown, source: string): Node {
   if (isMap(node) && isPlainObject(value)) {
     // js-yaml omits undefined properties.
@@ -94,6 +90,10 @@ function createNode(value: unknown): Node {
   const contents = parseDocument(dumpYaml(value)).contents;
   if (!isNode(contents)) throw new Error(`js-yaml dumped no YAML node for ${JSON.stringify(value)}.`);
   return contents;
+}
+
+function dumpYaml(value: unknown): string {
+  return jsYaml.dump(value, { lineWidth: -1 });
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
