@@ -1,9 +1,11 @@
+import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 import { expect, test } from 'bun:test';
 
+import { generatePackageJson } from '../../src/generators/packageJson.js';
 import { generateWorkflows } from '../../src/generators/workflow.js';
 import { getPackageConfig } from '../../src/packageConfig.js';
 
@@ -58,6 +60,32 @@ test('accepts a documentation-only Git repository without a package.json', async
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }
 });
+
+test('ignores Java sources that only gitignored clones contain', async () => {
+  const tempDirPath = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-')));
+  try {
+    childProcess.execFileSync('git', ['init', '--quiet'], { cwd: tempDirPath });
+    const javaFilePath = path.join(tempDirPath, 'examples', 'gentoo', 'files', 'Main.java');
+    fs.mkdirSync(path.dirname(javaFilePath), { recursive: true });
+    fs.writeFileSync(javaFilePath, 'class Main {}\n');
+    const generateDevDependencies = async (gitignore: string): Promise<Record<string, string>> => {
+      fs.writeFileSync(path.join(tempDirPath, '.gitignore'), gitignore);
+      fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+      const config = await getPackageConfig(tempDirPath);
+      if (!config) throw new Error('unreachable');
+      await generatePackageJson(config, config, true);
+      const packageJson = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'package.json'), 'utf8')) as {
+        devDependencies?: Record<string, string>;
+      };
+      return packageJson.devDependencies ?? {};
+    };
+
+    expect(await generateDevDependencies('/examples/*/\n')).not.toHaveProperty('prettier-plugin-java');
+    expect(await generateDevDependencies('')).toHaveProperty('prettier-plugin-java');
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+}, 60_000);
 
 test('removes a generated Rust workflow based only on a cached Cargo project', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
