@@ -1,14 +1,14 @@
-import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
-// wbfy runs before it can refresh the machine's release-age exclusions. Keep its parser runtime
-// on an established package so a newly published organization fork cannot block that bootstrap.
 import { Language, type Node, Parser } from 'web-tree-sitter';
 
+import { getWbfyDirPath } from './version.js';
+
+// wbfy must resolve before it refreshes global release-age exclusions. Ship the Bash grammar
+// with the package so a newly published grammar release cannot block that first installation.
 await Parser.init();
 const parser = new Parser();
-parser.setLanguage(
-  await Language.load(fileURLToPath(import.meta.resolve('@willbooster/tree-sitter-bash/tree-sitter-bash.wasm')))
-);
+parser.setLanguage(await Language.load(path.join(getWbfyDirPath(), 'configs', 'tree-sitter-bash.wasm')));
 
 /**
  * Returns the unquoted words (command name first) of every simple command in a Bash script, including those nested
