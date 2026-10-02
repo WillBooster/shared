@@ -32,7 +32,8 @@ afterAll(() => fs.rm(dir, { recursive: true, force: true }));
 it('applies the `[test] timeout` of bunfig.toml to every unit test file', async () => {
   const { BUN_TEST_WORKER_ID: _bunWorkerId, JEST_WORKER_ID: _jestWorkerId, ...env } = process.env;
   const result = await spawnAsync('node', [path.resolve('bin/index.js'), 'test'], { cwd: dir, env, timeout: 30_000 });
+  // Counts the per-test failure line only: on GitHub Actions, Bun repeats the message in an `::error` annotation.
   const output = result.stdout + result.stderr;
   expect(result.status, output).not.toBe(0);
-  expect(output.match(/timed out after 200ms/g), output).toHaveLength(fileCount);
+  expect(output.match(/this test timed out after 200ms/g), output).toHaveLength(fileCount);
 }, 60_000);
