@@ -65,7 +65,7 @@ const builder = {
     type: 'boolean',
   },
   'unit-timeout': {
-    description: 'Timeout for unit tests',
+    description: 'Timeout in milliseconds for the whole unit-test run of a package',
     type: 'number',
   },
 } as const;
