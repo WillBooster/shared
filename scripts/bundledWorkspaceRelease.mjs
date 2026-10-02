@@ -103,7 +103,7 @@ async function findReleasingBundledCommits(bundledPaths, analyzer, context) {
 
 function findBundledCommits(bundledPaths, context) {
   const range = context.lastRelease.gitHead ? `${context.lastRelease.gitHead}..HEAD` : 'HEAD';
-  const log = execFileSync('git', ['log', '--format=%H%x1f%cI%x1f%B%x1e', range, '--', ...bundledPaths], {
+  const log = execFileSync('git', ['log', '--format=%H%x1f%B%x1e', range, '--', ...bundledPaths], {
     cwd: context.cwd,
     encoding: 'utf8',
   });
@@ -113,8 +113,8 @@ function findBundledCommits(bundledPaths, context) {
     .map((record) => record.trim())
     .filter(Boolean)
     .map((record) => {
-      const [hash, committerDate, message] = record.split('\u001F');
-      return { hash, committerDate, message, commit: { long: hash, short: hash.slice(0, 7) } };
+      const [hash, message] = record.split('\u001F');
+      return { hash, message };
     })
     .filter((commit) => !knownHashes.has(commit.hash));
   if (bundledCommits.length > 0) {
