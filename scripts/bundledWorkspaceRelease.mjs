@@ -69,22 +69,36 @@ function findBundledWorkspaceNames(packageDirPath) {
       }
     }
   }
-  return [...names].toSorted();
+  return [...names].toSorted((a, b) => a.localeCompare(b));
 }
 
 // A bundled change releases the package as a patch, as multi-semantic-release's `deps.release` default
 // does for a dependent: a feature or a breaking change inside a bundled workspace is no feature or
-// breaking change of the bundling package's own interface.
+// breaking change of the bundling package's own interface. For the same reason, the notes list the
+// bundled changes apart from the package's own Features and BREAKING CHANGES sections.
 export async function analyzeCommits({ bundledPaths, analyzer }, context) {
   const ownType = await analyzeConventionalCommits(analyzer, context);
-  const bundledCommits = findBundledCommits(bundledPaths, context);
-  if (ownType || bundledCommits.length === 0) return ownType;
-  return (await analyzeConventionalCommits(analyzer, { ...context, commits: bundledCommits })) ? 'patch' : undefined;
+  if (ownType) return ownType;
+  const bundledCommits = await findReleasingBundledCommits(bundledPaths, analyzer, context);
+  return bundledCommits.length > 0 ? 'patch' : undefined;
 }
 
-export async function generateNotes({ bundledPaths, notes }, context) {
-  const commits = [...context.commits, ...findBundledCommits(bundledPaths, context)];
-  return generateConventionalNotes(notes, { ...context, commits });
+export async function generateNotes({ bundledPaths, analyzer, notes }, context) {
+  const ownNotes = await generateConventionalNotes(notes, context);
+  const bundledCommits = await findReleasingBundledCommits(bundledPaths, analyzer, context);
+  if (bundledCommits.length === 0) return ownNotes;
+  const items = bundledCommits.map((commit) => `* ${commit.message.split('\n')[0]} (${commit.hash})`);
+  return `${ownNotes.trimEnd()}\n\n### Bundled Workspace Changes\n\n${items.join('\n')}\n`;
+}
+
+async function findReleasingBundledCommits(bundledPaths, analyzer, context) {
+  const silentContext = { ...context, logger: { ...context.logger, log: () => {} } };
+  const releasingCommits = [];
+  for (const commit of findBundledCommits(bundledPaths, context)) {
+    if (await analyzeConventionalCommits(analyzer, { ...silentContext, commits: [commit] }))
+      releasingCommits.push(commit);
+  }
+  return releasingCommits;
 }
 
 function findBundledCommits(bundledPaths, context) {
