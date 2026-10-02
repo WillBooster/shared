@@ -1,8 +1,8 @@
-import childProcess from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { expect, test } from 'bun:test';
 
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from '../../src/generators/bunfig.js';
@@ -33,12 +33,14 @@ npmRegistries:
 `
     );
 
-    const run = (): number | null =>
-      childProcess.spawnSync('bash', [scriptPath], {
+    const run = async (): Promise<number | null> => {
+      const result = await spawnAsync('bash', [scriptPath], {
         env: { ...process.env, HOME: homeDirPath, XDG_CONFIG_HOME: xdgDirPath },
         stdio: 'inherit',
-      }).status;
-    expect(run()).toBe(0);
+      });
+      return result.status;
+    };
+    expect(await run()).toBe(0);
 
     const npmrc = await fs.readFile(path.join(homeDirPath, '.npmrc'), 'utf8');
     expect(npmrc).toContain('registry=https://example.com/\n');
@@ -69,7 +71,7 @@ npmRegistries:
     ).toBe(false);
 
     // Re-running must not stack another copy of the gate on top of the previous one.
-    expect(run()).toBe(0);
+    expect(await run()).toBe(0);
     expect(await fs.readFile(path.join(homeDirPath, '.npmrc'), 'utf8')).toBe(npmrc);
     expect(await fs.readFile(path.join(homeDirPath, '.yarnrc.yml'), 'utf8')).toBe(yarnrc);
   } finally {
@@ -96,7 +98,7 @@ test('exempts temporarily excluded packages only until their date', async () => 
       )
     );
 
-    const { status } = childProcess.spawnSync('bash', [path.join(workDirPath, 'applyReleaseAgeGate.sh')], {
+    const { status } = await spawnAsync('bash', [path.join(workDirPath, 'applyReleaseAgeGate.sh')], {
       env: { ...process.env, HOME: homeDirPath, XDG_CONFIG_HOME: '' },
       stdio: 'inherit',
     });

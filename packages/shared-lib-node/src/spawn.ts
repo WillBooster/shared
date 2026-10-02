@@ -32,7 +32,7 @@ export type SpawnAsyncOptions = (
 ) & {
   /** Whether to retain stdout/stderr in the returned result; defaults to true. */
   collectOutput?: boolean;
-  /** Input string to write to the spawned process's stdin */
+  /** Input string to write to the spawned process's stdin, which is closed afterwards (or at once without input) */
   input?: string;
   /** If true, stderr output will be merged into stdout */
   mergeOutAndError?: boolean;
@@ -181,10 +181,9 @@ export async function spawnAsync(
         }
       });
 
-      if (options?.input) {
-        proc.stdin?.write(options.input);
-        proc.stdin?.end();
-      }
+      // Like spawnSync, the child reads EOF after the input: nothing else can write to this pipe.
+      if (options?.input) proc.stdin?.write(options.input);
+      proc.stdin?.end();
     } catch (error) {
       // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
       reject(error);

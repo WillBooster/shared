@@ -1,8 +1,8 @@
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { expect, test } from 'bun:test';
 
 import { consumesGeneratedWorkerTypes, generatesWorkerTypes } from '../../src/packageConfig.js';
@@ -85,15 +85,20 @@ test('honors exclude and relative extends chains when resolving the effective fi
 
 test('counts tracked source mentions as consumption but ignores the managed .gitignore rule', async () => {
   const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wbfy-worker-types-git-'));
-  const git = (...args: string[]): Buffer =>
-    execFileSync('git', args, { cwd: dirPath, env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' } });
+  const git = async (...args: string[]): Promise<void> => {
+    const result = await spawnAsync('git', args, {
+      cwd: dirPath,
+      env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' },
+    });
+    expect(result.status, result.stderr).toBe(0);
+  };
   try {
-    git('init', '--initial-branch=main');
+    await git('init', '--initial-branch=main');
     // wbfy's own committed artifacts must not count as consumption, or a once-managed package
     // could never opt out.
     await fs.promises.writeFile(path.join(dirPath, '.gitignore'), '/worker-configuration.d.ts\n');
     await fs.promises.writeFile(path.join(dirPath, 'tsconfig.json'), '{ "include": ["src/**/*"] }');
-    git('add', '-A');
+    await git('add', '-A');
     expect(consumesGeneratedWorkerTypes({ dirPath })).toBe(false);
 
     // A tracked tsconfig mentioning the file (here: an exclude entry) is classified by the
@@ -102,10 +107,10 @@ test('counts tracked source mentions as consumption but ignores the managed .git
       path.join(dirPath, 'tsconfig.json'),
       '{ "include": ["**/*"], "exclude": ["worker-configuration.d.ts"] }'
     );
-    git('add', '-A');
+    await git('add', '-A');
     expect(consumesGeneratedWorkerTypes({ dirPath })).toBe(false);
     await fs.promises.writeFile(path.join(dirPath, 'tsconfig.json'), '{ "include": ["src/**/*"] }');
-    git('add', '-A');
+    await git('add', '-A');
 
     // A genuine reference in a tracked source file DOES count.
     await fs.promises.mkdir(path.join(dirPath, 'src'));
@@ -113,7 +118,7 @@ test('counts tracked source mentions as consumption but ignores the managed .git
       path.join(dirPath, 'src', 'index.ts'),
       '/// <reference path="../worker-configuration.d.ts" />\n'
     );
-    git('add', '-A');
+    await git('add', '-A');
     expect(consumesGeneratedWorkerTypes({ dirPath })).toBe(true);
   } finally {
     await fs.promises.rm(dirPath, { force: true, recursive: true });
@@ -122,13 +127,18 @@ test('counts tracked source mentions as consumption but ignores the managed .git
 
 test('manages worker types regardless of machine-local untracked dotenv files or local config edits', async () => {
   const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wbfy-worker-types-determinism-'));
-  const git = (...args: string[]): Buffer =>
-    execFileSync('git', args, { cwd: dirPath, env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' } });
+  const git = async (...args: string[]): Promise<void> => {
+    const result = await spawnAsync('git', args, {
+      cwd: dirPath,
+      env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' },
+    });
+    expect(result.status, result.stderr).toBe(0);
+  };
   try {
-    git('init', '--initial-branch=main');
+    await git('init', '--initial-branch=main');
     await fs.promises.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{ "name": "app" }');
     await fs.promises.writeFile(path.join(dirPath, 'tsconfig.json'), '{ "include": ["**/*"] }');
-    git('add', '-A');
+    await git('add', '-A');
     const config = createConfig({
       dirPath,
       doesContainWranglerConfig: true,

@@ -1,16 +1,16 @@
-import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it } from 'bun:test';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
+import { describe, expect, it, setDefaultTimeout } from 'bun:test';
+
+// Every test runs the CLI from source in a child process, which took up to 2.7 seconds on CI.
+setDefaultTimeout(30_000);
 
 describe('wb start --help', () => {
-  it('explains how to forward arguments after --', () => {
-    const result = child_process.spawnSync('bun', ['run', 'start', 'start', '--help'], {
-      cwd: process.cwd(),
-      encoding: 'utf8',
-    });
+  it('explains how to forward arguments after --', async () => {
+    const result = await spawnAsync('bun', ['run', 'start', 'start', '--help'], { cwd: process.cwd() });
     const normalizedStdout = result.stdout.replaceAll(/\s+/g, ' ');
 
     expect(result.status).toBe(0);
@@ -21,7 +21,7 @@ describe('wb start --help', () => {
 });
 
 describe('wb start --dry-run', () => {
-  it('makes automatic browser opening optional', () => {
+  it('makes automatic browser opening optional', async () => {
     const temporaryDir = path.join(process.cwd(), '.tmp');
     fs.mkdirSync(temporaryDir, { recursive: true });
     const fixtureDir = fs.mkdtempSync(path.join(temporaryDir, 'wb-start-'));
@@ -32,11 +32,14 @@ describe('wb start --dry-run', () => {
     );
 
     try {
-      const result = child_process.spawnSync(
-        'bun',
-        [cliPath, 'start', '--dry-run', '--auto-cascade-env=false', '--working-dir', fixtureDir],
-        { encoding: 'utf8' }
-      );
+      const result = await spawnAsync('bun', [
+        cliPath,
+        'start',
+        '--dry-run',
+        '--auto-cascade-env=false',
+        '--working-dir',
+        fixtureDir,
+      ]);
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('open-cli --optional');

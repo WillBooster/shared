@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
@@ -75,8 +76,9 @@ async function publishServerUrl(
   packageName: string,
   baseUrl: string,
   publisherPid = process.pid,
-  publisherStartTime = readProcessStartTime(publisherPid)
+  publisherStartTime?: string
 ): Promise<string> {
+  publisherStartTime ??= await readProcessStartTime(publisherPid);
   const filePath = path.join(projectDirPath, '.wb', `server-${wbEnv}-${encodeURIComponent(packageName)}.json`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify({ url: baseUrl, pid: publisherPid, startedAt: publisherStartTime }));
@@ -85,13 +87,11 @@ async function publishServerUrl(
 
 // The publication format fixes the locale and timezone, so that a publisher and a reader in
 // differently configured shells still describe one process identically.
-function readProcessStartTime(pid: number): string {
-  return childProcess
-    .spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], {
-      encoding: 'utf8',
-      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
-    })
-    .stdout.trim();
+async function readProcessStartTime(pid: number): Promise<string> {
+  const result = await spawnAsync('ps', ['-o', 'lstart=', '-p', String(pid)], {
+    env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+  });
+  return result.stdout.trim();
 }
 
 async function publishRunningServerUrl(wbEnv: string, packageName: string): Promise<string> {
@@ -100,10 +100,9 @@ async function publishRunningServerUrl(wbEnv: string, packageName: string): Prom
   return baseUrl;
 }
 
-function runScript(env: NodeJS.ProcessEnv = {}, cwd = projectDirPath): string {
-  const result = childProcess.spawnSync('node', [binIndexPath, 'run', 'print-base-url.js'], {
+async function runScript(env: NodeJS.ProcessEnv = {}, cwd = projectDirPath): Promise<string> {
+  const result = await spawnAsync('node', [binIndexPath, 'run', 'print-base-url.js'], {
     cwd,
-    encoding: 'utf8',
     env: { PATH: process.env.PATH, WB_ENV: 'development', ...env },
   });
   expect(result.status).toBe(0);
@@ -115,7 +114,7 @@ describe('wb run', () => {
   it('hands a script the URL of the local server running for this environment', async () => {
     const baseUrl = await publishRunningServerUrl('development', ROOT_PACKAGE_NAME);
 
-    expect(runScript()).toBe(JSON.stringify(baseUrl));
+    expect(await runScript()).toBe(JSON.stringify(baseUrl));
   });
 
   it('reaches a workspace app server from the repository root', async () => {
@@ -124,7 +123,7 @@ describe('wb run', () => {
     await writePackage(path.join(projectDirPath, APP_DIR_NAME), APP_PACKAGE_NAME);
     const baseUrl = await publishRunningServerUrl('development', APP_PACKAGE_NAME);
 
-    expect(runScript()).toBe(JSON.stringify(baseUrl));
+    expect(await runScript()).toBe(JSON.stringify(baseUrl));
   });
 
   it('reaches the server from a workspace package directory', async () => {
@@ -132,7 +131,7 @@ describe('wb run', () => {
     await writePackage(appDirPath, APP_PACKAGE_NAME);
     const baseUrl = await publishRunningServerUrl('development', APP_PACKAGE_NAME);
 
-    expect(runScript({}, appDirPath)).toBe(JSON.stringify(baseUrl));
+    expect(await runScript({}, appDirPath)).toBe(JSON.stringify(baseUrl));
   });
 
   it('picks its own package server when a monorepo serves several apps', async () => {
@@ -141,9 +140,9 @@ describe('wb run', () => {
     const appUrl = await publishRunningServerUrl('development', APP_PACKAGE_NAME);
     await publishRunningServerUrl('development', ADMIN_PACKAGE_NAME);
 
-    expect(runScript({}, appDirPath)).toBe(JSON.stringify(appUrl));
+    expect(await runScript({}, appDirPath)).toBe(JSON.stringify(appUrl));
     // Ambiguous from the root: naming no package must not silently pick one of the apps.
-    expect(runScript()).toBe('null');
+    expect(await runScript()).toBe('null');
   });
 
   it('reaches the server from a directory that holds no manifest of its own', async () => {
@@ -154,7 +153,7 @@ describe('wb run', () => {
     await fs.copyFile(path.join(projectDirPath, 'print-base-url.js'), path.join(scriptsDirPath, 'print-base-url.js'));
     const baseUrl = await publishRunningServerUrl('development', ROOT_PACKAGE_NAME);
 
-    expect(runScript({}, scriptsDirPath)).toBe(JSON.stringify(baseUrl));
+    expect(await runScript({}, scriptsDirPath)).toBe(JSON.stringify(baseUrl));
   });
 
   it('reaches its own app server from a manifest-less directory inside that package', async () => {
@@ -169,7 +168,7 @@ describe('wb run', () => {
     // A second app rules out the single-server fallback answering by luck.
     await publishRunningServerUrl('development', ADMIN_PACKAGE_NAME);
 
-    expect(runScript({}, appScriptsDirPath)).toBe(JSON.stringify(appUrl));
+    expect(await runScript({}, appScriptsDirPath)).toBe(JSON.stringify(appUrl));
   });
 
   it('reaches a server published as an IPv6 loopback URL', async () => {
@@ -180,7 +179,7 @@ describe('wb run', () => {
     const baseUrl = `http://[::1]:${port}`;
     await publishServerUrl('development', ROOT_PACKAGE_NAME, baseUrl);
 
-    expect(runScript()).toBe(JSON.stringify(baseUrl));
+    expect(await runScript()).toBe(JSON.stringify(baseUrl));
   });
 
   it('never hands a package script a sibling app server', async () => {
@@ -190,7 +189,7 @@ describe('wb run', () => {
 
     // Seeding the wrong app is worse than seeding nothing, so the single-server fallback is for
     // the repository root only.
-    expect(runScript({}, adminDirPath)).toBe('null');
+    expect(await runScript({}, adminDirPath)).toBe('null');
   });
 
   it('looks past a crashed publication to the app that is serving', async () => {
@@ -201,7 +200,7 @@ describe('wb run', () => {
     await closeServers();
     const runningUrl = await publishRunningServerUrl('development', APP_PACKAGE_NAME);
 
-    expect(runScript()).toBe(JSON.stringify(runningUrl));
+    expect(await runScript()).toBe(JSON.stringify(runningUrl));
   });
 
   it('ignores a publication whose publisher is gone even when its port is taken', async () => {
@@ -210,7 +209,7 @@ describe('wb run', () => {
     const baseUrl = `http://localhost:${await listenOnFreePort()}`;
     await publishServerUrl('development', ROOT_PACKAGE_NAME, baseUrl, await findDeadPid());
 
-    expect(runScript()).toBe('null');
+    expect(await runScript()).toBe('null');
   });
 
   it('ignores a publication whose pid the OS has reassigned since', async () => {
@@ -219,7 +218,7 @@ describe('wb run', () => {
     const baseUrl = `http://localhost:${await listenOnFreePort()}`;
     await publishServerUrl('development', ROOT_PACKAGE_NAME, baseUrl, process.pid, 'Thu Jan  1 00:00:00 2015');
 
-    expect(runScript()).toBe('null');
+    expect(await runScript()).toBe('null');
   });
 
   it('reads the environment its own WB_ENV names', async () => {
@@ -228,19 +227,19 @@ describe('wb run', () => {
     // development script (nor the reverse).
     await publishServerUrl('test', ROOT_PACKAGE_NAME, 'http://localhost:1');
 
-    expect(runScript()).toBe(JSON.stringify(developmentUrl));
+    expect(await runScript()).toBe(JSON.stringify(developmentUrl));
   });
 
   it('ignores a URL published for a deployed environment', async () => {
     await publishRunningServerUrl('production', ROOT_PACKAGE_NAME);
 
-    expect(runScript({ WB_ENV: 'production' })).toBe('null');
+    expect(await runScript({ WB_ENV: 'production' })).toBe('null');
   });
 
   it('never overrides a configured NEXT_PUBLIC_BASE_URL', async () => {
     await publishRunningServerUrl('development', ROOT_PACKAGE_NAME);
 
-    expect(runScript({ NEXT_PUBLIC_BASE_URL: 'https://configured.example.com' })).toBe(
+    expect(await runScript({ NEXT_PUBLIC_BASE_URL: 'https://configured.example.com' })).toBe(
       JSON.stringify('https://configured.example.com')
     );
   });
@@ -248,7 +247,7 @@ describe('wb run', () => {
   it('keeps a deliberately empty NEXT_PUBLIC_BASE_URL empty', async () => {
     await publishRunningServerUrl('development', ROOT_PACKAGE_NAME);
 
-    expect(runScript({ NEXT_PUBLIC_BASE_URL: '' })).toBe('""');
+    expect(await runScript({ NEXT_PUBLIC_BASE_URL: '' })).toBe('""');
   });
 
   it('reports no URL while the published server is not serving yet', async () => {
@@ -258,7 +257,7 @@ describe('wb run', () => {
     const filePath = await publishServerUrl('development', ROOT_PACKAGE_NAME, baseUrl);
     await closeServers();
 
-    expect(runScript()).toBe('null');
+    expect(await runScript()).toBe('null');
     expect(await Bun.file(filePath).exists()).toBe(true);
   });
 
@@ -274,17 +273,17 @@ describe('wb run', () => {
     await fs.mkdir(path.dirname(strayFilePath), { recursive: true });
     await fs.writeFile(
       strayFilePath,
-      JSON.stringify({ url: baseUrl, pid: process.pid, startedAt: readProcessStartTime(process.pid) })
+      JSON.stringify({ url: baseUrl, pid: process.pid, startedAt: await readProcessStartTime(process.pid) })
     );
     try {
-      expect(runScript()).toBe('null');
+      expect(await runScript()).toBe('null');
     } finally {
       await fs.rm(strayFilePath, { force: true });
     }
   });
 
-  it('reports no URL when no server has published one', () => {
-    expect(runScript()).toBe('null');
+  it('reports no URL when no server has published one', async () => {
+    expect(await runScript()).toBe('null');
   });
 });
 

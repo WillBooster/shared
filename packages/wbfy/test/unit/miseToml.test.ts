@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { afterEach, expect, test } from 'bun:test';
 import semver from 'semver';
 
@@ -44,8 +45,10 @@ test('pins the concrete version behind an lts/* mise selector and adds a concret
 
 test('updates Bun and fnox without downgrading newer pins or rewriting the rest of the file', async () => {
   // Require successful live lookups: accepting original pins would let a broken updater pass.
-  const latestBun = Bun.spawnSync(['mise', '--no-config', 'latest', 'bun']).stdout.toString().trim();
-  const latestFnox = Bun.spawnSync(['mise', '--no-config', 'latest', 'fnox']).stdout.toString().trim();
+  const { stdout: latestBunOutput } = await spawnAsync('mise', ['--no-config', 'latest', 'bun']);
+  const { stdout: latestFnoxOutput } = await spawnAsync('mise', ['--no-config', 'latest', 'fnox']);
+  const latestBun = latestBunOutput.trim();
+  const latestFnox = latestFnoxOutput.trim();
   const content = await generateFrom({ 'mise.toml': miseToml('0.1.0', ''), 'fnox.toml': '' });
 
   expect(content).toBe(miseToml(latestBun, `fnox = "${latestFnox}"\n`));

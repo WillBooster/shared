@@ -113,7 +113,7 @@ async function waitForDescendantPidsCount(
 ): Promise<number[]> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    const descendants = listDescendantPids(parentPid);
+    const descendants = await listDescendantPids(parentPid);
     if (descendants.length >= minimumCount) {
       return descendants;
     }

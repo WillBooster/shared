@@ -1,8 +1,9 @@
-import child_process from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { expect, test } from 'bun:test';
 
 const packageDirPath = path.resolve(import.meta.dirname, '..', '..');
@@ -20,30 +21,29 @@ const smallProjectFixtures = [
 
 test.each(smallProjectFixtures)(
   'applying wbfy keeps a small $name project clean after rerunning cleanup',
-  (fixture) => {
-    ensureBuiltCli();
+  async (fixture) => {
+    await ensureBuiltCli();
 
     const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-cleanup-idempotency-'));
     try {
       writeSmallProjectFixture(tempDirPath, fixture);
 
-      runCommand('git', ['init'], tempDirPath);
-      runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
+      await runCommand('git', ['init'], tempDirPath);
+      await runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
 
-      runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
-      runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
-      runCommand('git', ['add', '-A'], tempDirPath);
-      runCommand('git', ['commit', '--no-verify', '-m', 'test: baseline'], tempDirPath, {
+      await runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
+      await runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
+      await runCommand('git', ['add', '-A'], tempDirPath);
+      await runCommand('git', ['commit', '--no-verify', '-m', 'test: baseline'], tempDirPath, {
         LEFTHOOK: '0',
       });
 
-      runCommand('bun', ['run', 'cleanup'], tempDirPath, {
+      await runCommand('bun', ['run', 'cleanup'], tempDirPath, {
         LEFTHOOK: '0',
       });
 
-      const statusResult = child_process.spawnSync('git', ['status', '--short'], {
+      const statusResult = await spawnAsync('git', ['status', '--short'], {
         cwd: tempDirPath,
-        encoding: 'utf8',
       });
       expect(statusResult.status).toBe(0);
       expect(statusResult.stdout.trim()).toBe('');
@@ -54,12 +54,11 @@ test.each(smallProjectFixtures)(
   300 * 1000
 );
 
-function ensureBuiltCli(): void {
+async function ensureBuiltCli(): Promise<void> {
   if (isDistUpToDate()) return;
 
-  const buildResult = child_process.spawnSync('bun', ['run', 'build'], {
+  const buildResult = await spawnAsync('bun', ['run', 'build'], {
     cwd: packageDirPath,
-    encoding: 'utf8',
   });
   expect(buildResult.status).toBe(0);
 }
@@ -106,15 +105,14 @@ function writeSmallProjectFixture(dirPath: string, fixture: (typeof smallProject
   fs.writeFileSync(path.join(dirPath, 'src', fixture.sourceFileName), fixture.source);
 }
 
-function runCommand(
+async function runCommand(
   command: string,
   args: string[],
   cwd: string,
   extraEnv: Record<string, string> = {}
-): child_process.SpawnSyncReturns<string> {
-  const result = child_process.spawnSync(command, args, {
+): Promise<SpawnAsyncReturns> {
+  const result = await spawnAsync(command, args, {
     cwd,
-    encoding: 'utf8',
     env: {
       ...process.env,
       ...extraEnv,
@@ -124,12 +122,7 @@ function runCommand(
   return result;
 }
 
-function describeCommandFailure(
-  command: string,
-  args: string[],
-  cwd: string,
-  result: child_process.SpawnSyncReturns<string>
-): string {
+function describeCommandFailure(command: string, args: string[], cwd: string, result: SpawnAsyncReturns): string {
   return [
     `command: ${[command, ...args].join(' ')}`,
     `cwd: ${cwd}`,

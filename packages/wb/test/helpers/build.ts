@@ -1,7 +1,7 @@
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { expect } from 'bun:test';
 
 /**
@@ -18,14 +18,14 @@ export async function buildWb(): Promise<void> {
   // deciding it is stale and removing it cannot be atomic.
   const runPathPrefix =
     process.env.BUN_TEST_WORKER_ID &&
-    path.resolve('node_modules', '.cache', `wb-test-build-${process.ppid}-${readStartTime(process.ppid)}`);
+    path.resolve('node_modules', '.cache', `wb-test-build-${process.ppid}-${await readStartTime(process.ppid)}`);
   if (runPathPrefix) await acquireLock(`${runPathPrefix}.lock`);
   try {
     if (runPathPrefix && fs.existsSync(`${runPathPrefix}.built`)) return;
     // Leaves out the worker ID: buildIfNeeded hashes the environment, so keeping it would record a cache
     // that the next run misses whenever a different worker builds first.
     const { BUN_TEST_WORKER_ID: _bunWorkerId, JEST_WORKER_ID: _jestWorkerId, ...env } = process.env;
-    const build = spawnSync('bun', ['run', 'build'], { encoding: 'utf8', env, timeout: 60_000 });
+    const build = await spawnAsync('bun', ['run', 'build'], { env, timeout: 60_000 });
     expect(build.status, build.stdout + build.stderr).toBe(0);
     if (runPathPrefix) fs.writeFileSync(`${runPathPrefix}.built`, '');
   } finally {
@@ -49,9 +49,8 @@ async function acquireLock(lockPath: string): Promise<void> {
   }
 }
 
-function readStartTime(pid: number): string {
-  const result = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], {
-    encoding: 'utf8',
+async function readStartTime(pid: number): Promise<string> {
+  const result = await spawnAsync('ps', ['-o', 'lstart=', '-p', String(pid)], {
     env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
   });
   expect(result.status, result.stderr).toBe(0);
