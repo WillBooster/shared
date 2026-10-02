@@ -15,11 +15,11 @@ import { promisePool } from '../utils/promisePool.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../utils/shell.js';
 import { findTestStructureViolations, printTestStructureViolations } from '../utils/testStructure.js';
 
-import { getDefaultUnitTargets } from './test.js';
+import { getDefaultUnitTargets, POST_TEST_SCRIPT_NAME } from './test.js';
 
 const testOnCiBuilder = {
   'max-minutes': {
-    description: 'Fail when the unit and e2e phases take longer than this many minutes in total',
+    description: 'Fail when the unit, e2e, and post phases take longer than this many minutes in total',
     type: 'number',
     requiresArg: true,
     coerce(value: unknown): number {
@@ -111,6 +111,7 @@ async function runTests(projects: Project[], argv: CiArgv, steps: CiStep[]): Pro
       const unitArgv = { ...argv, targets: defaultUnitTargets };
       await runCiStep('unit', () => scripts.testUnit(project, unitArgv), project, argv, steps);
     }
+    let e2eExitCode = 0;
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
       await runCiStep('startup', () => scripts.testStart(project, argv), project, argv, steps);
       await promisePool.promiseAll();
@@ -118,7 +119,7 @@ async function runTests(projects: Project[], argv: CiArgv, steps: CiStep[]): Pro
         project.env.WB_DOCKER ||= '1';
         await runCiStep('docker build', () => scripts.buildDocker(project, 'test'), project, argv, steps);
       }
-      await runCiStep(
+      e2eExitCode = await runCiStep(
         'e2e',
         () => (hasDockerfile ? scripts.testE2EDocker(project, argv, {}) : scripts.testE2EProduction(project, argv, {})),
         project,
@@ -130,6 +131,9 @@ async function runTests(projects: Project[], argv: CiArgv, steps: CiStep[]): Pro
         await runCiStep('docker cleanup', () => dockerScripts.stop(project), project, argv, steps);
       }
     }
+    if (e2eExitCode === 0 && project.packageJson.scripts?.[POST_TEST_SCRIPT_NAME]) {
+      await runCiStep('post', () => `YARN run ${POST_TEST_SCRIPT_NAME}`, project, argv, steps);
+    }
   }
 }
 
@@ -140,7 +144,7 @@ async function runCiStep(
   argv: CiArgv,
   steps: CiStep[],
   stopOnFailure = true
-): Promise<void> {
+): Promise<number> {
   const step = createCiStep(name, project, argv);
   steps.push(step);
   const startedAt = Date.now();
@@ -150,7 +154,7 @@ async function runCiStep(
     const script = builtScript.replaceAll(' --allowOnly', '');
     if (argv.dryRun) {
       console.info(`Would run: ${normalizeScript(script, project).runnable}`);
-      return;
+      return 0;
     }
     step.exitCode = await runWithSpawn(script, project, argv, { exitIfFailed: false });
   } finally {
@@ -161,6 +165,7 @@ async function runCiStep(
     process.exitCode = step.exitCode;
     if (stopOnFailure) throw new PackageCommandError(step.exitCode);
   }
+  return step.exitCode;
 }
 
 function printCiSummary(steps: CiStep[], argv: CiArgv, interrupted: boolean): void {
@@ -183,7 +188,7 @@ function buildTimeBudgetReport(steps: CiStep[], maxMinutes: number | undefined):
 
   // The startup check and the Docker image build are excluded: shortening tests cannot reduce
   // them. The e2e phase still includes building and starting the app, which its command runs.
-  const testSteps = steps.filter((step) => step.name === 'unit' || step.name === 'e2e');
+  const testSteps = steps.filter((step) => step.name === 'unit' || step.name === 'e2e' || step.name === 'post');
   // Compare what is printed, so a reported excess is always visible in the two numbers.
   const total = formatMinutes(testSteps.reduce((sum, step) => sum + step.durationMs, 0));
   const max = formatMinutes(maxMinutes * 60_000);

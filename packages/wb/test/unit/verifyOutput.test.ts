@@ -276,6 +276,29 @@ test('slow', async () => {
   expect(overBudget.stdout).toMatch(/\dm\d\d\.\ds {2}verify-output-fixture \/ unit/);
 }, 60_000);
 
+it('runs the test/post hook after the other tests unless tests are selected', async () => {
+  const dir = await createFixture({ 'test/post': 'echo POST_HOOK_STDOUT && exit 7' });
+  const ci = await runCli(dir, ['test-on-ci']);
+  expect(ci.status, ci.stdout + ci.stderr).toBe(7);
+  expect(ci.stdout).toContain('Failed phase: verify-output-fixture / post');
+  expect(ci.stdout.indexOf('RAW_TEST_STDOUT')).toBeLessThan(ci.stdout.indexOf('POST_HOOK_STDOUT'));
+  const all = await runCli(dir, ['test']);
+  expect(all.status, all.stdout + all.stderr).toBe(7);
+  expect(all.stdout).toContain('POST_HOOK_STDOUT');
+  const selected = await runCli(dir, ['test', 'test/unit/example.test.ts']);
+  expect(selected.status, selected.stdout + selected.stderr).toBe(0);
+  expect(selected.stdout).not.toContain('POST_HOOK_STDOUT');
+}, 60_000);
+
+it('counts the test/post hook of a package without JavaScript tests toward --max-minutes', async () => {
+  const dir = await createFixture({ 'test/post': 'sleep 0.3' });
+  await fs.rm(path.join(dir, 'test'), { recursive: true });
+  const result = await runCli(dir, ['test-on-ci', '--max-minutes', '0.001']);
+  expect(result.status, result.stdout + result.stderr).toBe(1);
+  expect(result.stdout).toContain('Test time budget exceeded');
+  expect(result.stdout).toMatch(/\dm\d\d\.\ds {2}verify-output-fixture \/ post/);
+}, 60_000);
+
 it('provides a working rerun command for a test-layout failure', async () => {
   const dir = await createFixture();
   await fs.writeFile(path.join(dir, 'test/misplaced.test.ts'), '');
@@ -440,7 +463,7 @@ test('large stream', () => {
   expect(await Bun.file(path.join(dir, '.wb/test-ci.log')).exists()).toBe(false);
 }, 60_000);
 
-async function createFixture(): Promise<string> {
+async function createFixture(scripts: Record<string, string> = {}): Promise<string> {
   const tmp = path.resolve('.tmp');
   await fs.mkdir(tmp, { recursive: true });
   const dir = await fs.mkdtemp(path.join(tmp, 'verify-output-'));
@@ -452,7 +475,7 @@ async function createFixture(): Promise<string> {
     JSON.stringify({
       name: 'verify-output-fixture',
       packageManager: 'bun@1.4.2',
-      scripts: { 'gen-code': 'bun generate.ts' },
+      scripts: { 'gen-code': 'bun generate.ts', ...scripts },
     })
   );
   await fs.writeFile(
