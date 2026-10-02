@@ -163,6 +163,11 @@ unfiltered `test/e2e-additional` script. Playwright-specific options still go
 after `--` in `wb test`; supply the name filter only once, before `--`.
 Use `--grep-invert` for inverse Playwright name filters across versions.
 
+When a test command of `wb test` or a phase of `wb test-on-ci` exits, wb sends `SIGTERM` to the
+processes it started that are still running (e.g. a build that a timed-out test left behind) and
+lists them. wb finds them by polling the process tree every second, so a process whose parent
+exited within a second of starting it is not found.
+
 ## Verification
 
 `wb verify` and `wb verify --full` are intended for coding agents. The log path is printed at startup.
@@ -174,7 +179,9 @@ Output is saved as it arrives, before display filtering,
 to `.wb/verify.log` or `.wb/verify-full.log` in the verified project. Each command
 overwrites its previous log; `--dry-run` leaves logs untouched.
 
-`wb test-on-ci` streams complete stdout and stderr, including with `--silent`, without saving a local log. Each phase reports its package, duration, and exit code. The final summary includes failed phases, their working directories, and rerun commands. `--dry-run` labels constructed commands with `Would run` and omits phase completion results. CI workflows own log storage and artifact uploads. `--max-minutes <n>` fails the run when the unit and E2E phases of all packages take longer than `n` minutes in total, even when every test passed, and lists those phases from slowest to fastest. The `e2e` phase includes building and starting the app under test; the startup check and the Docker image build do not count.
+`wb test-on-ci` streams complete stdout and stderr, including with `--silent`, without saving a local log. Each phase reports its package, duration, and exit code. The final summary includes failed phases, their working directories, and rerun commands. `--dry-run` labels constructed commands with `Would run` and omits phase completion results. CI workflows own log storage and artifact uploads. `--max-minutes <n>` fails the run when the `unit`, `e2e`, and `post` phases of all packages take longer than `n` minutes in total, even when every test passed, and lists those phases from slowest to fastest. The `e2e` phase includes building and starting the app under test; the startup check and the Docker image build do not count.
+
+A package whose `package.json` defines a `test/post` script gets a `post` phase: after the unit and E2E tests of every package pass, `wb test-on-ci` and `wb test` run the script of each such package through the package manager, including a package that has no such tests. Use it for a test suite the JavaScript runners cannot run, such as Gradle, Maven, or RSpec. The script cannot be filtered, so `wb test` and `wb verify --full` skip it when test paths, `--grep`, or Playwright arguments select tests.
 
 For `wb verify` and `wb verify --full`, a log-write failure falls back to printing subsequent raw output. If a log cannot be completed, the command reports the log error and fails an otherwise successful run; an existing nonzero command exit status is preserved.
 
