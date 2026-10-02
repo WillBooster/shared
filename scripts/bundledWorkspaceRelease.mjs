@@ -13,6 +13,15 @@ import { generateNotes as generateConventionalNotes } from '@semantic-release/re
 const commitAnalyzer = '@semantic-release/commit-analyzer';
 const releaseNotesGenerator = '@semantic-release/release-notes-generator';
 
+const packagesDirPath = fileURLToPath(new URL('../packages', import.meta.url));
+const workspaceDirPaths = new Map(
+  fs
+    .readdirSync(packagesDirPath)
+    .map((dirName) => path.join(packagesDirPath, dirName))
+    .filter((dirPath) => fs.existsSync(path.join(dirPath, 'package.json')))
+    .map((dirPath) => [JSON.parse(fs.readFileSync(path.join(dirPath, 'package.json'), 'utf8')).name, dirPath])
+);
+
 /**
  * Returns the repository's semantic-release configuration for the package containing `configUrl`, with
  * the commit analyzer and release notes generator replaced by this plugin when the package's `src` or
@@ -46,15 +55,6 @@ export function createBundledWorkspaceReleaseConfig(configUrl) {
     }),
   };
 }
-
-const packagesDirPath = fileURLToPath(new URL('../packages', import.meta.url));
-const workspaceDirPaths = new Map(
-  fs
-    .readdirSync(packagesDirPath)
-    .map((dirName) => path.join(packagesDirPath, dirName))
-    .filter((dirPath) => fs.existsSync(path.join(dirPath, 'package.json')))
-    .map((dirPath) => [JSON.parse(fs.readFileSync(path.join(dirPath, 'package.json'), 'utf8')).name, dirPath])
-);
 
 function findBundledWorkspaceNames(packageDirPath) {
   const names = new Set();
