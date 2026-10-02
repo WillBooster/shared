@@ -73,6 +73,8 @@ async function listProcesses(): Promise<ProcessInfo[]> {
     // lstart is 24 characters wide only in the C locale.
     env: { ...process.env, LC_ALL: 'C' },
     maxBuffer: 64 * 1024 * 1024,
+    // A `ps` that never returns must not keep wb from exiting.
+    timeout: 10_000,
   });
   const processes: ProcessInfo[] = [];
   for (const line of stdout.split('\n')) {
