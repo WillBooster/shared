@@ -262,11 +262,11 @@ it('fails passing tests that exceed --max-minutes and names the slowest phases',
   const withinBudget = await runCli(dir, ['test-on-ci', '--max-minutes', '10']);
   expect(withinBudget.status, withinBudget.stdout + withinBudget.stderr).toBe(0);
   expect(withinBudget.stdout).not.toContain('Test time budget exceeded');
-  const overBudget = await runCli(dir, ['test-on-ci', '--max-minutes', '0.00001']);
+  const overBudget = await runCli(dir, ['test-on-ci', '--max-minutes', '0.0001']);
   expect(overBudget.status, overBudget.stdout + overBudget.stderr).toBe(1);
   expect(overBudget.stdout).toContain('CI test summary: FAILED');
   expect(overBudget.stdout).toContain('Test time budget exceeded');
-  expect(overBudget.stdout).toMatch(/\dm\d\ds {2}verify-output-fixture \/ unit/);
+  expect(overBudget.stdout).toMatch(/\dm\d\d\.\ds {2}verify-output-fixture \/ unit/);
 }, 60_000);
 
 it('provides a working rerun command for a test-layout failure', async () => {

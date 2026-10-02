@@ -19,7 +19,7 @@ import { getDefaultUnitTargets } from './test.js';
 
 const testOnCiBuilder = {
   'max-minutes': {
-    description: 'Fail when the unit and E2E test phases take longer than this many minutes in total',
+    description: 'Fail when the unit and e2e phases take longer than this many minutes in total',
     type: 'number',
     requiresArg: true,
     coerce(value: unknown): number {
@@ -181,26 +181,29 @@ function printCiSummary(steps: CiStep[], argv: CiArgv, interrupted: boolean): vo
 function buildTimeBudgetReport(steps: CiStep[], maxMinutes: number | undefined): string | undefined {
   if (maxMinutes === undefined) return;
 
-  // Setup phases (startup, Docker build) are excluded: shortening tests cannot reduce them.
+  // The startup check and the Docker image build are excluded: shortening tests cannot reduce
+  // them. The e2e phase still includes building and starting the app, which its command runs.
   const testSteps = steps.filter((step) => step.name === 'unit' || step.name === 'e2e');
-  const totalMs = testSteps.reduce((total, step) => total + step.durationMs, 0);
-  const maxMs = maxMinutes * 60_000;
-  if (totalMs <= maxMs) return;
+  // Compare what is printed, so a reported excess is always visible in the two numbers.
+  const total = formatMinutes(testSteps.reduce((sum, step) => sum + step.durationMs, 0));
+  const max = formatMinutes(maxMinutes * 60_000);
+  if (total.tenths <= max.tenths) return;
 
   const breakdown = testSteps
     .toSorted((a, b) => b.durationMs - a.durationMs)
-    .map((step) => `  ${formatMinutes(step.durationMs).padStart(7)}  ${step.project.name} / ${step.name}`)
+    .map((step) => `  ${formatMinutes(step.durationMs).text.padStart(9)}  ${step.project.name} / ${step.name}`)
     .join('\n');
   return `
-Test time budget exceeded: ${formatMinutes(totalMs)} > ${formatMinutes(maxMs)} (--max-minutes ${maxMinutes})
+Test time budget exceeded: ${total.text} > ${max.text} (--max-minutes ${maxMinutes})
 ${breakdown}
 Shorten the tests: remove redundant cases, replace fixed waits with condition waits, and share expensive setup.
 Do not raise --max-minutes without the requester's approval.`;
 }
 
-function formatMinutes(durationMs: number): string {
-  const totalSeconds = Math.round(durationMs / 1000);
-  return `${Math.floor(totalSeconds / 60)}m${String(totalSeconds % 60).padStart(2, '0')}s`;
+function formatMinutes(durationMs: number): { tenths: number; text: string } {
+  const tenths = Math.round(durationMs / 100);
+  const seconds = ((tenths % 600) / 10).toFixed(1).padStart(4, '0');
+  return { tenths, text: `${Math.floor(tenths / 600)}m${seconds}s` };
 }
 
 function printCiStep(step: CiStep): void {
