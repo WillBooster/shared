@@ -1362,10 +1362,16 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
 // `wb test-on-ci` already iterates workspace packages itself. Only the repository's own
 // `--max-minutes` limit is carried over; any other script body is replaced.
 function applyTestOnCiScript(scripts: Record<string, string>, oldScripts: PackageJson.Scripts): void {
-  const oldScript = oldScripts['test/ci'] ?? '';
-  scripts['test/ci'] = /^bun wb test-on-ci --max-minutes \d+(?:\.\d+)?$/.test(oldScript)
-    ? oldScript
-    : 'bun wb test-on-ci';
+  const canonicalScript = 'bun wb test-on-ci';
+  const oldScript = oldScripts['test/ci'] ?? canonicalScript;
+  if (oldScript === canonicalScript || /^bun wb test-on-ci --max-minutes \d+(?:\.\d+)?$/.test(oldScript)) {
+    scripts['test/ci'] = oldScript;
+    return;
+  }
+  console.warn(
+    `Replacing the "test/ci" script (${JSON.stringify(oldScript)}) with "${canonicalScript}". Move its other test suites to "test/post" and its CI-only preparation to "test/ci-setup".`
+  );
+  scripts['test/ci'] = canonicalScript;
 }
 
 /**
