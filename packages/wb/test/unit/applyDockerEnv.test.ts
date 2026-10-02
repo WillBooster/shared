@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test';
 
 const scriptPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../docker/bash/apply-docker-env.sh');
 
-describe('apply-docker-env.sh', async () => {
+describe('apply-docker-env.sh', () => {
   it('applies baked values only to keys the environment does not already provide', async () => {
     const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-apply-env-'));
     try {
