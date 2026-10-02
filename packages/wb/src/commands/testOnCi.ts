@@ -18,6 +18,17 @@ import { findTestStructureViolations, printTestStructureViolations } from '../ut
 import { getDefaultUnitTargets } from './test.js';
 
 const testOnCiBuilder = {
+  'max-minutes': {
+    description: 'Fail when the unit and E2E test phases take longer than this many minutes in total',
+    type: 'number',
+    requiresArg: true,
+    coerce(value: unknown): number {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+        throw new Error('--max-minutes takes exactly one positive number.');
+      }
+      return value;
+    },
+  },
   silent: {
     description: 'Accepted for compatibility; CI always streams complete output',
     type: 'boolean',
@@ -38,7 +49,7 @@ export const testOnCiCommand: CommandModule<
   InferredOptionTypes<typeof testOnCiBuilder & typeof sharedOptionsBuilder>
 > = {
   command: 'test-on-ci',
-  describe: 'Test project on CI with no options.',
+  describe: 'Test project on CI.',
   builder: testOnCiBuilder,
   async handler(argv) {
     await testOnCi(argv);
@@ -68,7 +79,10 @@ export async function testOnCi(
     if (!(error instanceof PackageCommandError)) console.error(error);
     process.exitCode = error instanceof PackageCommandError ? error.exitCode : 1;
   } finally {
+    const budgetReport = argv.dryRun ? undefined : buildTimeBudgetReport(steps, argv.maxMinutes);
+    if (budgetReport) process.exitCode ||= 1;
     printCiSummary(steps, argv, interrupted);
+    if (budgetReport) console.info(budgetReport);
   }
 }
 
@@ -162,6 +176,31 @@ function printCiSummary(steps: CiStep[], argv: CiArgv, interrupted: boolean): vo
     console.info(`Working directory: ${step.project.dirPath}`);
     console.info(`Rerun: ${step.rerunCommand}`);
   }
+}
+
+function buildTimeBudgetReport(steps: CiStep[], maxMinutes: number | undefined): string | undefined {
+  if (maxMinutes === undefined) return;
+
+  // Setup phases (startup, Docker build) are excluded: shortening tests cannot reduce them.
+  const testSteps = steps.filter((step) => step.name === 'unit' || step.name === 'e2e');
+  const totalMs = testSteps.reduce((total, step) => total + step.durationMs, 0);
+  const maxMs = maxMinutes * 60_000;
+  if (totalMs <= maxMs) return;
+
+  const breakdown = testSteps
+    .toSorted((a, b) => b.durationMs - a.durationMs)
+    .map((step) => `  ${formatMinutes(step.durationMs).padStart(7)}  ${step.project.name} / ${step.name}`)
+    .join('\n');
+  return `
+Test time budget exceeded: ${formatMinutes(totalMs)} > ${formatMinutes(maxMs)} (--max-minutes ${maxMinutes})
+${breakdown}
+Shorten the tests: remove redundant cases, replace fixed waits with condition waits, and share expensive setup.
+Do not raise --max-minutes without the requester's approval.`;
+}
+
+function formatMinutes(durationMs: number): string {
+  const totalSeconds = Math.round(durationMs / 1000);
+  return `${Math.floor(totalSeconds / 60)}m${String(totalSeconds % 60).padStart(2, '0')}s`;
 }
 
 function printCiStep(step: CiStep): void {

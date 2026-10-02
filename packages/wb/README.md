@@ -108,7 +108,7 @@ Commands:
                                  parsing and forward the remaining flags to
                                  Playwright. Example: wb test --grep
                                  'uploaded image asset'
-  wb test-on-ci                  Test project on CI with no options.
+  wb test-on-ci                  Test project on CI.
   wb tree-kill <pid> [signal]    Kill the given process and all descendants
   wb typecheck                   Run type checking. Environment variables are
                                  not loaded.
@@ -174,7 +174,7 @@ Output is saved as it arrives, before display filtering,
 to `.wb/verify.log` or `.wb/verify-full.log` in the verified project. Each command
 overwrites its previous log; `--dry-run` leaves logs untouched.
 
-`wb test-on-ci` streams complete stdout and stderr, including with `--silent`, without saving a local log. Each phase reports its package, duration, and exit code. The final summary includes failed phases, their working directories, and rerun commands. `--dry-run` labels constructed commands with `Would run` and omits phase completion results. CI workflows own log storage and artifact uploads.
+`wb test-on-ci` streams complete stdout and stderr, including with `--silent`, without saving a local log. Each phase reports its package, duration, and exit code. The final summary includes failed phases, their working directories, and rerun commands. `--dry-run` labels constructed commands with `Would run` and omits phase completion results. CI workflows own log storage and artifact uploads. `--max-minutes <n>` fails the run when the unit and E2E phases of all packages take longer than `n` minutes in total, even when every test passed, and lists those phases from slowest to fastest; setup phases such as server startup and Docker builds do not count.
 
 For `wb verify` and `wb verify --full`, a log-write failure falls back to printing subsequent raw output. If a log cannot be completed, the command reports the log error and fails an otherwise successful run; an existing nonzero command exit status is preserved.
 
