@@ -93,8 +93,20 @@ export async function generateNotes({ bundledPaths, analyzer, notes }, context) 
 
 async function findReleasingBundledCommits(bundledPaths, analyzer, context) {
   const silentContext = { ...context, logger: { ...context.logger, log: () => {} } };
+  const bundledCommits = findBundledCommits(bundledPaths, context);
+  // Like the analyzer does for a whole list, drop a commit reverted in the same range together with its revert,
+  // which per-commit analysis would otherwise count twice.
+  const bundledHashes = new Set(bundledCommits.map((commit) => commit.hash));
+  const revertedHashes = new Set(
+    bundledCommits.flatMap((commit) =>
+      [...commit.message.matchAll(/This reverts commit ([\da-f]{40})/gu)].map((match) => match[1])
+    )
+  );
   const releasingCommits = [];
-  for (const commit of findBundledCommits(bundledPaths, context)) {
+  for (const commit of bundledCommits) {
+    if (revertedHashes.has(commit.hash)) continue;
+    const revertedHash = /This reverts commit ([\da-f]{40})/u.exec(commit.message)?.[1];
+    if (revertedHash && bundledHashes.has(revertedHash)) continue;
     if (await analyzeConventionalCommits(analyzer, { ...silentContext, commits: [commit] }))
       releasingCommits.push(commit);
   }
