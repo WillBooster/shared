@@ -15,11 +15,11 @@ import { promisePool } from '../utils/promisePool.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../utils/shell.js';
 import { findTestStructureViolations, printTestStructureViolations } from '../utils/testStructure.js';
 
-import { getDefaultUnitTargets } from './test.js';
+import { getDefaultUnitTargets, POST_TEST_SCRIPT_NAME } from './test.js';
 
 const testOnCiBuilder = {
   'max-minutes': {
-    description: 'Fail when the unit and e2e phases take longer than this many minutes in total',
+    description: 'Fail when the unit, e2e, and post phases take longer than this many minutes in total',
     type: 'number',
     requiresArg: true,
     coerce(value: unknown): number {
@@ -131,6 +131,13 @@ async function runTests(projects: Project[], argv: CiArgv, steps: CiStep[]): Pro
       }
     }
   }
+  // A failed e2e phase does not throw, so that the remaining packages and Docker cleanup still run.
+  if (process.exitCode) return;
+  for (const project of projects) {
+    if (project.packageJson.scripts?.[POST_TEST_SCRIPT_NAME]) {
+      await runCiStep('post', () => `YARN run ${POST_TEST_SCRIPT_NAME}`, project, argv, steps);
+    }
+  }
 }
 
 async function runCiStep(
@@ -183,7 +190,7 @@ function buildTimeBudgetReport(steps: CiStep[], maxMinutes: number | undefined):
 
   // The startup check and the Docker image build are excluded: shortening tests cannot reduce
   // them. The e2e phase still includes building and starting the app, which its command runs.
-  const testSteps = steps.filter((step) => step.name === 'unit' || step.name === 'e2e');
+  const testSteps = steps.filter((step) => step.name === 'unit' || step.name === 'e2e' || step.name === 'post');
   // Compare what is printed, so a reported excess is always visible in the two numbers.
   const total = formatMinutes(testSteps.reduce((sum, step) => sum + step.durationMs, 0));
   const max = formatMinutes(maxMinutes * 60_000);
