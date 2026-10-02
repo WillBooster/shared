@@ -1359,17 +1359,19 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
 
 // CI workflows (both the reusable test workflow and the self-contained variant for non-WillBooster
 // repositories) prefer `test/ci` over `test`, so standardize it on `wb test-on-ci` at the root —
-// `wb test-on-ci` already iterates workspace packages itself.
+// `wb test-on-ci` already iterates workspace packages itself. Only the repository's own
+// `--max-minutes` limit is carried over; any other script body is replaced.
 function applyTestOnCiScript(scripts: Record<string, string>, oldScripts: PackageJson.Scripts): void {
-  const oldScript = oldScripts['test/ci'];
-  // Some repositories wrap CI tests with extra steps (e.g. selecting spec files or running raw
-  // Playwright) that wb cannot infer generically; such wrappers are preserved.
-  scripts['test/ci'] = oldScript && !isGeneratedTestOnCiScript(oldScript) ? oldScript : 'bun wb test-on-ci';
-}
-
-/** Whether a script body is one of the generated `wb test-on-ci` invocations. */
-function isGeneratedTestOnCiScript(script: string): boolean {
-  return script.trim() === 'bun wb test-on-ci';
+  const canonicalScript = 'bun wb test-on-ci';
+  const oldScript = oldScripts['test/ci'] ?? canonicalScript;
+  if (oldScript === canonicalScript || /^bun wb test-on-ci --max-minutes \d+(?:\.\d+)?$/.test(oldScript)) {
+    scripts['test/ci'] = oldScript;
+    return;
+  }
+  console.warn(
+    `Replacing the "test/ci" script (${JSON.stringify(oldScript)}) with "${canonicalScript}". Move its other test suites to "test/post" and its CI-only preparation to "test/ci-setup".`
+  );
+  scripts['test/ci'] = canonicalScript;
 }
 
 /**
@@ -1397,8 +1399,8 @@ function isGeneratedTestScript(script: string): boolean {
  * Keeps a script that CHAINS extra commands onto the generated one (e.g. a polyglot monorepo
  * appending its Maven and RSpec suites to `wb test`, which runs JavaScript/TypeScript runners
  * only). Such a wrapper still runs the generated command, so replacing it would silently drop the
- * repository's own steps — the same reasoning as `applyTestOnCiScript`. An unrecognized chained
- * script is kept wholesale rather than losing its project-owned commands.
+ * repository's own steps. An unrecognized chained script is kept wholesale rather than losing
+ * its project-owned commands.
  */
 function keepGeneratedScriptWrappers(
   scripts: Record<string, string>,

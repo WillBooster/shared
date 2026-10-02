@@ -898,10 +898,17 @@ test('generates test/ci script running wb test-on-ci at the root', async () => {
   expect(packageJson.scripts?.['test/ci']).toBe('bun wb test-on-ci');
 });
 
-test('preserves a custom test/ci wrapper', async () => {
-  const customScript = 'wb test test/unit && playwright test';
-  const packageJson = await generatePackageJsonFrom({ scripts: { 'test/ci': customScript } }, { isRoot: true });
-  expect(packageJson.scripts?.['test/ci']).toBe(customScript);
+test('keeps only the --max-minutes limit of an existing test/ci script', async () => {
+  const limited = await generatePackageJsonFrom(
+    { scripts: { 'test/ci': 'bun wb test-on-ci --max-minutes 7.5' } },
+    { isRoot: true }
+  );
+  expect(limited.scripts?.['test/ci']).toBe('bun wb test-on-ci --max-minutes 7.5');
+  const wrapped = await generatePackageJsonFrom(
+    { scripts: { 'test/ci': 'bun run setup && bun wb test-on-ci --max-minutes 7.5' } },
+    { isRoot: true }
+  );
+  expect(wrapped.scripts?.['test/ci']).toBe('bun wb test-on-ci');
 });
 
 test('does not generate test/ci in a workspace package', async () => {
