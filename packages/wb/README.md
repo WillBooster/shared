@@ -163,6 +163,11 @@ unfiltered `test/e2e-additional` script. Playwright-specific options still go
 after `--` in `wb test`; supply the name filter only once, before `--`.
 Use `--grep-invert` for inverse Playwright name filters across versions.
 
+When a test command of `wb test` or a phase of `wb test-on-ci` exits, wb sends `SIGTERM` to the
+processes it started that are still running (e.g. a build that a timed-out test left behind) and
+lists them. wb finds them by polling the process tree every second, so a process whose parent
+exited within a second of starting it is not found.
+
 ## Verification
 
 `wb verify` and `wb verify --full` are intended for coding agents. The log path is printed at startup.
