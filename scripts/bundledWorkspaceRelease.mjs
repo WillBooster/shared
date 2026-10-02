@@ -72,15 +72,22 @@ function findBundledWorkspaceNames(packageDirPath) {
   return [...names].toSorted();
 }
 
+// A bundled change releases the package as a patch, as multi-semantic-release's `deps.release` default
+// does for a dependent: a feature or a breaking change inside a bundled workspace is no feature or
+// breaking change of the bundling package's own interface.
 export async function analyzeCommits({ bundledPaths, analyzer }, context) {
-  return analyzeConventionalCommits(analyzer, withBundledCommits(bundledPaths, context));
+  const ownType = await analyzeConventionalCommits(analyzer, context);
+  const bundledCommits = findBundledCommits(bundledPaths, context);
+  if (ownType || bundledCommits.length === 0) return ownType;
+  return (await analyzeConventionalCommits(analyzer, { ...context, commits: bundledCommits })) ? 'patch' : undefined;
 }
 
 export async function generateNotes({ bundledPaths, notes }, context) {
-  return generateConventionalNotes(notes, withBundledCommits(bundledPaths, context));
+  const commits = [...context.commits, ...findBundledCommits(bundledPaths, context)];
+  return generateConventionalNotes(notes, { ...context, commits });
 }
 
-function withBundledCommits(bundledPaths, context) {
+function findBundledCommits(bundledPaths, context) {
   const range = context.lastRelease.gitHead ? `${context.lastRelease.gitHead}..HEAD` : 'HEAD';
   const log = execFileSync('git', ['log', '--format=%H%x1f%cI%x1f%B%x1e', range, '--', ...bundledPaths], {
     cwd: context.cwd,
@@ -99,5 +106,5 @@ function withBundledCommits(bundledPaths, context) {
   if (bundledCommits.length > 0) {
     context.logger.log(`Found ${bundledCommits.length} commits in the bundled workspaces since the last release`);
   }
-  return { ...context, commits: [...context.commits, ...bundledCommits] };
+  return bundledCommits;
 }
