@@ -159,7 +159,7 @@ async function runCiStep(
       console.info(`Would run: ${normalizeScript(script, project).runnable}`);
       return;
     }
-    step.exitCode = await runWithSpawn(script, project, argv, { exitIfFailed: false });
+    step.exitCode = await runWithSpawn(script, project, argv, { exitIfFailed: false, killLeftoverProcesses: true });
   } finally {
     step.durationMs = Date.now() - startedAt;
     if (!argv.dryRun) printCiStep(step);

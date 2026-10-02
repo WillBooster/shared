@@ -4,12 +4,15 @@ import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { trackDescendants } from '../utils/leftoverProcesses.js';
 import { promisePool } from '../utils/promisePool.js';
 import { isCapturingVerificationOutput } from '../utils/verificationOutput.js';
 
 interface Options {
   ci?: boolean;
   exitIfFailed?: boolean;
+  /** Kill the processes the script started that are still running when it exits. */
+  killLeftoverProcesses?: boolean;
   onSignal?: (signal: NodeJS.Signals | null) => void;
   omitSilentStart?: boolean;
   preserveColor?: boolean;
@@ -60,12 +63,22 @@ export async function runWithSpawn(
           wroteSilentProgress = true;
         }, opts.silentProgressIntervalMs)
       : undefined;
+  let killingLeftovers: Promise<string[]> | undefined;
   const ret = await spawnAsync(normalizedScript.runnable, undefined, {
     cwd: project.dirPath,
     env: configureEnv(project.env, {
       ...opts,
       preserveColor: opts.preserveColor ?? (captureOutput || argv.silent ? true : undefined),
     }),
+    onSpawn: opts.killLeftoverProcesses
+      ? (proc) => {
+          const killLeftovers = trackDescendants(proc.pid!);
+          // On `exit`, not `close`: a leftover process holding the script's output pipe delays `close`.
+          proc.once('exit', () => {
+            killingLeftovers = killLeftovers();
+          });
+        }
+      : undefined,
     collectOutput: !captureOutput,
     shell: true,
     stdio: captureOutput ? ['inherit', 'pipe', 'pipe'] : argv.silent ? 'pipe' : 'inherit',
@@ -84,6 +97,10 @@ export async function runWithSpawn(
   const exitCode = ret.status ?? 1;
   if (wroteSilentProgress) {
     process.stdout.write('\n');
+  }
+  const leftovers = await killingLeftovers;
+  if (leftovers?.length) {
+    console.info(chalk.yellow(`Sent SIGTERM to ${leftovers.length} leftover process(es):\n${leftovers.join('\n')}`));
   }
   if (shouldProcessSilentOutput && (!opts.printSilentOutputOnFailureOnly || exitCode !== 0)) {
     const output = (opts.processSilentOutput ? opts.processSilentOutput(ret.stdout) : ret.stdout).trim();

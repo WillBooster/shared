@@ -340,6 +340,7 @@ function runTestCommand(
   options: Parameters<typeof runWithSpawn>[3] = {}
 ): Promise<number> {
   return runWithSpawn(script, project, argv, {
+    killLeftoverProcesses: true,
     ...options,
     processSilentOutput: dedupeNoisyTestOutput,
   });
@@ -352,6 +353,7 @@ function runUnitTestCommand(
   options: Parameters<typeof runWithSpawn>[3] = {}
 ): Promise<number> {
   return runWithSpawn(script, project, argv, {
+    killLeftoverProcesses: true,
     omitSilentStart: true,
     printSilentOutputOnFailureOnly: true,
     silentProgressIntervalMs: 10_000,
