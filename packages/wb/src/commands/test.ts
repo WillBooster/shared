@@ -172,13 +172,18 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
       const exitCode = await runE2eTests(project, scripts, testArgv, testTargets, forwardedPlaywrightArgs, options);
       if (exitCode !== 0) return exitCode;
     }
-    if (shouldRunPost && project.packageJson.scripts?.[POST_TEST_SCRIPT_NAME]) {
-      const exitCode = await runUnitTestCommand(`YARN run ${POST_TEST_SCRIPT_NAME}`, project, testArgv, {
-        exitIfFailed: options.exitIfFailed,
-        silentSuccessMessage: `"${POST_TEST_SCRIPT_NAME}" passed.`,
-      });
-      if (exitCode !== 0) return exitCode;
-    }
+  }
+  if (!shouldRunPost) return 0;
+
+  for (const project of projects.descendants) {
+    if (!project.packageJson.scripts?.[POST_TEST_SCRIPT_NAME]) continue;
+
+    console.info(`Running "${POST_TEST_SCRIPT_NAME}" for ${project.name} ...`);
+    const exitCode = await runUnitTestCommand(`YARN run ${POST_TEST_SCRIPT_NAME}`, project, testArgv, {
+      exitIfFailed: options.exitIfFailed,
+      silentSuccessMessage: `"${POST_TEST_SCRIPT_NAME}" passed.`,
+    });
+    if (exitCode !== 0) return exitCode;
   }
   return 0;
 }

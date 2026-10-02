@@ -111,7 +111,6 @@ async function runTests(projects: Project[], argv: CiArgv, steps: CiStep[]): Pro
       const unitArgv = { ...argv, targets: defaultUnitTargets };
       await runCiStep('unit', () => scripts.testUnit(project, unitArgv), project, argv, steps);
     }
-    let e2eExitCode = 0;
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
       await runCiStep('startup', () => scripts.testStart(project, argv), project, argv, steps);
       await promisePool.promiseAll();
@@ -119,7 +118,7 @@ async function runTests(projects: Project[], argv: CiArgv, steps: CiStep[]): Pro
         project.env.WB_DOCKER ||= '1';
         await runCiStep('docker build', () => scripts.buildDocker(project, 'test'), project, argv, steps);
       }
-      e2eExitCode = await runCiStep(
+      await runCiStep(
         'e2e',
         () => (hasDockerfile ? scripts.testE2EDocker(project, argv, {}) : scripts.testE2EProduction(project, argv, {})),
         project,
@@ -131,7 +130,11 @@ async function runTests(projects: Project[], argv: CiArgv, steps: CiStep[]): Pro
         await runCiStep('docker cleanup', () => dockerScripts.stop(project), project, argv, steps);
       }
     }
-    if (e2eExitCode === 0 && project.packageJson.scripts?.[POST_TEST_SCRIPT_NAME]) {
+  }
+  // A failed e2e phase does not throw, so that the remaining packages and Docker cleanup still run.
+  if (process.exitCode) return;
+  for (const project of projects) {
+    if (project.packageJson.scripts?.[POST_TEST_SCRIPT_NAME]) {
       await runCiStep('post', () => `YARN run ${POST_TEST_SCRIPT_NAME}`, project, argv, steps);
     }
   }
@@ -144,7 +147,7 @@ async function runCiStep(
   argv: CiArgv,
   steps: CiStep[],
   stopOnFailure = true
-): Promise<number> {
+): Promise<void> {
   const step = createCiStep(name, project, argv);
   steps.push(step);
   const startedAt = Date.now();
@@ -154,7 +157,7 @@ async function runCiStep(
     const script = builtScript.replaceAll(' --allowOnly', '');
     if (argv.dryRun) {
       console.info(`Would run: ${normalizeScript(script, project).runnable}`);
-      return 0;
+      return;
     }
     step.exitCode = await runWithSpawn(script, project, argv, { exitIfFailed: false });
   } finally {
@@ -165,7 +168,6 @@ async function runCiStep(
     process.exitCode = step.exitCode;
     if (stopOnFailure) throw new PackageCommandError(step.exitCode);
   }
-  return step.exitCode;
 }
 
 function printCiSummary(steps: CiStep[], argv: CiArgv, interrupted: boolean): void {
