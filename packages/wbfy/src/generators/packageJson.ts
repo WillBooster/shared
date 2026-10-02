@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { escapeRegExp, quoteForShell } from '@willbooster/shared-lib/src';
-import { globIgnore } from '@willbooster/shared-lib-node/src';
+import { getGlobIgnore, globIgnore } from '@willbooster/shared-lib-node/src';
 import merge from 'deepmerge';
 import fg from 'fast-glob';
 import semver from 'semver';
@@ -689,7 +689,7 @@ async function normalizePackageMetadata(
       const pythonFiles = await fg.glob('**/*.py', {
         cwd: config.dirPath,
         dot: true,
-        ignore: globIgnore,
+        ignore: getGlobIgnore(config.dirPath),
       });
       const dirNameSet = new Set<string>();
       for (const pythonFile of pythonFiles) {
@@ -981,7 +981,7 @@ async function getExistingTsconfigBaseDependencies(config: PackageConfig): Promi
   const filePaths = await fg.glob('**/tsconfig*.json', {
     cwd: config.dirPath,
     dot: true,
-    ignore: globIgnore,
+    ignore: getGlobIgnore(config.dirPath),
   });
 
   for (const filePath of filePaths) {

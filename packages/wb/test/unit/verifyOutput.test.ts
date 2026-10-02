@@ -421,6 +421,8 @@ async function createFixture(): Promise<string> {
   await fs.mkdir(tmp, { recursive: true });
   const dir = await fs.mkdtemp(path.join(tmp, 'verify-output-'));
   fixturePaths.push(dir);
+  // A repository of its own: this repository ignores `.tmp/`, which would hide the fixture's decks.
+  spawnSync('git', ['init', '--quiet'], { cwd: dir });
   await fs.writeFile(
     path.join(dir, 'package.json'),
     JSON.stringify({

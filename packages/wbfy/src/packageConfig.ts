@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import { escapeRegExp } from '@willbooster/shared-lib/src';
-import { globIgnore } from '@willbooster/shared-lib-node/src';
+import { getGlobIgnore } from '@willbooster/shared-lib-node/src';
 import fg from 'fast-glob';
 import type { PackageJson } from 'type-fest';
 import { z } from 'zod';
@@ -281,18 +281,22 @@ export async function getPackageConfig(
     const doesContainTauriConfig = ['tauri.conf.json', 'tauri.conf.json5', 'Tauri.toml'].some((fileName) =>
       fs.existsSync(path.resolve(dirPath, 'src-tauri', fileName))
     );
+    const globIgnore = getGlobIgnore(dirPath);
+    const containsAnyInDir = (pattern: string): boolean => containsAny(pattern, dirPath, globIgnore);
     // Root-level "InPackages" signals must see every declared workspace layout (e.g. apps/*), not
     // just the conventional packages/* directory, so scan each discovered workspace directory.
-    const workspaceSubDirPaths = getWorkspaceSubDirPaths({
+    const workspaceSubDirs = getWorkspaceSubDirPaths({
       dirPath,
       packageJson,
-      doesContainSubPackageJsons: containsAny('packages/*/package.json', dirPath),
-    });
+      doesContainSubPackageJsons: containsAnyInDir('packages/*/package.json'),
+    }).map((workspaceSubDirPath) => ({ dirPath: workspaceSubDirPath, globIgnore: getGlobIgnore(workspaceSubDirPath) }));
     const containsAnyInWorkspaces = (pattern: string): boolean =>
-      workspaceSubDirPaths.some((workspaceSubDirPath) => containsAny(pattern, workspaceSubDirPath));
+      workspaceSubDirs.some((workspaceSubDir) =>
+        containsAny(pattern, workspaceSubDir.dirPath, workspaceSubDir.globIgnore)
+      );
     const doesContainWranglerConfig = detectWranglerConfig(dirPath);
     const workflowContents = readWorkflowFileContents(dirPath);
-    const importsPlaywrightAtRuntime = detectPlaywrightRuntimeImport(dirPath);
+    const importsPlaywrightAtRuntime = detectPlaywrightRuntimeImport(dirPath, globIgnore);
     const config: PackageConfig = {
       dirPath,
       dockerfile,
@@ -311,11 +315,11 @@ export async function getPackageConfig(
       isRailway: detectRailway(dirPath, packageJson, workflowContents),
       isEsmPackage: esmPackage,
       isWillBoosterConfigs: detectIsWillBoosterConfigs(dirPath, packageJsonPath, repoName),
-      cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),
+      cargoTomlDirPaths: findCargoTomlDirPaths(dirPath, globIgnore),
       // Also honor declared workspace patterns beyond packages/* (e.g. apps/*): treating an
       // apps/*-only monorepo as a plain package would delete its `workspaces` declaration in
       // generatePackageJson and skip monorepo-only conventions such as root `private: true`.
-      doesContainSubPackageJsons: containsAny('packages/**/package.json', dirPath) || workspaceSubDirPaths.length > 0,
+      doesContainSubPackageJsons: containsAnyInDir('packages/**/package.json') || workspaceSubDirs.length > 0,
       doesContainDockerfile: !!dockerfile || fs.existsSync(path.resolve(dirPath, 'docker-compose.yml')),
       doesContainGemfile: fs.existsSync(path.resolve(dirPath, 'Gemfile')),
       doesContainGoMod: fs.existsSync(path.resolve(dirPath, 'go.mod')),
@@ -324,21 +328,21 @@ export async function getPackageConfig(
       doesContainUvLock: fs.existsSync(path.resolve(dirPath, 'uv.lock')),
       // Recursive like doesContainJava: multi-language repositories keep language directories
       // (e.g. Python tooling or Maven modules) outside the root and outside declared workspaces.
-      doesContainPythonLockAnywhere: containsAny('**/{poetry.lock,uv.lock}', dirPath),
+      doesContainPythonLockAnywhere: containsAnyInDir('**/{poetry.lock,uv.lock}'),
       doesContainPomXml: fs.existsSync(path.resolve(dirPath, 'pom.xml')),
-      doesContainPomXmlAnywhere: containsAny('**/pom.xml', dirPath),
+      doesContainPomXmlAnywhere: containsAnyInDir('**/pom.xml'),
       doesContainPubspecYaml: fs.existsSync(path.resolve(dirPath, 'pubspec.yaml')),
-      doesContainSlidevMd: containsAny('**/*.slidev.md', dirPath),
+      doesContainSlidevMd: containsAnyInDir('**/*.slidev.md'),
       doesContainTauriConfig,
       doesContainTauriConfigInPackages: containsAnyInWorkspaces(
         'src-tauri/{tauri.conf.json,tauri.conf.json5,Tauri.toml}'
       ),
       doesContainTemplateYaml: fs.existsSync(path.resolve(dirPath, 'template.yaml')),
       doesContainVscodeSettingsJson: fs.existsSync(path.resolve(dirPath, '.vscode', 'settings.json')),
-      doesContainJavaScript: containsAny('{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx}', dirPath),
-      doesContainTypeScript: containsAny('{app,src,test,scripts}/**/*.{cts,mts,ts,tsx}', dirPath),
-      doesContainJsxOrTsx: containsAny('{app,src,test}/**/*.{t,j}sx', dirPath),
-      doesContainJava: containsAny('**/*.java', dirPath),
+      doesContainJavaScript: containsAnyInDir('{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx}'),
+      doesContainTypeScript: containsAnyInDir('{app,src,test,scripts}/**/*.{cts,mts,ts,tsx}'),
+      doesContainJsxOrTsx: containsAnyInDir('{app,src,test}/**/*.{t,j}sx'),
+      doesContainJava: containsAnyInDir('**/*.java'),
       doesContainJavaScriptInPackages: containsAnyInWorkspaces('{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx}'),
       doesContainTypeScriptInPackages: containsAnyInWorkspaces('{app,src,test,scripts}/**/*.{cts,mts,ts,tsx}'),
       doesContainJsxOrTsxInPackages: containsAnyInWorkspaces('{app,src,test}/**/*.{t,j}sx'),
@@ -790,18 +794,18 @@ function isWorkspaceOfEnclosingRoot(dirPath: string): boolean {
   }
 }
 
-function containsAny(pattern: string, dirPath: string): boolean {
+function containsAny(pattern: string, dirPath: string, globIgnore: string[]): boolean {
   return fg.globSync(pattern, { dot: true, cwd: dirPath, ignore: globIgnore }).length > 0;
 }
 
-function findCargoTomlDirPaths(dirPath: string): string[] {
+function findCargoTomlDirPaths(dirPath: string, globIgnore: string[]): string[] {
   return fg
     .globSync('**/Cargo.toml', { dot: true, cwd: dirPath, ignore: globIgnore })
     .map((filePath) => path.dirname(filePath))
     .toSorted((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
 }
 
-function detectPlaywrightRuntimeImport(dirPath: string): boolean {
+function detectPlaywrightRuntimeImport(dirPath: string, globIgnore: string[]): boolean {
   const files = fg.globSync('{app,src}/**/*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}', {
     dot: true,
     cwd: dirPath,
