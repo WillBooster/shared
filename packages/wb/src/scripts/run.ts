@@ -100,7 +100,7 @@ export async function runWithSpawn(
   }
   const leftovers = await killingLeftovers;
   if (leftovers?.length) {
-    console.info(chalk.yellow(`Killed ${leftovers.length} leftover process(es):\n${leftovers.join('\n')}`));
+    console.info(chalk.yellow(`Sent SIGTERM to ${leftovers.length} leftover process(es):\n${leftovers.join('\n')}`));
   }
   if (shouldProcessSilentOutput && (!opts.printSilentOutputOnFailureOnly || exitCode !== 0)) {
     const output = (opts.processSilentOutput ? opts.processSilentOutput(ret.stdout) : ret.stdout).trim();

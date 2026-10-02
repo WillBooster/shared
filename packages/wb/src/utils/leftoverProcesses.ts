@@ -16,7 +16,7 @@ interface ProcessInfo {
 /**
  * Tracks the descendants of `rootPid` by polling, because a process whose parent died is reparented
  * and can no longer be found from `rootPid`. Call the returned function once `rootPid` has exited: it
- * kills the tracked processes still alive, with their descendants, and returns their descriptions.
+ * sends `SIGTERM` to the tracked processes still alive, with their descendants, and returns their descriptions.
  */
 export function trackDescendants(rootPid: number): () => Promise<string[]> {
   // Ancestors precede their descendants.
