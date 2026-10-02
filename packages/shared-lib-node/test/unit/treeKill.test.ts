@@ -2,7 +2,7 @@ import type { ChildProcessByStdio } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import type { Readable } from 'node:stream';
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import {
   createTreeScript,
@@ -73,6 +73,26 @@ describe('treeKill', () => {
       ...descendantPids.map((pid) => waitForProcessStopped(pid, 10_000)),
       waitForClose(parent, 10_000),
     ]);
+  }, 30_000);
+
+  it('signals every process before its descendants', async () => {
+    const parent = spawnProcessTree(2);
+    const { pid: parentPid } = parent;
+    if (!parentPid) {
+      throw new Error('parent.pid is undefined');
+    }
+    const descendantPids = await waitForDescendantPidsCount(parentPid, 2, 10_000);
+    const kill = spyOn(process, 'kill');
+    try {
+      treeKill(parentPid);
+      const signaledPids = kill.mock.calls.map(([pid]) => pid);
+      // listDescendantPids lists a child before its own children.
+      expect(signaledPids).toEqual([parentPid, ...descendantPids]);
+    } finally {
+      kill.mockRestore();
+    }
+
+    await waitForClose(parent, 10_000);
   }, 30_000);
 
   it('kills repeatedly in rapid succession', async () => {
