@@ -100,7 +100,7 @@ describe('treeKill', () => {
       import { spawn } from 'node:child_process';
       import { treeKill } from ${JSON.stringify(new URL('../../src/treeKill.ts', import.meta.url).href)};
       const child = spawn('sleep', ['100'], { stdio: 'ignore' });
-      console.log(child.pid);
+      process.stdout.write(String(child.pid) + '\\n');
       setTimeout(() => treeKill(process.pid, 'SIGKILL'), 100);
     `;
     const caller = spawn(process.execPath, ['-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
