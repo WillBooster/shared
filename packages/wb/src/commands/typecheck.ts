@@ -13,6 +13,8 @@ import { buildLintCommand, buildWorkspaceIgnorePatterns } from './lint.js';
 
 const builder = {} as const;
 
+const tscCommand = 'BUN tsc --noEmit';
+
 type TypeCheckCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
 export type TypeCheckCommandArgv = ArgumentsCamelCase<TypeCheckCommandOptions>;
 
@@ -43,7 +45,8 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
       });
 
       const nextDirPath = path.join(project.dirPath, '.next');
-      if (exitCode && fs.existsSync(nextDirPath)) {
+      // Only the compiler reads Next.js's generated types; deleting the cache cannot fix an oxlint error.
+      if (exitCode && commands.includes(tscCommand) && fs.existsSync(nextDirPath)) {
         fs.rmSync(nextDirPath, { force: true, recursive: true });
         console.info(chalk.yellow('Removed `.next` directory. We will re-try type checking.'));
         removedNextDir = true;
@@ -98,7 +101,7 @@ function buildTypeScriptTypeCheckCommands(project: Project, projects: Project[])
     );
     return command?.includes('--type-check') ? [command] : [];
   }
-  return compilesItself(project) ? ['BUN tsc --noEmit'] : [];
+  return compilesItself(project) ? [tscCommand] : [];
 }
 
 function compilesItself(project: Project): boolean {
