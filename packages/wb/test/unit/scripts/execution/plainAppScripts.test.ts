@@ -6,6 +6,7 @@ import { plainAppScripts } from '../../../../src/scripts/execution/plainAppScrip
 
 function createProject(overrides: Record<string, unknown> = {}): Project {
   return {
+    dirPath: '/tmp/app',
     env: { WB_ENV: 'test', PORT: '3000' },
     packageJson: { scripts: {} },
     hasPlaywrightConfig: false,
