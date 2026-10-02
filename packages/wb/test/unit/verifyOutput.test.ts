@@ -299,6 +299,19 @@ it('runs the test/post hook after the tests of every package unless tests are se
   expect(selected.stdout).not.toContain('POST_HOOK_STDOUT');
 }, 60_000);
 
+it('skips the test/post hook on CI after a failed E2E phase', async () => {
+  const dir = await createFixture({ 'test/post': 'echo POST_HOOK_STDOUT' });
+  await fs.mkdir(path.join(dir, 'test/e2e'));
+  await fs.writeFile(
+    path.join(dir, 'test/e2e/failure.test.ts'),
+    "import { test } from 'bun:test'; test('failure', () => { process.exit(7); });"
+  );
+  const result = await runCli(dir, ['test-on-ci']);
+  expect(result.status, result.stdout + result.stderr).toBe(7);
+  expect(result.stdout).toContain('Failed phase: verify-output-fixture / e2e');
+  expect(result.stdout).not.toContain('POST_HOOK_STDOUT');
+}, 60_000);
+
 it('counts the test/post hook of a package without JavaScript tests toward --max-minutes', async () => {
   const dir = await createFixture({ 'test/post': 'sleep 0.3' });
   await fs.rm(path.join(dir, 'test'), { recursive: true });
