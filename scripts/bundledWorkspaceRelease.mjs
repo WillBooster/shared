@@ -33,7 +33,7 @@ export function createBundledWorkspaceReleaseConfig(configUrl) {
   const bundledPaths = findBundledWorkspaceNames(packageDirPath).map((name) => {
     const dirPath = workspaceDirPaths.get(name);
     if (!dirPath) throw new Error(`No workspace package is named ${name}.`);
-    return path.relative(packageDirPath, path.join(dirPath, 'src'));
+    return path.join(dirPath, 'src');
   });
   if (bundledPaths.length === 0) return rootConfig;
 
