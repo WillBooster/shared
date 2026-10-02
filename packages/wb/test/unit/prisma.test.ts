@@ -1,5 +1,4 @@
-import child_process from 'node:child_process';
-
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { describe, expect, it } from 'bun:test';
 import yargs from 'yargs';
 
@@ -105,10 +104,9 @@ describe('prisma command unknown options', () => {
     expect(result).toBe(`--name 'custom migration' --skip-generate`);
   });
 
-  it('explains -- passthrough in wb prisma --help output', () => {
-    const result = child_process.spawnSync('bun', ['run', 'start', 'prisma', '--help'], {
+  it('explains -- passthrough in wb prisma --help output', async () => {
+    const result = await spawnAsync('bun', ['run', 'start', 'prisma', '--help'], {
       cwd: process.cwd(),
-      encoding: 'utf8',
     });
     const normalizedStdout = result.stdout.replaceAll(/\s+/g, ' ');
 

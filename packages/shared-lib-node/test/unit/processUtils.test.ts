@@ -30,9 +30,9 @@ describe('processUtils', () => {
     }
   }, 30_000);
 
-  it('returns empty descendants and false running status for unknown pid', () => {
+  it('returns empty descendants and false running status for unknown pid', async () => {
     const unknownPid = 999_999_999;
-    expect(listDescendantPids(unknownPid)).toStrictEqual([]);
+    expect(await listDescendantPids(unknownPid)).toStrictEqual([]);
     expect(isProcessRunning(unknownPid)).toBe(false);
   });
 });
@@ -40,7 +40,7 @@ describe('processUtils', () => {
 async function waitForDescendants(parentPid: number, minimumCount: number, timeoutMs: number): Promise<number[]> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    const descendants = listDescendantPids(parentPid);
+    const descendants = await listDescendantPids(parentPid);
     if (descendants.length >= minimumCount) {
       return descendants;
     }

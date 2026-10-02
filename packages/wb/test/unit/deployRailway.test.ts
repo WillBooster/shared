@@ -1,10 +1,11 @@
-import childProcess from 'node:child_process';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
@@ -33,8 +34,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     await fs.rm(projectDirPath, { force: true, recursive: true });
   });
 
-  it('checks the plan of every environment on --dry-run without changing Railway', () => {
-    const result = runWb(projectDirPath, ['deploy', '--dry-run'], [safeUpdate], { WB_ENV: 'test' });
+  it('checks the plan of every environment on --dry-run without changing Railway', async () => {
+    const result = await runWb(projectDirPath, ['deploy', '--dry-run'], [safeUpdate], { WB_ENV: 'test' });
 
     expect(result.status).toBe(0);
     const calls = readCalls(projectDirPath);
@@ -49,8 +50,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     ]);
   });
 
-  it('rejects a plan with a variable deletion or a volume detachment before changing Railway', () => {
-    const result = runWb(
+  it('rejects a plan with a variable deletion or a volume detachment before changing Railway', async () => {
+    const result = await runWb(
       projectDirPath,
       ['deploy'],
       [
@@ -67,8 +68,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(readCalls(projectDirPath).map((call) => call.args[0])).toEqual(['environment', 'config']);
   });
 
-  it('rejects a plan artifact marked destructive even when its changes look safe', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+  it('rejects a plan artifact marked destructive even when its changes look safe', async () => {
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_PLAN_DESTRUCTIVE: '1',
     });
@@ -89,7 +90,7 @@ describe('wb deploy for .railway/railway.ts', () => {
       )
     );
 
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], { WB_ENV: 'production' });
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], { WB_ENV: 'production' });
 
     expect(result.status).not.toBe(0);
     expect(readCalls(projectDirPath).map((call) => call.args[0])).not.toContain('up');
@@ -106,14 +107,14 @@ describe('wb deploy for .railway/railway.ts', () => {
         .replace('[profiles.production.secrets]\n', '[profiles.production.secrets]\nDATABASE_URL = { env = false }\n')
     );
 
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], { WB_ENV: 'production' });
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], { WB_ENV: 'production' });
 
     expect(result.status).toBe(0);
     expect(readCalls(projectDirPath).map((call) => call.args[0])).toContain('up');
   });
 
-  it('plans every environment on --dry-run before failing', () => {
-    const result = runWb(
+  it('plans every environment on --dry-run before failing', async () => {
+    const result = await runWb(
       projectDirPath,
       ['deploy', '--dry-run'],
       [{ summary: 'Delete variable app.OLD_KEY', severity: 'destructive', kind: 'variable.delete' }],
@@ -125,8 +126,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(result.stderr).toContain('The Railway plan for staging contains');
   });
 
-  it('rejects resource creation and unknown change kinds', () => {
-    const result = runWb(
+  it('rejects resource creation and unknown change kinds', async () => {
+    const result = await runWb(
       projectDirPath,
       ['deploy', '--dry-run'],
       [
@@ -141,8 +142,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(result.stderr).toContain('- Something new');
   });
 
-  it('syncs fnox values, applies the re-checked plan, and deploys the mapped service', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate, safeVariableSet], {
+  it('syncs fnox values, applies the re-checked plan, and deploys the mapped service', async () => {
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate, safeVariableSet], {
       WB_ENV: 'production',
       WB_VERSION: 'v1.2.3',
     });
@@ -193,9 +194,9 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(result.stdout).not.toContain('"status"');
   });
 
-  it('skips config apply when the re-checked plan has no changes, so railway up is the only deployment', () => {
+  it('skips config apply when the re-checked plan has no changes, so railway up is the only deployment', async () => {
     // The first plan has a change that the variable sync resolves, so only the re-checked plan is empty.
-    const result = runWb(projectDirPath, ['deploy'], [safeVariableSet], {
+    const result = await runWb(projectDirPath, ['deploy'], [safeVariableSet], {
       WB_ENV: 'production',
       FAKE_RAILWAY_RECHECKED_PLAN: JSON.stringify({ changeSet: { changes: [] }, destructive: false }),
     });
@@ -210,8 +211,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     ]);
   });
 
-  it('re-plans, re-checks, and applies a fresh plan when Railway rejects the plan as stale', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+  it('re-plans, re-checks, and applies a fresh plan when Railway rejects the plan as stale', async () => {
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_APPLY_RESULTS: 'STALE',
     });
@@ -238,8 +239,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(rejectedApply?.args[3]).not.toBe(readPlanPath(freshPlan));
   }, 60_000);
 
-  it('fails without re-planning when config apply fails for another reason', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+  it('fails without re-planning when config apply fails for another reason', async () => {
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_APPLY_RESULTS: 'ERROR',
     });
@@ -252,8 +253,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(commands.slice(commands.indexOf('config apply'))).toEqual(['config apply']);
   });
 
-  it('runs railway up only after the deployment triggered by config apply appears', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+  it('runs railway up only after the deployment triggered by config apply appears', async () => {
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_APPLIED_DEPLOYMENT_DELAY: '2',
     });
@@ -275,8 +276,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     ]);
   }, 60_000);
 
-  it('retries a failed deployment list before config apply and a stalled one after it', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+  it('retries a failed deployment list before config apply and a stalled one after it', async () => {
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_PRE_UP_LIST_RESULTS: 'ERROR,,HANG',
     });
@@ -290,8 +291,8 @@ describe('wb deploy for .railway/railway.ts', () => {
 
   // Whether Railway deploys the service for an ownership claim without changes is undocumented, so this
   // covers the case where it does not.
-  it('applies a claim-only plan and runs railway up with a warning when no deployment appears', () => {
-    const result = runWb(projectDirPath, ['deploy'], [], {
+  it('applies a claim-only plan and runs railway up with a warning when no deployment appears', async () => {
+    const result = await runWb(projectDirPath, ['deploy'], [], {
       WB_ENV: 'production',
       FAKE_RAILWAY_PLAN_CLAIM: '1',
       FAKE_RAILWAY_APPLIED_DEPLOYMENT_DELAY: 'never',
@@ -306,8 +307,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(commands.filter((command) => command === 'up --json')).toHaveLength(1);
   }, 90_000);
 
-  it('finds the created deployment when railway up ends without the status line, backing off when rate-limited', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+  it('finds the created deployment when railway up ends without the status line, backing off when rate-limited', async () => {
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_UP: 'DISCONNECT',
       FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'RATELIMIT,SUCCESS',
@@ -340,8 +341,8 @@ describe('wb deploy for .railway/railway.ts', () => {
       env: { FAKE_RAILWAY_OTHER_DEPLOYMENT: '1' },
       message: 'but found 2 (deployment-other, deployment-new);',
     },
-  ])('fails when $name of the deployments was created since railway up started', ({ env, message }) => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+  ])('fails when $name of the deployments was created since railway up started', async ({ env, message }) => {
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_UP: 'DISCONNECT',
       ...env,
@@ -353,8 +354,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(commands.slice(commands.indexOf('up --json'))).toEqual(['up --json', 'deployment list']);
   });
 
-  it('fails when railway up reports that the deployment failed', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+  it('fails when railway up reports that the deployment failed', async () => {
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_UP: 'FAILED',
     });
@@ -365,8 +366,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(readCalls(projectDirPath).at(-1)?.args[0]).toBe('up');
   });
 
-  it('fails when the created deployment does not finish within the timeout', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+  it('fails when the created deployment does not finish within the timeout', async () => {
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_UP: 'HANG',
       FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'BUILDING',
@@ -378,8 +379,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(result.stderr).toContain('deployment-new did not finish within 1 seconds (last status: BUILDING)');
   });
 
-  it('fails at the timeout even when a status check never returns', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+  it('fails at the timeout even when a status check never returns', async () => {
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_UP: 'HANG',
       FAKE_RAILWAY_DEPLOYMENT_STATUSES: 'HANG',
@@ -392,8 +393,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(result.stderr).not.toContain('TimeoutNegativeWarning');
   });
 
-  it('reports a failed variable sync with the CLI error but never its stdout', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+  it('reports a failed variable sync with the CLI error but never its stdout', async () => {
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       FAKE_RAILWAY_VARIABLES_FAIL: '1',
     });
@@ -405,8 +406,8 @@ describe('wb deploy for .railway/railway.ts', () => {
     expect(readCalls(projectDirPath).map((call) => call.args[0])).not.toContain('up');
   });
 
-  it('ignores RAILWAY_ENVIRONMENT_ID and RAILWAY_SERVICE_ID inherited from a deploy workflow', () => {
-    const result = runWb(projectDirPath, ['deploy', '--dry-run'], [safeUpdate], {
+  it('ignores RAILWAY_ENVIRONMENT_ID and RAILWAY_SERVICE_ID inherited from a deploy workflow', async () => {
+    const result = await runWb(projectDirPath, ['deploy', '--dry-run'], [safeUpdate], {
       WB_ENV: 'production',
       RAILWAY_ENVIRONMENT_ID: 'production',
       RAILWAY_SERVICE_ID: 'service-from-workflow',
@@ -424,15 +425,15 @@ describe('wb deploy for .railway/railway.ts', () => {
       `export const railwayTarget = { projectId: 'project-1', services: {} };\n`
     );
 
-    const result = runWb(projectDirPath, ['deploy', '--dry-run'], [safeUpdate], { WB_ENV: 'test' });
+    const result = await runWb(projectDirPath, ['deploy', '--dry-run'], [safeUpdate], { WB_ENV: 'test' });
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('declare at least one <environment>: <service name>');
     expect(readCalls(projectDirPath)).toEqual([]);
   });
 
-  it('refuses a deploy workflow RAILWAY_PROJECT_ID that differs from railwayTarget', () => {
-    const result = runWb(projectDirPath, ['deploy'], [safeUpdate], {
+  it('refuses a deploy workflow RAILWAY_PROJECT_ID that differs from railwayTarget', async () => {
+    const result = await runWb(projectDirPath, ['deploy'], [safeUpdate], {
       WB_ENV: 'production',
       RAILWAY_PROJECT_ID: 'other-project',
     });
@@ -449,15 +450,14 @@ interface RailwayCall {
   time: number;
 }
 
-function runWb(
+async function runWb(
   projectDirPath: string,
   args: string[],
   planChanges: { summary: string; severity: string; kind: string }[],
   env: Record<string, string> = {}
-): childProcess.SpawnSyncReturns<string> {
-  return childProcess.spawnSync(nodePath!, [binIndexPath, ...args], {
+): Promise<SpawnAsyncReturns> {
+  return await spawnAsync(nodePath!, [binIndexPath, ...args], {
     cwd: projectDirPath,
-    encoding: 'utf8',
     env: {
       PATH: process.env.PATH,
       HOME: process.env.HOME,

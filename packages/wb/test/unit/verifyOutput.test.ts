@@ -1,9 +1,11 @@
-import { spawn, spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { stripVTControlCharacters } from 'node:util';
 
+import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { afterEach, beforeAll, expect, it } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
@@ -24,7 +26,7 @@ it.each([false, true])(
     const logPath = path.join(dir, '.wb', full ? 'verify-full.log' : 'verify.log');
     await fs.mkdir(path.dirname(logPath), { recursive: true });
     await fs.writeFile(logPath, 'PREVIOUS_RUN');
-    const result = runCli(dir, ['verify', ...(full ? ['--full'] : [])]);
+    const result = await runCli(dir, ['verify', ...(full ? ['--full'] : [])]);
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(result.stdout).toContain('Verified in');
     expect(result.stdout).toContain(logPath);
@@ -46,7 +48,7 @@ it('fails full verification on slide text errors and saves their source location
   const dir = await createFixture();
   const deckPath = path.join(dir, 'intro.slidev.md');
   await fs.writeFile(deckPath, '# 検証\n\n- ﾃｽﾄ\n');
-  const result = runCli(dir, ['verify', '--full']);
+  const result = await runCli(dir, ['verify', '--full']);
   expect(result.status, result.stdout + result.stderr).toBe(1);
   expect(result.stdout).toContain('Failed step: slidev-check (exit code 1)');
   const log = await fs.readFile(path.join(dir, '.wb/verify-full.log'), 'utf8');
@@ -66,7 +68,7 @@ test('failure', () => {
   expect('actual').toBe('expected');
 });`
   );
-  const result = runCli(dir, ['verify', '--full']);
+  const result = await runCli(dir, ['verify', '--full']);
   expect(result.status).toBe(1);
   const log = await fs.readFile(path.join(dir, '.wb/verify-full.log'), 'utf8');
   for (const text of ['FAILURE_STDOUT', 'FAILURE_STDERR', 'expected', 'actual']) {
@@ -91,7 +93,7 @@ it.each(['bytes', 'lines'])(
 console.log('LAST_FAILURE_MARKER');
 process.exit(7);`
     );
-    const result = runCli(dir, ['verify']);
+    const result = await runCli(dir, ['verify']);
     expect(result.status).toBe(7);
     expect(result.stdout).toContain('Failed step: gen-code (exit code 7)');
     expect(result.stdout).toContain('Output truncated');
@@ -159,11 +161,11 @@ it('preserves the previous log during dry-run and keeps standalone tests verbose
   await fs.mkdir(path.join(dir, '.wb'));
   const logPath = path.join(dir, '.wb/verify-full.log');
   await fs.writeFile(logPath, 'PREVIOUS_RUN');
-  const dryRun = runCli(dir, ['verify', '--full', '--dry-run']);
+  const dryRun = await runCli(dir, ['verify', '--full', '--dry-run']);
   expect(dryRun.status, dryRun.stderr).toBe(0);
   expect(dryRun.stdout).toContain('nothing was executed');
   expect(await fs.readFile(logPath, 'utf8')).toBe('PREVIOUS_RUN');
-  const result = runCli(dir, ['test']);
+  const result = await runCli(dir, ['test']);
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toContain('RAW_TEST_STDOUT');
 }, 60_000);
@@ -173,7 +175,7 @@ it.each([0, 7])(
   async (exitCode) => {
     const dir = await createFixture();
     const logPath = path.join(dir, '.wb/test-ci.log');
-    const dryRun = runCli(dir, ['test-on-ci', '--dry-run']);
+    const dryRun = await runCli(dir, ['test-on-ci', '--dry-run']);
     expect(dryRun.status, dryRun.stderr).toBe(0);
     expect(dryRun.stdout).not.toContain('CI test summary: PASSED');
     expect(dryRun.stdout).not.toContain('Finished:');
@@ -190,7 +192,7 @@ test('large output', () => {
   ${exitCode ? `process.exit(${exitCode});` : ''}
 });`
     );
-    const result = runCli(dir, ['test-on-ci', '--silent']);
+    const result = await runCli(dir, ['test-on-ci', '--silent']);
     expect(result.status, result.stderr).toBe(exitCode);
     expect(await Bun.file(logPath).exists()).toBe(false);
     expect(result.stdout.match(/CI_STDOUT_α😀/g)).toHaveLength(20_000);
@@ -249,7 +251,7 @@ test('failure after output', async () => {
   expect(stdout).toContain('CI test summary: FAILED');
   expect(stdout).toContain('Failed phase: verify-output-fixture / e2e');
   expect(stdout).toContain('test/e2e/');
-  const rerun = runPrintedCommand(dir, stdout);
+  const rerun = await runPrintedCommand(dir, stdout);
   expect(rerun.status, rerun.stdout + rerun.stderr).toBe(7);
   expect(rerun.stdout).toContain('LIVE_STDOUT');
   expect(rerun.stderr).toContain('LIVE_STDERR');
@@ -258,10 +260,10 @@ test('failure after output', async () => {
 it('provides a working rerun command for a test-layout failure', async () => {
   const dir = await createFixture();
   await fs.writeFile(path.join(dir, 'test/misplaced.test.ts'), '');
-  const result = runCli(dir, ['test-on-ci']);
+  const result = await runCli(dir, ['test-on-ci']);
   expect(result.status, result.stdout + result.stderr).toBe(1);
   expect(result.stdout).toContain('Failed phase: verify-output-fixture / test layout');
-  const rerun = runPrintedCommand(dir, result.stdout);
+  const rerun = await runPrintedCommand(dir, result.stdout);
   expect(rerun.status, rerun.stdout + rerun.stderr).toBe(1);
   expect(rerun.stdout + rerun.stderr).toContain('misplaced.test.ts');
   expect(rerun.stdout).not.toContain('RAW_TEST_STDOUT');
@@ -284,9 +286,9 @@ test('environment-dependent failure', () => {
   expect(process.env.NEXT_PUBLIC_WB_ENV, 'derived-env').not.toBe('test');
 });`
   );
-  const result = runCli(dir, ['test-on-ci']);
+  const result = await runCli(dir, ['test-on-ci']);
   expect(result.status, result.stdout + result.stderr).toBe(1);
-  const rerun = runPrintedCommand(dir, result.stdout);
+  const rerun = await runPrintedCommand(dir, result.stdout);
   expect(rerun.status, rerun.stdout + rerun.stderr).toBe(1);
   expect(rerun.stdout + rerun.stderr).toContain('derived-env');
 }, 60_000);
@@ -303,16 +305,16 @@ test('mise-dependent failure', () => {
   );
   const runtimeDir = path.join(dir, '.runtime');
   await fs.mkdir(runtimeDir);
-  const node = spawnSync('node', ['-p', 'process.execPath'], { encoding: 'utf8' });
+  const node = await spawnAsync('node', ['-p', 'process.execPath'], {});
   expect(node.status, node.stderr).toBe(0);
   await fs.symlink(node.stdout.trim(), path.join(runtimeDir, 'node'));
   await fs.symlink(process.execPath, path.join(runtimeDir, 'bun'));
   await fs.symlink(await fs.realpath(Bun.which('mise')!), path.join(runtimeDir, 'mise'));
   const { CI_RERUN_FIXTURE: _fixtureValue, ...baseEnv } = process.env;
   const env = { ...baseEnv, MISE_TRUSTED_CONFIG_PATHS: dir, PATH: `${runtimeDir}:/usr/bin:/bin` };
-  const result = runCli(dir, ['test-on-ci'], env);
+  const result = await runCli(dir, ['test-on-ci'], env);
   expect(result.status, result.stdout + result.stderr).toBe(1);
-  const rerun = runPrintedCommand(dir, result.stdout, env);
+  const rerun = await runPrintedCommand(dir, result.stdout, env);
   expect(rerun.status, rerun.stdout + rerun.stderr).toBe(1);
   expect(rerun.stdout + rerun.stderr).toContain('mise-env');
 }, 60_000);
@@ -329,7 +331,7 @@ test('stdin', () => {
   console.log('E2E_STDIN_CLOSED');
 });`
   );
-  const result = runCli(dir, ['test-on-ci']);
+  const result = await runCli(dir, ['test-on-ci']);
   expect(result.status, result.stdout + result.stderr).toBe(0);
   expect(result.stdout).toContain('E2E_STDIN_CLOSED');
   expect(await Bun.file(path.join(dir, '.wb/test-ci.log')).exists()).toBe(false);
@@ -348,13 +350,11 @@ test('output', () => {
   ${exitCode ? `process.exit(${exitCode});` : ''}
 });`
     );
-    const result = spawnSync(
+    const result = await spawnAsync(
       'bash',
       ['-c', 'trap \'\' XFSZ; ulimit -f 1; exec node "$1" test-on-ci', 'bash', cliPath],
       {
         cwd: dir,
-        encoding: 'utf8',
-        maxBuffer: 2 * 1024 * 1024,
         timeout: 30_000,
       }
     );
@@ -373,14 +373,12 @@ it('streams failing verification output when its log is full', async () => {
     path.join(dir, 'test/unit/example.test.ts'),
     "import { test, expect } from 'bun:test'; test('failure', () => { expect(false, 'ASSERTION_AFTER_LOG_FAILURE').toBe(true); });"
   );
-  const result = spawnSync(
+  const result = await spawnAsync(
     'bash',
     ['-c', 'trap \'\' XFSZ; ulimit -f 1; exec node "$1" verify --full', 'bash', cliPath],
     {
       cwd: dir,
-      encoding: 'utf8',
       timeout: 30_000,
-      maxBuffer: 2 * 1024 * 1024,
     }
   );
   expect(result.status, result.stdout + result.stderr).toBe(1);
@@ -429,7 +427,7 @@ async function createFixture(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(tmp, 'verify-output-'));
   fixturePaths.push(dir);
   // A repository of its own: this repository ignores `.tmp/`, which would hide the fixture's decks.
-  spawnSync('git', ['init', '--quiet'], { cwd: dir });
+  await spawnAsync('git', ['init', '--quiet'], { cwd: dir });
   await fs.writeFile(
     path.join(dir, 'package.json'),
     JSON.stringify({
@@ -450,13 +448,11 @@ async function createFixture(): Promise<string> {
   return dir;
 }
 
-function runCli(dir: string, args: string[], env = process.env): SpawnSyncReturns<string> {
-  return spawnSync('node', [cliPath, ...args], {
+async function runCli(dir: string, args: string[], env = process.env): Promise<SpawnAsyncReturns> {
+  return await spawnAsync('node', [cliPath, ...args], {
     cwd: dir,
     env,
-    encoding: 'utf8',
     timeout: 30_000,
-    maxBuffer: 4 * 1024 * 1024,
   });
 }
 
@@ -468,11 +464,11 @@ async function waitUntil(condition: () => boolean | Promise<boolean>): Promise<v
   }
 }
 
-function runPrintedCommand(dir: string, stdout: string, env = process.env): SpawnSyncReturns<string> {
+async function runPrintedCommand(dir: string, stdout: string, env = process.env): Promise<SpawnAsyncReturns> {
   const command = stdout
     .split('\n')
     .find((line) => line.startsWith('Rerun: '))
     ?.slice('Rerun: '.length);
   expect(command).toBeDefined();
-  return spawnSync('sh', ['-c', command!], { cwd: dir, env, encoding: 'utf8', timeout: 30_000 });
+  return await spawnAsync('sh', ['-c', command!], { cwd: dir, env, timeout: 30_000 });
 }

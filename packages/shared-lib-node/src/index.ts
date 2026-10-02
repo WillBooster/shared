@@ -30,6 +30,7 @@ export { getGlobIgnore, globIgnore } from './glob.js';
 export { calculateHashFromFiles, canSkipSeed, updateHashFromFiles } from './hash.js';
 export { isProcessAlive } from './process.js';
 export { spawnAsync } from './spawn.js';
+export type { SpawnAsyncOptions, SpawnAsyncReturns } from './spawn.js';
 export { treeKill } from './treeKill.js';
 export { writeFileAtomic, writeFileAtomicSync } from './writeFileAtomic.js';
 export type { WriteFileAtomicOptions } from './writeFileAtomic.js';

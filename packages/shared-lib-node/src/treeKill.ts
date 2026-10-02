@@ -13,9 +13,14 @@ export function treeKill(pid: number, signal: NodeJS.Signals = 'SIGTERM'): void 
     return;
   }
 
-  const descendants = collectDescendantPids(pid);
-  const targetPids = toChildrenFirstPids(pid, descendants);
-  for (const targetPid of targetPids) {
+  // Parents before their descendants (collectDescendantPids lists them breadth-first): a script whose
+  // child dies first would otherwise run its next command before its own signal arrives. The caller
+  // comes last, since a fatal signal would end it before it signals the rest.
+  const targetPids = [pid, ...collectDescendantPids(pid)];
+  for (const targetPid of [
+    ...targetPids.filter((p) => p !== process.pid),
+    ...targetPids.filter((p) => p === process.pid),
+  ]) {
     killIfNeeded(targetPid, signal);
   }
 }
@@ -54,12 +59,6 @@ function collectDescendantPids(rootPid: number): number[] {
   );
   const childrenByParent = buildChildrenByParentMap(stdout);
   return collectDescendantPidsFromMap(rootPid, childrenByParent);
-}
-
-function toChildrenFirstPids(pid: number, descendants: readonly number[]): number[] {
-  const targetPids = descendants.toReversed();
-  targetPids.push(pid);
-  return targetPids;
 }
 
 function runCommand(

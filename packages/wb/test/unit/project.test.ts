@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import childProcess from 'node:child_process';
 
 import { describe, expect, it } from 'bun:test';
 
@@ -200,5 +199,5 @@ describe('project', () => {
 });
 
 function isMiseAvailable(): boolean {
-  return childProcess.spawnSync('mise', ['--version'], { stdio: 'ignore' }).status === 0;
+  return Bun.which('mise') !== null;
 }

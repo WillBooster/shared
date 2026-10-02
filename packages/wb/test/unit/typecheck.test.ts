@@ -1,6 +1,6 @@
-import child_process from 'node:child_process';
 import path from 'node:path';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { beforeAll, describe, expect, it } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
@@ -16,16 +16,9 @@ describe('typecheck', () => {
     async () => {
       const dirPath = path.join(tempDir, 'monorepo');
       await initializeProjectDirectory(dirPath);
-      child_process.spawnSync('bun install', {
-        shell: true,
-        stdio: 'inherit',
-        cwd: dirPath,
-      });
+      await spawnAsync('bun', ['install'], { stdio: 'inherit', cwd: dirPath });
 
-      const ret = child_process.spawnSync(`node dist/index.js typecheck -w ${dirPath}`, {
-        shell: true,
-        stdio: 'inherit',
-      });
+      const ret = await spawnAsync('node', ['dist/index.js', 'typecheck', '-w', dirPath], { stdio: 'inherit' });
       console.log(ret);
       expect(ret.status).toBe(0);
     },

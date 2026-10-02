@@ -1,8 +1,8 @@
-import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { expect, test } from 'bun:test';
 
 import { generatePackageJson } from '../../src/generators/packageJson.js';
@@ -64,7 +64,7 @@ test('accepts a documentation-only Git repository without a package.json', async
 test('ignores Java sources that only gitignored directories contain', async () => {
   const tempDirPath = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-')));
   try {
-    childProcess.execFileSync('git', ['init', '--quiet'], { cwd: tempDirPath });
+    await spawnAsync('git', ['init', '--quiet'], { cwd: tempDirPath });
     for (const javaFilePath of ['examples/gentoo/files/Main.java', 'packages/clone/src/Main.java']) {
       fs.mkdirSync(path.join(tempDirPath, path.dirname(javaFilePath)), { recursive: true });
       fs.writeFileSync(path.join(tempDirPath, javaFilePath), 'class Main {}\n');
