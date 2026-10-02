@@ -1,8 +1,8 @@
-import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { expect, test } from 'bun:test';
 
 import { generateGitignore } from '../../src/generators/gitignore.js';
@@ -52,11 +52,13 @@ test('keeps negations with trailing comments in vendored templates effective', a
   try {
     const config = createConfig({ dirPath: tempDirPath, isRoot: true });
     await generateGitignore(config, config);
-    execFileSync('git', ['init', '--quiet'], { cwd: tempDirPath });
+    await spawnAsync('git', ['init', '--quiet'], { cwd: tempDirPath });
 
     // The vim template ignores `[._]*.s[a-v][a-z]` and re-includes `!*.svg` with a trailing comment.
-    expect(spawnSync('git', ['check-ignore', '_icon.sva'], { cwd: tempDirPath }).status).toBe(0);
-    expect(spawnSync('git', ['check-ignore', '_icon.svg'], { cwd: tempDirPath }).status).toBe(1);
+    const ignoredResult = await spawnAsync('git', ['check-ignore', '_icon.sva'], { cwd: tempDirPath });
+    expect(ignoredResult.status).toBe(0);
+    const includedResult = await spawnAsync('git', ['check-ignore', '_icon.svg'], { cwd: tempDirPath });
+    expect(includedResult.status).toBe(1);
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }

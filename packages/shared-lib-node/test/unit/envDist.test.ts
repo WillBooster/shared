@@ -1,6 +1,6 @@
-import childProcess from 'node:child_process';
-
 import { beforeAll, describe, expect, it } from 'bun:test';
+
+import { spawnAsync } from '../../src/spawn.js';
 
 import { isFnoxAvailable } from '../helpers/commandAvailability.js';
 
@@ -12,13 +12,14 @@ import { isFnoxAvailable } from '../helpers/commandAvailability.js';
 // workaround still defeats the bundler, so this suite exercises dist/env.js in a child process.
 describe('bundled env cascade', () => {
   // No other test file uses dist/, so building it here cannot race with parallel test workers.
-  beforeAll(() => {
-    childProcess.execFileSync('bun', ['run', 'build'], { stdio: 'inherit' });
+  beforeAll(async () => {
+    const result = await spawnAsync('bun', ['run', 'build'], { stdio: 'inherit' });
+    expect(result.status).toBe(0);
   }, 120_000);
 
   it.if(isFnoxAvailable())(
     'defaults --auto-cascade-env to development in the built artifact when WB_ENV and NODE_ENV are unset',
-    () => {
+    async () => {
       const script = `
       import { readEnvironmentVariables } from './dist/env.js';
       const [envVars] = readEnvironmentVariables({ autoCascadeEnv: true, quietEnv: true }, 'test/fixtures/app1');
@@ -32,10 +33,7 @@ describe('bundled env cascade', () => {
       delete env.ENV;
       delete env.PORT;
       delete env.NAME;
-      const result = childProcess.spawnSync('node', ['--input-type=module', '-e', script], {
-        encoding: 'utf8',
-        env,
-      });
+      const result = await spawnAsync('node', ['--input-type=module', '-e', script], { env });
       // Surface the child's stderr: on failure it carries the whole diagnosis (broken dist, import error).
       expect({ status: result.status, stderr: result.stderr }).toMatchObject({ status: 0 });
       expect(JSON.parse(result.stdout)).toMatchObject({ ENV: 'development1' });

@@ -1,7 +1,6 @@
-import { spawnSync } from 'node:child_process';
-
 import { isErrnoException } from '../../packages/shared-lib-node/src/errno.js';
 import { buildChildrenByParentMap, collectDescendantPids } from '../../packages/shared-lib-node/src/processTree.js';
+import { spawnAsync } from '../../packages/shared-lib-node/src/spawn.js';
 
 export function isProcessRunning(pid: number): boolean {
   try {
@@ -32,8 +31,8 @@ export async function wait(ms: number): Promise<void> {
   });
 }
 
-export function listDescendantPids(rootPid: number): number[] {
-  const result = spawnSync('ps', ['-Ao', 'pid=,ppid='], { encoding: 'utf8' });
+export async function listDescendantPids(rootPid: number): Promise<number[]> {
+  const result = await spawnAsync('ps', ['-Ao', 'pid=,ppid=']);
   const childrenByParent = buildChildrenByParentMap(result.stdout);
   return collectDescendantPids(rootPid, childrenByParent);
 }

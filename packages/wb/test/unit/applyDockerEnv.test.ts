@@ -1,21 +1,20 @@
-import child_process from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { describe, expect, it } from 'bun:test';
 
 const scriptPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../docker/bash/apply-docker-env.sh');
 
-describe('apply-docker-env.sh', () => {
-  it('applies baked values only to keys the environment does not already provide', () => {
+describe('apply-docker-env.sh', async () => {
+  it('applies baked values only to keys the environment does not already provide', async () => {
     const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-apply-env-'));
     try {
       fs.writeFileSync(path.join(dirPath, '.docker.env'), "BAKED_ONLY='baked'\nOVERRIDDEN='baked'\nnot a valid line\n");
-      const result = child_process.spawnSync('bash', [scriptPath, 'sh', '-c', 'echo "$BAKED_ONLY/$OVERRIDDEN"'], {
+      const result = await spawnAsync('bash', [scriptPath, 'sh', '-c', 'echo "$BAKED_ONLY/$OVERRIDDEN"'], {
         cwd: dirPath,
-        encoding: 'utf8',
         env: { ...process.env, OVERRIDDEN: 'from-environment' },
       });
       expect(result.status).toBe(0);
@@ -25,13 +24,12 @@ describe('apply-docker-env.sh', () => {
     }
   });
 
-  it('does not leak or clobber bookkeeping names and applies Bash readonly names via env', () => {
+  it('does not leak or clobber bookkeeping names and applies Bash readonly names via env', async () => {
     const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-apply-env-'));
     try {
       fs.writeFileSync(path.join(dirPath, '.docker.env'), "line='baked-line'\nUID='9999'\nOTHER='o'\n");
-      const result = child_process.spawnSync('bash', [scriptPath, 'env'], {
+      const result = await spawnAsync('bash', [scriptPath, 'env'], {
         cwd: dirPath,
-        encoding: 'utf8',
         // Inherited variables sharing the script's internal names must reach the child unchanged.
         env: { ...process.env, line: 'platform-line', value: 'platform-value', assignments: 'platform-a' },
       });
@@ -49,13 +47,12 @@ describe('apply-docker-env.sh', () => {
     }
   });
 
-  it('keeps a deliberately empty platform value and reads a final line without a trailing newline', () => {
+  it('keeps a deliberately empty platform value and reads a final line without a trailing newline', async () => {
     const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-apply-env-'));
     try {
       fs.writeFileSync(path.join(dirPath, '.docker.env'), "EMPTY_ON_PLATFORM='baked'\nLAST='last'");
-      const result = child_process.spawnSync('bash', [scriptPath, 'sh', '-c', 'echo "[$EMPTY_ON_PLATFORM][$LAST]"'], {
+      const result = await spawnAsync('bash', [scriptPath, 'sh', '-c', 'echo "[$EMPTY_ON_PLATFORM][$LAST]"'], {
         cwd: dirPath,
-        encoding: 'utf8',
         env: { ...process.env, EMPTY_ON_PLATFORM: '' },
       });
       expect(result.status).toBe(0);
@@ -65,13 +62,12 @@ describe('apply-docker-env.sh', () => {
     }
   });
 
-  it('preserves trailing newlines in inherited values sharing internal names', () => {
+  it('preserves trailing newlines in inherited values sharing internal names', async () => {
     const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-apply-env-'));
     try {
       fs.writeFileSync(path.join(dirPath, '.docker.env'), "OTHER='o'\n");
-      const result = child_process.spawnSync('bash', [scriptPath, 'bash', '-c', 'printf %s "$value" | wc -c'], {
+      const result = await spawnAsync('bash', [scriptPath, 'bash', '-c', 'printf %s "$value" | wc -c'], {
         cwd: dirPath,
-        encoding: 'utf8',
         env: { ...process.env, value: 'x\n\n' },
       });
       expect(result.status).toBe(0);
@@ -81,10 +77,10 @@ describe('apply-docker-env.sh', () => {
     }
   });
 
-  it('execs the command unchanged when no env file exists', () => {
+  it('execs the command unchanged when no env file exists', async () => {
     const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-apply-env-'));
     try {
-      const result = child_process.spawnSync('bash', [scriptPath, 'echo', 'ok'], { cwd: dirPath, encoding: 'utf8' });
+      const result = await spawnAsync('bash', [scriptPath, 'echo', 'ok'], { cwd: dirPath });
       expect(result.status).toBe(0);
       expect(result.stdout.trim()).toBe('ok');
     } finally {

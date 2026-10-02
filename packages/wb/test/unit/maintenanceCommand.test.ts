@@ -4,6 +4,8 @@ import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { describe, expect, it } from 'bun:test';
 
 import { getMaintenancePidFilePath } from '../../src/commands/maintenance.js';
@@ -28,7 +30,7 @@ describe('wb maintenance', () => {
 
     try {
       await waitForPidFile(port);
-      const result = runWbMaintenanceStop(port);
+      const result = await runWbMaintenanceStop(port);
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain(`Stopped maintenance server on port ${port}.`);
@@ -67,7 +69,7 @@ describe('wb maintenance', () => {
     try {
       await waitForHttpStatus(port, 200);
 
-      const result = runWbMaintenanceStop(port);
+      const result = await runWbMaintenanceStop(port);
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain(`Stopped maintenance server on port ${port}.`);
@@ -87,10 +89,9 @@ function spawnWbMaintenance(action: 'start' | 'stop', port: number, args: string
   });
 }
 
-function runWbMaintenanceStop(port: number): childProcess.SpawnSyncReturns<string> {
-  return childProcess.spawnSync('bun', ['run', 'start', 'maintenance', 'stop', '--quiet-env'], {
+async function runWbMaintenanceStop(port: number): Promise<SpawnAsyncReturns> {
+  return await spawnAsync('bun', ['run', 'start', 'maintenance', 'stop', '--quiet-env'], {
     cwd: process.cwd(),
-    encoding: 'utf8',
     env: { ...process.env, PORT: String(port), WB_ENV: 'development' },
     timeout: 20_000,
   });
