@@ -1,4 +1,5 @@
 import type {
+  ChildProcess,
   SpawnOptions,
   SpawnOptionsWithoutStdio,
   SpawnOptionsWithStdioTuple,
@@ -38,6 +39,8 @@ export type SpawnAsyncOptions = (
   mergeOutAndError?: boolean;
   /** If true, the spawned process will be killed when the parent process exits */
   killOnExit?: boolean;
+  /** Called with the spawned process once it has a pid, e.g. to observe its `exit` event */
+  onSpawn?: (proc: ChildProcess) => void;
   /** If true, enables verbose logging of process operations */
   verbose?: boolean;
   /** If true, stdout data will be printed to console as it's received */
@@ -78,6 +81,7 @@ export async function spawnAsync(
   return new Promise((resolve, reject) => {
     try {
       const proc = spawn(command, args ?? [], options ?? {});
+      if (proc.pid) options?.onSpawn?.(proc);
       // `setEncoding` is undefined in Bun
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       proc.stdout?.setEncoding?.('utf8');
