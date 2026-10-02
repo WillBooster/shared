@@ -19,6 +19,12 @@ const builder = {} as const;
 // gen-code types a Worker against a throwaway key-only stub written here from committed sources.
 const workerTypesEnvPath = path.join('.wrangler', 'worker-types.env');
 
+const blitzRouteManifestStubByFileName = {
+  'index-browser.js': 'exports.Routes = {};\n',
+  'index.d.ts': 'export declare const Routes: Record<string, never>;\n',
+  'index.js': 'exports.Routes = {};\n',
+};
+
 export const genCodeCommand: CommandModule = {
   command: 'gen-code',
   describe: 'Generate code for the current project',
@@ -38,6 +44,9 @@ export const genCodeCommand: CommandModule = {
     // as `apps/web` would otherwise look for `apps/web/bun.lock` instead of the repository's.
     if (!argv.dryRun) {
       normalizeBunLockfile(projects.self.rootDirPath);
+      for (const project of projects.descendants) {
+        writeBlitzRouteManifestStub(project);
+      }
     }
 
     const genCodeTargets = projects.descendants
@@ -66,6 +75,25 @@ export const genCodeCommand: CommandModule = {
   },
 };
 
+/**
+ * `@blitzjs/next` unconditionally loads the route manifest `.blitz`, which only the blitz CLI
+ * generates and Bun-managed repositories never run (see getGenCodeScripts). Their apps
+ * hand-maintain their routes instead of using the generated `Routes`, so an empty manifest
+ * satisfies the import. It goes into the workspace root's node_modules: the isolated linker keeps
+ * the real @blitzjs/next under `<root>/node_modules/.bun`, and module resolution walks up from
+ * there, never through a workspace package's own node_modules.
+ */
+function writeBlitzRouteManifestStub(project: Project): void {
+  if (!project.usesBunPackageManager || !project.hasOwnDependency('@blitzjs/next')) return;
+
+  const dirPath = path.join(project.rootDirPath, 'node_modules', '.blitz');
+  fs.mkdirSync(dirPath, { recursive: true });
+  for (const [fileName, content] of Object.entries(blitzRouteManifestStubByFileName)) {
+    const filePath = path.join(dirPath, fileName);
+    if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, content);
+  }
+}
+
 export function getGenCodeScripts(project: Project): string[] {
   const scripts: string[] = [];
   // First: `worker-configuration.d.ts` is gitignored, so on a fresh checkout it does not exist yet,
@@ -84,8 +112,8 @@ export function getGenCodeScripts(project: Project): string[] {
   // Yarn-era Blitz repositories need `blitz codegen` for the route manifest (node_modules/.blitz)
   // that @blitzjs/next's type declarations re-export; install scripts do not run it
   // (enableScripts: false). Never under Bun: the blitz CLI patches the installed next package in
-  // place, which must not happen in Bun's shared global store (Bun-era Blitz repositories generate
-  // the manifest with their own scripts instead). On a fresh install `blitz codegen` also
+  // place, which Bun-era Blitz repositories must avoid (they get an empty manifest from
+  // writeBlitzRouteManifestStub instead). On a fresh install `blitz codegen` also
   // generates the Prisma client itself, making the PRISMA generate step below redundant once —
   // keeping both is deliberate: after schema-only changes blitz's already-generated guard skips
   // its internal generate, so the explicit step is still what regenerates the client.
