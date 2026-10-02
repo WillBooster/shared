@@ -92,7 +92,11 @@ describe('treeKill', () => {
       kill.mockRestore();
     }
 
-    await waitForClose(parent, 10_000);
+    await Promise.all([
+      waitForProcessStopped(parentPid, 10_000),
+      ...descendantPids.map((pid) => waitForProcessStopped(pid, 10_000)),
+      waitForClose(parent, 10_000),
+    ]);
   }, 30_000);
 
   it('signals the rest of the tree before a fatal signal ends the calling process', async () => {
