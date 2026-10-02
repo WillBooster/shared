@@ -290,7 +290,8 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
           buildWorkspaceIgnorePatterns(
             project,
             projects.descendants,
-            (workspace) => !!buildLintCommand(workspace, argv)
+            // The same command: a workspace that lints without the root's type check stays covered.
+            (workspace) => buildLintCommand(workspace, argv) === buildLintCommand(project, argv)
           )
         );
         if (lintCommand) linterCommands.push({ command: lintCommand, project });
