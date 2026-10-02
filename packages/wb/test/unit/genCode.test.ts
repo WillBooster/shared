@@ -2,10 +2,16 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it } from 'bun:test';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
+import { beforeAll, describe, expect, it } from 'bun:test';
 
 import { getGenCodeScripts } from '../../src/commands/genCode.js';
 import { Project } from '../../src/project.js';
+import { buildWb } from '../helpers/build.js';
+
+const cliPath = path.resolve('bin/index.js');
+
+beforeAll(buildWb, 120_000);
 
 // `wrangler types` reads its secret key names from the stub generateWorkerTypesEnvStub writes; the
 // script here just points wrangler at that stub via --env-file.
@@ -193,8 +199,8 @@ describe('getGenCodeScripts', () => {
   });
 
   it('does not run blitz codegen for Bun-managed Blitz repositories', async () => {
-    // The blitz CLI patches the installed next package in place, which must never happen in
-    // Bun's shared global store; Bun-era Blitz repositories generate the manifest themselves.
+    // The blitz CLI patches the installed next package in place; Bun-managed repositories get an
+    // empty route manifest from gen-code instead.
     const dirPath = await createProject({ dependencies: { blitz: '2.2.4' } });
     await fs.mkdir(path.join(dirPath, 'src'));
     await fs.writeFile(path.join(dirPath, 'bun.lock'), '');
@@ -219,6 +225,35 @@ describe('getGenCodeScripts', () => {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
   });
+});
+
+describe('wb gen-code', () => {
+  it("writes the Blitz route manifest stub into the workspace root's node_modules, keeping existing files", async () => {
+    const dirPath = await createProject({ name: 'root', private: true, workspaces: ['packages/*'] });
+    await fs.writeFile(path.join(dirPath, 'bun.lock'), '');
+    const appDirPath = path.join(dirPath, 'packages', 'app');
+    await fs.mkdir(appDirPath, { recursive: true });
+    await fs.writeFile(
+      path.join(appDirPath, 'package.json'),
+      JSON.stringify({ name: 'app', dependencies: { '@blitzjs/next': '2.2.4' } })
+    );
+    const manifestDirPath = path.join(dirPath, 'node_modules', '.blitz');
+    await fs.mkdir(manifestDirPath, { recursive: true });
+    await fs.writeFile(path.join(manifestDirPath, 'index.js'), 'exports.Routes = { Home: 1 };\n');
+
+    try {
+      const result = await spawnAsync('node', [cliPath, 'gen-code'], { cwd: dirPath, timeout: 30_000 });
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(await fs.readFile(path.join(manifestDirPath, 'index.js'), 'utf8')).toBe('exports.Routes = { Home: 1 };\n');
+      expect(await fs.readFile(path.join(manifestDirPath, 'index-browser.js'), 'utf8')).toBe('exports.Routes = {};\n');
+      expect(await fs.readFile(path.join(manifestDirPath, 'index.d.ts'), 'utf8')).toBe(
+        'export declare const Routes: Record<string, never>;\n'
+      );
+      expect(await fs.readdir(appDirPath)).toEqual(['package.json']);
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  }, 60_000);
 });
 
 async function createProject(packageJson: Record<string, unknown>): Promise<string> {
