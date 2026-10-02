@@ -283,10 +283,17 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   } else {
     for (const project of projects.descendants) {
       if (shouldRunLinters) {
-        if (project.hasOwnSourceCode) {
-          const lintCommand = buildLintCommand(project, argv);
-          if (lintCommand) linterCommands.push({ command: lintCommand, project });
-        }
+        const lintCommand = buildLintCommand(
+          project,
+          argv,
+          undefined,
+          buildWorkspaceIgnorePatterns(
+            project,
+            projects.descendants,
+            (workspace) => !!buildLintCommand(workspace, argv)
+          )
+        );
+        if (lintCommand) linterCommands.push({ command: lintCommand, project });
         if (project.hasPoetryLock) linterCommands.push({ command: buildPoetryLintCommand(argv), project });
         if (project.hasPubspecYaml) linterCommands.push({ command: buildDartLintCommand(), project });
       }
@@ -434,7 +441,8 @@ function shouldSuppressSuccessfulVerifyOutput(command: string): boolean {
 export function buildLintCommand(
   project: Pick<Project, 'preferredLinter' | 'hasTypeAwareOxlint'>,
   argv: Pick<LintCommandOptions, 'fix' | 'format'> & Partial<Pick<LintCommandOptions, 'quiet'>>,
-  files?: string[]
+  files?: string[],
+  ignorePatterns: string[] = []
 ): string | undefined {
   if (project.preferredLinter === 'oxlint') {
     return buildShellCommand([
@@ -448,9 +456,30 @@ export function buildLintCommand(
       ...(argv.quiet ? ['--quiet'] : []),
       ...(argv.fix ? ['--fix'] : []),
       ...(files ?? ['.']),
+      ...ignorePatterns.flatMap((pattern) => ['--ignore-pattern', pattern]),
     ]);
   }
   return;
+}
+
+/**
+ * Oxlint ignore patterns that keep a workspace root's run out of the workspaces that run the same
+ * check themselves, so the root covers exactly the files no workspace covers: its own (e.g.
+ * `test/`, `scripts/`, `*.config.ts`) and those of workspaces without the tool.
+ */
+export function buildWorkspaceIgnorePatterns(
+  project: Project,
+  projects: Project[],
+  checksItself: (workspace: Project) => boolean
+): string[] {
+  if (!project.packageJson.workspaces) return [];
+  return (
+    projects
+      .filter((workspace) => workspace !== project && checksItself(workspace))
+      // The leading slash anchors the pattern to the root: a bare name would match a directory of
+      // that name at any depth.
+      .map((workspace) => `/${path.relative(project.dirPath, workspace.dirPath)}`)
+  );
 }
 
 export function buildOxfmtCommand(files?: string[]): string {
