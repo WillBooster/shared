@@ -100,7 +100,12 @@ process.exit(7);`
     expect(result.stdout).toContain('Verification failed. Full log:');
     const log = await fs.readFile(path.join(dir, '.wb/verify.log'), 'utf8');
     if (limit === 'bytes') {
-      expect(log.match(/LARGE_MARKER/g)).toHaveLength(20_000);
+      // `bun run` writes these lines to stderr, which wb reads through its own pipe, so either can land
+      // between two stdout chunks and split a marker.
+      const stdoutLog = log
+        .replace('$ bun generate.ts\n', '')
+        .replace('error: script "gen-code" exited with code 7\n', '');
+      expect(stdoutLog.match(/LARGE_MARKER/g)).toHaveLength(20_000);
     } else {
       expect(log).toContain('FAILURE_LINE_0\n');
       expect(result.stdout).not.toContain('FAILURE_LINE_0\n');
