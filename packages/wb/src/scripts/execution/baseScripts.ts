@@ -4,6 +4,7 @@ import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import { isProjectEnvironment } from '../../project.js';
 import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
+import { readBunTestTimeout } from '../../utils/bunfig.js';
 import { ensurePort } from '../../utils/port.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../utils/shell.js';
 import { findWranglerConfigPath, getLocalWranglerStateDir, wrapWithLocalD1DatabaseUrl } from '../../utils/wrangler.js';
@@ -300,6 +301,7 @@ export abstract class BaseScripts {
         ...(argv.bail ? ['--bail=1'] : []),
       ]);
     } else if (project.isBunAvailable) {
+      const timeout = readBunTestTimeout(project.dirPath);
       return buildShellCommand([
         'bun',
         'test',
@@ -307,6 +309,7 @@ export abstract class BaseScripts {
         ...(argv.bail ? ['--bail'] : []),
         ...nameFilter,
         ...(argv.allowNoTests ? ['--pass-with-no-tests'] : []),
+        ...(timeout === undefined ? [] : [`--timeout=${timeout}`]),
         ...bunOptions,
       ]);
     }

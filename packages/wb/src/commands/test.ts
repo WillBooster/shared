@@ -36,6 +36,8 @@ export const testSelectionOptions = {
   },
 } as const;
 
+export const POST_TEST_SCRIPT_NAME = 'test/post';
+
 const builder = {
   ...testSelectionOptions,
   e2e: {
@@ -63,7 +65,7 @@ const builder = {
     type: 'boolean',
   },
   'unit-timeout': {
-    description: 'Timeout for unit tests',
+    description: 'Timeout in milliseconds for the whole unit-test run of a package',
     type: 'number',
   },
 } as const;
@@ -131,6 +133,8 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   const testTargets = (testArgv.targets ?? []) as string[];
   const forwardedPlaywrightArgs = testArgv['--'] ?? [];
   const { shouldRunE2e, shouldRunUnit } = resolveTestExecutionTargets(testTargets, forwardedPlaywrightArgs);
+  // The hook cannot be filtered, so a selection of paths, names, or Playwright options leaves it out.
+  const shouldRunPost = testTargets.length === 0 && forwardedPlaywrightArgs.length === 0 && argv.grep === undefined;
   if (argv.grep !== undefined) console.info(describeTestSelection(argv.grep, isNameOnlySelection));
 
   for (const project of projects.descendants) {
@@ -139,8 +143,6 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     // lazy, so a project with no runnable tests would otherwise skip the validation entirely.
     void project.env;
 
-    const deps = project.packageJson.dependencies ?? {};
-    const devDeps = project.packageJson.devDependencies ?? {};
     const scripts = selectScripts(project);
 
     console.info(`Running "test" for ${project.name} ...`);
@@ -166,139 +168,105 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
         return exitCode;
       }
     }
-    if (!hasE2eTests) {
-      continue;
+    if (hasE2eTests) {
+      const exitCode = await runE2eTests(project, scripts, testArgv, testTargets, forwardedPlaywrightArgs, options);
+      if (exitCode !== 0) return exitCode;
     }
+  }
+  if (!shouldRunPost) return 0;
 
-    const e2eTargets = testTargets.filter((target) => isE2eTarget(target));
-    const e2eArgv = { ...testArgv, targets: e2eTargets.length > 0 ? e2eTargets : undefined };
+  for (const project of projects.descendants) {
+    if (!project.packageJson.scripts?.[POST_TEST_SCRIPT_NAME]) continue;
 
-    // Playwright's output dedupe (for noisy server logs) would drop the near-identical failure
-    // details of a unit-runner suite, so route those through the unit runner's output handling.
-    // A skip-notice `echo` must stay on the default path: the unit runner's silent mode hides
-    // successful output and would report the skipped suite as "E2E tests passed.".
-    const runE2eTestCommand = (
-      script: string,
-      { exitIfFailed = options.exitIfFailed }: TestRunOptions = {}
-    ): Promise<number> =>
-      scripts.usesUnitRunnerForE2e(project) && !script.startsWith('echo ')
-        ? runUnitTestCommand(script, project, testArgv, {
-            exitIfFailed,
-            silentSuccessMessage: 'E2E tests passed.',
-          })
-        : runTestCommand(script, project, testArgv, { exitIfFailed });
+    console.info(`Running "${POST_TEST_SCRIPT_NAME}" for ${project.name} ...`);
+    const exitCode = await runUnitTestCommand(`YARN run ${POST_TEST_SCRIPT_NAME}`, project, testArgv, {
+      exitIfFailed: options.exitIfFailed,
+      silentSuccessMessage: `"${POST_TEST_SCRIPT_NAME}" passed.`,
+    });
+    if (exitCode !== 0) return exitCode;
+  }
+  return 0;
+}
 
-    switch (testArgv.e2e) {
-      case 'headless': {
-        const exitCode = await runE2eTestCommand(
-          await scripts.testE2EProduction(project, e2eArgv, {
-            playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
-            forwardedPlaywrightArgs,
-          })
-        );
-        if (exitCode !== 0) return exitCode;
-        continue;
-      }
-      case 'headless-dev': {
-        const exitCode = await runE2eTestCommand(
-          await scripts.testE2EDev(project, e2eArgv, {
-            playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
-            forwardedPlaywrightArgs,
-          })
-        );
-        if (exitCode !== 0) return exitCode;
-        continue;
-      }
-      case 'docker': {
-        const exitCode = await testOnDocker(
-          project,
-          e2eArgv,
-          scripts,
-          runE2eTestCommand,
-          buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
-          forwardedPlaywrightArgs,
-          options
-        );
-        if (exitCode !== 0) return exitCode;
-        continue;
-      }
-      case 'docker-debug': {
-        const exitCode = await testOnDocker(
-          project,
-          e2eArgv,
-          scripts,
-          runE2eTestCommand,
-          buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--debug']),
-          forwardedPlaywrightArgs,
-          options
-        );
-        if (exitCode !== 0) return exitCode;
-        continue;
-      }
+async function runE2eTests(
+  project: Project,
+  scripts: BaseScripts,
+  testArgv: TestCommandArgv,
+  testTargets: string[],
+  forwardedPlaywrightArgs: string[],
+  options: TestRunOptions
+): Promise<number> {
+  const e2eTargets = testTargets.filter((target) => isE2eTarget(target));
+  const e2eArgv = { ...testArgv, targets: e2eTargets.length > 0 ? e2eTargets : undefined };
+  const buildE2eOptions = (
+    additionalArgs?: string[]
+  ): { playwrightArgs: string[]; forwardedPlaywrightArgs: string[] } => ({
+    playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, additionalArgs),
+    forwardedPlaywrightArgs,
+  });
+
+  // Playwright's output dedupe (for noisy server logs) would drop the near-identical failure
+  // details of a unit-runner suite, so route those through the unit runner's output handling.
+  // A skip-notice `echo` must stay on the default path: the unit runner's silent mode hides
+  // successful output and would report the skipped suite as "E2E tests passed.".
+  const runE2eTestCommand = (
+    script: string,
+    { exitIfFailed = options.exitIfFailed }: TestRunOptions = {}
+  ): Promise<number> =>
+    scripts.usesUnitRunnerForE2e(project) && !script.startsWith('echo ')
+      ? runUnitTestCommand(script, project, testArgv, {
+          exitIfFailed,
+          silentSuccessMessage: 'E2E tests passed.',
+        })
+      : runTestCommand(script, project, testArgv, { exitIfFailed });
+  const runInteractiveTestCommand = (script: string): Promise<number> =>
+    runTestCommand(script, project, testArgv, { exitIfFailed: options.exitIfFailed });
+
+  switch (testArgv.e2e) {
+    case 'headless': {
+      return runE2eTestCommand(await scripts.testE2EProduction(project, e2eArgv, buildE2eOptions()));
     }
-    if (deps.next || devDeps.vite) {
-      switch (testArgv.e2e) {
-        case 'headed': {
-          const exitCode = await runTestCommand(
-            await scripts.testE2EProduction(project, e2eArgv, {
-              playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--headed']),
-              forwardedPlaywrightArgs,
-            }),
-            project,
-            testArgv,
-            { exitIfFailed: options.exitIfFailed }
-          );
-          if (exitCode !== 0) return exitCode;
-          break;
-        }
-        case 'headed-dev': {
-          const exitCode = await runTestCommand(
-            await scripts.testE2EDev(project, e2eArgv, {
-              playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--headed']),
-              forwardedPlaywrightArgs,
-            }),
-            project,
-            testArgv,
-            { exitIfFailed: options.exitIfFailed }
-          );
-          if (exitCode !== 0) return exitCode;
-          break;
-        }
-        case 'debug': {
-          const exitCode = await runTestCommand(
-            await scripts.testE2EProduction(project, e2eArgv, {
-              playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--debug']),
-              forwardedPlaywrightArgs,
-            }),
-            project,
-            testArgv,
-            { exitIfFailed: options.exitIfFailed }
-          );
-          if (exitCode !== 0) return exitCode;
-          break;
-        }
-        case 'generate': {
-          // The codegen URL is built before testE2EProduction resolves the port, so resolve it here.
-          await ensurePort(project);
-          const exitCode = await runTestCommand(
-            await scripts.testE2EProduction(project, e2eArgv, {
-              playwrightArgs: ['codegen', `http://localhost:${project.env.PORT}`],
-            }),
-            project,
-            testArgv,
-            { exitIfFailed: options.exitIfFailed }
-          );
-          if (exitCode !== 0) return exitCode;
-          break;
-        }
-        case 'trace': {
-          const exitCode = await runTestCommand(`BUN playwright show-trace`, project, testArgv, {
-            exitIfFailed: options.exitIfFailed,
-          });
-          if (exitCode !== 0) return exitCode;
-          break;
-        }
-      }
+    case 'headless-dev': {
+      return runE2eTestCommand(await scripts.testE2EDev(project, e2eArgv, buildE2eOptions()));
+    }
+    case 'docker':
+    case 'docker-debug': {
+      return testOnDocker(
+        project,
+        e2eArgv,
+        scripts,
+        runE2eTestCommand,
+        buildE2eOptions(testArgv.e2e === 'docker-debug' ? ['--debug'] : []).playwrightArgs,
+        forwardedPlaywrightArgs,
+        options
+      );
+    }
+  }
+  if (!project.packageJson.dependencies?.next && !project.packageJson.devDependencies?.vite) return 0;
+
+  switch (testArgv.e2e) {
+    case 'headed': {
+      return runInteractiveTestCommand(
+        await scripts.testE2EProduction(project, e2eArgv, buildE2eOptions(['--headed']))
+      );
+    }
+    case 'headed-dev': {
+      return runInteractiveTestCommand(await scripts.testE2EDev(project, e2eArgv, buildE2eOptions(['--headed'])));
+    }
+    case 'debug': {
+      return runInteractiveTestCommand(await scripts.testE2EProduction(project, e2eArgv, buildE2eOptions(['--debug'])));
+    }
+    case 'generate': {
+      // The codegen URL is built before testE2EProduction resolves the port, so resolve it here.
+      await ensurePort(project);
+      return runInteractiveTestCommand(
+        await scripts.testE2EProduction(project, e2eArgv, {
+          playwrightArgs: ['codegen', `http://localhost:${project.env.PORT}`],
+        })
+      );
+    }
+    case 'trace': {
+      return runInteractiveTestCommand(`BUN playwright show-trace`);
     }
   }
   return 0;
