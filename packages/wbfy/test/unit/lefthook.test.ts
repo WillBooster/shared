@@ -1,8 +1,8 @@
-import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { expect, test } from 'bun:test';
 
 import { generateLefthook } from '../../src/generators/lefthook.js';
@@ -34,9 +34,8 @@ test('generated lockfile normalizer removes only Guard registry resolutions', as
 `
     );
 
-    const result = childProcess.spawnSync('bash', ['.lefthook/normalize-bun-lockfile.sh'], {
+    const result = await spawnAsync('bash', ['.lefthook/normalize-bun-lockfile.sh'], {
       cwd: tempDirPath,
-      encoding: 'utf8',
     });
     expect(result.status, result.stderr).toBe(0);
     expect(fs.readFileSync(lockfilePath, 'utf8')).toBe(`{

@@ -1,10 +1,10 @@
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { beforeAll, expect, test } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
@@ -155,7 +155,7 @@ interface RunResult {
   remoteTags: string[];
 }
 
-function runRelease(
+async function runRelease(
   args: string[],
   {
     refName = 'main',
@@ -172,15 +172,15 @@ function runRelease(
     runs = [],
     cancelDuringBuild = false,
   }: RunOptions = {}
-): RunResult {
+): Promise<RunResult> {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-release-plugin-test-'));
   try {
     const repoDirPath = path.join(dirPath, 'repo');
     const remoteDirPath = path.join(dirPath, 'remote.git');
     const binDirPath = path.join(dirPath, 'bin');
     const gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
-    const git = (cwd: string, ...gitArgs: string[]): string => {
-      const result = spawnSync('git', gitArgs, { cwd, encoding: 'utf8', env: gitEnv });
+    const git = async (cwd: string, ...gitArgs: string[]): Promise<string> => {
+      const result = await spawnAsync('git', gitArgs, { cwd, env: gitEnv });
       if (result.status !== 0) throw new Error(`git ${gitArgs.join(' ')} failed: ${result.stderr}`);
       return result.stdout.trim();
     };
@@ -213,10 +213,10 @@ function runRelease(
     const logPath = path.join(dirPath, 'requests.jsonl');
     fs.writeFileSync(logPath, '');
 
-    git(dirPath, 'init', '--quiet', '--bare', '--initial-branch=main', remoteDirPath);
-    git(repoDirPath, 'init', '--quiet', '--initial-branch=main');
-    git(repoDirPath, 'add', '.');
-    git(
+    await git(dirPath, 'init', '--quiet', '--bare', '--initial-branch=main', remoteDirPath);
+    await git(repoDirPath, 'init', '--quiet', '--initial-branch=main');
+    await git(repoDirPath, 'add', '.');
+    await git(
       repoDirPath,
       '-c',
       'user.name=test',
@@ -227,9 +227,9 @@ function runRelease(
       '-m',
       'fix: test'
     );
-    git(repoDirPath, 'remote', 'add', 'origin', `file://${remoteDirPath}`);
-    git(repoDirPath, 'push', '--quiet', 'origin', 'main');
-    const head = git(repoDirPath, 'rev-parse', 'HEAD');
+    await git(repoDirPath, 'remote', 'add', 'origin', `file://${remoteDirPath}`);
+    await git(repoDirPath, 'push', '--quiet', 'origin', 'main');
+    const head = await git(repoDirPath, 'rev-parse', 'HEAD');
     const statePath = path.join(dirPath, 'state.json');
     const resolveCommit = (commit: string): string => (commit === headCommit ? head : commit);
     fs.writeFileSync(
@@ -254,7 +254,7 @@ function runRelease(
     );
 
     const wbCommand = [nodePath as string, path.join(wbDirPath, 'bin', 'index.js'), 'release', ...args];
-    const result = spawnSync(
+    const result = await spawnAsync(
       cancelDuringBuild ? 'sh' : wbCommand[0]!,
       cancelDuringBuild
         ? [
@@ -266,7 +266,6 @@ function runRelease(
         : wbCommand.slice(1),
       {
         cwd: repoDirPath,
-        encoding: 'utf8',
         // Only what a release job provides, so that semantic-release detects no CI service (e.g., a pull request run
         // of the test itself) and git reads no user configuration.
         env: {
@@ -293,7 +292,8 @@ function runRelease(
       .split('\n')
       .filter(Boolean)
       .map((line) => JSON.parse(line) as Request);
-    const remoteTags = git(remoteDirPath, 'tag', '--list').split('\n').filter(Boolean);
+    const remoteTagList = await git(remoteDirPath, 'tag', '--list');
+    const remoteTags = remoteTagList.split('\n').filter(Boolean);
     return { status: result.status, output: result.stdout + result.stderr, requests, head, remoteTags };
   } finally {
     fs.rmSync(dirPath, { recursive: true, force: true });
@@ -340,8 +340,8 @@ for (const [args, inCi] of [
 ] as const) {
   test(
     `a real run with [${args.join(' ')}] ${inCi ? 'in CI' : 'outside CI'} deletes an unheld draft and dispatches the pending release instead of releasing`,
-    () => {
-      const result = runRelease([...args], { drafts: olderDrafts, npmCommits: olderNpmCommits, inCi });
+    async () => {
+      const result = await runRelease([...args], { drafts: olderDrafts, npmCommits: olderNpmCommits, inCi });
 
       expect(result.status, result.output).toBe(0);
       expect(writesOf(result)).toEqual(deferralWrites);
@@ -353,8 +353,8 @@ for (const [args, inCi] of [
 
 test(
   'a real run without a pending release publishes every target before publishing the draft release',
-  () => {
-    const result = runRelease([]);
+  async () => {
+    const result = await runRelease([]);
 
     expect(result.status, result.output).toBe(0);
     expect(writesOf(result)).toEqual([
@@ -375,8 +375,8 @@ test(
 
 test(
   'a real run without a crate publishes only the npm package',
-  () => {
-    const result = runRelease([], { crate: '', npmCommits: { '1.0.0': headCommit } });
+  async () => {
+    const result = await runRelease([], { crate: '', npmCommits: { '1.0.0': headCommit } });
 
     expect(result.status, result.output).toBe(0);
     expect(writesOf(result)).toEqual([
@@ -392,8 +392,8 @@ test(
 
 test(
   'a real run returns the draft that a dropped POST created without repeating the POST',
-  () => {
-    const result = runRelease([], {
+  async () => {
+    const result = await runRelease([], {
       npmCommits: { '1.0.0': headCommit },
       crateCommits: { '1.0.0': headCommit },
       failures: { 'POST /releases': 'dropAfterProcessing' },
@@ -412,8 +412,8 @@ test(
 
 test(
   'a real run refuses a registry holding the version from another commit',
-  () => {
-    const result = runRelease([], { npmCommits: { '1.0.0': olderCommit } });
+  async () => {
+    const result = await runRelease([], { npmCommits: { '1.0.0': olderCommit } });
 
     expect(result.status).not.toBe(0);
     expect(result.output).toContain(`@willbooster/release-test@1.0.0 on npm was published from ${olderCommit}`);
@@ -428,8 +428,8 @@ test(
 
 test(
   'a real run retries transient failures of GitHub and the registries',
-  () => {
-    const result = runRelease([], {
+  async () => {
+    const result = await runRelease([], {
       drafts: olderDrafts,
       npmCommits: olderNpmCommits,
       failures: {
@@ -461,8 +461,8 @@ for (const [crateCommits, crate] of [
 ] as const) {
   test(
     `a real run on a pending-release branch ${crate ? 'with a crate already published' : 'without a crate'} publishes the rest and hands over to the release branch`,
-    () => {
-      const result = runRelease([], {
+    async () => {
+      const result = await runRelease([], {
         refName: 'release-pending/v1.0.2',
         drafts: [{ id: 3, tag_name: 'v1.0.2', target_commitish: headCommit }],
         crateCommits,
@@ -485,8 +485,8 @@ for (const [crateCommits, crate] of [
 
 test(
   'a cancelled run on a pending-release branch terminates the build and starts nothing after it',
-  () => {
-    const result = runRelease([], {
+  async () => {
+    const result = await runRelease([], {
       refName: 'release-pending/v1.0.2',
       drafts: [{ id: 3, tag_name: 'v1.0.2', target_commitish: headCommit }],
       cancelDuringBuild: true,
@@ -500,8 +500,8 @@ test(
 
 test(
   'a real run on a pending-release branch retries deleting the branch after a dropped connection',
-  () => {
-    const result = runRelease([], {
+  async () => {
+    const result = await runRelease([], {
       refName: 'release-pending/v1.0.2',
       failures: { 'DELETE /git/refs/heads/release-pending/v1.0.2': 'dropAfterProcessing' },
     });
@@ -519,8 +519,8 @@ test(
 
 test(
   'a run outside CI without --no-ci reports the deferral without writes',
-  () => {
-    const result = runRelease([], { drafts: olderDrafts, npmCommits: olderNpmCommits, inCi: false });
+  async () => {
+    const result = await runRelease([], { drafts: olderDrafts, npmCommits: olderNpmCommits, inCi: false });
 
     expect(result.status, result.output).toBe(0);
     expect(result.output).toContain('Would delete the draft release v1.0.1');
@@ -533,8 +533,8 @@ test(
 for (const args of [['--dry-run'], ['--dry'], ['-d'], ['--', '--dry-run'], ['--', '-d']]) {
   test(
     `a dry run with ${args.join(' ')} reports the deferral without writes`,
-    () => {
-      const result = runRelease(args, { drafts: olderDrafts, npmCommits: olderNpmCommits });
+    async () => {
+      const result = await runRelease(args, { drafts: olderDrafts, npmCommits: olderNpmCommits });
 
       expect(result.status, result.output).toBe(0);
       expect(result.output).toContain('Would delete the draft release v1.0.1');
@@ -551,8 +551,8 @@ for (const [args, releaseBranch] of [
 ] as const) {
   test(
     `a dry run with ${args.join(' ')} on a pending-release branch reports completing the release without writes`,
-    () => {
-      const result = runRelease([...args], {
+    async () => {
+      const result = await runRelease([...args], {
         refName: 'release-pending/v1.0.2',
         drafts: [{ id: 3, tag_name: 'v1.0.2', target_commitish: headCommit }],
       });
@@ -570,8 +570,8 @@ for (const [args, releaseBranch] of [
 for (const branches of [[{ name: 'main', channel: 'latest' }], 'main']) {
   test(
     `a dry run on a pending-release branch dispatches on the release branch of ${JSON.stringify(branches)}`,
-    () => {
-      const result = runRelease(['--dry-run'], { refName: 'release-pending/v1.0.2', branches });
+    async () => {
+      const result = await runRelease(['--dry-run'], { refName: 'release-pending/v1.0.2', branches });
 
       expect(result.status, result.output).toBe(0);
       expect(result.output).toContain('Would dispatch a run on main.');
@@ -582,8 +582,8 @@ for (const branches of [[{ name: 'main', channel: 'latest' }], 'main']) {
 
 test(
   "semantic-release's default branches are refused before any request",
-  () => {
-    const result = runRelease(['--dry-run'], { branches: 'default' });
+  async () => {
+    const result = await runRelease(['--dry-run'], { branches: 'default' });
 
     expect(result.status).not.toBe(0);
     expect(result.output).toContain('to name the release branch first');
@@ -594,8 +594,8 @@ test(
 
 test(
   'a semantic-release dry run with --debug and no pending release writes nothing',
-  () => {
-    const result = runRelease(['--', '--dry-run', '--debug']);
+  async () => {
+    const result = await runRelease(['--', '--dry-run', '--debug']);
 
     expect(result.status, result.output).toBe(0);
     expect(result.output).toContain('Release note for version 1.0.0');
@@ -607,8 +607,8 @@ test(
 
 test(
   'a repository without the plugin makes no request before semantic-release',
-  () => {
-    const result = runRelease(['--dry-run'], { drafts: olderDrafts, npmCommits: olderNpmCommits, plugin: false });
+  async () => {
+    const result = await runRelease(['--dry-run'], { drafts: olderDrafts, npmCommits: olderNpmCommits, plugin: false });
 
     expect(result.status, result.output).toBe(0);
     expect(result.requests).toEqual([]);
@@ -630,8 +630,8 @@ for (const args of [
 ]) {
   test(
     `${args.join(' ')} is refused before any request`,
-    () => {
-      const result = runRelease(args, { drafts: olderDrafts, npmCommits: olderNpmCommits });
+    async () => {
+      const result = await runRelease(args, { drafts: olderDrafts, npmCommits: olderNpmCommits });
 
       expect(result.status).not.toBe(0);
       expect(result.output).toContain('Unsupported argument');
@@ -644,8 +644,8 @@ for (const args of [
 for (const args of [['--debug'], ['--no-ci']]) {
   test(
     `wb's unknown option ${args.join(' ')} is refused before any request`,
-    () => {
-      const result = runRelease(args, { drafts: olderDrafts, npmCommits: olderNpmCommits });
+    async () => {
+      const result = await runRelease(args, { drafts: olderDrafts, npmCommits: olderNpmCommits });
 
       expect(result.status).not.toBe(0);
       expect(result.requests).toEqual([]);
@@ -657,8 +657,8 @@ for (const args of [['--debug'], ['--no-ci']]) {
 for (const failure of ['drop', 'serverError'] as const) {
   test(
     `a real run fails instead of repeating a dispatch that GitHub may have processed (${failure})`,
-    () => {
-      const result = runRelease([], {
+    async () => {
+      const result = await runRelease([], {
         drafts: olderDrafts,
         npmCommits: olderNpmCommits,
         failures: { 'POST /actions/workflows/release.yml/dispatches': failure },
@@ -673,8 +673,8 @@ for (const failure of ['drop', 'serverError'] as const) {
 
 test(
   'a real run returns a dispatch that GitHub processed before the connection dropped without repeating it',
-  () => {
-    const result = runRelease([], {
+  async () => {
+    const result = await runRelease([], {
       drafts: olderDrafts,
       npmCommits: olderNpmCommits,
       failures: { 'POST /actions/workflows/release.yml/dispatches': 'dropAfterProcessing' },
@@ -688,8 +688,8 @@ test(
 
 test(
   'a dry run reports that a queued run on the pending-release branch takes over',
-  () => {
-    const result = runRelease(['--dry-run'], {
+  async () => {
+    const result = await runRelease(['--dry-run'], {
       drafts: olderDrafts,
       npmCommits: olderNpmCommits,
       runs: [{ branch: 'release-pending/v1.0.2', status: 'queued' }],
@@ -704,8 +704,11 @@ test(
 
 test(
   'a re-run on a pending-release branch does not dispatch the release branch again while a run on it is queued',
-  () => {
-    const result = runRelease([], { refName: 'release-pending/v1.0.2', runs: [{ branch: 'main', status: 'queued' }] });
+  async () => {
+    const result = await runRelease([], {
+      refName: 'release-pending/v1.0.2',
+      runs: [{ branch: 'main', status: 'queued' }],
+    });
 
     expect(result.status, result.output).toBe(0);
     expect(result.output).toContain('A queued run on main takes over.');
@@ -716,8 +719,8 @@ test(
 
 test(
   'a dropped handoff dispatch is not taken for a release-branch run that has already started',
-  () => {
-    const result = runRelease([], {
+  async () => {
+    const result = await runRelease([], {
       refName: 'release-pending/v1.0.2',
       runs: [{ branch: 'main', status: 'in_progress' }],
       failures: { 'POST /actions/workflows/release.yml/dispatches': 'drop' },
@@ -731,8 +734,8 @@ test(
 
 test(
   'a re-run does not dispatch again while a run is queued to complete the pending release',
-  () => {
-    const result = runRelease([], {
+  async () => {
+    const result = await runRelease([], {
       drafts: olderDrafts,
       npmCommits: olderNpmCommits,
       runs: [{ branch: 'release-pending/v1.0.2', status: 'queued' }],
@@ -752,8 +755,8 @@ for (const [options, message] of [
 ] as const) {
   test(
     `${JSON.stringify(options)} is refused before any request`,
-    () => {
-      const result = runRelease(['--dry-run'], { drafts: olderDrafts, npmCommits: olderNpmCommits, ...options });
+    async () => {
+      const result = await runRelease(['--dry-run'], { drafts: olderDrafts, npmCommits: olderNpmCommits, ...options });
 
       expect(result.status).not.toBe(0);
       expect(result.output).toContain(message);
@@ -765,8 +768,8 @@ for (const [options, message] of [
 
 test(
   'a real run repeats creating the pending-release branch after a server error',
-  () => {
-    const result = runRelease([], {
+  async () => {
+    const result = await runRelease([], {
       drafts: olderDrafts,
       npmCommits: olderNpmCommits,
       failures: { 'POST /git/refs': 'serverError' },
@@ -785,8 +788,8 @@ test(
 
 test(
   'a real run reports why creating the pending-release branch failed',
-  () => {
-    const result = runRelease([], {
+  async () => {
+    const result = await runRelease([], {
       drafts: olderDrafts,
       npmCommits: olderNpmCommits,
       failures: { 'POST /git/refs': 'validationError' },

@@ -32,6 +32,15 @@ describe('spawn', () => {
     expect(ret.status).not.toBe(0);
   });
 
+  it.each([
+    [undefined, ''],
+    ['input', 'input'],
+  ])('closes stdin after the input %p like spawnSync', async (input, expectedStdout) => {
+    const ret = await spawnAsync('cat', [], { input });
+    expect(ret.stdout).toBe(expectedStdout);
+    expect(ret.status).toBe(0);
+  });
+
   it('failed to spawn "lll"', async () => {
     expect(spawnAsync('lll')).rejects.toThrow();
   });

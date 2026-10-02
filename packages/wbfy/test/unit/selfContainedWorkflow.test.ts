@@ -1,9 +1,9 @@
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
 import { YAML } from 'bun';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { expect, test } from 'bun:test';
 
 import {
@@ -138,11 +138,9 @@ test('generated test step preserves full logs and failing exit codes', async () 
         JSON.stringify({ scripts: { 'test/ci': `node emit.js ${exitCode}` } })
       );
       const outputPath = path.join(dirPath, `outputs-${exitCode}`);
-      const result = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
+      const result = await spawnAsync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
         cwd: dirPath,
         env: { ...process.env, UPLOAD_TEST_LOG: 'true', RUNNER_TEMP: dirPath, GITHUB_OUTPUT: outputPath },
-        encoding: 'utf8',
-        maxBuffer: 2 * 1024 * 1024,
       });
       expect(result.status, result.stderr).toBe(exitCode);
       const outputs = await fs.readFile(outputPath, 'utf8');
@@ -158,17 +156,19 @@ test('generated test step preserves full logs and failing exit codes', async () 
         path.join(dirPath, 'package.json'),
         JSON.stringify({ scripts: { 'test/ci': `node emit.js ${exitCode}` } })
       );
-      const limited = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', `ulimit -f 1\n${script}`], {
-        cwd: dirPath,
-        env: {
-          ...process.env,
-          UPLOAD_TEST_LOG: 'true',
-          RUNNER_TEMP: dirPath,
-          GITHUB_OUTPUT: path.join(dirPath, `limited-outputs-${exitCode}`),
-        },
-        encoding: 'utf8',
-        maxBuffer: 3 * 1024 * 1024,
-      });
+      const limited = await spawnAsync(
+        'bash',
+        ['--noprofile', '--norc', '-eo', 'pipefail', '-c', `ulimit -f 1\n${script}`],
+        {
+          cwd: dirPath,
+          env: {
+            ...process.env,
+            UPLOAD_TEST_LOG: 'true',
+            RUNNER_TEMP: dirPath,
+            GITHUB_OUTPUT: path.join(dirPath, `limited-outputs-${exitCode}`),
+          },
+        }
+      );
       expect(limited.status).toBe(exitCode || 1);
       expect(limited.stdout.split('stdout-evidence')).toHaveLength(50_001);
       expect(limited.stderr).toMatch(/File.*(size|limit|large)/i);
@@ -178,7 +178,7 @@ test('generated test step preserves full logs and failing exit codes', async () 
       JSON.stringify({ scripts: { 'test/ci': "printf '%4096s' x" } })
     );
     const directOutputs = path.join(dirPath, 'direct-outputs');
-    const direct = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
+    const direct = await spawnAsync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
       cwd: dirPath,
       env: {
         ...process.env,
@@ -186,7 +186,6 @@ test('generated test step preserves full logs and failing exit codes', async () 
         RUNNER_TEMP: path.join(dirPath, 'missing'),
         GITHUB_OUTPUT: directOutputs,
       },
-      encoding: 'utf8',
     });
     expect(direct.status, direct.stderr).toBe(0);
     expect(direct.stdout).toHaveLength(4096);

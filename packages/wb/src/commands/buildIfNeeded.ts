@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { ignoreEnoentAsync } from '@willbooster/shared-lib/src';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
@@ -59,9 +60,11 @@ export async function buildIfNeeded(
   // (e.g. a subproject of a larger repository), always build instead of mis-resolving paths.
   // A freshly initialized repo without commits (unborn HEAD) likewise builds without caching:
   // resolving HEAD would fail.
-  const commitHash = fs.existsSync(path.join(project.rootDirPath, '.git')) ? getGitCommitHash(project) : undefined;
+  const commitHash = fs.existsSync(path.join(project.rootDirPath, '.git'))
+    ? await getGitCommitHash(project)
+    : undefined;
   if (!commitHash) {
-    build(project, argv);
+    await build(project, argv);
     return true;
   }
 
@@ -71,7 +74,7 @@ export async function buildIfNeeded(
     return false;
   }
 
-  if (!build(project, argv)) return;
+  if (!(await build(project, argv))) return;
 
   if (!argv.dryRun) {
     const outputPaths = getExplicitOutputPaths(argv) ?? detectExistingDefaultOutputPaths(project);
@@ -107,19 +110,18 @@ function matchesOutputPath(outputPaths: string[], filePath: string): boolean {
 }
 
 /** The HEAD commit hash, or undefined on an unborn HEAD (a repo without commits). */
-function getGitCommitHash(project: Project): string | undefined {
-  const ret = child_process.spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
-    cwd: project.dirPath,
-    encoding: 'utf8',
-    stdio: 'pipe',
-  });
+async function getGitCommitHash(project: Project): Promise<string | undefined> {
+  const ret = await spawnAsync('git', ['rev-parse', '--verify', 'HEAD'], { cwd: project.dirPath });
   return ret.status === 0 ? ret.stdout.trim() : undefined;
 }
 
-function build(project: Project, argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
+async function build(
+  project: Project,
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
+): Promise<boolean> {
   console.info(chalk.green(`Run '${argv.command}'`));
   if (!argv.dryRun) {
-    const ret = child_process.spawnSync(argv.command ?? '', {
+    const ret = await spawnAsync(argv.command ?? '', [], {
       cwd: project.dirPath,
       env: project.env,
       shell: true,
@@ -223,17 +225,15 @@ async function updateHashWithDiffResult(
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>,
   hash: Hash
 ): Promise<void> {
+  // `-uall` lists untracked files individually (not just their directory), so new files in a
+  // brand-new source directory participate in the hash below. `-z` yields NUL-delimited,
+  // UNQUOTED records: without it git C-quotes non-ASCII paths, which would silently drop those
+  // files from both the untracked hashing and the `git diff` pathspecs.
+  const ret = await spawnAsync('git', ['status', '--porcelain', '-uall', '-z'], {
+    cwd: project.dirPath,
+    env: project.env,
+  });
   return new Promise((resolve) => {
-    // `-uall` lists untracked files individually (not just their directory), so new files in a
-    // brand-new source directory participate in the hash below. `-z` yields NUL-delimited,
-    // UNQUOTED records: without it git C-quotes non-ASCII paths, which would silently drop those
-    // files from both the untracked hashing and the `git diff` pathspecs.
-    const ret = child_process.spawnSync('git', ['status', '--porcelain', '-uall', '-z'], {
-      cwd: project.dirPath,
-      env: project.env,
-      stdio: 'pipe',
-      encoding: 'utf8',
-    });
     const tokens = ret.stdout.split('\0').filter((token) => token.length > 0);
     const statusEntries: { untracked: boolean; filePath: string }[] = [];
     for (let index = 0; index < tokens.length; index++) {

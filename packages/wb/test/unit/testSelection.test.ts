@@ -1,7 +1,8 @@
-import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { afterEach, beforeAll, expect, it } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
@@ -19,7 +20,7 @@ it.each(['unit', 'e2e'])(
   async (suite) => {
     const dir = await createFixture();
     for (const command of [['test'], ['verify', '--full']]) {
-      const result = runCli(dir, [...command, `test/${suite}/selected.test.ts`, '--grep', 'selected case$']);
+      const result = await runCli(dir, [...command, `test/${suite}/selected.test.ts`, '--grep', 'selected case$']);
       expect(result.status, result.stdout + result.stderr).toBe(0);
       expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
       await fs.rm(path.join(dir, 'executed'));
@@ -30,7 +31,7 @@ it.each(['unit', 'e2e'])(
 
 it('applies a name-only filter to both suites and excludes debug tests', async () => {
   const dir = await createFixture();
-  const result = runCli(dir, ['test', '--grep', 'selected case$']);
+  const result = await runCli(dir, ['test', '--grep', 'selected case$']);
   expect(result.status, result.stdout + result.stderr).toBe(0);
   expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selectedselected');
 }, 60_000);
@@ -42,7 +43,7 @@ it.each(['unit', 'e2e'])(
     const file = path.join(dir, 'test', suite, 'selected.test.ts');
     const source = await fs.readFile(file, 'utf8');
     await fs.writeFile(file, source.replace('selected case', 'unique selected case'));
-    const result = runCli(dir, ['test', '--grep', 'unique selected case$']);
+    const result = await runCli(dir, ['test', '--grep', 'unique selected case$']);
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
   },
@@ -64,7 +65,7 @@ it.each(['plain', 'http', 'worker'].flatMap((kind) => ['headless', 'docker'].map
         JSON.stringify({ name: 'selection-fixture', main: 'src/index.ts', compatibility_date: '2026-09-01' })
       );
     }
-    const result = runCli(dir, ['test', '--e2e', e2e, '--grep', 'selected case$', '--', '--workers=1']);
+    const result = await runCli(dir, ['test', '--e2e', e2e, '--grep', 'selected case$', '--', '--workers=1']);
     expect(result.status, result.stdout + result.stderr).not.toBe(0);
     expect(result.stdout + result.stderr).toContain(
       'Cannot forward Playwright option to the unit-test runner: --workers=1'
@@ -103,7 +104,7 @@ it('applies supported forwarded selections to HTTP-server E2E tests', async () =
     ['--', 'test/e2e/selected.test.ts'],
     ['--', 'test/e2e/selected.test.ts', '--grep', 'selected case$'],
   ]) {
-    const result = runCli(dir, ['test', ...selection]);
+    const result = await runCli(dir, ['test', ...selection]);
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
     await fs.rm(path.join(dir, 'executed'));
@@ -112,7 +113,7 @@ it('applies supported forwarded selections to HTTP-server E2E tests', async () =
     path.join(dir, 'test/e2e/other.test.ts'),
     "import { test } from 'bun:test'; test('other file', () => {});"
   );
-  const unfiltered = runCli(dir, ['test', '--', '--workers=1']);
+  const unfiltered = await runCli(dir, ['test', '--', '--workers=1']);
   expect(unfiltered.status, unfiltered.stdout + unfiltered.stderr).toBe(9);
 }, 60_000);
 
@@ -131,7 +132,7 @@ it.each(['vitest', '@playwright/test'])(
         ...(playwright ? { scripts: { 'test/e2e-additional': 'exit 9' } } : {}),
       })
     );
-    const install = spawnSync('bun', ['install'], { cwd: dir, encoding: 'utf8', timeout: 60_000 });
+    const install = await spawnAsync('bun', ['install'], { cwd: dir, timeout: 60_000 });
     expect(install.status, install.stdout + install.stderr).toBe(0);
     if (playwright) {
       await fs.writeFile(
@@ -146,21 +147,21 @@ it.each(['vitest', '@playwright/test'])(
       await fs.writeFile(filePath, source.replace('bun:test', runner));
     }
     for (const command of [['test'], ['verify', '--full']]) {
-      const result = runCli(dir, [...command, `test/${suite}/selected.test.ts`, '--grep', 'selected case$']);
+      const result = await runCli(dir, [...command, `test/${suite}/selected.test.ts`, '--grep', 'selected case$']);
       expect(result.status, result.stdout + result.stderr).toBe(0);
       expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
       await fs.rm(path.join(dir, 'executed'));
     }
     if (!playwright) {
       for (const command of [['test'], ['verify', '--full']]) {
-        const noMatch = runCli(dir, [...command, 'test/unit/selected.test.ts', '--grep', 'absent case']);
+        const noMatch = await runCli(dir, [...command, 'test/unit/selected.test.ts', '--grep', 'absent case']);
         expect(noMatch.status, noMatch.stdout + noMatch.stderr).toBe(0);
         expect(await fs.exists(path.join(dir, 'executed'))).toBe(false);
         expect(noMatch.stdout).toContain('Name filter "absent case" (runner may pass with no matches)');
       }
     }
     if (playwright) {
-      const separatedResult = runCli(dir, [
+      const separatedResult = await runCli(dir, [
         'test',
         '--grep',
         'selected case$',
@@ -172,7 +173,7 @@ it.each(['vitest', '@playwright/test'])(
       expect(separatedResult.status, separatedResult.stdout + separatedResult.stderr).toBe(0);
       expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
       await fs.rm(path.join(dir, 'executed'));
-      const invertedResult = runCli(dir, ['test', '--', '-Gother']);
+      const invertedResult = await runCli(dir, ['test', '--', '-Gother']);
       expect(invertedResult.status, invertedResult.stdout + invertedResult.stderr).toBe(0);
       expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
       await fs.rm(path.join(dir, 'executed'));
@@ -190,7 +191,7 @@ it.each(['vitest', '@playwright/test'])(
         ['--', '--debug', 'cli'],
         ['--', '-u', 'none'],
       ]) {
-        const unitResult = runCli(dir, ['test', '--grep', 'unit selected case$', ...forwarded]);
+        const unitResult = await runCli(dir, ['test', '--grep', 'unit selected case$', ...forwarded]);
         expect(unitResult.status, unitResult.stdout + unitResult.stderr).toBe(0);
         expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
         await fs.rm(path.join(dir, 'executed'));
@@ -199,7 +200,15 @@ it.each(['vitest', '@playwright/test'])(
         path.join(dir, 'playwright.config.ts'),
         "export default { testDir: './test/e2e', webServer: [], projects: [{ name: 'p1' }, { name: 'p2' }] };"
       );
-      const projectsResult = runCli(dir, ['test', '--grep', 'unit selected case$', '--', '--project', 'p1', 'p2']);
+      const projectsResult = await runCli(dir, [
+        'test',
+        '--grep',
+        'unit selected case$',
+        '--',
+        '--project',
+        'p1',
+        'p2',
+      ]);
       expect(projectsResult.status, projectsResult.stdout + projectsResult.stderr).toBe(0);
       expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
       await fs.rm(path.join(dir, 'executed'));
@@ -208,7 +217,7 @@ it.each(['vitest', '@playwright/test'])(
         projectFile,
         "import { test } from '@playwright/test'; import fs from 'node:fs'; test('project case', () => fs.appendFileSync('executed', 'project'));"
       );
-      const projectPathResult = runCli(dir, ['test', '--', '--project=p1', 'test/e2e/project.test.ts']);
+      const projectPathResult = await runCli(dir, ['test', '--', '--project=p1', 'test/e2e/project.test.ts']);
       expect(projectPathResult.status, projectPathResult.stdout + projectPathResult.stderr).toBe(0);
       expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('project');
       await fs.rm(path.join(dir, 'executed'));
@@ -227,12 +236,12 @@ it.each(['vitest', '@playwright/test'])(
         ['--debug', 'cli'],
         ['-u', 'none'],
       ]) {
-        const fullResult = runCli(dir, ['test', '--', ...forwarded]);
+        const fullResult = await runCli(dir, ['test', '--', ...forwarded]);
         expect(fullResult.status, fullResult.stdout + fullResult.stderr).toBe(9);
       }
       await fs.rm(path.join(dir, 'test/unit'), { recursive: true });
       for (const command of [['test'], ['verify', '--full']]) {
-        const noMatch = runCli(dir, [...command, '--grep', 'absent case']);
+        const noMatch = await runCli(dir, [...command, '--grep', 'absent case']);
         expect(noMatch.status, noMatch.stdout + noMatch.stderr).toBe(0);
         expect(noMatch.stdout).toContain('Name filter "absent case" (empty suites allowed)');
       }
@@ -261,7 +270,7 @@ it.each(
   'rejects invalid selection $args before running anything',
   async ({ args }) => {
     const dir = await createFixture();
-    const result = runCli(dir, args);
+    const result = await runCli(dir, args);
     expect(result.status, result.stdout + result.stderr).not.toBe(0);
     expect(await fs.exists(path.join(dir, 'executed'))).toBe(false);
     expect(await fs.exists(path.join(dir, '.wb'))).toBe(false);
@@ -274,7 +283,7 @@ it.each(['test', 'verify'])(
   async (command) => {
     const dir = await createFixture();
     for (const args of [['--no-grep'], ['--grep', 'first', '--grep', 'second']]) {
-      const result = runCli(dir, [command, ...(command === 'verify' ? ['--full'] : []), ...args]);
+      const result = await runCli(dir, [command, ...(command === 'verify' ? ['--full'] : []), ...args]);
       expect(result.status).toBe(1);
       expect(result.stdout + result.stderr).toContain('--grep takes exactly one regular expression.');
       expect(await fs.exists(path.join(dir, 'executed'))).toBe(false);
@@ -309,7 +318,7 @@ test('other case', () => { throw new Error('Unselected case ran'); });`
   return dir;
 }
 
-function runCli(dir: string, args: string[]): SpawnSyncReturns<string> {
+async function runCli(dir: string, args: string[]): Promise<SpawnAsyncReturns> {
   const { BUN_TEST_WORKER_ID: _bunWorkerId, JEST_WORKER_ID: _jestWorkerId, ...env } = process.env;
-  return spawnSync('node', [cliPath, ...args], { cwd: dir, encoding: 'utf8', env, timeout: 30_000 });
+  return await spawnAsync('node', [cliPath, ...args], { cwd: dir, env, timeout: 30_000 });
 }

@@ -1,9 +1,9 @@
-import child_process from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { Project } from '../../../src/project.js';
@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe('prismaScripts.reset', () => {
-  it('removes sqlite db and sidecar files', () => {
+  it('removes sqlite db and sidecar files', async () => {
     const dirPath = createProjectDir();
 
     const dbRelativePath = path.join('mount', 'prod.sqlite3');
@@ -47,7 +47,8 @@ describe('prismaScripts.reset', () => {
     expect(cleanupCommand).toContain(`${absoluteDbPath}-wal`);
     expect(cleanupCommand).toContain(`${absoluteDbPath}-shm`);
 
-    child_process.execSync(cleanupCommand, { cwd: dirPath, stdio: 'inherit' });
+    const result = await spawnAsync(cleanupCommand, [], { cwd: dirPath, shell: true, stdio: 'inherit' });
+    expect(result.status).toBe(0);
     const walPath = `${absoluteDbPath}-wal`;
     expect(fs.existsSync(walPath)).toBe(false);
     expect(fs.existsSync(absoluteDbPath)).toBe(false);
@@ -65,7 +66,7 @@ describe('prismaScripts.reset', () => {
     expect(command).toBe('PRISMA migrate reset --force');
   });
 
-  it('uses wal checkpoint in cleanUpLitestream command and executes without mocks', () => {
+  it('uses wal checkpoint in cleanUpLitestream command and executes without mocks', async () => {
     const dirPath = createProjectDir();
     const dbPath = path.resolve(dirPath, 'prisma', 'mount', 'prod.sqlite3');
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -86,11 +87,13 @@ describe('prismaScripts.reset', () => {
     expect(command).not.toContain('/prod.sqlite3*;');
     expect(command).toContain('rm -f "prisma/mount/prod.sqlite3".* "prisma/mount/prod.sqlite3"-*');
 
-    child_process.execSync(command.replaceAll('PRISMA ', `${PRISMA_TEST_COMMAND} `), {
+    const result = await spawnAsync(command.replaceAll('PRISMA ', `${PRISMA_TEST_COMMAND} `), [], {
       cwd: dirPath,
       env: PRISMA_TEST_ENV,
+      shell: true,
       stdio: 'inherit',
     });
+    expect(result.status).toBe(0);
 
     expect(fs.existsSync(dbPath)).toBe(true);
     expect(fs.existsSync(`${dbPath}-wal`)).toBe(false);

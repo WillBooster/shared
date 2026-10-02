@@ -1,7 +1,7 @@
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { beforeAll, expect, it } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
@@ -22,9 +22,8 @@ it.each([0, 1, 2])('checks only selected decks with -- after %i paths', async (s
     }
     const args = [...selected];
     args.splice(separatorIndex, 0, '--');
-    const result = spawnSync('node', [cliPath, 'slidev-check', '--dry-run', '--fix', ...args], {
+    const result = await spawnAsync('node', [cliPath, 'slidev-check', '--dry-run', '--fix', ...args], {
       cwd: dir,
-      encoding: 'utf8',
       timeout: 30_000,
     });
     expect(result.status, result.stdout + result.stderr).toBe(0);
@@ -75,9 +74,8 @@ it('reports original source locations in imported slides without linting metadat
       '',
     ].join('\r\n');
     await fs.writeFile(imported, content);
-    const result = spawnSync('node', [cliPath, 'slidev-check', '--fix', deck], {
+    const result = await spawnAsync('node', [cliPath, 'slidev-check', '--fix', deck], {
       cwd: dir,
-      encoding: 'utf8',
       timeout: 30_000,
     });
     expect(result.status, result.stdout + result.stderr).toBe(1);
@@ -111,9 +109,8 @@ it('allows workspace imports but rejects outside imports before checking their t
       path.join(project, 'intro.slidev.md'),
       '---\nsrc: ../../shared.md\n---\n\n---\nsrc: ../../../outside.md\n---\n'
     );
-    const result = spawnSync('node', [cliPath, 'slidev-check', 'intro.slidev.md'], {
+    const result = await spawnAsync('node', [cliPath, 'slidev-check', 'intro.slidev.md'], {
       cwd: project,
-      encoding: 'utf8',
       timeout: 30_000,
     });
     expect(result.status, result.stdout + result.stderr).toBe(1);
@@ -133,9 +130,8 @@ it.each(['missing.slidev.md', '.'])('reports an unreadable entry %s without usag
   const dir = await fs.mkdtemp(path.join(tmp, 'slidev-unreadable-'));
   try {
     await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'slidev-unreadable' }));
-    const result = spawnSync('node', [cliPath, 'slidev-check', file], {
+    const result = await spawnAsync('node', [cliPath, 'slidev-check', file], {
       cwd: dir,
-      encoding: 'utf8',
       timeout: 30_000,
     });
     expect(result.status, result.stdout + result.stderr).toBe(1);
@@ -158,9 +154,8 @@ it.each(['# Tail', '- foo --- bar'])(
       await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'slidev-tail' }));
       const deck = path.join(dir, 'intro.slidev.md');
       await fs.writeFile(deck, `---\nlayout: cover\n---\n# Title\n\n---\n${tailTitle}\n- ﾃｽﾄ\n`);
-      const result = spawnSync('node', [cliPath, 'slidev-check', deck], {
+      const result = await spawnAsync('node', [cliPath, 'slidev-check', deck], {
         cwd: dir,
-        encoding: 'utf8',
         timeout: 30_000,
       });
       expect(result.status, result.stdout + result.stderr).toBe(1);
@@ -183,9 +178,8 @@ it('reports each imported-file error once when the file is imported repeatedly',
     const part = path.join(dir, 'part.md');
     await fs.writeFile(deck, '---\nsrc: ./part.md\n---\n\n---\nsrc: ./part.md\n---\n');
     await fs.writeFile(part, '---\nsrc: ./missing.md\n---\n\n---\nsrc: ./another.md\n---\n');
-    const result = spawnSync('node', [cliPath, 'slidev-check', deck], {
+    const result = await spawnAsync('node', [cliPath, 'slidev-check', deck], {
       cwd: dir,
-      encoding: 'utf8',
       timeout: 30_000,
     });
     expect(result.status, result.stdout + result.stderr).toBe(1);
@@ -209,9 +203,8 @@ it('reports Chinese and Korean text while allowing Japanese kanji', async () => 
       deck,
       '# 研究背景\n\n- 剝がれた部分を𠮟る\n- 这个方法\n- 改善한다\n- `这个`\n\n<div class="grid">\n  <div>说明</div>\n</div>\n\n<!-- 这个 -->\n\n<pre><code>这个</code></pre>\n\n<script setup>\nconst label = "这个";\n</script>\n\n![这个图](image.png)\n\n```ts\nconst label = "这个";\n```\n\nインライン <code>这个</code> コード\n\n<style>\n.说明 { color: red; }\n</style>\n'
     );
-    const result = spawnSync('node', [cliPath, 'slidev-check', deck], {
+    const result = await spawnAsync('node', [cliPath, 'slidev-check', deck], {
       cwd: dir,
-      encoding: 'utf8',
       timeout: 30_000,
     });
     expect(result.status, result.stdout + result.stderr).toBe(1);

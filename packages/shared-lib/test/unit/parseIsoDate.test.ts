@@ -1,15 +1,15 @@
-import { execFileSync } from 'node:child_process';
-
 import { expect, test } from 'bun:test';
 
 import { parseIsoDate } from '../../src/index.js';
 
-test.each(['UTC', 'Asia/Tokyo', 'America/New_York'])('parses independently of the process timezone (%s)', (tz) => {
-  const output = execFileSync(
-    'bun',
-    [
-      '-e',
-      `
+test.each(['UTC', 'Asia/Tokyo', 'America/New_York'])(
+  'parses independently of the process timezone (%s)',
+  async (tz) => {
+    const proc = Bun.spawn(
+      [
+        'bun',
+        '-e',
+        `
       import { parseIsoDate } from ${JSON.stringify(new URL('../../src/index.ts', import.meta.url).href)};
       console.log(JSON.stringify([
         parseIsoDate('2026-01-01T08:30:00.123456789+09:00'),
@@ -18,16 +18,19 @@ test.each(['UTC', 'Asia/Tokyo', 'America/New_York'])('parses independently of th
         parseIsoDate('0000-01-01T00:00:00+01:00') === undefined,
       ]));
     `,
-    ],
-    { env: { ...process.env, TZ: tz }, encoding: 'utf8' }
-  );
-  expect(JSON.parse(output)).toEqual([
-    { kind: 'datetime', value: '2025-12-31T23:30:00.123456789Z' },
-    { kind: 'date', value: '2024-02-29' },
-    true,
-    true,
-  ]);
-});
+      ],
+      { env: { ...process.env, TZ: tz } }
+    );
+    const output = await proc.stdout.text();
+    expect(await proc.exited).toBe(0);
+    expect(JSON.parse(output)).toEqual([
+      { kind: 'datetime', value: '2025-12-31T23:30:00.123456789Z' },
+      { kind: 'date', value: '2024-02-29' },
+      true,
+      true,
+    ]);
+  }
+);
 
 test('normalizes equivalent instants across date and year boundaries', () => {
   const expected = { kind: 'datetime', value: '2025-12-31T23:30:00Z' } as const;

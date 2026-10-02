@@ -1,9 +1,9 @@
-import childProcess from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { expect, it } from 'bun:test';
 
 const scriptPath = path.resolve(
@@ -31,7 +31,7 @@ it('drops the [test] sections and forces globalStore off', async () => {
   try {
     await fs.writeFile(path.join(workDirPath, 'bunfig.toml'), wbfyGeneratedBunfig);
 
-    const ret = childProcess.spawnSync('bash', [scriptPath], { cwd: workDirPath, stdio: 'inherit' });
+    const ret = await spawnAsync('bash', [scriptPath], { cwd: workDirPath, stdio: 'inherit' });
     expect(ret.status).toBe(0);
 
     expect(fs.readFile(path.join(workDirPath, 'bunfig.toml'), 'utf8')).resolves.toBe(
@@ -55,7 +55,7 @@ it('fails fast on a bunfig.toml not regenerated since wbfy introduced the releas
   try {
     await fs.writeFile(path.join(workDirPath, 'bunfig.toml'), 'env = false\n\n[install]\nexact = true\n');
 
-    const ret = childProcess.spawnSync('bash', [scriptPath], { cwd: workDirPath, encoding: 'utf8' });
+    const ret = await spawnAsync('bash', [scriptPath], { cwd: workDirPath });
     expect(ret.status).toBe(1);
     expect(ret.stderr).toContain('minimumReleaseAge');
   } finally {
