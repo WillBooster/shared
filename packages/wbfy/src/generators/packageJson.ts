@@ -1393,8 +1393,8 @@ function isGeneratedTestScript(script: string): boolean {
  * Keeps a script that CHAINS extra commands onto the generated one (e.g. a polyglot monorepo
  * appending its Maven and RSpec suites to `wb test`, which runs JavaScript/TypeScript runners
  * only). Such a wrapper still runs the generated command, so replacing it would silently drop the
- * repository's own steps — the same reasoning as `applyTestOnCiScript`. An unrecognized chained
- * script is kept wholesale rather than losing its project-owned commands.
+ * repository's own steps. An unrecognized chained script is kept wholesale rather than losing
+ * its project-owned commands.
  */
 function keepGeneratedScriptWrappers(
   scripts: Record<string, string>,
