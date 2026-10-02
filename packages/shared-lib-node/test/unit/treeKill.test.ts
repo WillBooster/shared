@@ -95,6 +95,24 @@ describe('treeKill', () => {
     await waitForClose(parent, 10_000);
   }, 30_000);
 
+  it('signals the rest of the tree before a fatal signal ends the calling process', async () => {
+    const script = `
+      import { spawn } from 'node:child_process';
+      import { treeKill } from ${JSON.stringify(new URL('../../src/treeKill.ts', import.meta.url).href)};
+      const child = spawn('sleep', ['100'], { stdio: 'ignore' });
+      console.log(child.pid);
+      setTimeout(() => treeKill(process.pid, 'SIGKILL'), 100);
+    `;
+    const caller = spawn(process.execPath, ['-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const childPid = await new Promise<number>((resolve) => {
+      caller.stdout.once('data', (data: Buffer) => {
+        resolve(Number(data.toString()));
+      });
+    });
+
+    await Promise.all([waitForProcessStopped(childPid, 10_000), waitForClose(caller, 10_000)]);
+  }, 30_000);
+
   it('kills repeatedly in rapid succession', async () => {
     for (let i = 0; i < 3; i++) {
       const parent = spawnProcessTree(2);
