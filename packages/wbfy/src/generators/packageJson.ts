@@ -1359,17 +1359,13 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
 
 // CI workflows (both the reusable test workflow and the self-contained variant for non-WillBooster
 // repositories) prefer `test/ci` over `test`, so standardize it on `wb test-on-ci` at the root —
-// `wb test-on-ci` already iterates workspace packages itself.
+// `wb test-on-ci` already iterates workspace packages itself. Only the repository's own
+// `--max-minutes` limit is carried over; any other script body is replaced.
 function applyTestOnCiScript(scripts: Record<string, string>, oldScripts: PackageJson.Scripts): void {
-  const oldScript = oldScripts['test/ci'];
-  // Some repositories wrap CI tests with extra steps (e.g. selecting spec files or running raw
-  // Playwright) that wb cannot infer generically; such wrappers are preserved.
-  scripts['test/ci'] = oldScript && !isGeneratedTestOnCiScript(oldScript) ? oldScript : 'bun wb test-on-ci';
-}
-
-/** Whether a script body is one of the generated `wb test-on-ci` invocations. */
-function isGeneratedTestOnCiScript(script: string): boolean {
-  return script.trim() === 'bun wb test-on-ci';
+  const oldScript = oldScripts['test/ci'] ?? '';
+  scripts['test/ci'] = /^bun wb test-on-ci --max-minutes \d+(?:\.\d+)?$/.test(oldScript)
+    ? oldScript
+    : 'bun wb test-on-ci';
 }
 
 /**
