@@ -20,7 +20,7 @@ const userAgentInstructionContent = `- Repos live under \`~/ghq/github.com\`; al
 - LLM/AI agent responses may take 1–2 hours; wait patiently, don't assume failure.
 - No AI attribution (e.g., \`Co-Authored-By\` trailers, "Generated with ..." footers) in commits, issues, or PRs unless explicitly requested. This hides nothing: if asked which AI agent did the work, answer truthfully.
 - Outside \`~/ghq/github.com/{WillBooster,WillBoosterLab}/\`, follow the repository's contribution guide (e.g., CONTRIBUTING.md, \`.github/\`) and issue/PR templates, match its commit and code conventions, and honor its rules on AI-assisted contributions. Write its issues and PRs with only what a reviewer unfamiliar with the work needs to understand and assess it, as concisely as that context allows.
-- Cite a third-party issue or PR from outside its repository only in a code span (e.g., \`owner/repo#123\`), never as a link, unless explicitly requested: GitHub backlinks every link on its thread.
+- Cite a third-party issue or PR from outside its repository only in a code span (e.g., \`owner/repo#123\`), never as a link, unless explicitly requested: GitHub creates a backlink on the cited thread.
 `;
 
 /**
