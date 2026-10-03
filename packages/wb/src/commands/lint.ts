@@ -441,7 +441,8 @@ function shouldSuppressSuccessfulVerifyOutput(command: string): boolean {
 
 export function buildLintCommand(
   project: Pick<Project, 'preferredLinter' | 'hasTypeAwareOxlint'>,
-  argv: Pick<LintCommandOptions, 'fix' | 'format'> & Partial<Pick<LintCommandOptions, 'quiet'>>,
+  argv: Pick<LintCommandOptions, 'fix' | 'format'> &
+    Partial<Pick<LintCommandOptions, 'quiet'>> & { typecheckOnly?: boolean },
   files?: string[],
   ignorePatterns: string[] = []
 ): string | undefined {
@@ -455,6 +456,7 @@ export function buildLintCommand(
       // in monorepos would otherwise miss type errors.
       ...(project.hasTypeAwareOxlint ? ['--type-aware', '--type-check'] : []),
       ...(argv.quiet ? ['--quiet'] : []),
+      ...(argv.typecheckOnly ? ['-A', 'all'] : []),
       ...(argv.fix ? ['--fix'] : []),
       ...(files ?? ['.']),
       ...ignorePatterns.flatMap((pattern) => ['--ignore-pattern', pattern]),

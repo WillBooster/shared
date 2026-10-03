@@ -94,11 +94,11 @@ function buildTypeScriptTypeCheckCommands(project: Project, projects: Project[])
     // no workspace compiles (e.g. `test/`, `scripts/`, `*.config.ts`).
     const command = buildLintCommand(
       project,
-      { fix: false, format: false, quiet: true },
+      { fix: false, format: false, quiet: true, typecheckOnly: true },
       undefined,
       buildWorkspaceIgnorePatterns(project, projects, compilesItself)
     );
-    return command?.includes('--type-check') ? [`${command} -A all`] : [];
+    return command?.includes('--type-check') ? [command] : [];
   }
   return compilesItself(project) ? [tscCommand] : [];
 }
