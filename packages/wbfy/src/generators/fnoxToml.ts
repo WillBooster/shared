@@ -1,11 +1,13 @@
-import child_process from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
+
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { spawnOrUndefined } from '../utils/spawnUtil.js';
 
 type WillBoosterOrganization = 'WillBooster' | 'WillBoosterLab';
 type RepositoryFullName = `${WillBoosterOrganization}/${string}`;
@@ -155,9 +157,8 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
         // stray config that declares none uses no age encryption at all (e.g. a plaintext test
         // fixture or example config any repository may legitimately commit), so it neither needs
         // recipient synchronization nor owns an FNOX_AGE_KEY and must not block the run.
-        const strayFilePaths = listFnoxLikeFilePaths(rootDirPath).filter((filePath) =>
-          declaresFnoxAgeProvider(filePath)
-        );
+        const fnoxLikeFilePaths = await listFnoxLikeFilePaths(rootDirPath);
+        const strayFilePaths = fnoxLikeFilePaths.filter((filePath) => declaresFnoxAgeProvider(filePath));
         if (strayFilePaths.length > 0) {
           failFnoxSync(
             `Failed to synchronize fnox age recipients because fnox configs exist without a root fnox.toml: ${strayFilePaths.join(', ')}. Add a root fnox.toml.`
@@ -214,7 +215,7 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
         if (path.dirname(dirPath) === dirPath) break;
       }
       // fnox also loads committed config aliases this generator cannot keep in sync.
-      const fnoxLikeFilePaths = listFnoxLikeFilePaths(rootDirPath);
+      const fnoxLikeFilePaths = await listFnoxLikeFilePaths(rootDirPath);
       const unsupportedFilePaths = fnoxLikeFilePaths.filter((filePath) => path.basename(filePath) !== 'fnox.toml');
       if (unsupportedFilePaths.length > 0) {
         failFnoxSync(
@@ -379,7 +380,7 @@ async function synchronizeFnoxAgeRecipients(
   if (!isRoot && !currentRecipients) {
     if (ancestorRecipientsChanged) {
       writeMigrationMarker();
-      if (!reencryptFnoxSecrets(dirPath, rootDirPath, profileNames)) {
+      if (!(await reencryptFnoxSecrets(dirPath, rootDirPath, profileNames))) {
         failFnoxSync(
           `Failed to re-encrypt fnox secrets in ${dirPath} for the updated recipients. Fix the error and rerun wbfy.`
         );
@@ -411,7 +412,7 @@ async function synchronizeFnoxAgeRecipients(
   writeMigrationMarker();
   await fsUtil.generateFile(fnoxTomlPath, updatedContent);
 
-  if (!reencryptFnoxSecrets(dirPath, rootDirPath, profileNames)) {
+  if (!(await reencryptFnoxSecrets(dirPath, rootDirPath, profileNames))) {
     // Restore the original config: keeping the new recipients with old ciphertexts would make
     // this generator skip re-encryption forever and let setupSecrets upload a CI key that
     // cannot decrypt anything. The old ciphertexts remain valid for the old recipients.
@@ -565,17 +566,17 @@ function replaceAgeRecipients(content: string, ageRecipients: readonly FnoxAgeRe
 // ~/.config/fnox/config.toml into every project config — a plain reencrypt would rewrite the
 // user's global secrets too. Decryption therefore needs the personal identity passed explicitly
 // via FNOX_AGE_KEY; FNOX_PROFILE is stripped so it cannot redirect the base (no -P) run.
-function reencryptFnoxSecrets(dirPath: string, rootDirPath: string, profileNames: string[]): boolean {
+async function reencryptFnoxSecrets(dirPath: string, rootDirPath: string, profileNames: string[]): Promise<boolean> {
   // The identity is optional: a plaintext-only config has nothing to decrypt and fnox succeeds
   // without one, while existing ciphertexts make fnox fail loudly on its own.
   const identity = readPersonalAgeSecretKey() ?? process.env.FNOX_AGE_KEY;
-  const fnoxCommand = resolveFnoxCommand(dirPath);
+  const fnoxCommand = await resolveFnoxCommand(dirPath);
   const isolatedHomeDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-fnox-home-'));
   try {
     // Hide the local overrides of EVERY directory fnox merges hierarchically (from the command
     // directory up to the repository root): an ancestor's fnox.local.toml would otherwise shadow
     // committed secrets or itself get rewritten by the re-encryption.
-    return withFnoxLocalsHidden(rootDirPath, listAncestorDirPaths(dirPath, rootDirPath), () => {
+    return await withFnoxLocalsHidden(rootDirPath, listAncestorDirPaths(dirPath, rootDirPath), async () => {
       const env = {
         ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('FNOX_'))),
         ...(identity ? { FNOX_AGE_KEY: identity } : {}),
@@ -586,13 +587,8 @@ function reencryptFnoxSecrets(dirPath: string, rootDirPath: string, profileNames
       for (const profileArgs of profileArgsList) {
         const args = ['reencrypt', '--force', '--no-daemon', '--provider', 'age', ...profileArgs];
         console.log(`$ ${fnoxCommand} ${args.join(' ')} at ${dirPath}`);
-        const proc = child_process.spawnSync(fnoxCommand, args, {
-          cwd: dirPath,
-          encoding: 'utf8',
-          stdio: 'inherit',
-          env,
-        });
-        if ((proc.status ?? 1) !== 0) return false;
+        const proc = await spawnOrUndefined(fnoxCommand, args, { cwd: dirPath, stdio: 'inherit', env });
+        if (proc?.status !== 0) return false;
       }
       return true;
     });
@@ -606,10 +602,9 @@ function reencryptFnoxSecrets(dirPath: string, rootDirPath: string, profileNames
  * once HOME/XDG_CONFIG_HOME point at the isolated directory (its trust state disappears), so the
  * isolated spawns need the shim resolved to the real executable beforehand.
  */
-function resolveFnoxCommand(dirPath: string): string {
-  const proc = child_process.spawnSync('mise', ['which', 'fnox'], { cwd: dirPath, encoding: 'utf8', stdio: 'pipe' });
-  const resolved = proc.status === 0 ? proc.stdout.trim() : '';
-  return resolved || 'fnox';
+async function resolveFnoxCommand(dirPath: string): Promise<string> {
+  const proc = await spawnOrUndefined('mise', ['which', 'fnox'], { cwd: dirPath });
+  return (proc?.status === 0 && proc.stdout.trim()) || 'fnox';
 }
 
 // The personal identity file is machine-global, so it is read once per process.
@@ -636,7 +631,7 @@ function readPersonalAgeSecretKey(): string | undefined {
  * temporarily moved aside: fnox loads them at higher priority than the committed fnox.toml, so a
  * local override shadowing a committed secret would make `fnox reencrypt` skip that secret.
  */
-function withFnoxLocalsHidden<T>(rootDirPath: string, dirPaths: string[], func: () => T): T {
+async function withFnoxLocalsHidden<T>(rootDirPath: string, dirPaths: string[], func: () => Promise<T>): Promise<T> {
   const hiddenDirPaths: string[] = [];
   try {
     for (const dirPath of dirPaths) {
@@ -649,7 +644,7 @@ function withFnoxLocalsHidden<T>(rootDirPath: string, dirPaths: string[], func: 
         hiddenDirPaths.push(dirPath);
       }
     }
-    const result = func();
+    const result = await func();
     // A restoration conflict throws here and thereby invalidates the seemingly successful result:
     // a recreated override may have shadowed committed secrets during the fnox run, so the outer
     // transaction must restore every committed fnox.toml instead of committing the migration.
@@ -851,18 +846,18 @@ export function isTestFixtureFnoxPath(filePath: string): boolean {
   );
 }
 
-function listFnoxLikeFilePaths(rootDirPath: string): string[] {
+async function listFnoxLikeFilePaths(rootDirPath: string): Promise<string[]> {
   // -z prints NUL-delimited verbatim paths; without it, core.quotePath C-quotes non-ASCII paths
   // (e.g. "\346\227\245..."), which would make the basename filter silently skip those configs.
-  const proc = child_process.spawnSync(
+  const proc = await spawnAsync(
     'git',
     ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*fnox*.toml'],
-    { cwd: rootDirPath, encoding: 'utf8', stdio: 'pipe' }
+    { cwd: rootDirPath }
   );
   // Fail closed: treating a git failure as "no fnox configs" would skip synchronization and let
   // setupSecrets upload a key that was never verified against the repository's ciphertexts.
   if (proc.status !== 0) {
-    throw new Error(`git ls-files failed in ${rootDirPath}: ${(proc.stderr || proc.error?.message || '').trim()}`);
+    throw new Error(`git ls-files failed in ${rootDirPath}: ${proc.stderr.trim()}`);
   }
   return proc.stdout
     .split('\0')

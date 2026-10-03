@@ -1,6 +1,6 @@
-import childProcess from 'node:child_process';
-
 import fg from 'fast-glob';
+
+import { spawnAsync } from './spawn.js';
 
 export const globIgnore = [
   '**/node_modules/**',
@@ -30,14 +30,14 @@ export const globIgnore = [
  * untracked path that Git ignores there (e.g. third-party repositories cloned into a gitignored
  * directory), so that the matches reflect only the repository's own files.
  */
-export function getGlobIgnore(dirPath: string): string[] {
-  return [...globIgnore, ...getGitIgnorePatterns(dirPath)];
+export async function getGlobIgnore(dirPath: string): Promise<string[]> {
+  return [...globIgnore, ...(await getGitIgnorePatterns(dirPath))];
 }
 
-function getGitIgnorePatterns(dirPath: string): string[] {
+async function getGitIgnorePatterns(dirPath: string): Promise<string[]> {
   // `LC_ALL=C` keeps Git's messages untranslated for the check below.
-  const options = { cwd: dirPath, encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } } as const;
-  const revParseResult = childProcess.spawnSync('git', ['rev-parse', '--show-toplevel', '--show-prefix'], options);
+  const options = { cwd: dirPath, env: { ...process.env, LC_ALL: 'C' } };
+  const revParseResult = await spawnAsync('git', ['rev-parse', '--show-toplevel', '--show-prefix'], options);
   if (revParseResult.stderr.includes('not a git repository')) return [];
   if (revParseResult.status !== 0) {
     throw new Error(`git rev-parse failed in ${dirPath}: ${revParseResult.stderr.trim()}`);
@@ -47,14 +47,15 @@ function getGitIgnorePatterns(dirPath: string): string[] {
   // `--directory` lists a wholly ignored, untracked directory (e.g. node_modules) as one `dir/`
   // entry. It runs from the top level because it fails inside such a directory, which then shows up
   // as an entry containing `dirPath`.
-  const ignoredPaths = childProcess
-    .execFileSync('git', ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory'], {
-      ...options,
-      cwd: topLevelPath,
-      maxBuffer: 1024 * 1024 * 1024,
-    })
-    .split('\0')
-    .filter(Boolean);
+  const lsFilesResult = await spawnAsync(
+    'git',
+    ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory'],
+    { ...options, cwd: topLevelPath }
+  );
+  if (lsFilesResult.status !== 0) {
+    throw new Error(`git ls-files failed in ${topLevelPath}: ${lsFilesResult.stderr.trim()}`);
+  }
+  const ignoredPaths = lsFilesResult.stdout.split('\0').filter(Boolean);
   if (ignoredPaths.some((ignoredPath) => ignoredPath.endsWith('/') && prefix.startsWith(ignoredPath))) return ['**'];
   return ignoredPaths
     .filter((ignoredPath) => ignoredPath.startsWith(prefix))

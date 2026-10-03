@@ -147,10 +147,10 @@ src-tauri/gen/schemas/
     // Ignored only where postinstall regenerates it, so wbfy never ignores a file that nothing recreates. This keeps
     // its thousands of lines out of every wrangler bump's diff. Anchored with a leading slash because `wrangler types`
     // and the opt-out deletion below only ever touch this package's own file, not a nested one at any depth.
-    if (generatesWorkerTypes(config)) {
+    if (await generatesWorkerTypes(config)) {
       headUserContent += `/worker-configuration.d.ts
 `;
-    } else if (config.doesContainWranglerConfig && !consumesGeneratedWorkerTypes(config)) {
+    } else if (config.doesContainWranglerConfig && !(await consumesGeneratedWorkerTypes(config))) {
       // On a genuine worker-types opt-out (nothing consumes the generated file; generatesWorkerTypes
       // alone is false for unrelated reasons such as a missing local wrangler dependency, where the
       // file may still be consumed) the ignore rule

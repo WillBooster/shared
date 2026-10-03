@@ -14,7 +14,7 @@ export async function fixChakraToaster(config: PackageConfig): Promise<void> {
     const filePaths = await fg.glob('**/toaster.{ts,tsx}', {
       absolute: true,
       cwd: config.dirPath,
-      ignore: ['**/.*/**', ...getGlobIgnore(config.dirPath)],
+      ignore: ['**/.*/**', ...(await getGlobIgnore(config.dirPath))],
     });
     for (const filePath of filePaths) {
       const content = await fs.readFile(filePath, 'utf8');

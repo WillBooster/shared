@@ -1,63 +1,48 @@
-import type { SpawnSyncOptions } from 'node:child_process';
-import child_process from 'node:child_process';
+import type { SpawnAsyncOptions, SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 
-export function spawnSync(command: string, args: string[], cwd: string, retry = 0): void {
-  spawnSyncAndReturnStatus(command, args, cwd, retry);
-}
-
-export function spawnSyncAndReturnStatus(command: string, args: string[], cwd: string, retry = 0): number {
-  do {
-    const [newCmd, newArgs, options] = getSpawnSyncArgs(command, args, cwd);
-    console.log(`$ ${newCmd} ${newArgs.join(' ')} at ${cwd}`);
-    const ret = child_process.spawnSync(newCmd, newArgs, options);
-    const status = ret.status ?? 1;
-    if (status === 0) break;
-    if (retry <= 0) return status;
-  } while (--retry >= 0);
-  return 0;
-}
-
-export function spawnSyncAndReturnStdout(command: string, args: string[], cwd: string): string {
-  return spawnSyncAndReturnStdoutInternal(command, args, cwd)[1];
-}
-
-function spawnSyncAndReturnStdoutInternal(command: string, args: string[], cwd: string): [number, string] {
-  const [newCmd, newArgs, options] = getSpawnSyncArgs(command, args, cwd);
-  options.stdio = 'pipe';
-  const proc = child_process.spawnSync(newCmd, newArgs, options);
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- spawnSync returns null stderr on ENOENT.
-  const stderr = proc.stderr ?? '';
-  const error = typeof stderr === 'string' ? stderr.trim() : stderr.toString().trim();
-  if (proc.error) {
-    console.error(`${newCmd} [${newArgs.map((s) => `"${s}"`).join(', ')}] failed with: ${proc.error.message}`);
-  } else if (error) {
-    console.error(
-      `${newCmd} [${newArgs.map((s) => `"${s}"`).join(', ')}] outputs the following content to stderr:\n${error}`
-    );
+export async function spawnAndReturnStatus(command: string, args: string[], cwd: string, retry = 0): Promise<number> {
+  for (;;) {
+    console.log(`$ ${command} ${args.join(' ')} at ${cwd}`);
+    const result = await spawnOrUndefined(command, args, { cwd, env: getSpawnEnv(), stdio: 'inherit' });
+    const status = result?.status ?? 1;
+    if (status === 0 || retry-- <= 0) return status;
   }
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- spawnSync returns null stdout on ENOENT.
-  const stdout = proc.stdout ?? '';
-  const stdoutText = typeof stdout === 'string' ? stdout : stdout.toString();
-  return [proc.status ?? 1, stdoutText.trim()];
 }
 
-export function getSpawnSyncArgs(command: string, args: string[], cwd: string): [string, string[], SpawnSyncOptions] {
+export async function spawnAndReturnStdout(command: string, args: string[], cwd: string): Promise<string> {
+  const quotedArgs = args.map((s) => `"${s}"`).join(', ');
+  const result = await spawnOrUndefined(command, args, { cwd, env: getSpawnEnv() }, (error) => {
+    console.error(`${command} [${quotedArgs}] failed with: ${error.message}`);
+  });
+  const error = result?.stderr.trim();
+  if (error) {
+    console.error(`${command} [${quotedArgs}] outputs the following content to stderr:\n${error}`);
+  }
+  return result?.stdout.trim() ?? '';
+}
+
+/** Resolves to undefined when the command cannot be spawned (e.g. it is not installed). */
+export async function spawnOrUndefined(
+  command: string,
+  args: string[],
+  options: SpawnAsyncOptions,
+  onSpawnError?: (error: Error) => void
+): Promise<SpawnAsyncReturns | undefined> {
+  try {
+    return await spawnAsync(command, args, options);
+  } catch (error) {
+    onSpawnError?.(error as Error);
+    return undefined;
+  }
+}
+
+function getSpawnEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   if (env.PATH && env.BERRY_BIN_FOLDER) {
     env.PATH = env.PATH.split(':')
       .filter((p) => p !== env.BERRY_BIN_FOLDER)
       .join(':');
   }
-
-  return [
-    command,
-    args,
-    {
-      cwd,
-      env,
-      encoding: 'utf8',
-      shell: false,
-      stdio: 'inherit',
-    },
-  ];
+  return env;
 }

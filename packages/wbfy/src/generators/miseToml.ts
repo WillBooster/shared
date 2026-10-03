@@ -7,7 +7,7 @@ import semver from 'semver';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
+import { spawnAndReturnStdout } from '../utils/spawnUtil.js';
 
 interface MiseToml {
   tools?: Record<string, unknown>;
@@ -33,15 +33,15 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
       // Node would come from whatever happens to be on PATH.
       // Lift-then-pin: the lift only touches exact pins and the pin only touches selectors, so
       // ordering the lift first avoids resolving `mise latest node@lts` twice for unpinned repos.
-      node: pinConcreteToolVersion(
+      node: await pinConcreteToolVersion(
         'node',
-        liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
+        await liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
         config.dirPath
       ),
-      bun: pinLatestToolVersion('bun', tools.bun, config.dirPath),
+      bun: await pinLatestToolVersion('bun', tools.bun, config.dirPath),
     };
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
-      pins.fnox = pinLatestToolVersion('fnox', tools.fnox, config.dirPath);
+      pins.fnox = await pinLatestToolVersion('fnox', tools.fnox, config.dirPath);
     }
 
     let newContent = content;
@@ -83,9 +83,9 @@ function parseTools(content: string): Record<string, unknown> | undefined {
 }
 
 /** Updates to the latest release across major versions without downgrading existing exact pins. */
-function pinLatestToolVersion(tool: string, version: unknown, cwd: string): unknown {
+async function pinLatestToolVersion(tool: string, version: unknown, cwd: string): Promise<unknown> {
   // Resolve independently of the target's trust state and tool aliases.
-  const resolvedVersion = spawnSyncAndReturnStdout('mise', ['--no-config', 'latest', tool], cwd);
+  const resolvedVersion = await spawnAndReturnStdout('mise', ['--no-config', 'latest', tool], cwd);
   if (!semver.valid(resolvedVersion)) return version ?? 'latest';
   // A cached release listing can lag behind another machine that already updated the pin.
   return typeof version === 'string' && semver.valid(version) && semver.gt(version, resolvedVersion)
@@ -101,9 +101,9 @@ function pinLatestToolVersion(tool: string, version: unknown, cwd: string): unkn
  * on an older major is a deliberate compatibility choice and is kept, as are non-exact and
  * non-string forms. When mise cannot resolve the selector (e.g. offline), the pin is kept.
  */
-function liftOutdatedToolVersionWithinMajor(selector: string, version: unknown, cwd: string): unknown {
+async function liftOutdatedToolVersionWithinMajor(selector: string, version: unknown, cwd: string): Promise<unknown> {
   if (typeof version !== 'string' || !semver.valid(version)) return version;
-  const latestVersion = spawnSyncAndReturnStdout('mise', ['latest', selector], cwd);
+  const latestVersion = await spawnAndReturnStdout('mise', ['latest', selector], cwd);
   return semver.valid(latestVersion) &&
     semver.major(latestVersion) === semver.major(version) &&
     semver.lt(version, latestVersion)
@@ -120,7 +120,7 @@ function liftOutdatedToolVersionWithinMajor(selector: string, version: unknown, 
  * unavailable or cannot resolve the selector (e.g. offline), the original selector is kept —
  * an unpinned tool is better than a broken configuration.
  */
-function pinConcreteToolVersion(tool: string, version: unknown, cwd: string): unknown {
+async function pinConcreteToolVersion(tool: string, version: unknown, cwd: string): Promise<unknown> {
   if (version !== undefined && (typeof version !== 'string' || semver.valid(version))) return version;
   // Normalize selector forms `mise latest` cannot resolve even though mise configuration accepts
   // them: `prefix:24` is rejected outright while `24` resolves, and `lts/*` yields empty output
@@ -131,7 +131,7 @@ function pinConcreteToolVersion(tool: string, version: unknown, cwd: string): un
   // `lts/*` fallback) rather than the newest release.
   const defaultSelector = tool === 'node' ? 'node@lts' : tool;
   const selector = range && range !== 'latest' ? `${tool}@${range}` : defaultSelector;
-  const resolvedVersion = spawnSyncAndReturnStdout('mise', ['latest', selector], cwd);
+  const resolvedVersion = await spawnAndReturnStdout('mise', ['latest', selector], cwd);
   return semver.valid(resolvedVersion) ? resolvedVersion : (version ?? 'latest');
 }
 

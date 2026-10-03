@@ -127,9 +127,9 @@ export async function setupRepositoryRulesets(config: PackageConfig): Promise<vo
     // The reusable-workflows repo hosts workflow_call definitions, so the
     // Protect main ruleset would require test/semantic-pr checks that never run there.
     if (isReusableWorkflowsRepo(config.repository)) return;
-    if (!hasGitHubToken(owner)) return;
+    if (!(await hasGitHubToken(owner))) return;
 
-    const octokit = getOctokit(owner);
+    const octokit = await getOctokit(owner);
 
     try {
       await upsertProtectMainRuleset(octokit, owner, repo, buildProtectMainRuleset(config));

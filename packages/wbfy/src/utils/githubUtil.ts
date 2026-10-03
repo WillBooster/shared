@@ -1,6 +1,6 @@
-import childProcess from 'node:child_process';
-
 import { Octokit } from '@octokit/core';
+
+import { spawnOrUndefined } from './spawnUtil.js';
 
 class GitHubUtil {
   getOrgAndName(urlOrFullName: string): [string, string] {
@@ -22,7 +22,7 @@ export function isGitHubPermissionOrVisibilityError(error: unknown): boolean {
 
 const octokitCache = new Map<string, Octokit>();
 
-export function getOctokit(owner?: string): Octokit {
+export async function getOctokit(owner?: string): Promise<Octokit> {
   // GitHub owner names are case-insensitive, so credential selection (and the cache key) must
   // not depend on how a remote URL happens to spell the organization.
   const key = owner?.toLowerCase() ?? '';
@@ -30,53 +30,46 @@ export function getOctokit(owner?: string): Octokit {
   if (cached) return cached;
 
   const octokit = new Octokit({
-    auth: getGitHubToken(owner) || undefined,
+    auth: (await getGitHubToken(owner)) || undefined,
   });
   octokitCache.set(key, octokit);
   return octokit;
 }
 
-export function hasGitHubToken(owner: string): boolean {
-  return !!getGitHubToken(owner);
+export async function hasGitHubToken(owner: string): Promise<boolean> {
+  return !!(await getGitHubToken(owner));
 }
 
-function getGitHubToken(owner?: string): string | undefined {
+async function getGitHubToken(owner?: string): Promise<string | undefined> {
   // Case-insensitive on purpose: a noncanonically cased remote (e.g. github.com/willboosterlab/…)
   // must still select the organization's own PAT — falling through to the generic branch would
   // prefer the OTHER organization's PAT, which cannot read this organization's private
   // repositories.
   const normalizedOwner = owner?.toLowerCase();
   if (normalizedOwner === 'willbooster') {
-    return process.env.GH_BOT_PAT_FOR_WILLBOOSTER || getGitHubCliToken();
+    return process.env.GH_BOT_PAT_FOR_WILLBOOSTER || (await getGitHubCliToken());
   }
   if (normalizedOwner === 'willboosterlab') {
-    return process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB || getGitHubCliToken();
+    return process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB || (await getGitHubCliToken());
   }
   return (
     process.env.GH_BOT_PAT_FOR_WILLBOOSTER ||
     process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB ||
     process.env.GH_TOKEN ||
     process.env.GITHUB_TOKEN ||
-    getGitHubCliToken()
+    (await getGitHubCliToken())
   );
 }
 
-let gitHubCliToken: string | undefined;
+let gitHubCliToken: Promise<string | undefined> | undefined;
 
-function getGitHubCliToken(): string | undefined {
-  if (gitHubCliToken !== undefined) return gitHubCliToken || undefined;
+function getGitHubCliToken(): Promise<string | undefined> {
+  gitHubCliToken ??= readGitHubCliToken();
+  return gitHubCliToken;
+}
 
-  try {
-    // Some local runs rely on GitHub CLI authentication instead of exported env tokens.
-    gitHubCliToken =
-      childProcess
-        .execFileSync('gh', ['auth', 'token'], {
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'ignore'],
-        })
-        .trim() || '';
-  } catch {
-    gitHubCliToken = '';
-  }
-  return gitHubCliToken || undefined;
+async function readGitHubCliToken(): Promise<string | undefined> {
+  // Some local runs rely on GitHub CLI authentication instead of exported env tokens.
+  const result = await spawnOrUndefined('gh', ['auth', 'token'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  return (result?.status === 0 && result.stdout.trim()) || undefined;
 }

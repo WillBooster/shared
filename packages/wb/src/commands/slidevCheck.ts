@@ -34,7 +34,8 @@ export const slidevCheckCommand: CommandModule<unknown, SlidevCheckOptions> = {
       return;
     }
     const files = [...argv.files, ...argv._.slice(1)];
-    const deckPaths = files.length > 0 ? files.map((file) => path.resolve(String(file))) : findSlidevDecks(project);
+    const deckPaths =
+      files.length > 0 ? files.map((file) => path.resolve(String(file))) : await findSlidevDecks(project);
     if (deckPaths.length === 0) {
       console.info('No Slidev decks found.');
       return;
@@ -43,11 +44,14 @@ export const slidevCheckCommand: CommandModule<unknown, SlidevCheckOptions> = {
   },
 };
 
-export function findSlidevDecks(project: Project): string[] {
+export async function findSlidevDecks(project: Project): Promise<string[]> {
   // Keep discovery identical to wbfy's dependency detection, including ignored fixture and build directories.
-  return fg
-    .globSync('**/*.slidev.md', { dot: true, cwd: project.dirPath, ignore: getGlobIgnore(project.dirPath) })
-    .toSorted((a, b) => a.localeCompare(b));
+  const deckPaths = await fg.glob('**/*.slidev.md', {
+    dot: true,
+    cwd: project.dirPath,
+    ignore: await getGlobIgnore(project.dirPath),
+  });
+  return deckPaths.toSorted((a, b) => a.localeCompare(b));
 }
 
 export async function checkSlidevDecks(

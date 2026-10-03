@@ -88,7 +88,7 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
     try {
       await verifyCode(projects.self, argv, progress);
       if (argv.full) {
-        const deckPaths = findSlidevDecks(projects.self);
+        const deckPaths = await findSlidevDecks(projects.self);
         if (deckPaths.length > 0) {
           await runStep(progress, { detail: deckPaths.join(' '), name: 'slidev-check' }, () =>
             runInProcessCommand('slidev-check', () => checkSlidevDecks(projects.self, deckPaths, argv))

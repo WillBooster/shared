@@ -21,8 +21,14 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
       return typeof deployScript === 'string' && invokesWbDeploy(deployScript, new Set(Object.keys(scripts)));
     });
 
+    // Only claim the file is generated where it actually is: a package that hand-maintains its `Env` (e.g. under
+    // `types: ["bun"]`) is deliberately left unmanaged, and telling an agent to run `wb gen-code` there would send
+    // it after a file that never appears — and away from the `Env` it should be editing.
+    const generatedWorkerTypes = await Promise.all(allConfigs.map((config) => generatesWorkerTypes(config)));
+    const deployFacts = { ownsGeneratedWorkerTypes: generatedWorkerTypes.includes(true), usesWbDeploy };
+
     const cursorRulesPath = path.resolve(rootConfig.dirPath, '.cursor/rules/general.mdc');
-    const cursorRulesContent = generateCursorGeneralMdcContent(rootConfig, allConfigs, usesWbDeploy, extraContent);
+    const cursorRulesContent = generateCursorGeneralMdcContent(rootConfig, allConfigs, deployFacts, extraContent);
     await runAllInPool([
       ...(
         [
@@ -31,7 +37,7 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
           ['GEMINI.md', 'Gemini CLI'],
         ] as const
       ).map(([fileName, toolName]) => {
-        const content = generateAgentInstruction(rootConfig, allConfigs, toolName, usesWbDeploy, extraContent);
+        const content = generateAgentInstruction(rootConfig, allConfigs, toolName, deployFacts, extraContent);
         const filePath = path.resolve(rootConfig.dirPath, fileName);
         return () => fsUtil.generateFile(filePath, content);
       }),
@@ -58,12 +64,17 @@ export async function readAgentsExtraContent(rootDirPath: string): Promise<strin
 function generateCursorGeneralMdcContent(
   config: PackageConfig,
   allConfigs: PackageConfig[],
-  usesWbDeploy: boolean,
+  deployFacts: DeployFacts,
   extraContent?: string
 ): string {
   const frontmatter = `---\ndescription: General Coding Rules\nglobs:\nalwaysApply: true\n---`;
-  const body = generateAgentInstruction(config, allConfigs, 'Cursor', usesWbDeploy, extraContent);
+  const body = generateAgentInstruction(config, allConfigs, 'Cursor', deployFacts, extraContent);
   return `${frontmatter}\n\n${body}`;
+}
+
+interface DeployFacts {
+  ownsGeneratedWorkerTypes: boolean;
+  usesWbDeploy: boolean;
 }
 
 export const LANGUAGE_BOUND_TEXT_EXCEPTION =
@@ -73,7 +84,7 @@ function generateAgentInstruction(
   rootConfig: PackageConfig,
   allConfigs: PackageConfig[],
   toolName: string,
-  usesWbDeploy: boolean,
+  { ownsGeneratedWorkerTypes, usesWbDeploy }: DeployFacts,
   extraContent?: string
 ): string {
   const packageManager = 'bun';
@@ -97,10 +108,6 @@ function generateAgentInstruction(
   // (YAML-parsed jobs.*.uses, not a raw-text/comment match), and the `wb deploy` clause needs a
   // deploy script whose command token is `wb … deploy`.
   const ownsWranglerConfig = allConfigs.some((config) => config.doesContainWranglerConfig);
-  // Only claim the file is generated where it actually is: a package that hand-maintains its `Env` (e.g. under
-  // `types: ["bun"]`) is deliberately left unmanaged, and telling an agent to run `wb gen-code` there would send
-  // it after a file that never appears — and away from the `Env` it should be editing.
-  const ownsGeneratedWorkerTypes = allConfigs.some((config) => generatesWorkerTypes(config));
   const hasDeployWorkflow = hasCloudflareDeployWorkflow(path.resolve(rootConfig.dirPath, '.github/workflows'));
   // Independent facts stay separate sentences: the workflow's own deploy mechanism is not
   // inspected, so the wb-deploy clause must not claim the workflow invokes it.

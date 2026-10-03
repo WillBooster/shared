@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
 import { classifyScriptSegment, splitScriptSegments } from './utils/managedScriptSegment.js';
-import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
+import { spawnAndReturnStdout } from './utils/spawnUtil.js';
 import { getWorkspacePackageJsonPaths, getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
 
 export interface PackageConfig {
@@ -281,15 +281,20 @@ export async function getPackageConfig(
     const doesContainTauriConfig = ['tauri.conf.json', 'tauri.conf.json5', 'Tauri.toml'].some((fileName) =>
       fs.existsSync(path.resolve(dirPath, 'src-tauri', fileName))
     );
-    const globIgnore = getGlobIgnore(dirPath);
+    const globIgnore = await getGlobIgnore(dirPath);
     const containsAnyInDir = (pattern: string): boolean => containsAny(pattern, dirPath, globIgnore);
     // Root-level "InPackages" signals must see every declared workspace layout (e.g. apps/*), not
     // just the conventional packages/* directory, so scan each discovered workspace directory.
-    const workspaceSubDirs = getWorkspaceSubDirPaths({
-      dirPath,
-      packageJson,
-      doesContainSubPackageJsons: containsAnyInDir('packages/*/package.json'),
-    }).map((workspaceSubDirPath) => ({ dirPath: workspaceSubDirPath, globIgnore: getGlobIgnore(workspaceSubDirPath) }));
+    const workspaceSubDirs = await Promise.all(
+      getWorkspaceSubDirPaths({
+        dirPath,
+        packageJson,
+        doesContainSubPackageJsons: containsAnyInDir('packages/*/package.json'),
+      }).map(async (workspaceSubDirPath) => ({
+        dirPath: workspaceSubDirPath,
+        globIgnore: await getGlobIgnore(workspaceSubDirPath),
+      }))
+    );
     const containsAnyInWorkspaces = (pattern: string): boolean =>
       workspaceSubDirs.some((workspaceSubDir) =>
         containsAny(pattern, workspaceSubDir.dirPath, workspaceSubDir.globIgnore)
@@ -426,9 +431,13 @@ export async function getPackageConfig(
  * a key stub derived solely from the committed fnox.toml (see wb's writeWorkerTypesEnvStub), so local dotenv
  * files never influence the generated `Env`.
  */
-export function generatesWorkerTypes(config: PackageConfig): boolean {
+export async function generatesWorkerTypes(config: PackageConfig): Promise<boolean> {
   const packageJson = config.packageJson;
-  return config.doesContainWranglerConfig && hasWranglerDependency(packageJson) && consumesGeneratedWorkerTypes(config);
+  return (
+    config.doesContainWranglerConfig &&
+    hasWranglerDependency(packageJson) &&
+    (await consumesGeneratedWorkerTypes(config))
+  );
 }
 
 export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJson'>): string | undefined {
@@ -499,12 +508,12 @@ const wranglerTypesTextPattern = new RegExp(
  * matching tsc. Whenever the effective set cannot be determined (missing or unparseable tsconfig, package-name
  * `extends` presets, or TypeScript's default `**` inclusion), the current managed behavior is kept.
  */
-export function consumesGeneratedWorkerTypes(config: Pick<PackageConfig, 'dirPath'>): boolean {
+export async function consumesGeneratedWorkerTypes(config: Pick<PackageConfig, 'dirPath'>): Promise<boolean> {
   // `git grep` searches tracked files only, so the gitignored generated file itself never matches.
   // wbfy's own managed artifacts are excluded: the `.gitignore` rule (`/worker-configuration.d.ts`)
   // wbfy committed while it managed the package must not count as consumption, or a once-managed
   // package could never opt out.
-  const grepResult = spawnSyncAndReturnStdout(
+  const grepResult = await spawnAndReturnStdout(
     'git',
     // tsconfig files are classified by the resolved files/include/exclude logic below — a textual
     // hit there (e.g. an `exclude` entry) must not count as consumption.
@@ -830,7 +839,7 @@ function buildRuntimeImportRegExp(packageName: string): RegExp {
 }
 
 async function fetchRepoInfo(dirPath: string, packageJson: PackageJson): Promise<Record<string, unknown> | undefined> {
-  const remoteUrl = getOriginRemoteUrl(dirPath);
+  const remoteUrl = await getOriginRemoteUrl(dirPath);
   if (remoteUrl) {
     const json = await requestRepoInfo(remoteUrl);
     if (json) return json;
@@ -851,7 +860,8 @@ async function requestRepoInfo(urlOrFullName: string): Promise<Record<string, un
     // Metadata permission. The owner MUST be passed: getOctokit() without it prefers the
     // WillBooster PAT, which cannot read private WillBoosterLab repositories, collapsing their
     // visibility to unknown (and e.g. skipping the wbfy caller generation indefinitely).
-    const response = await getOctokit(org).request('GET /repos/{owner}/{repo}', {
+    const octokit = await getOctokit(org);
+    const response = await octokit.request('GET /repos/{owner}/{repo}', {
       owner: org,
       repo: name,
     });
@@ -865,7 +875,8 @@ async function requestRepoInfo(urlOrFullName: string): Promise<Record<string, un
       const [redirectedOrg, redirectedName] = redirectedFullName.split('/');
       if (redirectedOrg && redirectedName) {
         try {
-          const response = await getOctokit(redirectedOrg).request('GET /repos/{owner}/{repo}', {
+          const redirectedOctokit = await getOctokit(redirectedOrg);
+          const response = await redirectedOctokit.request('GET /repos/{owner}/{repo}', {
             owner: redirectedOrg,
             repo: redirectedName,
           });
@@ -910,7 +921,7 @@ async function resolveLocalRepoIdentity(
   dirPath: string,
   packageJson: PackageJson
 ): Promise<[string | undefined, string | undefined]> {
-  const remoteUrl = getOriginRemoteUrl(dirPath);
+  const remoteUrl = await getOriginRemoteUrl(dirPath);
   if (remoteUrl) {
     const identity = readGitHubIdentity(remoteUrl);
     if (identity) return identity;
@@ -923,8 +934,8 @@ async function resolveLocalRepoIdentity(
   return [undefined, undefined];
 }
 
-function getOriginRemoteUrl(dirPath: string): string | undefined {
-  return spawnSyncAndReturnStdout('git', ['config', '--get', 'remote.origin.url'], dirPath) || undefined;
+async function getOriginRemoteUrl(dirPath: string): Promise<string | undefined> {
+  return (await spawnAndReturnStdout('git', ['config', '--get', 'remote.origin.url'], dirPath)) || undefined;
 }
 
 /**

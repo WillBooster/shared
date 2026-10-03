@@ -38,7 +38,7 @@ async function runGenerateReadme(
   versionLabel: string | undefined,
   overrides: Partial<Parameters<typeof createConfig>[0]> = {}
 ): Promise<string> {
-  spyOn(version, 'getWbfyVersionLabel').mockReturnValue(versionLabel);
+  spyOn(version, 'getWbfyVersionLabel').mockResolvedValue(versionLabel);
   fsUtil.setRootDirPath(dirPath);
   const config = createConfig({ dirPath, isRoot: true, packageJson: { name: 'example' }, ...overrides });
   await generateReadme(config);
@@ -388,9 +388,9 @@ test('keeps an existing README that cannot be read', async () => {
   });
 });
 
-test('resolves a real version label from wbfy itself', () => {
+test('resolves a real version label from wbfy itself', async () => {
   // Either a released version or `<commit hash>[-dirty]-local`, never the unreleased placeholder.
-  expect(version.getWbfyVersionLabel()).toMatch(/^(?:\d+\.\d+\.\d+|[0-9a-f]{8,}(?:-dirty)?-local)$/u);
+  expect(await version.getWbfyVersionLabel()).toMatch(/^(?:\d+\.\d+\.\d+|[0-9a-f]{8,}(?:-dirty)?-local)$/u);
 });
 
 // An `<h1>` mentioned in a comment or an attribute is not a rendered title, so anchoring the badges
@@ -556,7 +556,7 @@ test('adds an npm badge above the other badges for a published package', async (
 test('adds the npm badges for a package that the wb release plugin publishes', async () => {
   await withTempDir(async (dirPath) => {
     mockNpmRegistry(['@willbooster/wbfy']);
-    spyOn(version, 'getWbfyVersionLabel').mockReturnValue('1.2.3');
+    spyOn(version, 'getWbfyVersionLabel').mockResolvedValue('1.2.3');
     fs.writeFileSync(
       path.resolve(dirPath, 'package.json'),
       JSON.stringify({ name: '@willbooster/wbfy', license: 'Apache-2.0' })
