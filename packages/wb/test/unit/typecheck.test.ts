@@ -13,15 +13,25 @@ beforeAll(buildWb, 120_000);
 
 describe('typecheck', () => {
   it(
-    'monorepo',
+    'type-checks a monorepo without failing on root lint errors',
     async () => {
       const dirPath = path.join(tempDir, 'monorepo');
       await initializeProjectDirectory(dirPath);
+      await fs.promises.writeFile(
+        path.join(dirPath, 'oxlint.config.ts'),
+        'export default { rules: { "no-console": "error" } };\n'
+      );
+      await fs.promises.writeFile(path.join(dirPath, 'scripts', 'lintError.ts'), 'console.log(1);\n');
       await spawnAsync('bun', ['install'], { stdio: 'inherit', cwd: dirPath });
 
       const ret = await spawnAsync('node', ['dist/index.js', 'typecheck', '-w', dirPath], { stdio: 'inherit' });
-      console.log(ret);
       expect(ret.status).toBe(0);
+      const lint = await spawnAsync('node', ['dist/index.js', 'lint', '-w', dirPath], {
+        mergeOutAndError: true,
+        stdio: 'pipe',
+      });
+      expect(lint.status).toBe(1);
+      expect(lint.stdout).toContain('no-console');
     },
     5 * 60 * 1000
   );
@@ -29,7 +39,7 @@ describe('typecheck', () => {
   it(
     'reports a type error in a file that belongs to the workspace root',
     async () => {
-      const dirPath = path.join(tempDir, 'monorepo');
+      const dirPath = path.join(tempDir, 'root-type-error', 'monorepo');
       await initializeProjectDirectory(dirPath);
       await fs.promises.writeFile(
         path.join(dirPath, 'scripts', 'broken.ts'),

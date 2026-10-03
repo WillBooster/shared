@@ -91,15 +91,14 @@ function buildTypeScriptTypeCheckCommands(project: Project, projects: Project[])
     // its workspaces' sources, which type-check only under each workspace's own compiler options,
     // and tsc cannot check a subset of a project. Oxlint reports diagnostics only for the files it
     // visits, each under its nearest tsconfig.json, so the root checks through it the files that
-    // no workspace compiles (e.g. `test/`, `scripts/`, `*.config.ts`). The price is that the lint
-    // errors of those files are reported too, as the type check cannot run without the rules.
+    // no workspace compiles (e.g. `test/`, `scripts/`, `*.config.ts`).
     const command = buildLintCommand(
       project,
       { fix: false, format: false, quiet: true },
       undefined,
       buildWorkspaceIgnorePatterns(project, projects, compilesItself)
     );
-    return command?.includes('--type-check') ? [command] : [];
+    return command?.includes('--type-check') ? [`${command} -A all`] : [];
   }
   return compilesItself(project) ? [tscCommand] : [];
 }
