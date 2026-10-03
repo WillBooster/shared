@@ -17,7 +17,52 @@ const manifestSchema = z.object({
   devDependencies: z.record(z.string(), z.string()).optional(),
 });
 const renovateSchema = z.object({
-  packageRules: z.array(z.object({ allowedVersions: z.string().optional() })).optional(),
+  packageRules: z
+    .array(z.object({ allowedVersions: z.string().optional(), matchFileNames: z.array(z.string()).optional() }))
+    .optional(),
+});
+
+test('restricts Renovate to Blitz manifests in a mixed workspace repository', async () => {
+  await fs.mkdir('.tmp', { recursive: true });
+  const root = await fs.mkdtemp(path.resolve('.tmp/blitz-workspaces-'));
+  try {
+    const manifests = {
+      'package.json': { name: 'root', private: true, workspaces: ['packages/*'] },
+      'packages/blitz-app/package.json': { name: 'blitz-app', dependencies: { blitz: '2.2.4', next: '16.3.6' } },
+      'packages/next-app/package.json': { name: 'next-app', dependencies: { next: '16.3.6' } },
+    };
+    const configs = [];
+    for (const [fileName, manifest] of Object.entries(manifests)) {
+      const filePath = path.join(root, fileName);
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, JSON.stringify(manifest));
+      const config = await getPackageConfig(path.dirname(filePath), { isRoot: fileName === 'package.json' });
+      assert.ok(config);
+      configs.push(config);
+    }
+    const rootConfig = configs[0];
+    assert.ok(rootConfig);
+    for (const config of configs) await generatePackageJson(config, rootConfig, true);
+    await generateRenovateJsonc(rootConfig, configs);
+    const renovatePath = path.join(root, 'renovate.jsonc');
+    const renovate = renovateSchema.parse(await Bun.file(renovatePath).json());
+    const rule = renovate.packageRules?.find((entry) => entry.allowedVersions);
+    assert.ok(rule?.allowedVersions);
+    for (const config of configs.slice(1)) {
+      const manifestPath = path.join(config.dirPath, 'package.json');
+      const generated = manifestSchema.parse(await Bun.file(manifestPath).json());
+      const version = generated.dependencies.next;
+      assert.ok(version);
+      const constrained = rule.matchFileNames?.includes(path.relative(root, manifestPath));
+      expect(constrained).toBe(config.depending.blitz);
+      expect(semver.satisfies(version, rule.allowedVersions)).toBe(config.depending.blitz);
+    }
+    const firstRenovate = await fs.readFile(renovatePath, 'utf8');
+    await generateRenovateJsonc(rootConfig, configs);
+    expect(await fs.readFile(renovatePath, 'utf8')).toBe(firstRenovate);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });
 
 test('converges incompatible Blitz manifests on a stable Next.js 15 pin without changing plain Next.js apps', async () => {

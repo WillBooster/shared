@@ -16,7 +16,13 @@ const generatedSettings = {
 };
 
 type Settings = Partial<typeof generatedSettings> & {
-  packageRules?: { matchPackageNames: string[]; enabled?: boolean; allowedVersions?: string; description?: string }[];
+  packageRules?: {
+    matchPackageNames: string[];
+    matchFileNames?: string[];
+    enabled?: boolean;
+    allowedVersions?: string;
+    description?: string;
+  }[];
 };
 
 const managedFileName = 'renovate.jsonc';
@@ -35,7 +41,10 @@ const nonCanonicalConfigPaths = [
   '.renovaterc.json5',
 ];
 
-export async function generateRenovateJsonc(config: PackageConfig): Promise<void> {
+export async function generateRenovateJsonc(
+  config: PackageConfig,
+  allPackageConfigs: PackageConfig[] = [config]
+): Promise<void> {
   return logger.functionIgnoringException('generateRenovateJsonc', async () => {
     const filePath = path.resolve(config.dirPath, managedFileName);
     const managedFileStats = await fs.promises.lstat(filePath).catch(() => {});
@@ -82,7 +91,7 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
       return;
     }
 
-    const newSettings = buildSettings(config, oldSettings);
+    const newSettings = buildSettings(config, allPackageConfigs, oldSettings);
     const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(
       oldContent,
       newSettings as Record<string, unknown>
@@ -96,7 +105,11 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
   });
 }
 
-function buildSettings(config: PackageConfig, oldSettings: Settings | undefined): Settings {
+function buildSettings(
+  config: PackageConfig,
+  allPackageConfigs: PackageConfig[],
+  oldSettings: Settings | undefined
+): Settings {
   const settings: Settings = oldSettings
     ? (merge.all([generatedSettings, oldSettings, generatedSettings], {
         arrayMerge: overwriteMerge,
@@ -109,11 +122,15 @@ function buildSettings(config: PackageConfig, oldSettings: Settings | undefined)
       ? existingExtends
       : [sharedPreset, ...existingExtends];
   settings.packageRules = settings.packageRules?.filter((rule) => rule.description !== blitzNextRuleDescription);
-  if (config.depending.blitz) {
+  const blitzManifestPaths = allPackageConfigs
+    .filter((packageConfig) => packageConfig.depending.blitz)
+    .map((packageConfig) => path.relative(config.dirPath, path.join(packageConfig.dirPath, 'package.json')));
+  if (blitzManifestPaths.length > 0) {
     settings.packageRules ??= [];
     settings.packageRules.push({
       description: blitzNextRuleDescription,
       matchPackageNames: ['next'],
+      matchFileNames: blitzManifestPaths,
       allowedVersions: '15.x',
     });
   }
