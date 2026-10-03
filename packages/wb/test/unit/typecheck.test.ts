@@ -32,6 +32,7 @@ describe('typecheck', () => {
       });
       expect(lint.status).toBe(1);
       expect(lint.stdout).toContain('no-console');
+      expect(lint.stdout).toContain('scripts/lintError.ts');
     },
     5 * 60 * 1000
   );
