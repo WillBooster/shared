@@ -16,10 +16,11 @@ const generatedSettings = {
 };
 
 type Settings = Partial<typeof generatedSettings> & {
-  packageRules?: { matchPackageNames: string[]; enabled?: boolean }[];
+  packageRules?: { matchPackageNames: string[]; enabled?: boolean; allowedVersions?: string; description?: string }[];
 };
 
 const managedFileName = 'renovate.jsonc';
+const blitzNextRuleDescription = 'Keep Blitz apps on Next.js 15';
 
 // wbfy supports one canonical Renovate location. Non-canonical configs are fixed in the target
 // repository instead of being parsed, merged, or deleted here.
@@ -96,7 +97,7 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
 }
 
 function buildSettings(config: PackageConfig, oldSettings: Settings | undefined): Settings {
-  const settings = oldSettings
+  const settings: Settings = oldSettings
     ? (merge.all([generatedSettings, oldSettings, generatedSettings], {
         arrayMerge: overwriteMerge,
       }) as Settings)
@@ -107,6 +108,15 @@ function buildSettings(config: PackageConfig, oldSettings: Settings | undefined)
     : existingExtends.includes(sharedPreset)
       ? existingExtends
       : [sharedPreset, ...existingExtends];
+  settings.packageRules = settings.packageRules?.filter((rule) => rule.description !== blitzNextRuleDescription);
+  if (config.depending.blitz) {
+    settings.packageRules ??= [];
+    settings.packageRules.push({
+      description: blitzNextRuleDescription,
+      matchPackageNames: ['next'],
+      allowedVersions: '15.x',
+    });
+  }
   return settings;
 }
 

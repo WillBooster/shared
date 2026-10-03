@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -92,6 +93,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   pruneCapabilityDependentCompilerDependencies(config, jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
+  pinBlitzNextDependency(config, jsonObj);
   // On a first run there is no manifest for `bun add` to update reliably. Write the resolved
   // dependency versions into the new manifest directly; the final repository-wide `bun install`
   // then installs them and remains the authoritative failure check.
@@ -129,6 +131,15 @@ function serializePackageJson(jsonObj: WritablePackageJson): string {
   // fsUtil.generateFile() normalizes the trailing newline, so keep the serializer
   // focused on the JSON payload itself.
   return JSON.stringify(sortPackageJson(jsonObj), undefined, 2);
+}
+
+function pinBlitzNextDependency(config: PackageConfig, jsonObj: WritablePackageJson): void {
+  if (!config.depending.blitz) return;
+  // Blitz's RPC transform relies on Next.js 15's default webpack pipeline.
+  const version = getLatestAgeGatedVersionBelow('next', '16.0.0');
+  assert.ok(version && semver.major(version) === 15, 'Could not resolve a stable Next.js 15 release');
+  jsonObj.dependencies.next = version;
+  delete jsonObj.devDependencies.next;
 }
 
 async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
