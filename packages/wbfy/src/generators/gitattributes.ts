@@ -1,4 +1,3 @@
-import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -7,8 +6,7 @@ import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
-
-const gitOutputMaxBuffer = 64 * 1024 * 1024;
+import { spawnOrUndefined } from '../utils/spawnUtil.js';
 
 // cf. https://bun.sh/guides/install/git-diff-bun-lockfile
 // `-text` keeps the macOS template's `Icon\r\r` rule of the ignore files intact. `text=auto` keeps it only because the
@@ -35,21 +33,14 @@ export async function generateGitattributes(config: PackageConfig): Promise<void
   });
 }
 
-export function renormalizeTrackedTextFiles(dirPath: string): void {
-  let output: string;
-  try {
-    output = child_process.execFileSync('git', ['ls-files', '--eol', '-z'], {
-      cwd: dirPath,
-      encoding: 'utf8',
-      maxBuffer: gitOutputMaxBuffer,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-  } catch (error) {
-    console.warn(`Skipped tracked line-ending renormalization: ${(error as Error).message}`);
+export async function renormalizeTrackedTextFiles(dirPath: string): Promise<void> {
+  const result = await spawnOrUndefined('git', ['ls-files', '--eol', '-z'], { cwd: dirPath });
+  if (result?.status !== 0) {
+    console.warn(`Skipped tracked line-ending renormalization: ${result?.stderr.trim() ?? 'git is unavailable'}`);
     return;
   }
   let renormalizedCount = 0;
-  for (const record of output.split('\0')) {
+  for (const record of result.stdout.split('\0')) {
     const separatorIndex = record.indexOf('\t');
     if (separatorIndex === -1) continue;
 

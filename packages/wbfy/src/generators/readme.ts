@@ -85,7 +85,7 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
     }
     badges.push(...(await buildWorkflowBadges(config)));
     if (fs.existsSync(path.resolve(config.dirPath, '.releaserc.json'))) badges.push(semanticReleaseBadge);
-    badges.push(buildWbfyBadge(getWbfyVersionLabel() ?? 'applied'));
+    badges.push(buildWbfyBadge((await getWbfyVersionLabel()) ?? 'applied'));
 
     // The block is written in one pass from the badges wbfy manages right now. A badge that is no
     // longer wanted — a superseded version, or one whose workflow is gone — simply is not in the
@@ -180,7 +180,8 @@ async function hasAnyWorkflowRun(
   const [owner, repo] = repository.split('/');
   if (!owner || !repo) return true;
   try {
-    const response = await getOctokit(owner).request('GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs', {
+    const octokit = await getOctokit(owner);
+    const response = await octokit.request('GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs', {
       owner,
       repo,
       workflow_id: workflowFileName,

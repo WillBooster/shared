@@ -9,9 +9,9 @@ export async function setupGitHubSettings(config: PackageConfig): Promise<void> 
     const { repoAuthor: owner, repoName: repo } = config;
     if (!owner || !repo) return;
     if (owner !== 'WillBooster' && owner !== 'WillBoosterLab') return;
-    if (!hasGitHubToken(owner)) return;
+    if (!(await hasGitHubToken(owner))) return;
 
-    const octokit = getOctokit(owner);
+    const octokit = await getOctokit(owner);
 
     try {
       // Repository settings need administration permission, unlike file generation.
@@ -57,7 +57,11 @@ export async function setupGitHubSettings(config: PackageConfig): Promise<void> 
   });
 }
 
-async function disableDiscussions(octokit: ReturnType<typeof getOctokit>, owner: string, repo: string): Promise<void> {
+async function disableDiscussions(
+  octokit: Awaited<ReturnType<typeof getOctokit>>,
+  owner: string,
+  repo: string
+): Promise<void> {
   const repositoryResponse = await octokit.graphql<{ repository?: { id?: string } }>(
     `query($owner: String!, $repo: String!) {
       repository(owner: $owner, name: $repo) { id }

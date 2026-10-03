@@ -20,7 +20,7 @@ import { gitHubUtil } from '../utils/githubUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
-import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
+import { spawnAndReturnStatus, spawnAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
@@ -56,9 +56,9 @@ const managedDependencyNames = new Set([
   '@types/bun',
   ...oxlintDeps,
 ]);
-const latestDependencyVersionCache = new Map<string, string>();
+const latestDependencyVersionCache = new Map<string, Promise<string>>();
 const packageAgeGateMs = bunMinimumReleaseAgeSeconds * 1000;
-const npmPackageTimesCache = new Map<string, Record<string, string>>();
+const npmPackageTimesCache = new Map<string, Promise<Record<string, string> | undefined>>();
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
 
 type WritablePackageJson = SetRequired<
@@ -77,7 +77,7 @@ export async function generatePackageJson(
   rootConfig: PackageConfig,
   skipAddingDeps: boolean
 ): Promise<void> {
-  const blitzNextVersion = config.depending.blitz ? getBlitzNextVersion() : undefined;
+  const blitzNextVersion = config.depending.blitz ? await getBlitzNextVersion() : undefined;
   return logger.functionIgnoringException('generatePackageJson', async () => {
     await core(config, rootConfig, skipAddingDeps, blitzNextVersion);
   });
@@ -106,7 +106,7 @@ async function core(
   // On a first run there is no manifest for `bun add` to update reliably. Write the resolved
   // dependency versions into the new manifest directly; the final repository-wide `bun install`
   // then installs them and remains the authoritative failure check.
-  addDependencyVersionsToPackageJson(
+  await addDependencyVersionsToPackageJson(
     config,
     rootConfig,
     jsonObj,
@@ -127,11 +127,11 @@ async function core(
   if (!(await fsUtil.generateFile(filePath, serializePackageJson(jsonObj)))) return;
 
   if (!skipAddingDeps) {
-    installDependencyUpdates(config, rootConfig, jsonObj, dependencyUpdates);
+    await installDependencyUpdates(config, rootConfig, jsonObj, dependencyUpdates);
     // A newly created manifest is already sorted by wbfy's bundled serializer; the target formatter
     // is available without an extra fetch only when this run started with package.json.
     if (config.doesContainPackageJson) {
-      formatPackageJsonWithProjectFormatter(config, filePath);
+      await formatPackageJsonWithProjectFormatter(config, filePath);
     }
   }
 }
@@ -142,9 +142,9 @@ function serializePackageJson(jsonObj: WritablePackageJson): string {
   return JSON.stringify(sortPackageJson(jsonObj), undefined, 2);
 }
 
-function getBlitzNextVersion(): string {
+async function getBlitzNextVersion(): Promise<string> {
   // Blitz's RPC transform relies on Next.js 15's default webpack pipeline.
-  const version = getLatestAgeGatedVersionBelow('next', '16.0.0');
+  const version = await getLatestAgeGatedVersionBelow('next', '16.0.0');
   assert.ok(version && semver.major(version) === 15, 'Could not resolve a stable Next.js 15 release');
   return version;
 }
@@ -568,7 +568,7 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
     if (existingTrusted !== undefined) {
       // Deleting the field restores Bun's full default allow-list, so only entries outside that
       // list actually lose their lifecycle scripts.
-      warnAboutRemovedTrustedDependencies(config, existingTrusted, new Set());
+      await warnAboutRemovedTrustedDependencies(config, existingTrusted, new Set());
       delete bunJsonObj.trustedDependencies;
     }
     return;
@@ -580,7 +580,7 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   // entries for packages that are not installed are inert, and this is the only representation
   // that stays correct for transitive dependencies the final `bun install` resolves after this
   // runs — an intersection with a missing or stale lockfile would silently drop them.
-  const defaultTrustedDependencies = getDefaultTrustedDependencies(config);
+  const defaultTrustedDependencies = await getDefaultTrustedDependencies(config);
   // lefthook is appended explicitly so the default-list lookup failing cannot drop it: it is
   // required in every managed repository.
   const newTrustedPackages = new Set([
@@ -588,7 +588,7 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
     lefthookDependency,
     ...(defaultTrustedDependencies ?? []),
   ]);
-  warnAboutRemovedTrustedDependencies(config, existingTrusted ?? [], newTrustedPackages);
+  await warnAboutRemovedTrustedDependencies(config, existingTrusted ?? [], newTrustedPackages);
   bunJsonObj.trustedDependencies = [...newTrustedPackages].toSorted();
 }
 
@@ -606,14 +606,14 @@ const wbfyManagedTrustedDependencies = new Set([
   lefthookDependency,
 ]);
 
-function warnAboutRemovedTrustedDependencies(
+async function warnAboutRemovedTrustedDependencies(
   config: PackageConfig,
   existingTrusted: readonly string[],
   keptPackages: ReadonlySet<string>
-): void {
+): Promise<void> {
   // A default-trusted entry never loses anything by removal: while the package is installed the
   // kept list (or, when the field is deleted, Bun's own default list) still trusts it.
-  const defaultTrustedDependencies = getDefaultTrustedDependencies(config);
+  const defaultTrustedDependencies = await getDefaultTrustedDependencies(config);
   const removedPackages = existingTrusted.filter(
     (pkg) => !keptPackages.has(pkg) && !wbfyManagedTrustedDependencies.has(pkg) && !defaultTrustedDependencies?.has(pkg)
   );
@@ -627,16 +627,16 @@ function warnAboutRemovedTrustedDependencies(
 let cachedDefaultTrustedDependencies: Set<string> | undefined;
 
 /** Fetches Bun's default trusted-dependency allow-list from the Bun version installing the repository. */
-function getDefaultTrustedDependencies(config: PackageConfig): Set<string> | undefined {
+async function getDefaultTrustedDependencies(config: PackageConfig): Promise<Set<string> | undefined> {
   if (!cachedDefaultTrustedDependencies) {
     // Bun colorizes the list markers when FORCE_COLOR is set (e.g. by test runners on CI), so
     // ANSI escape sequences must be stripped before parsing.
-    const stdout = spawnSyncAndReturnStdout('bun', ['pm', 'default-trusted'], config.dirPath).replaceAll(
-      // oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences requires the ESC control character
-      /\u001B\[[0-9;]*m/gu,
-      ''
+    const stdout = await spawnAndReturnStdout('bun', ['pm', 'default-trusted'], config.dirPath);
+    // oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences requires the ESC control character
+    const plainStdout = stdout.replaceAll(/\u001B\[[0-9;]*m/gu, '');
+    const parsedDependencies = new Set(
+      [...plainStdout.matchAll(/^\s*-\s+(\S+)$/gmu)].map((match) => match[1] as string)
     );
-    const parsedDependencies = new Set([...stdout.matchAll(/^\s*-\s+(\S+)$/gmu)].map((match) => match[1] as string));
     if (parsedDependencies.size === 0) {
       // Do not cache the failure: a target-local problem (e.g. an unreadable package.json) must
       // not deny the default list to every later target of a multi-path run.
@@ -707,7 +707,7 @@ async function normalizePackageMetadata(
       const pythonFiles = await fg.glob('**/*.py', {
         cwd: config.dirPath,
         dot: true,
-        ignore: getGlobIgnore(config.dirPath),
+        ignore: await getGlobIgnore(config.dirPath),
       });
       const dirNameSet = new Set<string>();
       for (const pythonFile of pythonFiles) {
@@ -750,7 +750,7 @@ async function normalizePackageMetadata(
       jsonObj.scripts['gen-code'] = ['bun wb gen-code', ...customSegments].join(' && ');
     }
   }
-  updatePostinstallScript(jsonObj.scripts, generatesWorkerTypes(config));
+  updatePostinstallScript(jsonObj.scripts, await generatesWorkerTypes(config));
 }
 
 function shouldGenerateWbGenCodeScript(config: PackageConfig): boolean {
@@ -787,16 +787,16 @@ async function normalizePublishedConfigPackageMetadata(
 const configDmtsContent = `export { default } from './config.js';
 `;
 
-function addDependencyVersionsToPackageJson(
+async function addDependencyVersionsToPackageJson(
   config: PackageConfig,
   rootConfig: PackageConfig,
   jsonObj: WritablePackageJson,
   dependencyUpdates: DependencyUpdates,
   skipAddingDeps: boolean
-): void {
+): Promise<void> {
   const packageJsonDependencies = jsonObj.dependencies;
   const packageJsonDevDependencies = jsonObj.devDependencies;
-  dependencyUpdates.dependencies = addPackageJsonDependencies(
+  dependencyUpdates.dependencies = await addPackageJsonDependencies(
     config,
     rootConfig,
     jsonObj,
@@ -805,7 +805,7 @@ function addDependencyVersionsToPackageJson(
     skipAddingDeps
   );
   dependencyUpdates.devDependencies = dependencyUpdates.devDependencies.filter((dep) => !packageJsonDependencies[dep]);
-  dependencyUpdates.devDependencies = addPackageJsonDependencies(
+  dependencyUpdates.devDependencies = await addPackageJsonDependencies(
     config,
     rootConfig,
     jsonObj,
@@ -839,28 +839,26 @@ function removeEmptyDependencySections(jsonObj: PackageJson): void {
   }
 }
 
-function installDependencyUpdates(
+async function installDependencyUpdates(
   config: PackageConfig,
   rootConfig: PackageConfig,
   jsonObj: PackageJson,
   dependencyUpdates: DependencyUpdates
-): void {
+): Promise<void> {
   if (config.doesContainPackageJson) {
     const dependencies = dependencyUpdates.dependencies.filter((dep) => !jsonObj.devDependencies?.[dep]);
-    installNpmDependencies(config, rootConfig, dependencies, false);
+    await installNpmDependencies(config, rootConfig, dependencies, false);
 
     const devDependencies = dependencyUpdates.devDependencies.filter((dep) => !jsonObj.dependencies?.[dep]);
-    installNpmDependencies(config, rootConfig, devDependencies, true);
+    await installNpmDependencies(config, rootConfig, devDependencies, true);
   }
 
   const pythonPackageManager = getPythonPackageManager(config);
   if (pythonPackageManager && dependencyUpdates.pythonDevDependencies.length > 0) {
     const dependencies = [...new Set(dependencyUpdates.pythonDevDependencies)];
-    if (pythonPackageManager === 'poetry') {
-      spawnSync('poetry', ['add', '--group', 'dev', ...dependencies], config.dirPath);
-    } else {
-      spawnSync('uv', ['add', '--dev', ...dependencies], config.dirPath);
-    }
+    await (pythonPackageManager === 'poetry'
+      ? spawnAndReturnStatus('poetry', ['add', '--group', 'dev', ...dependencies], config.dirPath)
+      : spawnAndReturnStatus('uv', ['add', '--dev', ...dependencies], config.dirPath));
   }
 }
 
@@ -881,28 +879,34 @@ function getPythonSetupCommand(packageManager: 'poetry' | 'uv'): string {
   return 'poetry config virtualenvs.in-project true && { python_path="$(mise which python 2>/dev/null)" || true; } && { [ -z "$python_path" ] || poetry env use "$python_path"; } && poetry run pip install --upgrade pip && poetry install';
 }
 
-function installNpmDependencies(
+async function installNpmDependencies(
   config: PackageConfig,
   rootConfig: PackageConfig,
   dependencies: string[],
   dev: boolean
-): void {
+): Promise<void> {
   if (dependencies.length === 0) return;
 
   const dependencySpecifiers = [
-    ...new Set(dependencies.map((dependency) => getInstallDependencySpecifier(config, rootConfig, dependency))),
+    ...new Set(
+      await Promise.all(dependencies.map((dependency) => getInstallDependencySpecifier(config, rootConfig, dependency)))
+    ),
   ];
-  spawnSync('bun', ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
+  await spawnAndReturnStatus(
+    'bun',
+    ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers],
+    config.dirPath
+  );
 }
 
-function addPackageJsonDependencies(
+async function addPackageJsonDependencies(
   config: PackageConfig,
   rootConfig: PackageConfig,
   jsonObj: WritablePackageJson,
   packageJsonDependencies: Partial<Record<string, string>>,
   dependencies: string[],
   skipAddingDeps: boolean
-): string[] {
+): Promise<string[]> {
   const dependenciesToInstall: string[] = [];
   for (const dependency of new Set(dependencies)) {
     // A private package whose monorepo contains this dependency as a workspace must reference it
@@ -935,14 +939,14 @@ function addPackageJsonDependencies(
       // before releasing (scripts/stripWorkspaceProtocol.mjs). Fall through so a concrete pin
       // keeps being bumped like any managed dependency.
     }
-    const shouldUpdateExistingDependency = shouldUpdateExistingManagedDependency(
+    const shouldUpdateExistingDependency = await shouldUpdateExistingManagedDependency(
       config,
       rootConfig,
       dependency,
       packageJsonDependencies[dependency]
     );
     if (shouldUpdateExistingDependency) {
-      const managedVersion = getManagedDependencyVersion(config, rootConfig, dependency);
+      const managedVersion = await getManagedDependencyVersion(config, rootConfig, dependency);
       if (shouldDowngradeAgeGatedManagedDependency(dependency, packageJsonDependencies[dependency], managedVersion)) {
         // `bun add dependency` preserves an existing exact pin, so write the age-cleared version
         // directly. The final repository-wide install refreshes the lockfile after every package
@@ -959,14 +963,14 @@ function addPackageJsonDependencies(
       packageJsonDependencies[dependency] !== '*'
     )
       continue;
-    const latestVersion = getManagedDependencyVersion(config, rootConfig, dependency);
+    const latestVersion = await getManagedDependencyVersion(config, rootConfig, dependency);
     if (latestVersion === '*' && packageJsonDependencies[dependency]) continue;
     packageJsonDependencies[dependency] = latestVersion;
   }
   return dependenciesToInstall;
 }
 
-function formatPackageJsonWithProjectFormatter(config: PackageConfig, filePath: string): void {
+async function formatPackageJsonWithProjectFormatter(config: PackageConfig, filePath: string): Promise<void> {
   const relativeFilePath = path.relative(config.dirPath, filePath);
   if (!relativeFilePath) return;
 
@@ -974,7 +978,7 @@ function formatPackageJsonWithProjectFormatter(config: PackageConfig, filePath: 
   // package.json matches whatever its current sort-package-json version expects.
   // This avoids follow-up autofix commits caused only by formatter version drift
   // between wbfy and the project being updated.
-  spawnSync('bunx', ['sort-package-json', relativeFilePath], config.dirPath);
+  await spawnAndReturnStatus('bunx', ['sort-package-json', relativeFilePath], config.dirPath);
 }
 
 async function removeUnusedTsconfigBaseDependencies(
@@ -999,7 +1003,7 @@ async function getExistingTsconfigBaseDependencies(config: PackageConfig): Promi
   const filePaths = await fg.glob('**/tsconfig*.json', {
     cwd: config.dirPath,
     dot: true,
-    ignore: getGlobIgnore(config.dirPath),
+    ignore: await getGlobIgnore(config.dirPath),
   });
 
   for (const filePath of filePaths) {
@@ -1059,16 +1063,16 @@ function getDependencySections(jsonObj: PackageJson): Partial<Record<string, str
     .filter((section): section is Partial<Record<string, string>> => !!section);
 }
 
-function getLatestDependencyVersion(dependency: string): string {
-  const cachedVersion = latestDependencyVersionCache.get(dependency);
-  if (cachedVersion) return cachedVersion;
-
-  const version = getDependencyVersionFromNpm(dependency);
-  latestDependencyVersionCache.set(dependency, version);
+function getLatestDependencyVersion(dependency: string): Promise<string> {
+  let version = latestDependencyVersionCache.get(dependency);
+  if (!version) {
+    version = getDependencyVersionFromNpm(dependency);
+    latestDependencyVersionCache.set(dependency, version);
+  }
   return version;
 }
 
-function getDependencyVersionFromNpm(dependency: string): string {
+async function getDependencyVersionFromNpm(dependency: string): Promise<string> {
   if (!shouldApplyPackageAgeGate(dependency)) {
     return getRawDependencyVersionFromNpm(dependency);
   }
@@ -1076,9 +1080,9 @@ function getDependencyVersionFromNpm(dependency: string): string {
   return getLatestAgeGatedDependencyVersion(dependency);
 }
 
-function getLatestAgeGatedDependencyVersion(dependency: string): string {
-  const times = getNpmPackageTimes(dependency);
-  const latestVersion = getRawDependencyVersionFromNpm(dependency);
+async function getLatestAgeGatedDependencyVersion(dependency: string): Promise<string> {
+  const times = await getNpmPackageTimes(dependency);
+  const latestVersion = await getRawDependencyVersionFromNpm(dependency);
   if (latestVersion !== '*' && isPublishedBeforeAgeGate(times[latestVersion])) {
     return latestVersion;
   }
@@ -1103,26 +1107,32 @@ function isPublishedBeforeAgeGate(publishedAt: string | undefined): boolean {
   return Number.isFinite(publishedTime) && Date.now() - publishedTime >= packageAgeGateMs;
 }
 
-function getNpmPackageTimes(dependency: string): Record<string, string> {
+async function getNpmPackageTimes(dependency: string): Promise<Record<string, string>> {
   const packageName = dependency.replace(/@[^@/]+$/u, '');
-  const cachedTimes = npmPackageTimesCache.get(packageName);
-  if (cachedTimes) return cachedTimes;
+  let times = npmPackageTimesCache.get(packageName);
+  if (!times) {
+    times = fetchNpmPackageTimes(packageName);
+    npmPackageTimesCache.set(packageName, times);
+  }
+  const resolvedTimes = await times;
+  // A failed lookup is not cached, so a later call retries it.
+  if (!resolvedTimes) npmPackageTimesCache.delete(packageName);
+  return resolvedTimes ?? {};
+}
 
-  const stdout = spawnSyncAndReturnStdout(
+async function fetchNpmPackageTimes(packageName: string): Promise<Record<string, string> | undefined> {
+  const stdout = await spawnAndReturnStdout(
     'npm',
     ['show', packageName, 'time', '--json', '--workspaces=false'],
     process.cwd()
   );
-  if (!stdout) return {};
+  if (!stdout) return;
 
   try {
     const parsed = JSON.parse(stdout) as Record<string, string> | [Record<string, string>];
-    const times = Array.isArray(parsed) ? parsed[0] : parsed;
-    if (!times) return {};
-    npmPackageTimesCache.set(packageName, times);
-    return times;
+    return Array.isArray(parsed) ? parsed[0] : parsed;
   } catch {
-    return {};
+    // Treated as a failed lookup.
   }
 }
 
@@ -1142,17 +1152,23 @@ function doesPackagePatternMatch(pattern: string, dependency: string): boolean {
   return new RegExp(`^${escapedPattern}$`, 'u').test(dependency);
 }
 
-function getRawDependencyVersionFromNpm(dependency: string): string {
+async function getRawDependencyVersionFromNpm(dependency: string): Promise<string> {
   // No cache here: the only caller chain goes through getLatestDependencyVersion, which already
   // memoizes per dependency, so this can run at most once per dependency.
-  return spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
+  return (
+    (await spawnAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd())) || '*'
+  );
 }
 
-function getInstallDependencySpecifier(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
+async function getInstallDependencySpecifier(
+  config: PackageConfig,
+  rootConfig: PackageConfig,
+  dependency: string
+): Promise<string> {
   // TypeScript is version-capped in Blitz repositories, so its install specifier must carry the
   // managed version — a bare `bun add` would install the incompatible latest.
   if (dependency === typescriptDependency && isBlitzRepository(config, rootConfig)) {
-    return `${dependency}@${getManagedDependencyVersion(config, rootConfig, dependency)}`;
+    return `${dependency}@${await getManagedDependencyVersion(config, rootConfig, dependency)}`;
   }
   return dependency;
 }
@@ -1186,17 +1202,17 @@ export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, 
   return workspaceDirsByName;
 }
 
-function shouldUpdateExistingManagedDependency(
+async function shouldUpdateExistingManagedDependency(
   config: PackageConfig,
   rootConfig: PackageConfig,
   dependency: string,
   currentVersion: string | undefined
-): boolean {
+): Promise<boolean> {
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
   if (isWorkspaceProtocolRange(currentVersion)) return true;
   if (!managedDependencyNames.has(dependency)) return false;
-  const managedVersion = getManagedDependencyVersion(config, rootConfig, dependency);
+  const managedVersion = await getManagedDependencyVersion(config, rootConfig, dependency);
   const currentValidVersion = semver.valid(currentVersion);
   // A TypeScript 7 pin in a Blitz repository is likewise incompatible (`next build` fails on
   // the Next.js 15 that Blitz pins — see getManagedDependencyVersion), so rewrite it to the
@@ -1249,8 +1265,12 @@ function shouldDowngradeAgeGatedManagedDependency(
 // lookup for the actual newest pre-v7 release fails (see getManagedDependencyVersion).
 const lastKnownPreV7TypescriptVersion = '6.0.3';
 
-function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
-  const latestVersion = getLatestDependencyVersion(dependency);
+async function getManagedDependencyVersion(
+  config: PackageConfig,
+  rootConfig: PackageConfig,
+  dependency: string
+): Promise<string> {
+  const latestVersion = await getLatestDependencyVersion(dependency);
   if (dependency === typescriptDependency && isBlitzRepository(config, rootConfig)) {
     // Blitz pins Next.js 15, whose build-time `verifyTypeScriptSetup` requires the classic
     // `typescript` compiler API; the TypeScript 7 `typescript` package is the tsgo binary
@@ -1265,7 +1285,7 @@ function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageC
     // and Bun refuses to resolve one published inside the minimum-release-age window. There is no
     // ungated fallback — without publication metadata the age of a range result is unknown, so a
     // partial registry failure would otherwise write a version Bun then refuses to install.
-    return getLatestAgeGatedVersionBelow(typescriptDependency, '7.0.0') ?? lastKnownPreV7TypescriptVersion;
+    return (await getLatestAgeGatedVersionBelow(typescriptDependency, '7.0.0')) ?? lastKnownPreV7TypescriptVersion;
   }
   return latestVersion;
 }
@@ -1273,10 +1293,14 @@ function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageC
 /**
  * The highest stable release below the bound that satisfies the package's release-age policy.
  */
-function getLatestAgeGatedVersionBelow(packageName: string, exclusiveUpperBound: string): string | undefined {
-  return getStableVersionsDescending(getNpmPackageTimes(packageName), shouldApplyPackageAgeGate(packageName)).find(
-    (version) => semver.lt(version, exclusiveUpperBound)
-  );
+async function getLatestAgeGatedVersionBelow(
+  packageName: string,
+  exclusiveUpperBound: string
+): Promise<string | undefined> {
+  return getStableVersionsDescending(
+    await getNpmPackageTimes(packageName),
+    shouldApplyPackageAgeGate(packageName)
+  ).find((version) => semver.lt(version, exclusiveUpperBound));
 }
 
 function isNewerPackageVersion(candidateVersion: string, currentVersion: string): boolean {

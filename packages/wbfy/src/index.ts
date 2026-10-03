@@ -52,7 +52,7 @@ import { getPackageConfig, getWorkerTypesScriptError } from './packageConfig.js'
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { doesContainJava, doesContainJsOrTs } from './utils/packageCapabilities.js';
-import { spawnSync, spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
+import { spawnAndReturnStatus, spawnAndReturnStdout } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
 import { getWbfyVersion, getWbfyVersionLabel } from './utils/version.js';
 import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
   // Deliberately before the Bun check in willboosterifyPaths(): the gate must be appliable on a
   // machine whose Bun is outdated, which is exactly a machine that still needs gating.
   if (argv._[0] === applyReleaseAgeGateCommand) {
-    if (!ensureGlobalReleaseAgeGates()) process.exitCode = 1;
+    if (!(await ensureGlobalReleaseAgeGates())) process.exitCode = 1;
     return;
   }
   if (argv._[0] === generateUserAgentConfigsCommand) {
@@ -138,7 +138,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
   // package-manager configs must receive the org's minimum-release-age policy on EVERY run,
   // because they are what guards brand-new local projects that have no wbfy-generated repository
   // config yet, and that protection must work before the supported-version check.
-  ensureGlobalReleaseAgeGates();
+  await ensureGlobalReleaseAgeGates();
 
   // wbfy manages repositories through Bun + mise and uses Bun 1.4 runtime APIs. The version floor
   // also ensures the generated bunfig.toml options produce the install layout wbfy validates. It
@@ -153,7 +153,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
 
   // A `-dirty-local` label identifies an edited checkout, whose next build produces different files
   // under the same label, so such a run is never treated as already applied.
-  const versionLabel = getWbfyVersionLabel();
+  const versionLabel = await getWbfyVersionLabel();
   const skippableVersionLabel =
     !force && versionLabel && !versionLabel.endsWith('-dirty-local') ? versionLabel : undefined;
 
@@ -268,16 +268,17 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     const allPackageConfigs = [rootConfig, ...subPackageConfigs];
     // The managed ignore rule is unanchored, so a nested copy (e.g. workers/api/.env.cloudflare) is
     // as much a leak as a root one; the wildcard pathspec covers every depth in one query.
-    const trackedCloudflareEnvPaths = allPackageConfigs.some((config) => config.isCloudflare)
-      ? spawnSyncAndReturnStdout(
+    const trackedCloudflareEnvOutput = allPackageConfigs.some((config) => config.isCloudflare)
+      ? await spawnAndReturnStdout(
           'git',
           ['-c', 'core.quotePath=false', 'ls-files', '--', '.env.cloudflare', '*/.env.cloudflare'],
           rootConfig.dirPath
         )
-          .split('\n')
-          .filter(Boolean)
-          .map((filePath) => path.resolve(rootConfig.dirPath, filePath))
-      : [];
+      : '';
+    const trackedCloudflareEnvPaths = trackedCloudflareEnvOutput
+      .split('\n')
+      .filter(Boolean)
+      .map((filePath) => path.resolve(rootConfig.dirPath, filePath));
     if (trackedCloudflareEnvPaths.length > 0) {
       console.error(
         `SECURITY ERROR: Cloudflare credentials must be untracked. Remove ${trackedCloudflareEnvPaths.join(
@@ -310,14 +311,17 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     await ensureWbEnvDefinitions(rootConfig, allPackageConfigs);
 
     // The layout must be verified installable BEFORE any `bun add` mutates package.json files:
-    // per-package installs tolerate failures (spawnSync discards their status), so a layout that
+    // per-package installs tolerate failures (their status is discarded), so a layout that
     // cannot install would silently drop every managed dependency update for the rest of the run.
     // A docs-only repository has no manifest to probe on its first run; generatePackageJson below
     // creates it before the authoritative refreshBunLock check.
+    // fixTypos must finish here: it rewrites source files that the install's lifecycle scripts may
+    // read, and Markdown and YAML files that the generators below rewrite.
+    await fixTyposPromise;
     if (
       !skipDeps &&
       rootConfig.doesContainPackageJson &&
-      !probeIsolatedBunInstall(rootDirPath, rootConfig, previousBunGlobalStore, useGlobalStore)
+      !(await probeIsolatedBunInstall(rootDirPath, rootConfig, previousBunGlobalStore, useGlobalStore))
     ) {
       // refreshBunLock below is the authority on whether the final install failed.
       console.warn(`bun install currently fails in ${rootDirPath} under the isolated linker.`);
@@ -337,8 +341,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       !isReusableWorkflowsRepo(rootConfig.repository) &&
       !!rootConfig.repository?.startsWith('github:') &&
       rootConfig.isRoot;
-    // fixTypos read-modify-writes the Markdown and YAML files that the generators below rewrite.
-    await fixTyposPromise;
     await Promise.all([
       generateReadme(rootConfig),
       generateDockerignore(rootConfig),
@@ -363,16 +365,18 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // finalized workflow files instead of lagging one run behind.
     await generateAgentInstructions(rootConfig, allPackageConfigs);
 
-    const promises: Promise<void>[] = [];
+    // Started only after the loop, so that none of them runs while a generatePackageJson rewrites
+    // package.json through `bun add` and `sort-package-json`.
+    const pooledGenerators: (() => Promise<void>)[] = [];
     for (const config of allPackageConfigs) {
       if (config.depending.playwrightTest) {
-        promises.push(fixPlaywrightConfig(config));
+        pooledGenerators.push(() => fixPlaywrightConfig(config));
       }
       if (config.depending.next) {
-        promises.push(fixNextConfigJson(config));
+        pooledGenerators.push(() => fixNextConfigJson(config));
       }
       if (config.depending.chakra) {
-        promises.push(fixChakraToaster(config));
+        pooledGenerators.push(() => fixChakraToaster(config));
       }
       await generateGitignore(config, rootConfig);
       if (!config.isRoot && !config.doesContainPackageJson) {
@@ -382,29 +386,31 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       await generatePackageJson(config, rootConfig, skipDeps);
 
       if (config.doesContainVscodeSettingsJson) {
-        promises.push(generateVscodeSettings(config));
+        pooledGenerators.push(() => generateVscodeSettings(config));
       }
       if (doesContainJsOrTs(config)) {
-        promises.push(generateTsconfig(config));
-        promises.push(generateOxfmtConfig(config));
-        promises.push(generateOxlintConfig(config, rootConfig));
+        pooledGenerators.push(
+          () => generateTsconfig(config),
+          () => generateOxfmtConfig(config),
+          () => generateOxlintConfig(config, rootConfig)
+        );
       } else if (!config.isRoot && config.doesContainPackageJson && doesContainJsOrTs(rootConfig)) {
         // Monorepo verification can invoke oxlint from every workspace. Give
         // non-code packages a local config so oxlint does not climb to the
         // root config and reject root-only type-aware options from a package cwd.
-        promises.push(generateOxlintConfig(config, rootConfig));
+        pooledGenerators.push(() => generateOxlintConfig(config, rootConfig));
       }
       if (config.depending.pyright) {
-        promises.push(generatePyrightConfigJson(config));
+        pooledGenerators.push(() => generatePyrightConfigJson(config));
       }
     }
-    await Promise.all(promises);
+    await Promise.all(pooledGenerators.map((generate) => generate()));
     // Run after every pooled generator write so normalization cannot overwrite a concurrent
     // update, and before cleanup so formatter metadata caches observe the changed files.
-    renormalizeTrackedTextFiles(rootDirPath);
+    await renormalizeTrackedTextFiles(rootDirPath);
     // Refresh lock files
     try {
-      refreshBunLock(rootDirPath);
+      await refreshBunLock(rootDirPath);
     } catch (error) {
       // A failed install must fail the CLI: exiting 0 with a stale or missing Bun lockfile would
       // hide a broken managed configuration.
@@ -422,7 +428,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       console.error('Failed to normalize the Bun lockfile:', (error as Error | undefined)?.message ?? error);
       hasInvalidPackageConfig = true;
     }
-    spawnSync('bun', ['cleanup'], rootDirPath);
+    await spawnAndReturnStatus('bun', ['cleanup'], rootDirPath);
   }
   return hasInvalidPackageConfig;
 }
@@ -432,19 +438,19 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
  * repository or in wbfy's managed lists, never by switching the linker. Returns false when the
  * install fails.
  */
-function probeIsolatedBunInstall(
+async function probeIsolatedBunInstall(
   rootDirPath: string,
   rootConfig: PackageConfig,
   previousGlobalStore: boolean | undefined,
   useGlobalStore: boolean
-): boolean {
+): Promise<boolean> {
   // A layout switch must probe from a clean tree because Bun does not remove the previous layout's leftovers.
   if (previousGlobalStore !== useGlobalStore) {
     removeNodeModules(rootDirPath, rootConfig);
   }
   // Retry once so a transient failure (registry hiccup, flaky lifecycle script) does not
   // masquerade as a layout incompatibility.
-  if (spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1) === 0) return true;
+  if ((await spawnAndReturnStatus('bun', ['install'], rootDirPath, 1)) === 0) return true;
 
   // Clean up the failed attempt so later installs do not run on a polluted tree.
   removeNodeModules(rootDirPath, rootConfig);
@@ -473,11 +479,11 @@ function removeNodeModules(rootDirPath: string, rootConfig: PackageConfig): void
   }
 }
 
-function refreshBunLock(rootDirPath: string): void {
+async function refreshBunLock(rootDirPath: string): Promise<void> {
   // wbfy should update only the packages it explicitly manages through bun add.
   // Running bun update here refreshes unrelated application dependencies and
   // can change product behavior, so keep the existing lock and reconcile it.
-  const status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1);
+  const status = await spawnAndReturnStatus('bun', ['install'], rootDirPath, 1);
   if (status === 0) return;
   throw new Error(`Failed to refresh Bun lockfile: bun install exited with status ${status}`);
 }

@@ -1,7 +1,8 @@
-import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { spawnOrUndefined } from './spawnUtil.js';
 
 /**
  * The version wbfy's own package.json carries in the repository. `@semantic-release/npm` rewrites
@@ -22,20 +23,16 @@ const wbfyDirPathInRepo = path.join('packages', 'wbfy');
  * `<short commit hash>[-dirty]-local` when wbfy runs from its own git checkout. Undefined when
  * neither is available (e.g. an unreleased build extracted from a source archive).
  */
-export function getWbfyVersionLabel(): string | undefined {
+export function getWbfyVersionLabel(): Promise<string | undefined> {
   // Neither the installed package.json nor the git state of wbfy's own checkout can change
   // mid-run, and computing the label spawns several git subprocesses, so it is computed once.
-  if (!hasComputedVersionLabel) {
-    cachedVersionLabel = computeWbfyVersionLabel();
-    hasComputedVersionLabel = true;
-  }
+  cachedVersionLabel ??= computeWbfyVersionLabel();
   return cachedVersionLabel;
 }
 
-let hasComputedVersionLabel = false;
-let cachedVersionLabel: string | undefined;
+let cachedVersionLabel: Promise<string | undefined> | undefined;
 
-function computeWbfyVersionLabel(): string | undefined {
+async function computeWbfyVersionLabel(): Promise<string | undefined> {
   const { name, version, dirPath } = readWbfyPackageJson();
   if (!version.startsWith(unreleasedVersionPrefix)) return version;
 
@@ -43,15 +40,15 @@ function computeWbfyVersionLabel(): string | undefined {
   // target repository (node_modules, or a vendored/extracted source tree) is that repository — its
   // commit says nothing about the wbfy build that ran. Only wbfy's own location inside its own
   // repository identifies a genuine checkout, so anything else falls back to the version-less label.
-  const gitRootDirPath = runGit(['rev-parse', '--show-toplevel'], dirPath);
+  const gitRootDirPath = await runGit(['rev-parse', '--show-toplevel'], dirPath);
   if (
     !gitRootDirPath ||
     path.relative(gitRootDirPath, dirPath) !== wbfyDirPathInRepo ||
-    !isWbfyRepository(gitRootDirPath)
+    !(await isWbfyRepository(gitRootDirPath))
   ) {
     return undefined;
   }
-  const commitHash = runGit(['rev-parse', '--short=8', 'HEAD'], dirPath);
+  const commitHash = await runGit(['rev-parse', '--short=8', 'HEAD'], dirPath);
   if (!commitHash) return undefined;
   // The commit alone would misidentify a build made from an edited checkout, so uncommitted changes
   // are reported too — but only under packages/*/src, packages/*/bin and packages/*/configs, the
@@ -62,29 +59,30 @@ function computeWbfyVersionLabel(): string | undefined {
   // Manifests stay out on purpose, even though an edited `exports` map can redirect which code
   // loads: wbfy GENERATES package.json, so including it would make every run report itself dirty.
   // The label is best-effort build provenance, not a reproducible-build attestation.
-  const isDirty = getGitDirtyState(gitRootDirPath);
+  const isDirty = await getGitDirtyState(gitRootDirPath);
   if (isDirty === undefined) return undefined;
   if (isDirty) return `${commitHash}-dirty-local`;
   // An unmodified checkout sitting on a release tag runs exactly the code that was published under
   // that version, so it is labeled with the version instead of the commit that only wbfy developers
   // could resolve back to one.
-  return findReleasedVersionAtHead(name, dirPath) ?? `${commitHash}-local`;
+  return (await findReleasedVersionAtHead(name, dirPath)) ?? `${commitHash}-local`;
 }
 
 /** `@semantic-release/npm` tags each release `<package name>@<version>`. */
-function findReleasedVersionAtHead(packageName: string, cwd: string): string | undefined {
+async function findReleasedVersionAtHead(packageName: string, cwd: string): Promise<string | undefined> {
   const tagPrefix = `${packageName}@`;
   // A commit carries at most one release tag per package, so the first match is the only match.
-  return runGit(['tag', '--points-at', 'HEAD'], cwd)
+  const tags = await runGit(['tag', '--points-at', 'HEAD'], cwd);
+  return tags
     ?.split('\n')
     .find((tag) => tag.startsWith(tagPrefix))
     ?.slice(tagPrefix.length);
 }
 
-function isWbfyRepository(gitRootDirPath: string): boolean {
+async function isWbfyRepository(gitRootDirPath: string): Promise<boolean> {
   // Every remote counts, not just `origin`: a fork checkout carries the canonical repository as
   // `upstream`, and it is still a genuine wbfy checkout whose commit identifies the build.
-  const remoteUrls = runGit(['remote', '-v'], gitRootDirPath);
+  const remoteUrls = await runGit(['remote', '-v'], gitRootDirPath);
   return !!remoteUrls?.split('\n').some((line) => isCanonicalRemoteUrl(line.split(/[ \t]+/u)[1] ?? ''));
 }
 
@@ -112,8 +110,8 @@ function isCanonicalRemoteUrl(url: string): boolean {
   }
 }
 
-function getGitDirtyState(gitRootDirPath: string): boolean | undefined {
-  const proc = child_process.spawnSync(
+async function getGitDirtyState(gitRootDirPath: string): Promise<boolean | undefined> {
+  const proc = await spawnOrUndefined(
     'git',
     [
       'status',
@@ -124,14 +122,14 @@ function getGitDirtyState(gitRootDirPath: string): boolean | undefined {
       `:(glob)${path.dirname(wbfyDirPathInRepo)}/*/bin/**`,
       `:(glob)${path.dirname(wbfyDirPathInRepo)}/*/configs/**`,
     ],
-    { cwd: gitRootDirPath, encoding: 'utf8', stdio: 'pipe' }
+    { cwd: gitRootDirPath }
   );
-  return proc.status === 0 ? !!proc.stdout.trim() : undefined;
+  return proc?.status === 0 ? !!proc.stdout.trim() : undefined;
 }
 
-function runGit(args: string[], cwd: string): string | undefined {
-  const proc = child_process.spawnSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
-  return proc.status === 0 ? proc.stdout.trim() || undefined : undefined;
+async function runGit(args: string[], cwd: string): Promise<string | undefined> {
+  const proc = await spawnOrUndefined('git', args, { cwd });
+  return proc?.status === 0 ? proc.stdout.trim() || undefined : undefined;
 }
 
 let cachedWbfyPackageJson: { name: string; version: string; dirPath: string } | undefined;

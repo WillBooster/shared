@@ -14,7 +14,7 @@ async function consumesWithTsconfig(tsconfigContent: string | undefined): Promis
     if (tsconfigContent !== undefined) {
       await fs.promises.writeFile(path.join(dirPath, 'tsconfig.json'), tsconfigContent);
     }
-    return consumesGeneratedWorkerTypes({ dirPath });
+    return await consumesGeneratedWorkerTypes({ dirPath });
   } finally {
     await fs.promises.rm(dirPath, { force: true, recursive: true });
   }
@@ -55,11 +55,11 @@ test('honors exclude and relative extends chains when resolving the effective fi
       '{ "extends": "./tsconfig.base.json", "compilerOptions": {} }'
     );
     // The source-only include inherited from the base config cannot match the root-level file.
-    expect(consumesGeneratedWorkerTypes({ dirPath })).toBe(false);
+    expect(await consumesGeneratedWorkerTypes({ dirPath })).toBe(false);
 
     // A package-name extends contributes no file set, so the default `**` inclusion applies.
     await fs.promises.writeFile(path.join(dirPath, 'tsconfig.json'), '{ "extends": "@tsconfig/bun/tsconfig.json" }');
-    expect(consumesGeneratedWorkerTypes({ dirPath })).toBe(true);
+    expect(await consumesGeneratedWorkerTypes({ dirPath })).toBe(true);
 
     // Inherited patterns stay relative to the config that declared them (tsc semantics): a base
     // config one level up whose include covers the package DOES reach the package's root file.
@@ -67,17 +67,17 @@ test('honors exclude and relative extends chains when resolving the effective fi
     await fs.promises.mkdir(packageDirPath);
     await fs.promises.writeFile(path.join(dirPath, 'tsconfig.base.json'), '{ "include": ["pkg/**/*"] }');
     await fs.promises.writeFile(path.join(packageDirPath, 'tsconfig.json'), '{ "extends": "../tsconfig.base.json" }');
-    expect(consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(true);
+    expect(await consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(true);
     // `${configDir}` resolves to the consuming package's directory, wherever declared.
     await fs.promises.writeFile(path.join(packageDirPath, 'tsconfig.json'), '{ "include": ["${configDir}/**/*"] }');
-    expect(consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(true);
+    expect(await consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(true);
     // A directory include (extensionless, no glob) covers its whole subtree, like tsc.
     await fs.promises.writeFile(path.join(dirPath, 'tsconfig.base.json'), '{ "include": ["pkg"] }');
     await fs.promises.writeFile(path.join(packageDirPath, 'tsconfig.json'), '{ "extends": "../tsconfig.base.json" }');
-    expect(consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(true);
+    expect(await consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(true);
     // ...while a base config covering only a sibling directory does not.
     await fs.promises.writeFile(path.join(dirPath, 'tsconfig.base.json'), '{ "include": ["other/**/*"] }');
-    expect(consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(false);
+    expect(await consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(false);
   } finally {
     await fs.promises.rm(dirPath, { force: true, recursive: true });
   }
@@ -99,7 +99,7 @@ test('counts tracked source mentions as consumption but ignores the managed .git
     await fs.promises.writeFile(path.join(dirPath, '.gitignore'), '/worker-configuration.d.ts\n');
     await fs.promises.writeFile(path.join(dirPath, 'tsconfig.json'), '{ "include": ["src/**/*"] }');
     await git('add', '-A');
-    expect(consumesGeneratedWorkerTypes({ dirPath })).toBe(false);
+    expect(await consumesGeneratedWorkerTypes({ dirPath })).toBe(false);
 
     // A tracked tsconfig mentioning the file (here: an exclude entry) is classified by the
     // resolved file-set logic, not the grep — the exclusion must win.
@@ -108,7 +108,7 @@ test('counts tracked source mentions as consumption but ignores the managed .git
       '{ "include": ["**/*"], "exclude": ["worker-configuration.d.ts"] }'
     );
     await git('add', '-A');
-    expect(consumesGeneratedWorkerTypes({ dirPath })).toBe(false);
+    expect(await consumesGeneratedWorkerTypes({ dirPath })).toBe(false);
     await fs.promises.writeFile(path.join(dirPath, 'tsconfig.json'), '{ "include": ["src/**/*"] }');
     await git('add', '-A');
 
@@ -119,7 +119,7 @@ test('counts tracked source mentions as consumption but ignores the managed .git
       '/// <reference path="../worker-configuration.d.ts" />\n'
     );
     await git('add', '-A');
-    expect(consumesGeneratedWorkerTypes({ dirPath })).toBe(true);
+    expect(await consumesGeneratedWorkerTypes({ dirPath })).toBe(true);
   } finally {
     await fs.promises.rm(dirPath, { force: true, recursive: true });
   }
@@ -149,7 +149,7 @@ test('manages worker types regardless of machine-local untracked dotenv files or
         scripts: { 'gen-types': 'wrangler types --env-file .dev.vars' },
       },
     });
-    expect(generatesWorkerTypes(config)).toBe(true);
+    expect(await generatesWorkerTypes(config)).toBe(true);
 
     // `wb start` and `wb deploy` create gitignored dotenv files on every dev machine, and `wb gen-code`
     // never reads them (`wrangler types --env-file` pins inference to the committed fnox.toml stub).
@@ -160,7 +160,7 @@ test('manages worker types regardless of machine-local untracked dotenv files or
     await fs.promises.writeFile(path.join(dirPath, '.env.cloudflare'), 'CLOUDFLARE_API_TOKEN=x\n');
     await fs.promises.writeFile(path.join(dirPath, '.env.local'), 'X=1\n');
     await fs.promises.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{ "name": "app", "vars": { "A": "1" } }');
-    expect(generatesWorkerTypes(config)).toBe(true);
+    expect(await generatesWorkerTypes(config)).toBe(true);
   } finally {
     await fs.promises.rm(dirPath, { force: true, recursive: true });
   }

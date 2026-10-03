@@ -1,6 +1,6 @@
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
+import { spawnOrUndefined } from '../utils/spawnUtil.js';
 import { getWbfyDirPath } from '../utils/version.js';
 
 /**
@@ -10,11 +10,11 @@ import { getWbfyDirPath } from '../utils/version.js';
  * `npm init` and a freshly compromised release. The same script runs on CI and on the self-hosted
  * runners, so every machine ends up with byte-identical settings.
  */
-export function ensureGlobalReleaseAgeGates(): boolean {
-  const { status } = spawnSync('bash', [path.join(getWbfyDirPath(), 'configs', 'applyReleaseAgeGate.sh')], {
+export async function ensureGlobalReleaseAgeGates(): Promise<boolean> {
+  const result = await spawnOrUndefined('bash', [path.join(getWbfyDirPath(), 'configs', 'applyReleaseAgeGate.sh')], {
     stdio: 'inherit',
   });
-  if (status === 0) return true;
+  if (result?.status === 0) return true;
 
   console.warn('Failed to apply the minimum-release-age policy to the global package-manager configs.');
   return false;

@@ -9,9 +9,9 @@ export async function setupLabels(config: PackageConfig): Promise<void> {
     const { repoAuthor: owner, repoName: repo } = config;
     if (!owner || !repo) return;
     if (owner !== 'WillBooster' && owner !== 'WillBoosterLab') return;
-    if (!hasGitHubToken(owner)) return;
+    if (!(await hasGitHubToken(owner))) return;
 
-    const octokit = getOctokit(owner);
+    const octokit = await getOctokit(owner);
 
     try {
       await setupLabel(octokit, owner, repo, 'd1: x-easy :hedgehog:', 'EDE9FE');

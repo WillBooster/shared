@@ -28,7 +28,7 @@ test('marks tracked CRLF text for renormalization when introducing text attribut
     fs.writeFileSync(path.join(tempDirPath, 'fixtures', '.gitattributes'), '* text=auto eol=lf\n');
 
     await generateGitattributes(createConfig({ dirPath: tempDirPath }));
-    renormalizeTrackedTextFiles(tempDirPath);
+    await renormalizeTrackedTextFiles(tempDirPath);
 
     expect(await git(tempDirPath, 'ls-files', '--eol', 'Main.java')).toContain('attr/text eol=lf');
     expect(fs.readFileSync(path.join(tempDirPath, 'Main.java'), 'utf8')).not.toContain('\r\n');
@@ -72,7 +72,7 @@ test('reads tracked EOL metadata beyond Node default buffer', async () => {
     expect(Buffer.byteLength(eolMetadata)).toBeGreaterThan(1024 * 1024);
     expect(eolMetadata).toContain('\tzzzz.java\0');
 
-    renormalizeTrackedTextFiles(tempDirPath);
+    await renormalizeTrackedTextFiles(tempDirPath);
 
     expect(fs.readFileSync(path.join(tempDirPath, 'zzzz.java'), 'utf8')).not.toContain('\r\n');
   } finally {
@@ -80,10 +80,10 @@ test('reads tracked EOL metadata beyond Node default buffer', async () => {
   }
 });
 
-test('skips renormalization outside a Git repository', () => {
+test('skips renormalization outside a Git repository', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gitattributes-no-git-'));
   try {
-    expect(() => renormalizeTrackedTextFiles(tempDirPath)).not.toThrow();
+    await renormalizeTrackedTextFiles(tempDirPath);
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }

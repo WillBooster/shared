@@ -16,7 +16,7 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     if (isReusableWorkflowsRepo(packageConfig.repository)) return;
 
     const dirPath = packageConfig.dirPath;
-    const globIgnore = getGlobIgnore(dirPath);
+    const globIgnore = await getGlobIgnore(dirPath);
     const docFiles = await fg.glob('**/*.md', { dot: true, cwd: dirPath, ignore: globIgnore });
     if (options.isVerbose) {
       console.info(`Found ${docFiles.length} markdown files in ${dirPath}`);
