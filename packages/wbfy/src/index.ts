@@ -348,7 +348,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       generateGitHubTemplates(rootConfig),
       generateIdeaSettings(rootConfig),
       fixRailwayignore(rootConfig),
-      generateRenovateJsonc(rootConfig),
+      generateRenovateJsonc(rootConfig, allPackageConfigs),
       generateReleaserc(rootConfig),
       ...(shouldRunWorkflows ? [generateWorkflows(rootConfig)] : []),
       ...(shouldRunSelfContainedWorkflows ? [generateSelfContainedWorkflows(rootConfig, allPackageConfigs)] : []),

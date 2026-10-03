@@ -16,10 +16,17 @@ const generatedSettings = {
 };
 
 type Settings = Partial<typeof generatedSettings> & {
-  packageRules?: { matchPackageNames: string[]; enabled?: boolean }[];
+  packageRules?: {
+    matchPackageNames: string[];
+    matchFileNames?: string[];
+    enabled?: boolean;
+    allowedVersions?: string;
+    description?: string;
+  }[];
 };
 
 const managedFileName = 'renovate.jsonc';
+const blitzNextRuleDescription = 'Keep Blitz apps on Next.js 15';
 
 // wbfy supports one canonical Renovate location. Non-canonical configs are fixed in the target
 // repository instead of being parsed, merged, or deleted here.
@@ -34,7 +41,10 @@ const nonCanonicalConfigPaths = [
   '.renovaterc.json5',
 ];
 
-export async function generateRenovateJsonc(config: PackageConfig): Promise<void> {
+export async function generateRenovateJsonc(
+  config: PackageConfig,
+  allPackageConfigs: PackageConfig[] = [config]
+): Promise<void> {
   return logger.functionIgnoringException('generateRenovateJsonc', async () => {
     const filePath = path.resolve(config.dirPath, managedFileName);
     const managedFileStats = await fs.promises.lstat(filePath).catch(() => {});
@@ -81,7 +91,7 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
       return;
     }
 
-    const newSettings = buildSettings(config, oldSettings);
+    const newSettings = buildSettings(config, allPackageConfigs, oldSettings);
     const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(
       oldContent,
       newSettings as Record<string, unknown>
@@ -95,8 +105,12 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
   });
 }
 
-function buildSettings(config: PackageConfig, oldSettings: Settings | undefined): Settings {
-  const settings = oldSettings
+function buildSettings(
+  config: PackageConfig,
+  allPackageConfigs: PackageConfig[],
+  oldSettings: Settings | undefined
+): Settings {
+  const settings: Settings = oldSettings
     ? (merge.all([generatedSettings, oldSettings, generatedSettings], {
         arrayMerge: overwriteMerge,
       }) as Settings)
@@ -107,6 +121,19 @@ function buildSettings(config: PackageConfig, oldSettings: Settings | undefined)
     : existingExtends.includes(sharedPreset)
       ? existingExtends
       : [sharedPreset, ...existingExtends];
+  settings.packageRules = settings.packageRules?.filter((rule) => rule.description !== blitzNextRuleDescription);
+  const blitzManifestPaths = allPackageConfigs
+    .filter((packageConfig) => packageConfig.depending.blitz)
+    .map((packageConfig) => path.relative(config.dirPath, path.join(packageConfig.dirPath, 'package.json')));
+  if (blitzManifestPaths.length > 0) {
+    settings.packageRules ??= [];
+    settings.packageRules.push({
+      description: blitzNextRuleDescription,
+      matchPackageNames: ['next'],
+      matchFileNames: blitzManifestPaths,
+      allowedVersions: '15.x',
+    });
+  }
   return settings;
 }
 
