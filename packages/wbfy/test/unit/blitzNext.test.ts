@@ -18,7 +18,13 @@ const manifestSchema = z.object({
 });
 const renovateSchema = z.object({
   packageRules: z
-    .array(z.object({ allowedVersions: z.string().optional(), matchFileNames: z.array(z.string()).optional() }))
+    .array(
+      z.object({
+        allowedVersions: z.string().optional(),
+        matchFileNames: z.array(z.string()).optional(),
+        matchPackageNames: z.array(z.string()),
+      })
+    )
     .optional(),
 });
 
@@ -46,7 +52,7 @@ test('restricts Renovate to Blitz manifests in a mixed workspace repository', as
     await generateRenovateJsonc(rootConfig, configs);
     const renovatePath = path.join(root, 'renovate.jsonc');
     const renovate = renovateSchema.parse(await Bun.file(renovatePath).json());
-    const rule = renovate.packageRules?.find((entry) => entry.allowedVersions);
+    const rule = renovate.packageRules?.find((entry) => entry.matchPackageNames.includes('next'));
     assert.ok(rule?.allowedVersions);
     for (const config of configs.slice(1)) {
       const manifestPath = path.join(config.dirPath, 'package.json');
@@ -99,7 +105,7 @@ test('converges incompatible Blitz manifests on a stable Next.js 15 pin without 
       }
       const renovatePath = path.join(dirPath, 'renovate.jsonc');
       const renovate = renovateSchema.parse(await Bun.file(renovatePath).json());
-      const rule = renovate.packageRules?.find((entry) => entry.allowedVersions);
+      const rule = renovate.packageRules?.find((entry) => entry.matchPackageNames.includes('next'));
       if (manifest.dependencies.blitz) {
         assert.ok(rule?.allowedVersions);
         expect(semver.satisfies(nextVersion, rule.allowedVersions)).toBe(true);

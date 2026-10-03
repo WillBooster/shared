@@ -77,12 +77,18 @@ export async function generatePackageJson(
   rootConfig: PackageConfig,
   skipAddingDeps: boolean
 ): Promise<void> {
+  const blitzNextVersion = config.depending.blitz ? getBlitzNextVersion() : undefined;
   return logger.functionIgnoringException('generatePackageJson', async () => {
-    await core(config, rootConfig, skipAddingDeps);
+    await core(config, rootConfig, skipAddingDeps, blitzNextVersion);
   });
 }
 
-async function core(config: PackageConfig, rootConfig: PackageConfig, skipAddingDeps: boolean): Promise<void> {
+async function core(
+  config: PackageConfig,
+  rootConfig: PackageConfig,
+  skipAddingDeps: boolean,
+  blitzNextVersion: string | undefined
+): Promise<void> {
   const workerTypesScriptError = getWorkerTypesScriptError(config);
   if (workerTypesScriptError) throw new Error(workerTypesScriptError);
   const filePath = path.resolve(config.dirPath, 'package.json');
@@ -93,7 +99,10 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   pruneCapabilityDependentCompilerDependencies(config, jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
-  pinBlitzNextDependency(config, jsonObj);
+  if (blitzNextVersion) {
+    jsonObj.dependencies.next = blitzNextVersion;
+    delete jsonObj.devDependencies.next;
+  }
   // On a first run there is no manifest for `bun add` to update reliably. Write the resolved
   // dependency versions into the new manifest directly; the final repository-wide `bun install`
   // then installs them and remains the authoritative failure check.
@@ -133,13 +142,11 @@ function serializePackageJson(jsonObj: WritablePackageJson): string {
   return JSON.stringify(sortPackageJson(jsonObj), undefined, 2);
 }
 
-function pinBlitzNextDependency(config: PackageConfig, jsonObj: WritablePackageJson): void {
-  if (!config.depending.blitz) return;
+function getBlitzNextVersion(): string {
   // Blitz's RPC transform relies on Next.js 15's default webpack pipeline.
   const version = getLatestAgeGatedVersionBelow('next', '16.0.0');
   assert.ok(version && semver.major(version) === 15, 'Could not resolve a stable Next.js 15 release');
-  jsonObj.dependencies.next = version;
-  delete jsonObj.devDependencies.next;
+  return version;
 }
 
 async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
@@ -1076,17 +1083,16 @@ function getLatestAgeGatedDependencyVersion(dependency: string): string {
     return latestVersion;
   }
 
-  return getAgeGatedVersionsDescending(times)[0] ?? '*';
+  return getStableVersionsDescending(times)[0] ?? '*';
 }
 
-/** Every stable release in `times` that already cleared the age gate, newest first. */
-function getAgeGatedVersionsDescending(times: Record<string, string>): string[] {
+function getStableVersionsDescending(times: Record<string, string>, applyAgeGate = true): string[] {
   const now = Date.now();
   return Object.entries(times)
     .filter(([version]) => semver.valid(version))
     .filter(([version]) => (semver.prerelease(version)?.length ?? 0) === 0)
     .filter(([, publishedAt]) => Number.isFinite(Date.parse(publishedAt)))
-    .filter(([, publishedAt]) => now - Date.parse(publishedAt) >= packageAgeGateMs)
+    .filter(([, publishedAt]) => !applyAgeGate || now - Date.parse(publishedAt) >= packageAgeGateMs)
     .toSorted(([versionA], [versionB]) => semver.rcompare(versionA, versionB))
     .map(([version]) => version);
 }
@@ -1265,12 +1271,11 @@ function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageC
 }
 
 /**
- * The highest release of `packageName` below `exclusiveUpperBound` that already cleared the age
- * gate, or undefined when the registry lookup fails or no such release exists yet.
+ * The highest stable release below the bound that satisfies the package's release-age policy.
  */
 function getLatestAgeGatedVersionBelow(packageName: string, exclusiveUpperBound: string): string | undefined {
-  return getAgeGatedVersionsDescending(getNpmPackageTimes(packageName)).find((version) =>
-    semver.lt(version, exclusiveUpperBound)
+  return getStableVersionsDescending(getNpmPackageTimes(packageName), shouldApplyPackageAgeGate(packageName)).find(
+    (version) => semver.lt(version, exclusiveUpperBound)
   );
 }
 
