@@ -202,7 +202,8 @@ function findTestProject(project: Project, argv: TestCommandArgv): Project {
  * Both steps type-check, which reads as redundant until the recap says how they differ: `cleanup`
  * type-checks through oxlint, which sees only the files it lints (the shared config ignores
  * `__generated__`, `@types`, `dist`, ...), while `typecheck` runs the compiler over the whole
- * tsconfig program. Every label is derived from the resolved projects rather than hard-coded, so a
+ * tsconfig program (a workspace root without sources of its own has no such program and goes
+ * through oxlint there too). Every label is derived from the resolved projects rather than hard-coded, so a
  * repository whose `cleanup` runs flake8 or `dart analyze` is never told it ran oxlint.
  */
 async function buildStepDetails(argv: VerifyCodeCommandArgv): Promise<{ cleanup: string; typecheck?: string }> {
@@ -215,15 +216,16 @@ async function buildStepDetails(argv: VerifyCodeCommandArgv): Promise<{ cleanup:
   if (!projects) return { cleanup };
 
   // Asks the real builders what they would run rather than restating their conditions, so a change
-  // to either command cannot leave these labels describing something it stopped doing. Only the
-  // project selection is restated: `lint` and `typeCheck` apply it around their builders, not
-  // inside them.
-  const runsTypeAwareLint = projects.descendants.some(
-    (project) =>
-      project.hasOwnSourceCode && buildLintCommand(project, { fix: true, format: true })?.includes('--type-aware')
+  // to either command cannot leave these labels describing something it stopped doing.
+  const runsTypeAwareLint = projects.descendants.some((project) =>
+    buildLintCommand(project, { fix: true, format: true })?.includes('--type-aware')
   );
   const typeCheckCommands = [
-    ...new Set(projects.descendants.flatMap((project) => buildTypeCheckCommands(project).map(toDisplayCommand))),
+    ...new Set(
+      projects.descendants.flatMap((project) =>
+        buildTypeCheckCommands(project, projects.descendants).map(toDisplayCommand)
+      )
+    ),
   ];
   return {
     cleanup: runsTypeAwareLint ? `${cleanup} (oxlint --type-aware --type-check)` : cleanup,
@@ -231,9 +233,12 @@ async function buildStepDetails(argv: VerifyCodeCommandArgv): Promise<{ cleanup:
   };
 }
 
-/** Drops the package-manager placeholder `runWithSpawn` expands, leaving the tool call to show. */
+/**
+ * Drops the package-manager placeholder `runWithSpawn` expands and the targets of a workspace
+ * root's oxlint run, leaving the tool call to show.
+ */
 function toDisplayCommand(command: string): string {
-  return command.replace(/^(?:BUN|YARN) /u, '');
+  return command.replace(/^(?:BUN|YARN) /u, '').replace(/ \.(?: --ignore-pattern \S+)*$/u, '');
 }
 
 /** Times completed steps for the final summary; failed steps propagate their error. */

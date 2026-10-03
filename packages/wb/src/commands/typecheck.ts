@@ -9,7 +9,11 @@ import type { Project } from '../project.js';
 import { runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
+import { buildLintCommand, buildWorkspaceIgnorePatterns } from './lint.js';
+
 const builder = {} as const;
+
+const tscCommand = 'BUN tsc --noEmit';
 
 type TypeCheckCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
 export type TypeCheckCommandArgv = ArgumentsCamelCase<TypeCheckCommandOptions>;
@@ -32,7 +36,7 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
 
   let removedNextDir = false as boolean;
   const promises = projects.descendants.map(async (project) => {
-    const commands = buildTypeCheckCommands(project);
+    const commands = buildTypeCheckCommands(project, projects.descendants);
     while (commands.length > 0) {
       const exitCode = await runWithSpawnInParallel(commands.join(' && '), project, argv, {
         ci: projects.descendants.length > 1,
@@ -41,7 +45,8 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
       });
 
       const nextDirPath = path.join(project.dirPath, '.next');
-      if (exitCode && fs.existsSync(nextDirPath)) {
+      // Only the compiler reads Next.js's generated types; deleting the cache cannot fix an oxlint error.
+      if (exitCode && commands.includes(tscCommand) && fs.existsSync(nextDirPath)) {
         fs.rmSync(nextDirPath, { force: true, recursive: true });
         console.info(chalk.yellow('Removed `.next` directory. We will re-try type checking.'));
         removedNextDir = true;
@@ -72,26 +77,39 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
  * `wb verify`'s step recap can name the same tools instead of re-deriving the conditions, which
  * would silently go stale the next time this list changes.
  */
-export function buildTypeCheckCommands(project: Project): string[] {
-  const commands: string[] = [];
-  if (project.hasOwnSourceCode) {
-    commands.push(...buildTypeScriptTypeCheckCommands(project));
-  }
+export function buildTypeCheckCommands(project: Project, projects: Project[]): string[] {
+  const commands = buildTypeScriptTypeCheckCommands(project, projects);
   if (!project.packageJson.workspaces && project.hasOwnDependency('pyright')) {
     commands.push('YARN pyright');
   }
   return commands;
 }
 
-function buildTypeScriptTypeCheckCommands(project: Project): string[] {
+function buildTypeScriptTypeCheckCommands(project: Project, projects: Project[]): string[] {
+  if (project.packageJson.workspaces && !project.hasSourceCode) {
+    // Not `tsc`: the tsconfig.json of a workspace root without sources of its own also includes
+    // its workspaces' sources, which type-check only under each workspace's own compiler options,
+    // and tsc cannot check a subset of a project. Oxlint reports diagnostics only for the files it
+    // visits, each under its nearest tsconfig.json, so the root checks through it the files that
+    // no workspace compiles (e.g. `test/`, `scripts/`, `*.config.ts`). Oxlint applies config
+    // overrides after `-A all`, so override lint errors can still fail this check.
+    const command = buildLintCommand(
+      project,
+      { fix: false, format: false, quiet: true, allowAllRules: true },
+      undefined,
+      buildWorkspaceIgnorePatterns(project, projects, compilesItself)
+    );
+    return command?.includes('--type-check') ? [command] : [];
+  }
+  return compilesItself(project) ? [tscCommand] : [];
+}
+
+function compilesItself(project: Project): boolean {
   // TypeScript 7 ships the native compiler as `typescript` (`tsc`); wbfy removes the
   // `@typescript/native-preview` (tsgo) preview from non-Next.js repos (Next.js-family
   // repos keep it for `next build`), so repos still on the preview should run wbfy
   // instead of relying on a tsgo fallback here.
-  if (project.hasOwnDependency('typescript')) {
-    return ['BUN tsc --noEmit'];
-  }
-  return [];
+  return project.hasOwnDependency('typescript');
 }
 
 export const tcCommand: CommandModule<unknown, TypeCheckCommandOptions> = {

@@ -109,12 +109,6 @@ export class Project {
     return fs.existsSync(path.join(this.dirPath, 'src'));
   }
 
-  /** A workspace root without sources of its own runs neither lint nor typecheck commands. */
-  @memoizeOne
-  get hasOwnSourceCode(): boolean {
-    return !this.packageJson.workspaces || this.hasSourceCode;
-  }
-
   @memoizeOne
   get name(): string {
     return this.packageJson.name || 'unknown';
