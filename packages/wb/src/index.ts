@@ -1,13 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { removeNpmAndYarnEnvironmentVariables, treeKill } from '@willbooster/shared-lib-node/src';
 import { protectRunScriptArgs } from '../bin/runArgs.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+import { z } from 'zod';
 
 import { buildIfNeededCommand } from './commands/buildIfNeeded.js';
 import { checkEnvCommand } from './commands/checkEnv.js';
+import { codeGaugeCommand } from './commands/codeGauge.js';
 import { concurrentlyCommand } from './commands/concurrently.js';
 import { deployCommand } from './commands/deploy.js';
 import { dotenvCommand } from './commands/dotenv.js';
@@ -36,6 +39,7 @@ import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
 import { verifyCodeCommand } from './commands/verifyCode.js';
 import { waitOnCommand } from './commands/waitOn.js';
 import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
+import { readNearestPackageJson } from './utils/nearestPackageJson.js';
 
 protectRunScriptArgs(process.argv);
 
@@ -67,6 +71,7 @@ await yargs(hideBin(process.argv))
   .command(verifyCodeCommand)
   .command(buildIfNeededCommand)
   .command(checkEnvCommand)
+  .command(codeGaugeCommand)
   .command(concurrentlyCommand)
   .command(deployCommand)
   .command(dotenvCommand)
@@ -132,14 +137,8 @@ function isBunNodeShim(nodePath: string): boolean {
 }
 
 function getVersion(): string {
-  let packageJsonDir = path.dirname(new URL(import.meta.url).pathname);
-  while (!fs.existsSync(path.join(packageJsonDir, 'package.json'))) {
-    packageJsonDir = path.dirname(packageJsonDir);
-  }
-  const packageJson = JSON.parse(fs.readFileSync(path.join(packageJsonDir, 'package.json'), 'utf8')) as {
-    version: string;
-  };
-  return packageJson.version;
+  const { packageJson } = readNearestPackageJson(fileURLToPath(import.meta.url));
+  return z.object({ version: z.string() }).parse(packageJson).version;
 }
 
 let shuttingDown = false;

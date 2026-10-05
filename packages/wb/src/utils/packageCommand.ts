@@ -49,6 +49,6 @@ export async function runPackageCommand(
   return exitCode;
 }
 
-function printCommand(command: string, cwd: string): void {
+export function printCommand(command: string, cwd: string): void {
   console.info('\n' + chalk.cyan(chalk.bold('Command:'), command) + chalk.gray(` at ${cwd}`));
 }

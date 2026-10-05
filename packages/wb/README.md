@@ -19,6 +19,8 @@ Commands:
                                  WB_ENV. Prefix scripts that write to remote
                                  environments with this command to fail fast on
                                  missing secrets.
+  wb code-gauge                  Print code-gauge threshold violations as
+                                 warnings without failing
   wb concurrently <commands...>  Run commands concurrently
   wb deploy                      Deploy to the WB_ENV environment. A Cloudflare
                                  Workers app (vinext or plain Worker): validate
@@ -184,6 +186,25 @@ overwrites its previous log; `--dry-run` leaves logs untouched.
 A package whose `package.json` defines a `test/post` script gets a `post` phase: after the unit and E2E tests of every package pass, `wb test-on-ci` and `wb test` run the script of each such package through the package manager, including a package that has no such tests. Use it for a test suite the JavaScript runners cannot run, such as Gradle, Maven, or RSpec. The script cannot be filtered, so `wb test` and `wb verify --full` skip it when test paths, `--grep`, or Playwright arguments select tests.
 
 For `wb verify` and `wb verify --full`, a log-write failure falls back to printing subsequent raw output. If a log cannot be completed, the command reports the log error and fails an otherwise successful run; an existing nonzero command exit status is preserved.
+
+## Code-quality warnings
+
+`wb code-gauge` runs [`code-gauge check`](https://github.com/WillBooster/code-gauge#threshold-check-code-gauge-check)
+on the project and prints every threshold violation: functions and files over a metric limit, and
+duplicated blocks. `--base <ref>` limits them to what the working tree changed since the merge-base
+with `<ref>`. The command always exits with 0, including when the check cannot complete.
+
+```sh
+bun wb code-gauge
+bun wb code-gauge --base origin/HEAD
+```
+
+`wb verify` and `wb verify --full` run the same check as their `code-gauge` step and print the
+warnings after the recap: the total, how many are in code changed since the merge-base with
+`origin/HEAD`, and at most 10 violations, those first. The step never fails verification.
+
+wb uses its own `code-gauge` and code-gauge's default thresholds; a `code-gauge.config.json` in the
+repository overrides them.
 
 ## Slidev checks
 
