@@ -86,11 +86,13 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
   const violations = check.report?.violations ?? [];
   // A branch check without a report (e.g. no `origin/HEAD`) only costs the ordering and the count,
   // which the header then says; with no violation to order, there is nothing to say.
-  const branchKeys = branchCheck.report && new Set(branchCheck.report.violations.map(toViolationKey));
-  const branchViolations = violations.filter((violation) => branchKeys?.has(toViolationKey(violation)));
+  const branchReport = branchCheck.report;
+  const branchViolations = violations.filter((violation) =>
+    branchReport?.violations.some((branchViolation) => isSameViolation(violation, branchViolation))
+  );
   const orderedViolations = [
     ...branchViolations,
-    ...violations.filter((violation) => !branchKeys?.has(toViolationKey(violation))),
+    ...violations.filter((violation) => !branchViolations.includes(violation)),
   ];
   const lines = formatViolationLines(orderedViolations.slice(0, MAX_VERIFY_VIOLATION_LINES));
   const omittedCount = orderedViolations.length - lines.length;
@@ -103,7 +105,7 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
           : '')
     );
   }
-  const branchSummary = branchKeys
+  const branchSummary = branchReport
     ? describeBranchViolations(branchViolations.length)
     : `not ordered by this branch's changes (no report for --base ${VERIFY_BASE_REF})`;
   return formatWarnings(check, lines, branchSummary);
@@ -130,8 +132,16 @@ function describeBranchViolations(count: number): string {
   return count === 0 ? 'none in code this branch changed' : `${count} in code this branch changed (listed first)`;
 }
 
-function toViolationKey(violation: Violation): string {
-  return `${violation.kind}:${violation.file}:${violation.startLine}-${violation.endLine}`;
+/**
+ * Whether a violation of the whole-project report is the one the branch report holds. code-gauge
+ * merges overlapping duplicated blocks after limiting them to the changed lines, so the same block
+ * can span fewer lines in the branch report; other kinds keep their span.
+ */
+function isSameViolation(violation: Violation, branchViolation: Violation): boolean {
+  if (violation.kind !== branchViolation.kind || violation.file !== branchViolation.file) return false;
+  return violation.kind === 'duplication'
+    ? violation.startLine <= branchViolation.endLine && branchViolation.startLine <= violation.endLine
+    : violation.startLine === branchViolation.startLine && violation.endLine === branchViolation.endLine;
 }
 
 async function runCodeGaugeCheck(project: Project, base?: string): Promise<CodeGaugeCheck> {
