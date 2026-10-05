@@ -36,6 +36,7 @@ const reportSchema = z.object({
   }),
   violations: z.array(violationSchema),
   errors: z.array(z.string()),
+  warnings: z.array(z.string()),
 });
 
 type Location = z.infer<typeof locationSchema>;
@@ -175,6 +176,10 @@ function formatWarnings(check: CodeGaugeCheck, violationLines: string[], branchS
       ...(check.report?.errors ?? []),
       check.stderr.trim()
     );
+  }
+  const measurementWarnings = check.report?.warnings ?? [];
+  if (measurementWarnings.length > 0) {
+    sections.push(chalk.yellow('code-gauge: some files were not fully measured'), ...measurementWarnings);
   }
   const summary = check.report?.summary;
   if (summary?.violationCount) {
