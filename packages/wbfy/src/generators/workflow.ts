@@ -355,9 +355,9 @@ async function writeWorkflowYaml(
     if (newSettings.jobs?.[kind]?.uses && existingJob && !parseOrgReusableWorkflowCall(existingJob.uses)) {
       return;
     }
-    if (kind === 'release' && config.repoAuthor === 'WillBooster' && existingJob && newSettings.jobs?.release) {
-      if (parseOrgReusableWorkflowCall(existingJob.uses)?.workflowName !== 'release') return;
-      newSettings.jobs.release.uses = existingJob.uses;
+    if (kind === 'release' && config.repoAuthor === 'WillBooster' && existingJob) {
+      const call = parseOrgReusableWorkflowCall(existingJob.uses);
+      if (call?.workflowName !== 'release' || call.ref !== 'main' || call.extension !== 'yml') return;
     }
     newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
   }

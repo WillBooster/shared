@@ -93,3 +93,31 @@ jobs:
     expect(fs.readFileSync(filePath, 'utf8')).toBe(source);
   });
 });
+
+test('preserves a pinned release file when production deployment exists', async () => {
+  await withTempWorkflowsRepo('wbfy-pinned-release-deploy-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(
+      path.join(workflowsPath, 'deploy-production.yml'),
+      'on: workflow_dispatch\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo deploy\n'
+    );
+    const filePath = path.join(workflowsPath, 'release.yml');
+    const source = `name: Release
+on:
+  push:
+    branches: [main]
+jobs:
+  release:
+    uses: WillBooster/reusable-workflows/.github/workflows/release.yml@a1ef88e7d8
+    secrets:
+      GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+`;
+    fs.writeFileSync(filePath, source);
+    const config = createConfig({ dirPath, isRoot: true });
+    config.depending.semanticRelease = true;
+    config.release.branches = ['main'];
+
+    await generateWorkflows(config);
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(source);
+  });
+});
