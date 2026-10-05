@@ -355,7 +355,7 @@ async function writeWorkflowYaml(
     if (newSettings.jobs?.[kind]?.uses && existingJob && !parseOrgReusableWorkflowCall(existingJob.uses)) {
       return;
     }
-    if (kind === 'release' && existingJob?.uses && newSettings.jobs?.release) {
+    if (kind === 'release' && config.repoAuthor === 'WillBooster' && existingJob?.uses && newSettings.jobs?.release) {
       newSettings.jobs.release.uses = existingJob.uses;
     }
     newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
