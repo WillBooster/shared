@@ -105,6 +105,7 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
       printCodeGaugeWarnings(progress);
     } catch (error) {
       if (!(error instanceof PackageCommandError)) console.error(error);
+      printCodeGaugeWarnings(progress);
       exitCode = error instanceof PackageCommandError ? error.exitCode : 1;
       process.exitCode = exitCode;
     } finally {
@@ -168,10 +169,8 @@ async function verifyCode(
         printCodeGaugeCommand(project);
         return 0;
       }
-      const { exitCode, warnings } = await checkCodeGaugeForVerify(project);
-      if (exitCode === 0) progress.codeGaugeWarnings = warnings;
-      else if (warnings) console.info(warnings);
-      return exitCode;
+      progress.codeGaugeWarnings = await checkCodeGaugeForVerify(project);
+      return 0;
     })
   );
 }

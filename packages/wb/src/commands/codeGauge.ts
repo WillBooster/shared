@@ -35,6 +35,7 @@ const reportSchema = z.object({
     duplicationViolationCount: z.number(),
   }),
   violations: z.array(violationSchema),
+  errors: z.array(z.string()),
 });
 
 type Location = z.infer<typeof locationSchema>;
@@ -69,15 +70,14 @@ export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> =
     const check = await runCodeGaugeCheck(project, argv.base);
     const warnings = formatWarnings(check, formatViolationLines(check.report?.violations ?? []));
     if (warnings) console.info(warnings);
-    process.exitCode = toExitCode(check.status);
   },
 };
 
 /**
  * Checks the whole project, and what the current branch changed to list those violations first.
- * `warnings` is undefined when there is nothing to report.
+ * Returns undefined when there is nothing to report.
  */
-export async function checkCodeGaugeForVerify(project: Project): Promise<{ exitCode: number; warnings?: string }> {
+export async function checkCodeGaugeForVerify(project: Project): Promise<string | undefined> {
   const [check, branchCheck] = await Promise.all([
     runCodeGaugeCheck(project),
     runCodeGaugeCheck(project, VERIFY_BASE_REF),
@@ -100,16 +100,11 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<{ exitC
     );
   }
   const branchSummary = branchKeys && describeBranchViolations(branchViolations.length);
-  return { exitCode: toExitCode(check.status), warnings: formatWarnings(check, lines, branchSummary) };
+  return formatWarnings(check, lines, branchSummary);
 }
 
 export function printCodeGaugeCommand(project: Project, base?: string): void {
   printCommand(['code-gauge', ...buildCheckArgs(base)].join(' '), project.dirPath);
-}
-
-/** Violations and an incomplete check are warnings for now: return `status` to make them fail the caller. */
-function toExitCode(_status: number): number {
-  return 0;
 }
 
 function describeBranchViolations(count: number): string {
@@ -122,12 +117,17 @@ function toViolationKey(violation: Violation): string {
 }
 
 async function runCodeGaugeCheck(project: Project, base?: string): Promise<CodeGaugeCheck> {
-  // Run by node, not by the runtime running wb: code-gauge loads a native addon.
-  const { status, stderr, stdout } = await spawnAsync('node', [resolveCodeGaugeCliPath(), ...buildCheckArgs(base)], {
-    cwd: project.dirPath,
-    env: project.env,
-  });
-  return { report: parseReport(stdout), status: status ?? 2, stderr };
+  try {
+    // Run by node, not by the runtime running wb: code-gauge loads a native addon.
+    const { status, stderr, stdout } = await spawnAsync('node', [resolveCodeGaugeCliPath(), ...buildCheckArgs(base)], {
+      cwd: project.dirPath,
+      env: project.env,
+    });
+    return { report: parseReport(stdout), status: status ?? 2, stderr };
+  } catch (error) {
+    // A code-gauge that cannot be located or started is an incomplete check, not a wb failure.
+    return { status: 2, stderr: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 function buildCheckArgs(base?: string): string[] {
@@ -152,7 +152,12 @@ function parseReport(stdout: string): CodeGaugeCheck['report'] {
 function formatWarnings(check: CodeGaugeCheck, violationLines: string[], branchSummary?: string): string | undefined {
   const sections: string[] = [];
   if (!check.report || (check.status !== 0 && check.status !== 1)) {
-    sections.push(chalk.yellow(`code-gauge: the check is incomplete (exit code ${check.status})`), check.stderr.trim());
+    // With `--json`, code-gauge reports the files it could not measure in the report, not on stderr.
+    sections.push(
+      chalk.yellow(`code-gauge: the check is incomplete (exit code ${check.status})`),
+      ...(check.report?.errors ?? []),
+      check.stderr.trim()
+    );
   }
   const summary = check.report?.summary;
   if (summary?.violationCount) {
