@@ -6,7 +6,6 @@ import path from 'node:path';
 
 import merge from 'deepmerge';
 import * as yaml from 'js-yaml';
-import { z } from 'zod';
 
 import { logger } from '../logger.js';
 import { hasFnoxSyncFailed, resolveFnoxCiAgeKeySecretName } from './fnoxToml.js';
@@ -15,10 +14,11 @@ import type { PackageConfig } from '../packageConfig.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
 import { repoResolvesPrivatePackages } from '../utils/privatePackages.js';
+import { isSkippedReleaseCaller, parseOrgReusableWorkflowCall } from '../utils/orgReusableWorkflowCall.js';
 import { runAllInPool } from '../utils/promisePool.js';
 import { parseShellCommands } from '../utils/shellParser.js';
 import { dumpYamlOver } from '../utils/yamlUtil.js';
-import { assertPrivateWorkflowRunners } from './workflowRunnerPolicy.js';
+import { assertPrivateWorkflowRunners, selfHostedRunnerInputSchema } from './workflowRunnerPolicy.js';
 
 interface Workflow {
   name?: string;
@@ -190,25 +190,6 @@ const workflows = {
 
 type KnownKind = keyof typeof workflows | 'deploy';
 
-/**
- * Parses a `uses:` value calling one of WillBooster's own reusable workflows (or the
- * WillBoosterLab sync mirror) into the workflow name (without extension) and git ref. Only those
- * follow the contract wbfy enforces — callers of another organization's same-named repository are
- * left alone. GitHub treats owner/repository names case-insensitively, so the comparison does
- * too, while the workflow path and ref stay case-sensitive.
- */
-function parseOrgReusableWorkflowCall(
-  uses: string | undefined
-): { workflowName: string; extension: string; ref: string } | undefined {
-  const match = /^([^/]+)\/([^/]+)\/\.github\/workflows\/([^/@]+?)\.(ya?ml)@(.+)$/u.exec(uses ?? '');
-  if (!match) return undefined;
-  const owner = match[1]!.toLowerCase();
-  if ((owner !== 'willbooster' && owner !== 'willboosterlab') || match[2]!.toLowerCase() !== 'reusable-workflows') {
-    return undefined;
-  }
-  return { workflowName: match[3]!, extension: match[4]!, ref: match[5]! };
-}
-
 export async function generateWorkflows(rootConfig: PackageConfig): Promise<void> {
   if (!rootConfig.isRepoVisibilityKnown) {
     console.warn('Skipped workflow generation because repository visibility is unknown.');
@@ -355,6 +336,7 @@ async function writeWorkflowYaml(
     if (newSettings.jobs?.[kind]?.uses && existingJob && !parseOrgReusableWorkflowCall(existingJob.uses)) {
       return;
     }
+    if (kind === 'release' && existingJob && isSkippedReleaseCaller(config.repoAuthor, existingJob.uses)) return;
     newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
   }
 
@@ -608,8 +590,6 @@ export function hasCloudflareDeployWorkflow(workflowsDirPath: string): boolean {
   // Case-insensitive owner/repository (GitHub treats them so), case-sensitive path/ref — matching
   // parseOrgReusableWorkflowCall, used for the unparseable-YAML raw-text fallback only.
   const deployCallPattern = /[^/]+\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@/iu;
-  const callsDeployWorkflow = (uses: string | undefined): boolean =>
-    parseOrgReusableWorkflowCall(uses)?.workflowName === 'deploy';
   return entries.some((entry) => {
     if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name)) return false;
     if (entry.name.startsWith('deploy')) return true;
@@ -622,7 +602,9 @@ export function hasCloudflareDeployWorkflow(workflowsDirPath: string): boolean {
     try {
       const workflow = yaml.load(content) as Workflow | undefined;
       if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
-        return Object.values(workflow.jobs).some((job) => callsDeployWorkflow(job?.uses));
+        return Object.values(workflow.jobs).some(
+          (job) => parseOrgReusableWorkflowCall(job?.uses)?.workflowName === 'deploy'
+        );
       }
       return false;
     } catch {
@@ -667,6 +649,15 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // their secrets untouched.
   const orgWorkflowCall = parseOrgReusableWorkflowCall(job.uses);
   const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
+  if (
+    secrets &&
+    kind === 'release' &&
+    config.repoAuthor === 'WillBooster' &&
+    calledReusableWorkflow === 'release' &&
+    orgWorkflowCall?.extension === 'yml'
+  ) {
+    secrets.DISCORD_WEBHOOK_URL ??= '${{ secrets.DISCORD_WEBHOOK_URL_FOR_RELEASE }}';
+  }
   const requiredPermissions = calledReusableWorkflow ? reusableWorkflowPermissions[calledReusableWorkflow] : undefined;
   if (requiredPermissions) job.permissions = { ...requiredPermissions };
   if (secrets && calledReusableWorkflow === 'test') {
@@ -736,19 +727,8 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
       delete job.with.github_hosted_runner;
     }
     if (!config.isPublicRepo && job.with.runs_on !== undefined) {
-      const labels = z
-        .string()
-        .transform((value, ctx) => {
-          try {
-            return JSON.parse(value) as unknown;
-          } catch {
-            ctx.addIssue({ code: 'custom', message: 'Expected JSON runner labels' });
-            return z.NEVER;
-          }
-        })
-        .pipe(z.array(z.string()))
-        .safeParse(job.with.runs_on);
-      if (labels.success && labels.data.includes('self-hosted')) {
+      const labels = selfHostedRunnerInputSchema.safeParse(job.with.runs_on);
+      if (labels.success) {
         job.with.runs_on = JSON.stringify(labels.data);
       } else {
         console.warn(`Removed runs_on from ${job.uses}: private repositories require a self-hosted label array.`);

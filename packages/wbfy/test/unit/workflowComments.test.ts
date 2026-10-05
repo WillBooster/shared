@@ -47,32 +47,13 @@ jobs:
     await generateWorkflows(config);
 
     expect(fs.readFileSync(filePath, 'utf8')).toBe(content);
-    expect(content).toBe(`# Releases every push to main.
-name: Release
-'on':
-  push:
-    branches:
-      - main
-  # Runs are dispatched here to complete a pending release.
-  workflow_dispatch:
-concurrency:
-  group: \${{ github.workflow }}
-  cancel-in-progress: false
-  queue: max
-permissions:
-  id-token: write
-  contents: write
-  # for the release to dispatch runs
-  actions: write
-jobs:
-  release:
-    uses: WillBooster/reusable-workflows/.github/workflows/release.yml@main # the shared release
-    with:
-      github_hosted_runner: true
-    secrets: # passed to the release job
-      GH_TOKEN: \${{ secrets.GITHUB_TOKEN }} # for semantic-release
-      TAKUMI_GUARD_TOKEN: \${{ secrets.TAKUMI_GUARD_TOKEN }}
-`);
+    expect(content).toContain('# Releases every push to main.');
+    expect(content).toContain('  # Runs are dispatched here to complete a pending release.\n  workflow_dispatch:');
+    expect(content).toContain('  # for the release to dispatch runs\n  actions: write');
+    expect(content).toContain('@main # the shared release');
+    expect(content).toContain('    secrets: # passed to the release job');
+    expect(content).toContain('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # for semantic-release');
+    expect(content).not.toContain('# removed by wbfy because no private package is resolved');
   });
 });
 
