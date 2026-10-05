@@ -355,6 +355,9 @@ async function writeWorkflowYaml(
     if (newSettings.jobs?.[kind]?.uses && existingJob && !parseOrgReusableWorkflowCall(existingJob.uses)) {
       return;
     }
+    if (kind === 'release' && existingJob?.uses && newSettings.jobs?.release) {
+      newSettings.jobs.release.uses = existingJob.uses;
+    }
     newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
   }
 
@@ -667,6 +670,16 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // their secrets untouched.
   const orgWorkflowCall = parseOrgReusableWorkflowCall(job.uses);
   const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
+  if (
+    secrets &&
+    kind === 'release' &&
+    config.repoAuthor === 'WillBooster' &&
+    calledReusableWorkflow === 'release' &&
+    orgWorkflowCall?.extension === 'yml' &&
+    fs.existsSync(path.resolve(config.dirPath, '.github', 'workflows', 'release.yml'))
+  ) {
+    secrets.DISCORD_WEBHOOK_URL ??= '${{ secrets.DISCORD_WEBHOOK_URL_FOR_RELEASE }}';
+  }
   const requiredPermissions = calledReusableWorkflow ? reusableWorkflowPermissions[calledReusableWorkflow] : undefined;
   if (requiredPermissions) job.permissions = { ...requiredPermissions };
   if (secrets && calledReusableWorkflow === 'test') {
