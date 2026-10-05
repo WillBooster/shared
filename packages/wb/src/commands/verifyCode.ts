@@ -10,7 +10,7 @@ import { normalizeBunLockfile } from '../utils/bunLockfile.js';
 import { PackageCommandError, runPackageCommand } from '../utils/packageCommand.js';
 import { startVerificationOutput } from '../utils/verificationOutput.js';
 
-import { checkCodeGaugeForVerify, printCodeGaugeCommand } from './codeGauge.js';
+import { checkCodeGaugeForVerify, printCodeGaugeCommandsForVerify } from './codeGauge.js';
 import { buildLintCommand, lint, type LintCommandArgv } from './lint.js';
 import { checkSlidevDecks, findSlidevDecks } from './slidevCheck.js';
 import {
@@ -166,7 +166,7 @@ async function verifyCode(
   await runStep(progress, { detail: 'code-gauge check', name: 'code-gauge' }, () =>
     runInProcessCommand('code-gauge', async () => {
       if (argv.dryRun) {
-        printCodeGaugeCommand(project);
+        printCodeGaugeCommandsForVerify(project);
         return 0;
       }
       progress.codeGaugeWarnings = await checkCodeGaugeForVerify(project);

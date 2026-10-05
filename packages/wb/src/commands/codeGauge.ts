@@ -64,7 +64,7 @@ export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> =
       process.exit(1);
     }
     if (argv.dryRun) {
-      printCodeGaugeCommand(project, argv.base);
+      printCodeGaugeCommands(project, [argv.base]);
       return;
     }
     const check = await runCodeGaugeCheck(project, argv.base);
@@ -103,8 +103,14 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
   return formatWarnings(check, lines, branchSummary);
 }
 
-export function printCodeGaugeCommand(project: Project, base?: string): void {
-  printCommand(['code-gauge', ...buildCheckArgs(base)].join(' '), project.dirPath);
+export function printCodeGaugeCommandsForVerify(project: Project): void {
+  printCodeGaugeCommands(project, [undefined, VERIFY_BASE_REF]);
+}
+
+function printCodeGaugeCommands(project: Project, bases: (string | undefined)[]): void {
+  for (const base of bases) {
+    printCommand(['node', resolveCodeGaugeCliPath(), ...buildCheckArgs(base)].join(' '), project.dirPath);
+  }
 }
 
 function describeBranchViolations(count: number): string {
