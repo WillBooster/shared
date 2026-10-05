@@ -209,7 +209,10 @@ function formatViolationLines(violations: Violation[]): string[] {
   return violations.map((violation) => {
     const exceeded = violation.exceeded.map(formatExceededThreshold).join(', ');
     if (violation.kind === 'file') return `${violation.file}: ${exceeded}`;
-    if (violation.kind === 'function') return `${formatLocation(violation)} ${violation.name}: ${exceeded}`;
+    if (violation.kind === 'function') {
+      // A computed name can span lines in the source; a violation stays on one line.
+      return `${formatLocation(violation)} ${violation.name?.replaceAll(/\s*[\n\r]\s*/g, ' ')}: ${exceeded}`;
+    }
 
     const partners = violation.partners ?? [];
     const omittedPartnerCount = partners.length - MAX_PARTNER_LOCATIONS;
