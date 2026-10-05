@@ -49,8 +49,38 @@ it('shows the warnings after the verification recap without failing', async () =
   );
 }, 60_000);
 
+it('lists a duplicated block the branch changed first although the two reports span it differently', async () => {
+  // Two duplicated blocks of z.ts share a line, so the whole-project report merges them into 1-39
+  // while the branch report, limited to the changed first line, holds only 1-20.
+  const lines = Array.from(
+    { length: 40 },
+    (_, i) => `state.field${i} = process${i}(state.field${(i + 1) % 40}, ${i});`
+  );
+  const joined = (firstLine: string): string =>
+    `${[firstLine, ...lines.slice(1, 20)].join('\n')} ${lines.slice(20).join('\n')}\n`;
+  const dir = await createRepository({
+    'a.ts': `${lines.slice(0, 20).join('\n')}\n`,
+    'b.ts': `${lines.slice(20).join('\n')}\n`,
+    'z.ts': joined(lines[0] as string),
+  });
+  await fs.writeFile(path.join(dir, 'z.ts'), joined(`${lines[0]} // comment`));
+
+  const result = await runCli(dir, ['verify']);
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  expect(stripVTControlCharacters(result.stdout)).toContain(
+    '3 duplicated blocks), 1 in code this branch changed (listed first)\nz.ts:1-39: '
+  );
+}, 60_000);
+
 /** A repository whose `origin/HEAD` commit has one violating function and whose working tree adds another. */
 async function createFixture(): Promise<string> {
+  const dir = await createRepository({ 'committed.ts': violatingFunction('committed') });
+  await fs.writeFile(path.join(dir, 'worktree.ts'), violatingFunction('worktree'));
+  return dir;
+}
+
+/** A git repository whose `origin/HEAD` commit holds the given files. */
+async function createRepository(files: Record<string, string>): Promise<string> {
   const tmp = path.resolve('.tmp');
   await fs.mkdir(tmp, { recursive: true });
   const dir = await fs.mkdtemp(path.join(tmp, 'code-gauge-'));
@@ -60,7 +90,9 @@ async function createFixture(): Promise<string> {
     JSON.stringify({ name: 'code-gauge-fixture', packageManager: 'bun@1.4.2' })
   );
   await fs.writeFile(path.join(dir, '.gitignore'), '.wb/\n');
-  await fs.writeFile(path.join(dir, 'committed.ts'), violatingFunction('committed'));
+  for (const [name, content] of Object.entries(files)) {
+    await fs.writeFile(path.join(dir, name), content);
+  }
   for (const args of [
     ['init', '--quiet'],
     ['add', '.'],
@@ -80,7 +112,6 @@ async function createFixture(): Promise<string> {
     const git = await spawnAsync('git', args, { cwd: dir });
     expect(git.status, git.stderr).toBe(0);
   }
-  await fs.writeFile(path.join(dir, 'worktree.ts'), violatingFunction('worktree'));
   return dir;
 }
 
