@@ -21,6 +21,7 @@ const userAgentInstructionContent = `- Repos live under \`~/ghq/github.com\`; al
 - No AI attribution (e.g., \`Co-Authored-By\` trailers, "Generated with ..." footers) in commits, issues, or PRs unless explicitly requested. This hides nothing: if asked which AI agent did the work, answer truthfully.
 - Outside \`~/ghq/github.com/{WillBooster,WillBoosterLab}/\`, follow the repository's contribution guide (e.g., CONTRIBUTING.md, \`.github/\`) and issue/PR templates, match its commit and code conventions, and honor its rules on AI-assisted contributions. Write its issues and PRs with only what a reviewer unfamiliar with the work needs to understand and assess it, as concisely as that context allows.
 - Cite a third-party issue or PR from outside its repository only in a code span (e.g., \`owner/repo#123\`), never as a link, unless explicitly requested: GitHub creates a backlink on the cited thread.
+- In anything written to a public repository (e.g., issues, PRs, comments, commits, branch names, code), never reveal a private repository's name, URL, issue/PR numbers, code, logs, or customer names unless already public or explicitly requested; state the need in general terms with a freshly written minimal reproduction instead. If visibility is unknown, run \`gh repo view <owner>/<repo> --json visibility\`.
 `;
 
 /**
