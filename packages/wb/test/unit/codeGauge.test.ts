@@ -10,7 +10,8 @@ import { buildWb } from '../helpers/build.js';
 const cliPath = path.resolve('bin/index.js');
 const fixturePaths: string[] = [];
 const committedViolation = 'committed.ts:1-3 committed: function parameter count 8 (<= 7)';
-const addedViolation = 'added.ts:1-3 added: function parameter count 8 (<= 7)';
+// Named to sort after the committed file, so that listing it first shows the reordering.
+const addedViolation = 'worktree.ts:1-3 worktree: function parameter count 8 (<= 7)';
 
 beforeAll(buildWb, 120_000);
 
@@ -23,7 +24,7 @@ it('prints every violation as a warning and limits them to the changes with --ba
   const all = await runCli(dir, ['code-gauge']);
   expect(all.status, all.stdout + all.stderr).toBe(0);
   expect(stripVTControlCharacters(all.stdout)).toBe(
-    `code-gauge: 2 threshold violations (2 functions, 0 files, 0 duplicated blocks)\n${addedViolation}\n${committedViolation}\n`
+    `code-gauge: 2 threshold violations (2 functions, 0 files, 0 duplicated blocks)\n${committedViolation}\n${addedViolation}\n`
   );
 
   const changed = await runCli(dir, ['code-gauge', '--base', 'HEAD']);
@@ -40,8 +41,9 @@ it('shows the warnings after the verification recap without failing', async () =
   expect(stdout).toMatch(/✔ code-gauge/);
   const header = 'code-gauge: 2 threshold violations (2 functions, 0 files, 0 duplicated blocks)';
   expect(stdout.indexOf('Verified in')).toBeLessThan(stdout.indexOf(header));
-  expect(stdout).toContain(`${header}, 1 in code this branch changed (listed first)\n${addedViolation}\n`);
-  expect(stdout).toContain(committedViolation);
+  expect(stdout).toContain(
+    `${header}, 1 in code this branch changed (listed first)\n${addedViolation}\n${committedViolation}\n`
+  );
   expect(stripVTControlCharacters(await fs.readFile(path.join(dir, '.wb/verify.log'), 'utf8'))).toContain(
     addedViolation
   );
@@ -78,7 +80,7 @@ async function createFixture(): Promise<string> {
     const git = await spawnAsync('git', args, { cwd: dir });
     expect(git.status, git.stderr).toBe(0);
   }
-  await fs.writeFile(path.join(dir, 'added.ts'), violatingFunction('added'));
+  await fs.writeFile(path.join(dir, 'worktree.ts'), violatingFunction('worktree'));
   return dir;
 }
 
