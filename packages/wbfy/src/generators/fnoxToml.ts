@@ -112,7 +112,13 @@ export const FNOX_AGE_PRINCIPALS = [
     name: 'ayame',
     publicKeys: ['age1vxm2gs003ruwm8p6h3hv7xasju2s8k4mxmc34zm6grdwznrs09nq6xz5vz'],
     repositoryScope: {
-      repositories: ['WillBooster/ai-ocr', 'WillBooster/chofu-walking', 'WillBooster/exercode', 'WillBooster/judge'],
+      repositories: [
+        'WillBooster/ai-ocr',
+        'WillBooster/chofu-walking',
+        'WillBooster/exercode',
+        'WillBooster/judge',
+        'WillBooster/smartse-zoom-bot',
+      ],
     },
   },
 ] as const satisfies readonly FnoxAgePrincipal[];
