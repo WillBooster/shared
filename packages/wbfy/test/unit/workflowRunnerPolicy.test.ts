@@ -61,3 +61,34 @@ test('private custom runner violations stop generation before any workflow is re
     expect(fs.readdirSync(workflowsPath)).toEqual(['custom.yaml']);
   });
 });
+
+test('private pinned release runners must be fixed before generation while valid callers remain unchanged', async () => {
+  await withTempWorkflowsRepo('wbfy-private-pinned-', async (dirPath, workflowsPath) => {
+    const filePath = path.join(workflowsPath, 'release.yml');
+    const caller = {
+      jobs: {
+        release: {
+          uses: 'WillBooster/reusable-workflows/.github/workflows/release.yml@v1.2.3',
+          with: { github_hosted_runner: true, runs_on: JSON.stringify(['ubuntu-latest']) },
+        },
+      },
+    };
+    const config = createConfig({ dirPath, isRoot: true, repoAuthor: 'WillBooster', isPublicRepo: false });
+    const unsafeContent = YAML.stringify(caller);
+    fs.writeFileSync(filePath, unsafeContent);
+    await assert.rejects(generateWorkflows(config), /jobs\.release\.with must select self-hosted/u);
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(unsafeContent);
+    expect(fs.readdirSync(workflowsPath)).toEqual(['release.yml']);
+
+    caller.jobs.release.with = {
+      github_hosted_runner: false,
+      runs_on: JSON.stringify(['self-hosted', 'Linux', 'large']),
+    };
+    const safeContent = YAML.stringify(caller);
+    fs.writeFileSync(filePath, safeContent);
+    await generateWorkflows(config);
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(safeContent);
+    await generateWorkflows(config);
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(safeContent);
+  });
+});

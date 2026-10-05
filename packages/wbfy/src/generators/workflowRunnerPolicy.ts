@@ -5,14 +5,33 @@ import * as yaml from 'js-yaml';
 import { z } from 'zod';
 
 import type { PackageConfig } from '../packageConfig.js';
+import { isSkippedReleaseCaller, parseOrgReusableWorkflowCall } from '../utils/orgReusableWorkflowCall.js';
 
 const runnerSchema = z.union([z.string(), z.array(z.string())]);
+export const selfHostedRunnerInputSchema = z
+  .string()
+  .transform((value, context) => {
+    try {
+      return JSON.parse(value) as unknown;
+    } catch {
+      context.addIssue({ code: 'custom', message: 'Expected JSON runner labels' });
+      return z.NEVER;
+    }
+  })
+  .pipe(z.array(z.string()))
+  .refine((labels) => labels.includes('self-hosted'));
+const privateCallerInputsSchema = z.object({
+  github_hosted_runner: z.literal(false).optional(),
+  runs_on: selfHostedRunnerInputSchema.optional(),
+});
 const workflowSchema = z.object({
   jobs: z.record(
     z.string(),
     z
       .object({
         'runs-on': runnerSchema.optional(),
+        uses: z.string().optional(),
+        with: z.record(z.string(), z.unknown()).optional(),
         strategy: z.object({ matrix: z.record(z.string(), z.unknown()) }).optional(),
       })
       .nullable()
@@ -27,7 +46,21 @@ export async function assertPrivateWorkflowRunners(config: PackageConfig, workfl
   });
   for (const { name: fileName } of entries.filter((entry) => entry.isFile() && /\.ya?ml$/u.test(entry.name))) {
     const workflow = workflowSchema.parse(yaml.load(await fs.readFile(path.join(workflowsPath, fileName), 'utf8')));
+    const skipsReleaseCaller =
+      fileName === 'release.yml' &&
+      workflow.jobs.release &&
+      isSkippedReleaseCaller(config.repoAuthor, workflow.jobs.release.uses);
     for (const [jobName, job] of Object.entries(workflow.jobs)) {
+      if (
+        skipsReleaseCaller &&
+        job &&
+        parseOrgReusableWorkflowCall(job.uses) &&
+        !privateCallerInputsSchema.safeParse(job.with ?? {}).success
+      ) {
+        throw new Error(
+          `${fileName}: jobs.${jobName}.with must select self-hosted runners in a private repository. Fix the workflow before running wbfy.`
+        );
+      }
       if (!job?.['runs-on']) continue;
       const runner = job['runs-on'];
       if (isSelfHosted(runner)) continue;
