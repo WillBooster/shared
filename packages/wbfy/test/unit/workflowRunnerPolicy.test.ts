@@ -92,3 +92,19 @@ test('private pinned release runners must be fixed before generation while valid
     expect(fs.readFileSync(filePath, 'utf8')).toBe(safeContent);
   });
 });
+
+test('private runner preflight allows an empty with mapping on a regenerated caller', async () => {
+  await withTempWorkflowsRepo('wbfy-private-empty-with-', async (dirPath, workflowsPath) => {
+    const filePath = path.join(workflowsPath, 'test.yml');
+    fs.writeFileSync(
+      filePath,
+      'jobs:\n  test:\n    uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main\n    with:\n'
+    );
+    const config = createConfig({ dirPath, isRoot: true, isPublicRepo: false });
+    await generateWorkflows(config);
+    const written = fs.readFileSync(filePath, 'utf8');
+    callerSchema.parse(YAML.parse(written));
+    await generateWorkflows(config);
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(written);
+  });
+});

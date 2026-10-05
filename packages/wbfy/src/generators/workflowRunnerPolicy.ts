@@ -31,7 +31,7 @@ const workflowSchema = z.object({
       .object({
         'runs-on': runnerSchema.optional(),
         uses: z.string().optional(),
-        with: z.record(z.string(), z.unknown()).optional(),
+        with: z.unknown().optional(),
         strategy: z.object({ matrix: z.record(z.string(), z.unknown()) }).optional(),
       })
       .nullable()
