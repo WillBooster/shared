@@ -84,11 +84,68 @@ function generateAgentInstruction(
   rootConfig: PackageConfig,
   allConfigs: PackageConfig[],
   toolName: string,
-  { ownsGeneratedWorkerTypes, usesWbDeploy }: DeployFacts,
+  deployFacts: DeployFacts,
   extraContent?: string
 ): string {
   const packageManager = 'bun';
   const description = rootConfig.packageJson?.description;
+  const coAuthorInstruction = rootConfig.isWillBoosterRepo
+    ? `\n  - End your commit message with a blank line followed by \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`, the only AI attribution to add.`
+    : '';
+  const prTemplateInstruction = `\n${PULL_REQUEST_BODY_RULES.replaceAll(/^/gm, '  ')}`;
+  const requirementsExemption =
+    " other than the PR body's Requirements section (which states what is currently asked for rather than what the code contains)";
+  const issueTemplateInstruction = `\n- When creating an issue:\n${ISSUE_TEMPLATE_RULES.replaceAll(/^/gm, '  ')}`;
+  const languageInstruction =
+    getDefaultProseLanguage(rootConfig) === 'Japanese'
+      ? `\n- Unless instructed otherwise, write issues, PR bodies, review comments, and documentation for people (README, \`docs/\`) in Japanese, and every other artifact (including commit messages, PR titles, identifiers, code comments, JSDoc, and agent instructions) in English, ${LANGUAGE_BOUND_TEXT_EXCEPTION}.`
+      : `\n- Write every artifact in English, ${LANGUAGE_BOUND_TEXT_EXCEPTION}.`;
+  const projectName = rootConfig.packageJson?.name || path.basename(path.resolve(rootConfig.dirPath));
+  const baseContent = `
+## Project Information
+
+- Name: \`${projectName}\`${description ? `\n- Description: ${description}` : ''}
+- Package Manager: ${packageManager}
+
+## General Instructions
+
+- If on \`main\`, create a new branch; otherwise work on the current branch.
+- Run \`git\` commands one at a time to avoid \`index.lock\` conflicts.${languageInstruction}
+${TEST_WRITING_RULES}
+- When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
+- After making changes, as a rule, run only what is necessary for the change locally, \`${packageManager} run verify\` (type checking and linting; up to 10 minutes) and the relevant tests, and leave the full test suite (\`${packageManager} run verify-full\`; up to 1 hour) to the PR's CI. If PR CI does not run the full suite, run it locally. Fix errors, including CI failures, and re-run until they pass.
+  - Run relevant tests with \`${packageManager} wb test test/unit/example.test.ts --grep 'case name'\` (omit \`--grep\` for the whole file; use \`-w packages/example\` in a monorepo). \`${packageManager} wb verify --full <test-path> --grep 'case name'\` combines verification with selected tests.
+  - Wait for it to finish without restarting it: prefer completion notifications, otherwise the longest permitted wait; no output does not mean it has stopped. If the displayed excerpt is insufficient, read the indicated log file before rerunning. If the environment kills long-running commands, run them detached with a saved log and exit status.
+  - \`verify\` also prints \`code-gauge\` warnings without failing. Fix the ones in code your change touches with behavior-preserving changes that make the code easier to read (e.g., extract a helper, flatten branching, reuse the code it duplicates); skip a fix that only moves complexity elsewhere (e.g., splitting a function mechanically), and never silence a warning by editing \`code-gauge.config.json\` unless asked. When a warning measures the code incorrectly (e.g., misparsed syntax, unrelated code reported as duplicated), search the issues of \`WillBooster/code-gauge\` and, if none covers it, create one with a freshly written minimal reproduction, the command, and its output.
+- Once verified, commit and push to the current (non-main) branch, and create a PR via \`gh\` if none exists for the branch.
+  - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
+  - Always create new commits; avoid \`--amend\`.${prTemplateInstruction}${issueTemplateInstruction}
+- In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.)${requirementsExemption}, describe only the current implementation: drop any statement naming an identifier, feature, or concept you cannot confirm exists in the final diff or the current codebase (e.g., one added and later removed or renamed along the way). Whenever documentation or comments no longer match the current implementation (removed options, deprecated usage, outdated behavior), delete or rewrite them, even in files you are not otherwise changing. Mention a past state only where it is needed to understand why the current design is as it is, or when explicitly asked; files that record history by design (e.g., a changelog) are exempt.
+- Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`, \`gh issue create --body-file -\`).
+- Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.
+- \`AGENTS.md\`, \`CLAUDE.md\`, \`GEMINI.md\`, \`.cursor/rules/general.mdc\`, and \`.gemini/styleguide.md\` are generated from \`AGENTS_EXTRA.md\` and overwritten on every \`wbfy\` run; to change agent instructions, edit only \`AGENTS_EXTRA.md\`.${generateStackInstructions(rootConfig, allConfigs, deployFacts, packageManager)}
+
+${generateAgentCodingStyle(rootConfig, allConfigs)}
+`
+    .replaceAll(/\.\n\n+-/g, '.\n-')
+    .replaceAll(/\n{3,}/g, '\n\n')
+    .trim();
+
+  const hasNewSection = extraContent?.trim().startsWith('#');
+  const normalizedExtraContent = extraContent
+    ? hasNewSection
+      ? '\n\n' + extraContent.trim()
+      : '\n' + extraContent
+    : '';
+  return baseContent + normalizedExtraContent;
+}
+
+function generateStackInstructions(
+  rootConfig: PackageConfig,
+  allConfigs: PackageConfig[],
+  deployFacts: DeployFacts,
+  packageManager: string
+): string {
   const fnoxInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
     ? `\n- Environment variables and secrets live in \`fnox.toml\` (mise + fnox); never create \`.env\`, \`.env.*\`, or \`.dev.vars\` files. Run commands through \`${packageManager} wb ...\` or \`fnox run -P <profile> -- <command>\`. Profile secrets load only when a profile is selected: mode-aware wb commands (e.g. \`wb start\`, \`wb test\`) and \`wb dotenv\` select it themselves (\`wb dotenv\` uses \`WB_ENV\`, else \`FNOX_PROFILE\`, else \`NODE_ENV\`, else the development profile; \`WB_ENV\` accepts only \`development\`/\`test\`/\`staging\`/\`production\`, so use \`FNOX_PROFILE\` for any other profile), while bare \`fnox run\` needs an explicit \`-P <profile>\`.`
     : '';
@@ -102,6 +159,27 @@ function generateAgentInstruction(
   // it no longer resolves, and the reflex fix (switching the linker back) silently reintroduces
   // the phantom dependencies the layout exists to catch.
   const isolatedInstallInstruction = `\n- \`bunfig.toml\` uses Bun's isolated linker, so only declared dependencies resolve. If an import fails to resolve, declare that package in the \`package.json\` that imports it; never switch \`linker\` to \`hoisted\` or add to \`publicHoistPattern\` to work around it.`;
+  const deployPlatformInstructions = generateDeployPlatformInstructions(
+    rootConfig,
+    allConfigs,
+    deployFacts,
+    packageManager
+  );
+  const playwrightTestServerInstruction = hasPlaywrightTestServer(allConfigs)
+    ? `\n- Use \`${packageManager} wb start --mode test\` to launch a web server for debugging or testing.`
+    : '';
+  const runnerInstruction = rootConfig.isWillBoosterRepo
+    ? '\n- Private repositories use self-hosted CI runners. Keep OS/size constraints in an explicit self-hosted label array; fix missing runner capabilities instead of switching to GitHub-hosted runners. The sole approved exception is the Windows desktop build in WillBooster/cheerlings.'
+    : '';
+  return `${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${deployPlatformInstructions}${playwrightTestServerInstruction}${runnerInstruction}`;
+}
+
+function generateDeployPlatformInstructions(
+  rootConfig: PackageConfig,
+  allConfigs: PackageConfig[],
+  { ownsGeneratedWorkerTypes, usesWbDeploy }: DeployFacts,
+  packageManager: string
+): string {
   // Every clause states only a verified fact, reusing the workflow generator's own detectors: the
   // wrangler-config clause needs an actual config file (isCloudflare also matches a mere wrangler
   // mention in a script or workflow), the workflow clause needs a live reusable-deploy caller
@@ -119,60 +197,7 @@ function generateAgentInstruction(
     : fs.existsSync(path.resolve(rootConfig.dirPath, '.railway', 'railway.ts'))
       ? "\n- `.railway/railway.ts` holds the Railway project ID, the service per environment, the service configuration, and the variables Railway supplies (e.g. a linked database's `DATABASE_URL`, which the deployed fnox profile must not export); every other secret and application-read value stays in `fnox.toml`. `wb deploy` applies it and deploys, and `wb deploy --dry-run` only checks the plan."
       : '\n- Railway project information is in the deploy workflows under `.github/workflows`.';
-  const playwrightTestServerInstruction = hasPlaywrightTestServer(allConfigs)
-    ? `\n- Use \`${packageManager} wb start --mode test\` to launch a web server for debugging or testing.`
-    : '';
-  const coAuthorInstruction = rootConfig.isWillBoosterRepo
-    ? `\n  - End your commit message with a blank line followed by \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`, the only AI attribution to add.`
-    : '';
-  const prTemplateInstruction = `\n${PULL_REQUEST_BODY_RULES.replaceAll(/^/gm, '  ')}`;
-  const requirementsExemption =
-    " other than the PR body's Requirements section (which states what is currently asked for rather than what the code contains)";
-  const issueTemplateInstruction = `\n- When creating an issue:\n${ISSUE_TEMPLATE_RULES.replaceAll(/^/gm, '  ')}`;
-  const languageInstruction =
-    getDefaultProseLanguage(rootConfig) === 'Japanese'
-      ? `\n- Unless instructed otherwise, write issues, PR bodies, review comments, and documentation for people (README, \`docs/\`) in Japanese, and every other artifact (including commit messages, PR titles, identifiers, code comments, JSDoc, and agent instructions) in English, ${LANGUAGE_BOUND_TEXT_EXCEPTION}.`
-      : `\n- Write every artifact in English, ${LANGUAGE_BOUND_TEXT_EXCEPTION}.`;
-  const runnerInstruction = rootConfig.isWillBoosterRepo
-    ? '\n- Private repositories use self-hosted CI runners. Keep OS/size constraints in an explicit self-hosted label array; fix missing runner capabilities instead of switching to GitHub-hosted runners. The sole approved exception is the Windows desktop build in WillBooster/cheerlings.'
-    : '';
-  const projectName = rootConfig.packageJson?.name || path.basename(path.resolve(rootConfig.dirPath));
-  const baseContent = `
-## Project Information
-
-- Name: \`${projectName}\`${description ? `\n- Description: ${description}` : ''}
-- Package Manager: ${packageManager}
-
-## General Instructions
-
-- If on \`main\`, create a new branch; otherwise work on the current branch.
-- Run \`git\` commands one at a time to avoid \`index.lock\` conflicts.${languageInstruction}
-${TEST_WRITING_RULES}
-- When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
-- After making changes, as a rule, run only what is necessary for the change locally, \`${packageManager} run verify\` (type checking and linting; up to 10 minutes) and the relevant tests, and leave the full test suite (\`${packageManager} run verify-full\`; up to 1 hour) to the PR's CI. If PR CI does not run the full suite, run it locally. Fix errors, including CI failures, and re-run until they pass.
-  - Run relevant tests with \`${packageManager} wb test test/unit/example.test.ts --grep 'case name'\` (omit \`--grep\` for the whole file; use \`-w packages/example\` in a monorepo). \`${packageManager} wb verify --full <test-path> --grep 'case name'\` combines verification with selected tests.
-  - Wait for it to finish without restarting it: prefer completion notifications, otherwise the longest permitted wait; no output does not mean it has stopped. If the displayed excerpt is insufficient, read the indicated log file before rerunning. If the environment kills long-running commands, run them detached with a saved log and exit status.
-- Once verified, commit and push to the current (non-main) branch, and create a PR via \`gh\` if none exists for the branch.
-  - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
-  - Always create new commits; avoid \`--amend\`.${prTemplateInstruction}${issueTemplateInstruction}
-- In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.)${requirementsExemption}, describe only the current implementation: drop any statement naming an identifier, feature, or concept you cannot confirm exists in the final diff or the current codebase (e.g., one added and later removed or renamed along the way). Whenever documentation or comments no longer match the current implementation (removed options, deprecated usage, outdated behavior), delete or rewrite them, even in files you are not otherwise changing. Mention a past state only where it is needed to understand why the current design is as it is, or when explicitly asked; files that record history by design (e.g., a changelog) are exempt.
-- Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`, \`gh issue create --body-file -\`).
-- Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.
-- \`AGENTS.md\`, \`CLAUDE.md\`, \`GEMINI.md\`, \`.cursor/rules/general.mdc\`, and \`.gemini/styleguide.md\` are generated from \`AGENTS_EXTRA.md\` and overwritten on every \`wbfy\` run; to change agent instructions, edit only \`AGENTS_EXTRA.md\`.${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}${runnerInstruction}
-
-${generateAgentCodingStyle(rootConfig, allConfigs)}
-`
-    .replaceAll(/\.\n\n+-/g, '.\n-')
-    .replaceAll(/\n{3,}/g, '\n\n')
-    .trim();
-
-  const hasNewSection = extraContent?.trim().startsWith('#');
-  const normalizedExtraContent = extraContent
-    ? hasNewSection
-      ? '\n\n' + extraContent.trim()
-      : '\n' + extraContent
-    : '';
-  return baseContent + normalizedExtraContent;
+  return cloudflareInstruction + railwayInstruction;
 }
 
 /**

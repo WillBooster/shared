@@ -10,6 +10,7 @@ import { normalizeBunLockfile } from '../utils/bunLockfile.js';
 import { PackageCommandError, runPackageCommand } from '../utils/packageCommand.js';
 import { startVerificationOutput } from '../utils/verificationOutput.js';
 
+import { checkCodeGaugeForVerify, printCodeGaugeCommand } from './codeGauge.js';
 import { buildLintCommand, lint, type LintCommandArgv } from './lint.js';
 import { checkSlidevDecks, findSlidevDecks } from './slidevCheck.js';
 import {
@@ -49,6 +50,8 @@ interface VerifyStep {
 }
 
 interface VerificationProgress {
+  /** Shown after the recap: a successful step's own output is only saved to the log. */
+  codeGaugeWarnings?: string;
   steps: VerifyStep[];
   reporter?: ReturnType<typeof startVerificationOutput>;
 }
@@ -83,7 +86,7 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
     const reporter = argv.dryRun
       ? undefined
       : startVerificationOutput(path.join(projects.self.dirPath, '.wb', argv.full ? 'verify-full.log' : 'verify.log'));
-    const progress = { steps, reporter };
+    const progress: VerificationProgress = { steps, reporter };
     let exitCode = 0;
     try {
       await verifyCode(projects.self, argv, progress);
@@ -99,6 +102,7 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
       }
       reporter?.succeed();
       printVerifySummary(steps, Boolean(argv.dryRun));
+      printCodeGaugeWarnings(progress);
     } catch (error) {
       if (!(error instanceof PackageCommandError)) console.error(error);
       exitCode = error instanceof PackageCommandError ? error.exitCode : 1;
@@ -157,6 +161,18 @@ async function verifyCode(
   // dropping only `--type-check` from lint saves ~0.1s, far less than the coverage it would cost.
   await runStep(progress, { detail: stepDetails.typecheck, name: 'typecheck' }, () =>
     runInProcessCommand('typecheck', () => typeCheck({ ...argv, _: ['typecheck'] } as unknown as TypeCheckCommandArgv))
+  );
+  await runStep(progress, { detail: 'code-gauge check', name: 'code-gauge' }, () =>
+    runInProcessCommand('code-gauge', async () => {
+      if (argv.dryRun) {
+        printCodeGaugeCommand(project);
+        return 0;
+      }
+      const { exitCode, warnings } = await checkCodeGaugeForVerify(project);
+      if (exitCode === 0) progress.codeGaugeWarnings = warnings;
+      else if (warnings) console.info(warnings);
+      return exitCode;
+    })
   );
 }
 
@@ -300,6 +316,10 @@ function printVerifySummary(steps: VerifyStep[], dryRun: boolean): void {
     const detail = step.detail ? `  ${step.detail}` : '';
     console.info(chalk.green('  ✔ ') + step.name.padEnd(nameWidth) + chalk.gray(`  ${duration}${detail}`));
   }
+}
+
+function printCodeGaugeWarnings(progress: VerificationProgress): void {
+  if (progress.codeGaugeWarnings) console.info(`\n${progress.codeGaugeWarnings}`);
 }
 
 /** Sub-minute steps keep one decimal so a fast step is not flattened to a misleading `0s`. */
