@@ -357,7 +357,7 @@ async function writeWorkflowYaml(
     }
     if (kind === 'release' && config.repoAuthor === 'WillBooster' && existingJob) {
       const call = parseOrgReusableWorkflowCall(existingJob.uses);
-      if (call?.workflowName !== 'release' || call.ref !== 'main' || call.extension !== 'yml') return;
+      if (call?.workflowName !== 'release' || call.ref !== 'main') return;
     }
     newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
   }
