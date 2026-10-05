@@ -113,8 +113,15 @@ export function printCodeGaugeCommandsForVerify(project: Project): void {
 }
 
 function printCodeGaugeCommands(project: Project, bases: (string | undefined)[]): void {
+  let cliPath;
+  try {
+    cliPath = resolveCodeGaugeCliPath();
+  } catch {
+    // The run reports a code-gauge it cannot locate as an incomplete check; a dry run must not fail on it either.
+    cliPath = '<code-gauge CLI not found>';
+  }
   for (const base of bases) {
-    printCommand(['node', resolveCodeGaugeCliPath(), ...buildCheckArgs(base)].join(' '), project.dirPath);
+    printCommand(['node', cliPath, ...buildCheckArgs(base)].join(' '), project.dirPath);
   }
 }
 
