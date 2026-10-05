@@ -90,16 +90,7 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
     let exitCode = 0;
     try {
       await verifyCode(projects.self, argv, progress);
-      if (argv.full) {
-        const deckPaths = await findSlidevDecks(projects.self);
-        if (deckPaths.length > 0) {
-          await runStep(progress, { detail: deckPaths.join(' '), name: 'slidev-check' }, () =>
-            runInProcessCommand('slidev-check', () => checkSlidevDecks(projects.self, deckPaths, argv))
-          );
-        }
-        const detail = argv.grep !== undefined ? describeTestSelection(argv.grep, !argv.targets?.length) : undefined;
-        await runStep(progress, { name: 'test', detail }, () => runProjectTest(projects.self, argv));
-      }
+      if (argv.full) await verifyFully(projects.self, argv, progress);
       reporter?.succeed();
       printVerifySummary(steps, Boolean(argv.dryRun));
       printCodeGaugeWarnings(progress);
@@ -174,6 +165,21 @@ async function verifyCode(
       return 0;
     })
   );
+}
+
+async function verifyFully(
+  project: Project,
+  argv: VerifyCodeCommandArgv,
+  progress: VerificationProgress
+): Promise<void> {
+  const deckPaths = await findSlidevDecks(project);
+  if (deckPaths.length > 0) {
+    await runStep(progress, { detail: deckPaths.join(' '), name: 'slidev-check' }, () =>
+      runInProcessCommand('slidev-check', () => checkSlidevDecks(project, deckPaths, argv))
+    );
+  }
+  const detail = argv.grep !== undefined ? describeTestSelection(argv.grep, !argv.targets?.length) : undefined;
+  await runStep(progress, { name: 'test', detail }, () => runProjectTest(project, argv));
 }
 
 async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
