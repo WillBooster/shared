@@ -83,7 +83,8 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
     runCodeGaugeCheck(project, VERIFY_BASE_REF),
   ]);
   const violations = check.report?.violations ?? [];
-  // A branch check without a report (e.g. no `origin/HEAD`) only costs the ordering and the count.
+  // A branch check without a report (e.g. no `origin/HEAD`) only costs the ordering and the count,
+  // which the header then says; with no violation to order, there is nothing to say.
   const branchKeys = branchCheck.report && new Set(branchCheck.report.violations.map(toViolationKey));
   const branchViolations = violations.filter((violation) => branchKeys?.has(toViolationKey(violation)));
   const orderedViolations = [
@@ -101,7 +102,9 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
           : '')
     );
   }
-  const branchSummary = branchKeys && describeBranchViolations(branchViolations.length);
+  const branchSummary = branchKeys
+    ? describeBranchViolations(branchViolations.length)
+    : `not ordered by this branch's changes (no report for --base ${VERIFY_BASE_REF})`;
   return formatWarnings(check, lines, branchSummary);
 }
 
