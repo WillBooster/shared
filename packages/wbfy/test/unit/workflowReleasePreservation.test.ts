@@ -56,3 +56,40 @@ jobs:
     });
   }
 );
+
+test('new release callers remain stable on regeneration', async () => {
+  await withTempWorkflowsRepo('wbfy-new-release-', async (dirPath, workflowsPath) => {
+    const config = createConfig({ dirPath, isRoot: true });
+    config.depending.semanticRelease = true;
+    config.release.branches = ['main'];
+    const filePath = path.join(workflowsPath, 'release.yml');
+
+    await generateWorkflows(config);
+    const content = fs.readFileSync(filePath, 'utf8');
+    await generateWorkflows(config);
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(content);
+  });
+});
+
+test('preserves a release file calling a custom organization workflow', async () => {
+  await withTempWorkflowsRepo('wbfy-custom-release-', async (dirPath, workflowsPath) => {
+    const filePath = path.join(workflowsPath, 'release.yml');
+    const source = `name: Custom release
+on:
+  push:
+    branches: [main]
+jobs:
+  release:
+    uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main
+`;
+    fs.writeFileSync(filePath, source);
+    const config = createConfig({ dirPath, isRoot: true });
+    config.depending.semanticRelease = true;
+    config.release.branches = ['main'];
+
+    await generateWorkflows(config);
+
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(source);
+  });
+});

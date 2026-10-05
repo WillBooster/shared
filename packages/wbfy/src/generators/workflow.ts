@@ -355,7 +355,8 @@ async function writeWorkflowYaml(
     if (newSettings.jobs?.[kind]?.uses && existingJob && !parseOrgReusableWorkflowCall(existingJob.uses)) {
       return;
     }
-    if (kind === 'release' && config.repoAuthor === 'WillBooster' && existingJob?.uses && newSettings.jobs?.release) {
+    if (kind === 'release' && config.repoAuthor === 'WillBooster' && existingJob && newSettings.jobs?.release) {
+      if (parseOrgReusableWorkflowCall(existingJob.uses)?.workflowName !== 'release') return;
       newSettings.jobs.release.uses = existingJob.uses;
     }
     newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
@@ -675,8 +676,7 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     kind === 'release' &&
     config.repoAuthor === 'WillBooster' &&
     calledReusableWorkflow === 'release' &&
-    orgWorkflowCall?.extension === 'yml' &&
-    fs.existsSync(path.resolve(config.dirPath, '.github', 'workflows', 'release.yml'))
+    orgWorkflowCall?.extension === 'yml'
   ) {
     secrets.DISCORD_WEBHOOK_URL ??= '${{ secrets.DISCORD_WEBHOOK_URL_FOR_RELEASE }}';
   }
