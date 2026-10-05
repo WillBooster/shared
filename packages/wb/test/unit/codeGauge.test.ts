@@ -40,7 +40,7 @@ it('shows the warnings after the verification recap without failing', async () =
   expect(stdout).toMatch(/✔ code-gauge/);
   const header = 'code-gauge: 2 threshold violations (2 functions, 0 files, 0 duplicated blocks)';
   expect(stdout.indexOf('Verified in')).toBeLessThan(stdout.indexOf(header));
-  expect(stdout).toContain(`${header}, the first one in code this branch changed\n${addedViolation}\n`);
+  expect(stdout).toContain(`${header}, 1 in code this branch changed (listed first)\n${addedViolation}\n`);
   expect(stdout).toContain(committedViolation);
   expect(stripVTControlCharacters(await fs.readFile(path.join(dir, '.wb/verify.log'), 'utf8'))).toContain(
     addedViolation

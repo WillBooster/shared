@@ -96,7 +96,9 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
     const command = `${project.packageManagerCommand} wb code-gauge`;
     lines.push(
       `... and ${omittedCount} more: list all with \`${command}\`` +
-        (branchKeys ? `, those in code this branch changed with \`${command} --base ${VERIFY_BASE_REF}\`` : '')
+        (branchViolations.length > MAX_VERIFY_VIOLATION_LINES
+          ? `, those in code this branch changed with \`${command} --base ${VERIFY_BASE_REF}\``
+          : '')
     );
   }
   const branchSummary = branchKeys && describeBranchViolations(branchViolations.length);
@@ -114,8 +116,7 @@ function printCodeGaugeCommands(project: Project, bases: (string | undefined)[])
 }
 
 function describeBranchViolations(count: number): string {
-  if (count === 0) return 'none in code this branch changed';
-  return count === 1 ? 'the first one in code this branch changed' : `the first ${count} in code this branch changed`;
+  return count === 0 ? 'none in code this branch changed' : `${count} in code this branch changed (listed first)`;
 }
 
 function toViolationKey(violation: Violation): string {

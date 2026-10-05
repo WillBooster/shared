@@ -105,11 +105,12 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
       printCodeGaugeWarnings(progress);
     } catch (error) {
       if (!(error instanceof PackageCommandError)) console.error(error);
-      printCodeGaugeWarnings(progress);
       exitCode = error instanceof PackageCommandError ? error.exitCode : 1;
       process.exitCode = exitCode;
     } finally {
       await reporter?.finish(exitCode);
+      // After the failure report, so the warnings do not take lines of the failed step's excerpt.
+      if (exitCode !== 0) printCodeGaugeWarnings(progress);
     }
   },
 };
