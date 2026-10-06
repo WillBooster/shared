@@ -42,5 +42,7 @@ function writeUnscopedPackage(cwd, version) {
   );
   fs.writeFileSync(path.join(dirPath, 'bin/wbfy.js'), `#!/usr/bin/env bun\n\nimport '${name}/bin/wbfy.js';\n`);
   fs.chmodSync(path.join(dirPath, 'bin/wbfy.js'), 0o755);
-  fs.copyFileSync(path.join(cwd, 'README.md'), path.join(dirPath, 'README.md'));
+  for (const fileName of ['README.md', 'LICENSE']) {
+    fs.copyFileSync(path.join(cwd, fileName), path.join(dirPath, fileName));
+  }
 }
