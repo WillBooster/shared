@@ -6,6 +6,8 @@ import scopedPackage from './package.json' with { type: 'json' };
 export const unscopedPackageDir = '.tmp/unscoped-release';
 
 export function verifyConditions(_config, { cwd }) {
+  // The following npm publisher reads pkgRoot during verification, before prepare runs.
+  // Keep this plugin before that publisher in release.config.mjs.
   writeUnscopedPackage(cwd, '0.0.0');
 }
 
