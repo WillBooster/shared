@@ -9,9 +9,9 @@ import { buildWb } from '../helpers/build.js';
 
 const cliPath = path.resolve('bin/index.js');
 const fixturePaths: string[] = [];
-const committedViolation = 'committed.ts:1-3 committed: function parameter count 8 (<= 7)';
+const committedViolation = 'warning: committed.ts:1-3 committed: function parameter count 8 (max 7)';
 // Named to sort after the committed file, so that listing it first shows the reordering.
-const addedViolation = 'worktree.ts:1-3 worktree: function parameter count 8 (<= 7)';
+const addedViolation = 'warning: worktree.ts:1-3 worktree: function parameter count 8 (max 7)';
 
 beforeAll(buildWb, 120_000);
 
@@ -19,12 +19,12 @@ afterEach(async () => {
   await Promise.all(fixturePaths.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
-it('prints every violation as a warning and limits them to the changes with --base', async () => {
+it('prints every violation with its level and limits them to the changes with --base', async () => {
   const dir = await createFixture();
   const all = await runCli(dir, ['code-gauge']);
   expect(all.status, all.stdout + all.stderr).toBe(0);
   expect(stripVTControlCharacters(all.stdout)).toBe(
-    `code-gauge: 2 threshold violations (2 functions, 0 files, 0 duplicated blocks)\n${committedViolation}\n${addedViolation}\n`
+    `code-gauge: 0 errors, 2 warnings (2 functions, 0 files, 0 duplicated blocks)\n${committedViolation}\n${addedViolation}\n`
   );
 
   const changed = await runCli(dir, ['code-gauge', '--base', 'HEAD']);
@@ -33,13 +33,13 @@ it('prints every violation as a warning and limits them to the changes with --ba
   expect(changed.stdout).not.toContain(committedViolation);
 }, 60_000);
 
-it('shows the warnings after the verification recap without failing', async () => {
+it('shows the violations after the verification recap without failing', async () => {
   const dir = await createFixture();
   const result = await runCli(dir, ['verify']);
   expect(result.status, result.stdout + result.stderr).toBe(0);
   const stdout = stripVTControlCharacters(result.stdout);
   expect(stdout).toMatch(/✔ code-gauge/);
-  const header = 'code-gauge: 2 threshold violations (2 functions, 0 files, 0 duplicated blocks)';
+  const header = 'code-gauge: 0 errors, 2 warnings (2 functions, 0 files, 0 duplicated blocks)';
   expect(stdout.indexOf('Verified in')).toBeLessThan(stdout.indexOf(header));
   expect(stdout).toContain(
     `${header}, 1 in code this branch changed (listed first)\n${addedViolation}\n${committedViolation}\n`
@@ -68,7 +68,18 @@ it('lists a duplicated block the branch changed first although the two reports s
   const result = await runCli(dir, ['verify']);
   expect(result.status, result.stdout + result.stderr).toBe(0);
   expect(stripVTControlCharacters(result.stdout)).toContain(
-    '3 duplicated blocks), 1 in code this branch changed (listed first)\nz.ts:1-39: '
+    '3 duplicated blocks), 1 in code this branch changed (listed first)\nerror: z.ts:1-39: '
+  );
+}, 60_000);
+
+it('lists a changed warning before an unchanged error and names the level of a milder limit', async () => {
+  const dir = await createRepository({ 'committed.ts': deeplyNestedFunction('committed') });
+  await fs.writeFile(path.join(dir, 'worktree.ts'), violatingFunction('worktree'));
+
+  const result = await runCli(dir, ['verify']);
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  expect(stripVTControlCharacters(result.stdout)).toContain(
+    `code-gauge: 1 errors, 1 warnings (2 functions, 0 files, 0 duplicated blocks), 1 in code this branch changed (listed first)\n${addedViolation}\nerror: committed.ts:1-17 committed: function cognitive complexity 21 (warning max 15), function nesting depth 6 (max 5)\n`
   );
 }, 60_000);
 
@@ -118,6 +129,21 @@ async function createRepository(files: Record<string, string>): Promise<string> 
 function violatingFunction(name: string): string {
   return `export function ${name}(a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number): number {
   return a + b + c + d + e + f + g + h;
+}
+`;
+}
+
+/** Nesting depth 6 exceeds the error limit, while cognitive complexity 21 exceeds only the warning limit. */
+function deeplyNestedFunction(name: string): string {
+  const depth = 6;
+  const opened = Array.from({ length: depth }, (_, i) => `${'  '.repeat(i + 1)}if (value > ${i}) {`);
+  const closed = Array.from({ length: depth }, (_, i) => `${'  '.repeat(depth - i)}}`);
+  return `export function ${name}(value: number): number {
+  let result = 0;
+${opened.join('\n')}
+${'  '.repeat(depth + 1)}result = value;
+${closed.join('\n')}
+  return result;
 }
 `;
 }

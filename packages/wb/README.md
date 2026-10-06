@@ -19,8 +19,8 @@ Commands:
                                  WB_ENV. Prefix scripts that write to remote
                                  environments with this command to fail fast on
                                  missing secrets.
-  wb code-gauge                  Print code-gauge threshold violations as
-                                 warnings without failing
+  wb code-gauge                  Print code-gauge errors and warnings without
+                                 failing
   wb concurrently <commands...>  Run commands concurrently
   wb deploy                      Deploy to the WB_ENV environment. A Cloudflare
                                  Workers app (vinext or plain Worker): validate
@@ -187,12 +187,13 @@ A package whose `package.json` defines a `test/post` script gets a `post` phase:
 
 For `wb verify` and `wb verify --full`, a log-write failure falls back to printing subsequent raw output. If a log cannot be completed, the command reports the log error and fails an otherwise successful run; an existing nonzero command exit status is preserved.
 
-## Code-quality warnings
+## Code-quality checks
 
 `wb code-gauge` runs [`code-gauge check`](https://github.com/WillBooster/code-gauge#threshold-check-code-gauge-check)
-on the project and prints every threshold violation: functions and files over a metric limit, and
-duplicated blocks. `--base <ref>` limits them to what the working tree changed since the merge-base
-with `<ref>`. The command always exits with 0, including when the check cannot complete.
+on the project and prints every threshold violation as an error or a warning: functions and files
+over a metric limit, and duplicated blocks. `--base <ref>` limits them to what the working tree
+changed since the merge-base with `<ref>`. The command always exits with 0, including when there
+are errors or the check cannot complete.
 
 ```sh
 bun wb code-gauge
@@ -200,8 +201,11 @@ bun wb code-gauge --base origin/HEAD
 ```
 
 `wb verify` and `wb verify --full` run the same check as their `code-gauge` step and print the
-warnings after the recap: the total, how many are in code changed since the merge-base with
-`origin/HEAD`, and at most 10 violations, those first. The step never fails verification.
+violations after the recap: the totals per level, how many are in code changed since the merge-base
+with `origin/HEAD`, and at most 10 violations: those in the changed code first, then the rest, each
+group with its errors before its warnings. A limit milder than its line's level names its own, as in
+`error: ... function cognitive complexity 56 (max 30), function ncss 61 (warning max 60)`. The step
+never fails verification.
 
 wb uses its own `code-gauge` and code-gauge's default thresholds; a `code-gauge.config.json` in the
 repository overrides them.
