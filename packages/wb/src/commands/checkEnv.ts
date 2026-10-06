@@ -4,7 +4,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findSelfProject } from '../project.js';
+import { findSelfProjectOrExit } from '../project.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -32,11 +32,7 @@ export type CheckEnvArgv = ArgumentsCamelCase<
  * entries (e.g. keys a deployment platform supplies instead of fnox).
  */
 export async function checkEnv(argv: CheckEnvArgv, { exportedOnly = false } = {}): Promise<void> {
-  const project = findSelfProject(argv);
-  if (!project) {
-    console.error(chalk.red('No project found.'));
-    process.exit(1);
-  }
+  const project = findSelfProjectOrExit(argv);
 
   if (!fs.existsSync(path.join(project.dirPath, 'fnox.toml'))) {
     console.info('No fnox.toml found; nothing to check.');

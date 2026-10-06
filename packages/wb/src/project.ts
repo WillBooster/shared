@@ -5,6 +5,7 @@ import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import {
   getDeclaredWorkspacePatterns,
   isInRepositoryWorkspacePattern,
+  isInsideRealRoot,
   readEnvironmentVariables,
   resolveBunWorkspacePackageJsonPaths,
   resolveFallbackWbEnv,
@@ -561,6 +562,15 @@ function buildProjectCacheKey(argv: EnvReaderOptions, loadEnv: boolean, dirPath:
   ]);
 }
 
+export function findSelfProjectOrExit(argv: EnvReaderOptions, loadEnv = true): Project {
+  const project = findSelfProject(argv, loadEnv);
+  if (!project) {
+    console.error(chalk.red('No project found.'));
+    process.exit(1);
+  }
+  return project;
+}
+
 export function findSelfProject(argv: EnvReaderOptions, loadEnv = true, dirPath?: string): Project | undefined {
   dirPath ??= process.cwd();
   if (!fs.existsSync(path.join(dirPath, 'package.json'))) return;
@@ -660,7 +670,7 @@ export async function findWorkspacePackageDirs(
   // and version-less private packages must stay discovered — the long-standing behavior wb's
   // monorepo fixtures encode. Glob for the manifests themselves: globby's `onlyDirectories`
   // would return a literal directory pattern's CHILDREN instead of the directory. The realpath
-  // containment mirrors resolveWorkspacePackageJsonPaths: a workspace symlink escaping the
+  // containment matches resolveWorkspacePackageJsonPaths: a workspace symlink escaping the
   // repository must not let consumers touch another checkout.
   const positivePatterns = getDeclaredWorkspacePatterns(project.packageJson.workspaces).filter(
     (pattern) => !pattern.startsWith('!') && isInRepositoryWorkspacePattern(pattern)
@@ -690,21 +700,10 @@ export async function findWorkspacePackageDirs(
       if (fs.existsSync(path.join(project.dirPath, manifestPath))) manifestPathSet.add(manifestPath);
     }
   }
-  const manifestPaths = [...manifestPathSet];
-  const realRootDirPath = fs.realpathSync(project.dirPath);
-  const workspaceDirPaths = manifestPaths
+  const workspaceDirPaths = [...manifestPathSet]
     // A `**` pattern reaches the root's own manifest and installed packages, but neither is a
     // workspace to Yarn (which never descends into node_modules).
-    .filter((manifestPath) => {
-      if (manifestPath === 'package.json') return false;
-      try {
-        const relativePath = path.relative(realRootDirPath, fs.realpathSync(path.join(project.dirPath, manifestPath)));
-        return relativePath !== '..' && !relativePath.startsWith('../') && !path.isAbsolute(relativePath);
-      } catch {
-        // The manifest vanished between the glob and the realpath call: not a workspace.
-        return false;
-      }
-    })
+    .filter((manifestPath) => manifestPath !== 'package.json' && isInsideRealRoot(manifestPath, project.dirPath))
     .map((manifestPath) => path.join(project.dirPath, path.posix.dirname(manifestPath)));
   return [...new Set(workspaceDirPaths)].toSorted();
 }

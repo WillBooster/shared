@@ -8,7 +8,7 @@ import { treeKill } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findSelfProject, type Project } from '../project.js';
+import { findSelfProjectOrExit, type Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { killPortContainerAndProcess, removeStaleProcess } from '../utils/process.js';
 
@@ -82,11 +82,7 @@ export const maintenanceCommand: CommandModule<unknown, MaintenanceArgv> = {
       })
       .options(builder) as unknown as Argv<MaintenanceArgv>,
   async handler(argv) {
-    const project = findSelfProject(argv);
-    if (!project) {
-      console.error(chalk.red('No project found.'));
-      process.exit(1);
-    }
+    const project = findSelfProjectOrExit(argv);
 
     const action = argv.action;
     if (project.env.WB_ENV === 'test') {

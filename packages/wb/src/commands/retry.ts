@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findSelfProject } from '../project.js';
+import { findSelfProjectOrExit } from '../project.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -33,11 +33,7 @@ export const retryCommand: CommandModule<
   describe: 'Retry the given command until it succeeds',
   builder,
   async handler(argv) {
-    const project = findSelfProject(argv);
-    if (!project) {
-      console.error(chalk.red('No project found.'));
-      process.exit(1);
-    }
+    const project = findSelfProjectOrExit(argv);
 
     const cmdAndArgs = [argv.command, ...(argv.args ?? []), ...argv._.slice(1)].filter(Boolean);
     let lastStatus = 0;
