@@ -21,11 +21,12 @@ const builder = {
 type CodeGaugeCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
 
 const locationSchema = z.object({ file: z.string(), startLine: z.number(), endLine: z.number() });
+const levelSchema = z.enum(['warning', 'error']);
 const violationSchema = locationSchema.extend({
   kind: z.enum(['function', 'file', 'duplication']),
-  level: z.enum(['warning', 'error']),
+  level: levelSchema,
   name: z.string().optional(),
-  exceeded: z.array(z.object({ metric: z.string(), value: z.number(), limit: z.number() })),
+  exceeded: z.array(z.object({ metric: z.string(), value: z.number(), level: levelSchema, limit: z.number() })),
   partners: z.array(locationSchema).optional(),
 });
 const reportSchema = z.object({
@@ -48,7 +49,7 @@ type Violation = z.infer<typeof violationSchema>;
 interface CodeGaugeCheck {
   /** Absent when code-gauge printed no report, e.g. for a base ref that does not exist. */
   report?: z.infer<typeof reportSchema>;
-  /** code-gauge's exit code: 0 no violations, 1 violations, 2 incomplete check. */
+  /** code-gauge's exit code: 0 no errors (warnings may remain), 1 errors, 2 incomplete check. */
   status: number;
   stderr: string;
 }
@@ -210,7 +211,7 @@ function formatViolationLines(violations: Violation[]): string[] {
 }
 
 function describeViolation(violation: Violation): string {
-  const exceeded = violation.exceeded.map(formatExceededThreshold).join(', ');
+  const exceeded = violation.exceeded.map((limit) => formatExceededThreshold(limit, violation.level)).join(', ');
   if (violation.kind === 'file') return `${violation.file}: ${exceeded}`;
   if (violation.kind === 'function') {
     // A computed name can span lines in the source; a violation stays on one line.
@@ -226,14 +227,18 @@ function describeViolation(violation: Violation): string {
   );
 }
 
-function formatExceededThreshold({ limit, metric, value }: Violation['exceeded'][number]): string {
+/** Names the level of a limit milder than its line's, so an error line shows which limits make it one. */
+function formatExceededThreshold(
+  { level, limit, metric, value }: Violation['exceeded'][number],
+  lineLevel: Violation['level']
+): string {
   const label = metric.replaceAll(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
   // `duplicateLines` is the only metric that violates from its limit on instead of above it.
   const maxAllowed = metric === 'duplicateLines' ? Math.max(Math.ceil(limit) - 1, 0) : limit;
   // Rounded up so that a violating value never prints as equal to the maximum; the inner rounding
   // drops binary floating-point noise such as 26.4 * 10 = 264.00000000000006.
   const roundedValue = Math.ceil(Number((value * 10).toFixed(6))) / 10;
-  return `${label} ${roundedValue} (max ${maxAllowed})`;
+  return `${label} ${roundedValue} (${level === lineLevel ? '' : `${level} `}max ${maxAllowed})`;
 }
 
 function formatLocation({ endLine, file, startLine }: Location): string {

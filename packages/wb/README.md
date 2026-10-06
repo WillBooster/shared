@@ -202,7 +202,9 @@ bun wb code-gauge --base origin/HEAD
 
 `wb verify` and `wb verify --full` run the same check as their `code-gauge` step and print the
 violations after the recap: the totals per level, how many are in code changed since the merge-base
-with `origin/HEAD`, and at most 10 violations, those first and errors before warnings. The step
+with `origin/HEAD`, and at most 10 violations: those in the changed code first, then the rest, each
+group with its errors before its warnings. A limit milder than its line's level names its own, as in
+`error: ... function cognitive complexity 56 (max 30), function ncss 61 (warning max 60)`. The step
 never fails verification.
 
 wb uses its own `code-gauge` and code-gauge's default thresholds; a `code-gauge.config.json` in the

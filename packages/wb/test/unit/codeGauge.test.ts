@@ -72,6 +72,17 @@ it('lists a duplicated block the branch changed first although the two reports s
   );
 }, 60_000);
 
+it('lists a changed warning before an unchanged error and names the level of a milder limit', async () => {
+  const dir = await createRepository({ 'committed.ts': deeplyNestedFunction('committed') });
+  await fs.writeFile(path.join(dir, 'worktree.ts'), violatingFunction('worktree'));
+
+  const result = await runCli(dir, ['verify']);
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  expect(stripVTControlCharacters(result.stdout)).toContain(
+    `code-gauge: 1 errors, 1 warnings (2 functions, 0 files, 0 duplicated blocks), 1 in code this branch changed (listed first)\n${addedViolation}\nerror: committed.ts:1-17 committed: function cognitive complexity 21 (warning max 15), function nesting depth 6 (max 5)\n`
+  );
+}, 60_000);
+
 /** A repository whose `origin/HEAD` commit has one violating function and whose working tree adds another. */
 async function createFixture(): Promise<string> {
   const dir = await createRepository({ 'committed.ts': violatingFunction('committed') });
@@ -118,6 +129,21 @@ async function createRepository(files: Record<string, string>): Promise<string> 
 function violatingFunction(name: string): string {
   return `export function ${name}(a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number): number {
   return a + b + c + d + e + f + g + h;
+}
+`;
+}
+
+/** Nesting depth 6 exceeds the error limit, while cognitive complexity 21 exceeds only the warning limit. */
+function deeplyNestedFunction(name: string): string {
+  const depth = 6;
+  const opened = Array.from({ length: depth }, (_, i) => `${'  '.repeat(i + 1)}if (value > ${i}) {`);
+  const closed = Array.from({ length: depth }, (_, i) => `${'  '.repeat(depth - i)}}`);
+  return `export function ${name}(value: number): number {
+  let result = 0;
+${opened.join('\n')}
+${'  '.repeat(depth + 1)}result = value;
+${closed.join('\n')}
+  return result;
 }
 `;
 }
