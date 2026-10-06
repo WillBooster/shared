@@ -51,7 +51,7 @@ interface VerifyStep {
 
 interface VerificationProgress {
   /** Shown after the recap: a successful step's own output is only saved to the log. */
-  codeGaugeWarnings?: string;
+  codeGaugeReport?: string;
   steps: VerifyStep[];
   reporter?: ReturnType<typeof startVerificationOutput>;
 }
@@ -93,15 +93,15 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
       if (argv.full) await verifyFully(projects.self, argv, progress);
       reporter?.succeed();
       printVerifySummary(steps, Boolean(argv.dryRun));
-      printCodeGaugeWarnings(progress);
+      printCodeGaugeReport(progress);
     } catch (error) {
       if (!(error instanceof PackageCommandError)) console.error(error);
       exitCode = error instanceof PackageCommandError ? error.exitCode : 1;
       process.exitCode = exitCode;
     } finally {
       await reporter?.finish(exitCode);
-      // After the failure report, so the warnings do not take lines of the failed step's excerpt.
-      if (exitCode !== 0) printCodeGaugeWarnings(progress);
+      // After the failure report, so the code-gauge report does not take lines of the failed step's excerpt.
+      if (exitCode !== 0) printCodeGaugeReport(progress);
     }
   },
 };
@@ -161,7 +161,7 @@ async function verifyCode(
         printCodeGaugeCommandsForVerify(project);
         return 0;
       }
-      progress.codeGaugeWarnings = await checkCodeGaugeForVerify(project);
+      progress.codeGaugeReport = await checkCodeGaugeForVerify(project);
       return 0;
     })
   );
@@ -324,8 +324,8 @@ function printVerifySummary(steps: VerifyStep[], dryRun: boolean): void {
   }
 }
 
-function printCodeGaugeWarnings(progress: VerificationProgress): void {
-  if (progress.codeGaugeWarnings) console.info(`\n${progress.codeGaugeWarnings}`);
+function printCodeGaugeReport(progress: VerificationProgress): void {
+  if (progress.codeGaugeReport) console.info(`\n${progress.codeGaugeReport}`);
 }
 
 /** Sub-minute steps keep one decimal so a fast step is not flattened to a misleading `0s`. */

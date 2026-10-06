@@ -69,8 +69,8 @@ export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> =
       return;
     }
     const check = await runCodeGaugeCheck(project, argv.base);
-    const warnings = formatWarnings(check, formatViolationLines(check.report?.violations ?? []));
-    if (warnings) console.info(warnings);
+    const report = formatReport(check, formatViolationLines(check.report?.violations ?? []));
+    if (report) console.info(report);
   },
 };
 
@@ -108,7 +108,7 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
   const branchSummary = branchReport
     ? describeBranchViolations(branchViolations.length)
     : `not ordered by this branch's changes (no report for --base ${VERIFY_BASE_REF})`;
-  return formatWarnings(check, lines, branchSummary);
+  return formatReport(check, lines, branchSummary);
 }
 
 export function printCodeGaugeCommandsForVerify(project: Project): void {
@@ -177,7 +177,7 @@ function parseReport(stdout: string): CodeGaugeCheck['report'] {
   }
 }
 
-function formatWarnings(check: CodeGaugeCheck, violationLines: string[], branchSummary?: string): string | undefined {
+function formatReport(check: CodeGaugeCheck, violationLines: string[], branchSummary?: string): string | undefined {
   const sections: string[] = [];
   if (!check.report || (check.status !== 0 && check.status !== 1)) {
     // With `--json`, code-gauge reports the files it could not measure in the report, not on stderr.

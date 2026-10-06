@@ -187,7 +187,7 @@ A package whose `package.json` defines a `test/post` script gets a `post` phase:
 
 For `wb verify` and `wb verify --full`, a log-write failure falls back to printing subsequent raw output. If a log cannot be completed, the command reports the log error and fails an otherwise successful run; an existing nonzero command exit status is preserved.
 
-## Code-quality warnings
+## Code-quality checks
 
 `wb code-gauge` runs [`code-gauge check`](https://github.com/WillBooster/code-gauge#threshold-check-code-gauge-check)
 on the project and prints every threshold violation as an error or a warning: functions and files
