@@ -159,7 +159,7 @@
         "@textlint/module-interop": "15.8.0",
         "@textlint/textlint-plugin-markdown": "15.8.0",
         "chalk": "6.0.0",
-        "code-gauge": "7.0.0",
+        "code-gauge": "8.0.0",
         "dotenv": "18.0.4",
         "dotenv-expand": "13.0.0",
         "fast-glob": "3.3.3",
@@ -1466,19 +1466,21 @@
 
     "code-excerpt": ["code-excerpt@3.0.0", "", { "dependencies": { "convert-to-spaces": "^1.0.1" } }, "sha512-VHNTVhd7KsLGOqfX3SyeO8RyYPMp1GJOg194VITk04WMYCv4plV68YWe6TJZxd9MhobjtpMRnVky01gqZsalaw=="],
 
-    "code-gauge": ["code-gauge@7.0.0", "", { "dependencies": { "@willbooster/shared-lib": "10.18.0", "commander": "15.0.0" }, "optionalDependencies": { "code-gauge-darwin-arm64": "7.0.0", "code-gauge-darwin-x64": "7.0.0", "code-gauge-linux-arm64-gnu": "7.0.0", "code-gauge-linux-arm64-musl": "7.0.0", "code-gauge-linux-x64-gnu": "7.0.0", "code-gauge-linux-x64-musl": "7.0.0", "code-gauge-win32-x64-msvc": "7.0.0" }, "bin": { "code-gauge": "dist/cli.js" } }, "sha512-cggbgMqKhBI5A1NpvrS2VjWUi19P7KMP5M5KygS4m41k2TXUGm2neLrGsn0o+k0gg8YXQBZR9CZBUoP4G+W8iQ=="],
+    "code-gauge": ["code-gauge@8.0.0", "", { "dependencies": { "@willbooster/shared-lib": "10.18.0", "commander": "15.0.0" }, "optionalDependencies": { "code-gauge-darwin-arm64": "8.0.0", "code-gauge-darwin-x64": "8.0.0", "code-gauge-linux-arm64-gnu": "8.0.0", "code-gauge-linux-arm64-musl": "8.0.0", "code-gauge-linux-x64-gnu": "8.0.0", "code-gauge-linux-x64-musl": "8.0.0", "code-gauge-win32-x64-msvc": "8.0.0" }, "bin": { "code-gauge": "dist/cli.js" } }, "sha512-wYq7N1duaMCXlt46RtLTV4bDdnvACtj+EgdVQOx5zqw+zX66238MxcrOb88Ft7Ey0VngNXFRj2czNtEULJUrPw=="],
 
-    "code-gauge-darwin-arm64": ["code-gauge-darwin-arm64@7.0.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-hxsDt0be1rSQ/S1sV9gUJ4Mz3KpFggMd4PtJ9aJejQDzTMCnYVvgCGgi7n+NzVbL685WYbHygzk4ap8IkxeZdQ=="],
+    "code-gauge-darwin-arm64": ["code-gauge-darwin-arm64@8.0.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-ve6RrIV2wf00Vf5sqUoo5w6cOMnDyJ6zXPMXJ5q9tW1qLVssu4nV1aWpX/PGzdt1rE2GdnVRX6o1feCleTmDww=="],
 
-    "code-gauge-linux-arm64-gnu": ["code-gauge-linux-arm64-gnu@7.0.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-UjdmZ68FRtg/z/BI6cpde8gaEFIZ2kBvv2r96nINYaOyu0XBN0NbuODtUCquoOJPryZnuwID4N1sFPelWUbsSg=="],
+    "code-gauge-darwin-x64": ["code-gauge-darwin-x64@8.0.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-nNbQf7ta5x1nGWRg6lqLGx9WBKJhuI35mQB/gT+hNvtzyyAcylqnf7YmXW2SYPu2JlPMB2veHUEiy4NGr43pLw=="],
 
-    "code-gauge-linux-arm64-musl": ["code-gauge-linux-arm64-musl@7.0.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-uMC8xMfQN4isQkRndBH40JcZ/1NVY+xiyeMFVcOkvef74v9PiLbKtcbKj9JzQRyU6xiPqZSCYwVdU+ckEpAYVg=="],
+    "code-gauge-linux-arm64-gnu": ["code-gauge-linux-arm64-gnu@8.0.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-A41fXePlTUkVQy2lk8IrTAolcTuEO2hMt516QfFc7kgkEcA9hUNADQpE4almXy7NryVT0+GszD59fTTCBKQMtA=="],
 
-    "code-gauge-linux-x64-gnu": ["code-gauge-linux-x64-gnu@7.0.0", "", { "os": "linux", "cpu": "x64" }, "sha512-R4HMqvXbbZg7WehNq0/EIFemq2wiksRnKumoyy9fQjsIoCw2/xfW3DpyHnMorsFsFGVqp/m3Z6Q39se39zuwNQ=="],
+    "code-gauge-linux-arm64-musl": ["code-gauge-linux-arm64-musl@8.0.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-UBNLHEhYpK8nVnMnkZEryhS8/IZXcwivzcdAFYDiPViBGPaPjOkMksm5pW+20nB1lQHOcy91wl75fPhWd0kLrg=="],
 
-    "code-gauge-linux-x64-musl": ["code-gauge-linux-x64-musl@7.0.0", "", { "os": "linux", "cpu": "x64" }, "sha512-Ww09JkeORqhqKKUVrwC3IOgF73XkRUNiNDrxV4ZmvlN0g2UYDmCmzlKI9MmeedqFIozfqc7nShK450+FOpkrnA=="],
+    "code-gauge-linux-x64-gnu": ["code-gauge-linux-x64-gnu@8.0.0", "", { "os": "linux", "cpu": "x64" }, "sha512-/w4LOaLym/ZfmLcUTN8rGG/bJ9LWbYvlpL6JsF3+s9K2w1GanZvQlp2oBEFu3Y4gsbogwp1Z3O6Va49Z14FOeA=="],
 
-    "code-gauge-win32-x64-msvc": ["code-gauge-win32-x64-msvc@7.0.0", "", { "os": "win32", "cpu": "x64" }, "sha512-OTf/lB/wme3yciGYwXy7fWk+6mT2wgbloYhen44bENa53qJsvyO8txElIp3Z22O92HhSuzPHA0nNvfwP0o8fFQ=="],
+    "code-gauge-linux-x64-musl": ["code-gauge-linux-x64-musl@8.0.0", "", { "os": "linux", "cpu": "x64" }, "sha512-DwiIFZVkrRzJRqTdcegTmigRMeVjo/ZGlFYR15CcZNCEjgC/HfP0sosgu+MPXyHguM8JSogjLsiN87mg+ibbkQ=="],
+
+    "code-gauge-win32-x64-msvc": ["code-gauge-win32-x64-msvc@8.0.0", "", { "os": "win32", "cpu": "x64" }, "sha512-INN00C9rzsavGGGnSGW2fjffUugfXpeNoqU8qQr9ZShk5PQ8WkrXdDezMI6QVQMmrPFZm1hW36r07TSB0qutdg=="],
 
     "collection-visit": ["collection-visit@1.0.0", "", { "dependencies": { "map-visit": "^1.0.0", "object-visit": "^1.0.0" } }, "sha512-lNkKvzEeMBBjUGHZ+q6z9pSJla0KWAQPvtzhEV9+iGyQYG+pBpl7xKDhxoNSOZH2hhv0v5k0y2yAM4o4SjoSkw=="],
 
