@@ -23,6 +23,7 @@ type CodeGaugeCommandOptions = InferredOptionTypes<typeof builder & typeof share
 const locationSchema = z.object({ file: z.string(), startLine: z.number(), endLine: z.number() });
 const violationSchema = locationSchema.extend({
   kind: z.enum(['function', 'file', 'duplication']),
+  level: z.enum(['warning', 'error']),
   name: z.string().optional(),
   exceeded: z.array(z.object({ metric: z.string(), value: z.number(), limit: z.number() })),
   partners: z.array(locationSchema).optional(),
@@ -30,6 +31,8 @@ const violationSchema = locationSchema.extend({
 const reportSchema = z.object({
   summary: z.object({
     violationCount: z.number(),
+    errorViolationCount: z.number(),
+    warningViolationCount: z.number(),
     functionViolationCount: z.number(),
     fileViolationCount: z.number(),
     duplicationViolationCount: z.number(),
@@ -56,7 +59,7 @@ const MAX_PARTNER_LOCATIONS = 3;
 
 export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> = {
   command: 'code-gauge',
-  describe: 'Print code-gauge threshold violations as warnings without failing',
+  describe: 'Print code-gauge errors and warnings without failing',
   builder,
   async handler(argv) {
     const project = findSelfProject(argv, false);
@@ -195,7 +198,8 @@ function formatWarnings(check: CodeGaugeCheck, violationLines: string[], branchS
   if (summary?.violationCount) {
     sections.push(
       chalk.yellow(
-        `code-gauge: ${summary.violationCount} threshold violations (${summary.functionViolationCount} functions, ` +
+        `code-gauge: ${summary.errorViolationCount} errors, ${summary.warningViolationCount} warnings ` +
+          `(${summary.functionViolationCount} functions, ` +
           `${summary.fileViolationCount} files, ${summary.duplicationViolationCount} duplicated blocks)` +
           (branchSummary ? `, ${branchSummary}` : '')
       ),
@@ -206,32 +210,34 @@ function formatWarnings(check: CodeGaugeCheck, violationLines: string[], branchS
 }
 
 function formatViolationLines(violations: Violation[]): string[] {
-  return violations.map((violation) => {
-    const exceeded = violation.exceeded.map(formatExceededThreshold).join(', ');
-    if (violation.kind === 'file') return `${violation.file}: ${exceeded}`;
-    if (violation.kind === 'function') {
-      // A computed name can span lines in the source; a violation stays on one line.
-      return `${formatLocation(violation)} ${violation.name?.replaceAll(/\s*[\n\r]\s*/g, ' ')}: ${exceeded}`;
-    }
+  return violations.map((violation) => `${violation.level}: ${describeViolation(violation)}`);
+}
 
-    const partners = violation.partners ?? [];
-    const omittedPartnerCount = partners.length - MAX_PARTNER_LOCATIONS;
-    return (
-      `${formatLocation(violation)}: ${exceeded}, also at ` +
-      partners.slice(0, MAX_PARTNER_LOCATIONS).map(formatLocation).join(', ') +
-      (omittedPartnerCount > 0 ? ` (+${omittedPartnerCount} more)` : '')
-    );
-  });
+function describeViolation(violation: Violation): string {
+  const exceeded = violation.exceeded.map(formatExceededThreshold).join(', ');
+  if (violation.kind === 'file') return `${violation.file}: ${exceeded}`;
+  if (violation.kind === 'function') {
+    // A computed name can span lines in the source; a violation stays on one line.
+    return `${formatLocation(violation)} ${violation.name?.replaceAll(/\s*[\n\r]\s*/g, ' ')}: ${exceeded}`;
+  }
+
+  const partners = violation.partners ?? [];
+  const omittedPartnerCount = partners.length - MAX_PARTNER_LOCATIONS;
+  return (
+    `${formatLocation(violation)}: ${exceeded}, also at ` +
+    partners.slice(0, MAX_PARTNER_LOCATIONS).map(formatLocation).join(', ') +
+    (omittedPartnerCount > 0 ? ` (+${omittedPartnerCount} more)` : '')
+  );
 }
 
 function formatExceededThreshold({ limit, metric, value }: Violation['exceeded'][number]): string {
   const label = metric.replaceAll(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
   // `duplicateLines` is the only metric that violates from its limit on instead of above it.
-  const comparator = metric === 'duplicateLines' ? '<' : '<=';
-  // Rounded up so that a violating value never prints as equal to its limit; the inner rounding
+  const maxAllowed = metric === 'duplicateLines' ? Math.max(Math.ceil(limit) - 1, 0) : limit;
+  // Rounded up so that a violating value never prints as equal to the maximum; the inner rounding
   // drops binary floating-point noise such as 26.4 * 10 = 264.00000000000006.
   const roundedValue = Math.ceil(Number((value * 10).toFixed(6))) / 10;
-  return `${label} ${roundedValue} (${comparator} ${limit})`;
+  return `${label} ${roundedValue} (max ${maxAllowed})`;
 }
 
 function formatLocation({ endLine, file, startLine }: Location): string {
