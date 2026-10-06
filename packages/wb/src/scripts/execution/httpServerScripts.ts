@@ -1,11 +1,10 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
-import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
 import { ensurePort } from '../../utils/port.js';
 import { buildShellCommand } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
 
-import { BaseScripts, buildE2EReadinessCommand, type TestE2EOptions } from './baseScripts.js';
+import { BaseScripts, buildE2ECommand, type TestE2EOptions } from './baseScripts.js';
 import { adaptForwardedArgsForUnitRunner, validateUnitRunnerTestSelection } from './unitRunnerArgs.js';
 
 /**
@@ -43,17 +42,7 @@ export class HttpServerScripts extends BaseScripts {
     const normalizedTargets = targets.length > 0 ? targets : ['test/e2e/'];
     let testCommand = this.buildUnitRunnerCommand(project, { ...argv, targets: normalizedTargets });
     if (supported && forwarded.flags.length > 0) testCommand += ` ${buildShellCommand(forwarded.flags)}`;
-    return buildShellCommand([
-      'YARN',
-      'wb',
-      'concurrently',
-      ...buildEnvReaderOptionArgs(argv),
-      '--kill-others',
-      '--success',
-      'first',
-      `${startCommand} && exit 1`,
-      `${buildE2EReadinessCommand(port, isDocker)} && ${testCommand}${suffix}`,
-    ]);
+    return buildE2ECommand(argv, startCommand, port, isDocker, `${testCommand}${suffix}`);
   }
 }
 

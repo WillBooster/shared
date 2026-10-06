@@ -1,4 +1,5 @@
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
+import type { SpawnAsyncOptions, SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
@@ -136,20 +137,10 @@ export function runWithSpawnInParallel(
       return 0;
     }
 
-    const ret = await spawnAsync(normalizedScript.runnable, undefined, {
-      cwd: project.dirPath,
-      env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? true }),
+    const ret = await spawnWithMergedOutput(normalizedScript.runnable, project, argv, opts, {
       collectOutput: !captureOutput,
-      shell: true,
       stdio: captureOutput ? ['inherit', 'pipe', 'pipe'] : 'pipe',
-      timeout: opts.timeout,
-      mergeOutAndError: true,
-      killOnExit: true,
-      printingStdout: captureOutput || opts.printRawOutput,
-      printingStderr: captureOutput || opts.printRawOutput,
-      verbose: argv.verbose,
     });
-    opts.onSignal?.(ret.signal);
     printStart(normalizedScript.printable, project, 'Started (log)');
     if (argv.verbose) {
       printStart(normalizedScript.runnable, project, 'Started (raw)', true);
@@ -172,7 +163,6 @@ export function runWithSpawnInParallelBuffered(
 ): Promise<BufferedRunResult> {
   return promisePool.runAndWaitForReturnValue(async () => {
     const normalizedScript = normalizeScript(script, project);
-    const captureOutput = isCapturingVerificationOutput();
     if (argv.dryRun) {
       return {
         exitCode: 0,
@@ -180,24 +170,36 @@ export function runWithSpawnInParallelBuffered(
       };
     }
 
-    const ret = await spawnAsync(normalizedScript.runnable, undefined, {
-      cwd: project.dirPath,
-      env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? true }),
-      shell: true,
-      stdio: 'pipe',
-      timeout: opts.timeout,
-      mergeOutAndError: true,
-      killOnExit: true,
-      printingStdout: captureOutput || opts.printRawOutput,
-      printingStderr: captureOutput || opts.printRawOutput,
-      verbose: argv.verbose,
-    });
-    opts.onSignal?.(ret.signal);
+    const ret = await spawnWithMergedOutput(normalizedScript.runnable, project, argv, opts, { stdio: 'pipe' });
     return {
       exitCode: ret.status ?? 1,
       output: ret.stdout,
     };
   });
+}
+
+async function spawnWithMergedOutput(
+  runnableScript: string,
+  project: Project,
+  argv: { verbose?: boolean },
+  opts: Options,
+  spawnOptions: Pick<SpawnAsyncOptions, 'collectOutput' | 'stdio'>
+): Promise<SpawnAsyncReturns> {
+  const printing = isCapturingVerificationOutput() || opts.printRawOutput;
+  const ret = await spawnAsync(runnableScript, undefined, {
+    cwd: project.dirPath,
+    env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? true }),
+    shell: true,
+    timeout: opts.timeout,
+    mergeOutAndError: true,
+    killOnExit: true,
+    printingStdout: printing,
+    printingStderr: printing,
+    verbose: argv.verbose,
+    ...spawnOptions,
+  });
+  opts.onSignal?.(ret.signal);
+  return ret;
 }
 
 /**

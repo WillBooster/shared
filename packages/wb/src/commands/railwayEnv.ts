@@ -8,7 +8,7 @@ import chalk from 'chalk';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
-import { findSelfProject } from '../project.js';
+import { findSelfProjectOrExit } from '../project.js';
 import { selectFnoxSourcedKeys } from '../utils/envSources.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -48,11 +48,7 @@ export const railwayEnvCommand: CommandModule<unknown, RailwayEnvCommandOptions>
     'Sync the environment variables declared for the current WB_ENV (resolved from fnox) to the Railway service, keeping fnox the single source of truth. Railway-managed keys (RAILWAY_*, NIXPACKS_*, CI) are never pushed.',
   builder: (yargs) => yargs as unknown as Argv<RailwayEnvCommandOptions>,
   async handler(argv: RailwayEnvCommandArgv) {
-    const project = findSelfProject(argv);
-    if (!project) {
-      console.error(chalk.red('No project found.'));
-      process.exit(1);
-    }
+    const project = findSelfProjectOrExit(argv);
     const envName = project.env.WB_ENV;
     if (!envName || envName === 'development' || envName === 'test') {
       console.error(

@@ -4,6 +4,7 @@ export {
   getSeededBaselineGlob,
   hasImplicitWorkspaceBaseline,
   isInRepositoryWorkspacePattern,
+  isInsideRealRoot,
   normalizeWorkspacePatternBody,
   resolveBunWorkspacePackageJsonPaths,
   resolveWorkspacePackageJsonPaths,
