@@ -51,57 +51,6 @@ export function resolveBunWorkspacePackageJsonPaths(workspaces: WorkspacesDeclar
  * directories.
  */
 export function resolveWorkspacePackageJsonPaths(workspacePatterns: string[], rootDirPath: string): string[] {
-  // followSymbolicLinks: false stops GLOB traversal through symlinks, but a non-glob pattern
-  // naming a symlinked directory (e.g. `linked` with `linked -> ../other-repo`) still matches —
-  // fast-glob resolves static patterns with direct fs checks, and Bun does link such a workspace.
-  // Deliberately diverge from Bun there: consumers such as node_modules cleanup and manifest
-  // rewriting would otherwise delete and rewrite files in ANOTHER repository through the symlink,
-  // so keep only manifests whose real path stays inside the repository's real root. Scanning each
-  // pattern separately (no cross-pattern caching) is deliberate: declarations hold a handful of
-  // patterns, so a cache would complicate this shared code without measurable gain.
-  const globManifestPaths = (pattern: string): string[] => {
-    // Bun links dot-directory packages only through fully static patterns: with Bun 1.3.14,
-    // `.hidden/x` pins the package while `.hidden/*`, `.*/*`, and `**` all link nothing under
-    // .hidden — even when the dotted segment itself is literal — so any dynamic pattern must
-    // drop matches containing a dot-led segment (fast-glob's `dot: false` only covers segments
-    // a wildcard matches).
-    const excludesDotSegments = fg.isDynamicPattern(pattern);
-    const globOptions = { cwd: rootDirPath, followSymbolicLinks: false, ignore: ['**/node_modules/**'] };
-    // fast-glob 3.3.3 returns no matches for file globs with a lone-`?` segment (e.g.
-    // `packages/?/package.json`), although micromatch matches them and Bun 1.3.14 links such
-    // workspaces; for `?`-carrying patterns only (a directory glob for e.g. `**` would scan every
-    // directory in the repository), globbing the directories (where `?` works) and checking their
-    // manifests complements the manifest glob, which stays necessary for `**`'s zero-segment
-    // matches — `dir/**` does not return dir itself as a directory.
-    const manifestPaths = new Set(fg.globSync(path.posix.join(pattern, 'package.json'), globOptions));
-    if (pattern.includes('?')) {
-      for (const dirPath of fg.globSync(pattern, { ...globOptions, onlyDirectories: true })) {
-        const packageJsonPath = path.posix.join(dirPath, 'package.json');
-        if (fs.existsSync(path.join(rootDirPath, packageJsonPath))) manifestPaths.add(packageJsonPath);
-      }
-    }
-    // A zero-segment `**` match reaches the root's own manifest, but Bun never treats the
-    // monorepo root as its own workspace.
-    return [...manifestPaths].filter(
-      (packageJsonPath) =>
-        packageJsonPath !== 'package.json' &&
-        (!excludesDotSegments || !packageJsonPath.split('/').some((segment) => segment.startsWith('.'))) &&
-        isInsideRealRoot(packageJsonPath)
-    );
-  };
-  let realRootDirPath: string | undefined;
-  const isInsideRealRoot = (packageJsonPath: string): boolean => {
-    try {
-      realRootDirPath ??= fs.realpathSync(rootDirPath);
-      const relativePath = path.relative(realRootDirPath, fs.realpathSync(path.join(rootDirPath, packageJsonPath)));
-      // Compare whole segments, not a `..` prefix: a directory literally named e.g. `..pkg` is
-      // inside the root, while a plain startsWith('..') would misread it as parent traversal.
-      return relativePath !== '..' && !relativePath.startsWith('../') && !path.isAbsolute(relativePath);
-    } catch {
-      // A manifest that vanished between the glob and the realpath call is not a workspace.
-      return false;
-    }
-  };
   const accumulatedPaths = new Set<string>();
   const pinnedPaths = new Set<string>();
   for (const workspacePattern of workspacePatterns) {
@@ -110,17 +59,74 @@ export function resolveWorkspacePackageJsonPaths(workspacePatterns: string[], ro
     if (isNegative) {
       const baselineGlob = getSeededBaselineGlob(patternBody);
       if (baselineGlob !== undefined) {
-        for (const packageJsonPath of globManifestPaths(baselineGlob)) accumulatedPaths.add(packageJsonPath);
+        for (const packageJsonPath of globManifestPaths(baselineGlob, rootDirPath))
+          accumulatedPaths.add(packageJsonPath);
       }
-      for (const packageJsonPath of globManifestPaths(patternBody)) accumulatedPaths.delete(packageJsonPath);
+      for (const packageJsonPath of globManifestPaths(patternBody, rootDirPath))
+        accumulatedPaths.delete(packageJsonPath);
     } else {
       const targetPaths = fg.isDynamicPattern(patternBody) ? accumulatedPaths : pinnedPaths;
-      for (const packageJsonPath of globManifestPaths(patternBody)) {
+      for (const packageJsonPath of globManifestPaths(patternBody, rootDirPath)) {
         targetPaths.add(packageJsonPath);
       }
     }
   }
   return [...new Set([...accumulatedPaths, ...pinnedPaths])].toSorted();
+}
+
+// followSymbolicLinks: false stops GLOB traversal through symlinks, but a non-glob pattern
+// naming a symlinked directory (e.g. `linked` with `linked -> ../other-repo`) still matches —
+// fast-glob resolves static patterns with direct fs checks, and Bun does link such a workspace.
+// Deliberately diverge from Bun there: consumers such as node_modules cleanup and manifest
+// rewriting would otherwise delete and rewrite files in ANOTHER repository through the symlink,
+// so keep only manifests whose real path stays inside the repository's real root. Scanning each
+// pattern separately (no cross-pattern caching) is deliberate: declarations hold a handful of
+// patterns, so a cache would complicate this shared code without measurable gain.
+function globManifestPaths(pattern: string, rootDirPath: string): string[] {
+  // Bun links dot-directory packages only through fully static patterns: with Bun 1.3.14,
+  // `.hidden/x` pins the package while `.hidden/*`, `.*/*`, and `**` all link nothing under
+  // .hidden — even when the dotted segment itself is literal — so any dynamic pattern must
+  // drop matches containing a dot-led segment (fast-glob's `dot: false` only covers segments
+  // a wildcard matches).
+  const excludesDotSegments = fg.isDynamicPattern(pattern);
+  const globOptions = { cwd: rootDirPath, followSymbolicLinks: false, ignore: ['**/node_modules/**'] };
+  // fast-glob 3.3.3 returns no matches for file globs with a lone-`?` segment (e.g.
+  // `packages/?/package.json`), although micromatch matches them and Bun 1.3.14 links such
+  // workspaces; for `?`-carrying patterns only (a directory glob for e.g. `**` would scan every
+  // directory in the repository), globbing the directories (where `?` works) and checking their
+  // manifests complements the manifest glob, which stays necessary for `**`'s zero-segment
+  // matches — `dir/**` does not return dir itself as a directory.
+  const manifestPaths = new Set(fg.globSync(path.posix.join(pattern, 'package.json'), globOptions));
+  if (pattern.includes('?')) {
+    for (const dirPath of fg.globSync(pattern, { ...globOptions, onlyDirectories: true })) {
+      const packageJsonPath = path.posix.join(dirPath, 'package.json');
+      if (fs.existsSync(path.join(rootDirPath, packageJsonPath))) manifestPaths.add(packageJsonPath);
+    }
+  }
+  // A zero-segment `**` match reaches the root's own manifest, but Bun never treats the
+  // monorepo root as its own workspace.
+  return [...manifestPaths].filter(
+    (packageJsonPath) =>
+      packageJsonPath !== 'package.json' &&
+      (!excludesDotSegments || !packageJsonPath.split('/').some((segment) => segment.startsWith('.'))) &&
+      isInsideRealRoot(packageJsonPath, rootDirPath)
+  );
+}
+
+/** Tells whether the real path of `relativePath` (relative to `rootDirPath`) stays inside the root's real path. */
+export function isInsideRealRoot(relativePath: string, rootDirPath: string): boolean {
+  try {
+    const realRelativePath = path.relative(
+      fs.realpathSync(rootDirPath),
+      fs.realpathSync(path.join(rootDirPath, relativePath))
+    );
+    // Compare whole segments, not a `..` prefix: a directory literally named e.g. `..pkg` is
+    // inside the root, while a plain startsWith('..') would misread it as parent traversal.
+    return realRelativePath !== '..' && !realRelativePath.startsWith('../') && !path.isAbsolute(realRelativePath);
+  } catch {
+    // A path that vanished between the glob and the realpath call is not inside the root.
+    return false;
+  }
 }
 
 /**

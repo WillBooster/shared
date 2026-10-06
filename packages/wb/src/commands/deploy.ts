@@ -10,7 +10,7 @@ import { config } from 'dotenv';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
-import { findSelfProject } from '../project.js';
+import { findSelfProjectOrExit } from '../project.js';
 import { buildDrizzleKitCommand, usesDrizzleKitForD1 } from '../scripts/drizzleScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
@@ -87,11 +87,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     // flags below override.
     delete process.env.CLOUDFLARE_ENV;
 
-    const project = findSelfProject(argv);
-    if (!project) {
-      console.error(chalk.red('No project found.'));
-      process.exit(1);
-    }
+    const project = findSelfProjectOrExit(argv);
     if (fs.existsSync(path.join(project.dirPath, RAILWAY_IAC_FILE_PATH))) {
       await deployRailway(argv, project);
       return;

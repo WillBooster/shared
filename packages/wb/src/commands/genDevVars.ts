@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import { parse as parseDotenv } from 'dotenv';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findSelfProject } from '../project.js';
+import { findSelfProjectOrExit } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 // Cloudflare Workers don't see the process environment; wrangler dev reads vars from a .dev.vars
@@ -27,11 +27,7 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
       default: '.dev.vars',
     }) as unknown as Argv<GenDevVarsCommandOptions>,
   async handler(argv: GenDevVarsCommandArgv) {
-    const project = findSelfProject(argv);
-    if (!project) {
-      console.error(chalk.red('No project found.'));
-      process.exit(1);
-    }
+    const project = findSelfProjectOrExit(argv);
 
     // Restrict to variables loaded from the project's declared environment sources so that
     // unrelated process environment variables never leak into the generated file. Ignore

@@ -8,6 +8,7 @@ import type {
   StdioPipe,
 } from 'node:child_process';
 import { spawn } from 'node:child_process';
+import type { Readable } from 'node:stream';
 
 import { treeKill } from './treeKill.js';
 
@@ -79,120 +80,137 @@ export async function spawnAsync(
   options?: SpawnAsyncOptions
 ): Promise<SpawnAsyncReturns> {
   return new Promise((resolve, reject) => {
-    try {
-      const proc = spawn(command, args ?? [], options ?? {});
-      if (proc.pid) options?.onSpawn?.(proc);
-      // `setEncoding` is undefined in Bun
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      proc.stdout?.setEncoding?.('utf8');
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      proc.stderr?.setEncoding?.('utf8');
+    const proc = spawn(command, args ?? [], options ?? {});
+    if (proc.pid) options?.onSpawn?.(proc);
 
-      let stdout = '';
-      let stderr = '';
-      const stdoutPrinter = createRealtimePrinter(process.stdout, options?.omitBlankLinesWhilePrinting);
-      const stderrPrinter = createRealtimePrinter(process.stderr, options?.omitBlankLinesWhilePrinting);
-      const resumeStdout = (): void => {
-        proc.stdout?.resume();
-      };
-      const resumeStderr = (): void => {
-        proc.stderr?.resume();
-      };
-      proc.stdout?.on('data', (data: string) => {
-        if (options?.collectOutput !== false) stdout += data;
-        if (options?.printingStdout && !stdoutPrinter.write(data)) {
-          proc.stdout?.pause();
-          process.stdout.once('drain', resumeStdout);
-        }
-      });
-      proc.stderr?.on('data', (data: string) => {
-        if (options?.collectOutput !== false) {
-          if (options?.mergeOutAndError) stdout += data;
-          else stderr += data;
-        }
-        if (options?.printingStderr && !stderrPrinter.write(data)) {
-          proc.stderr?.pause();
-          process.stderr.once('drain', resumeStderr);
-        }
-      });
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+    const stderrSink = options?.mergeOutAndError ? stdoutChunks : stderrChunks;
+    const collecting = options?.collectOutput !== false;
+    const omitBlankLines = options?.omitBlankLinesWhilePrinting;
+    const stdoutForwarder = forwardOutput(
+      proc.stdout,
+      process.stdout,
+      options?.printingStdout,
+      omitBlankLines,
+      collecting ? stdoutChunks : undefined
+    );
+    const stderrForwarder = forwardOutput(
+      proc.stderr,
+      process.stderr,
+      options?.printingStderr,
+      omitBlankLines,
+      collecting ? stderrSink : undefined
+    );
+    const removeKillOnExitHandlers = options?.killOnExit ? killOnParentExit(proc, options.verbose) : () => {};
+    const removeHandlers = (): void => {
+      stdoutForwarder.removeDrainHandler();
+      stderrForwarder.removeDrainHandler();
+      removeKillOnExitHandlers();
+    };
 
-      let stopped = false;
-      const stopProcess = (): void => {
-        if (stopped || !proc.pid) return;
-
-        stopped = true;
-        if (options?.verbose) {
-          console.info(`treeKill(${proc.pid})`);
-        }
-        try {
-          treeKill(proc.pid);
-        } catch (error) {
-          if (options?.verbose) {
-            console.warn(`Failed to treeKill(${proc.pid})`, error);
-          }
-        }
-      };
-      const cleanupSignals: NodeJS.Signals[] =
-        process.platform === 'win32' ? ['SIGINT', 'SIGTERM'] : ['SIGINT', 'SIGTERM', 'SIGQUIT'];
-      const signalHandlers = new Map<NodeJS.Signals, () => void>();
-      const removeKillOnExitHandlers = (): void => {
-        process.removeListener('beforeExit', stopProcess);
-        for (const [signal, handler] of signalHandlers) {
-          process.removeListener(signal, handler);
-        }
-        signalHandlers.clear();
-      };
-      if (options?.killOnExit) {
-        process.on('beforeExit', stopProcess);
-        for (const signal of cleanupSignals) {
-          const handleSignal = (): void => {
-            stopProcess();
-            removeKillOnExitHandlers();
-            if (process.listenerCount(signal) === 0) {
-              process.kill(process.pid, signal);
-            }
-          };
-          signalHandlers.set(signal, handleSignal);
-          process.on(signal, handleSignal);
-        }
-      }
-
-      const removeDrainHandlers = (): void => {
-        process.stdout.removeListener('drain', resumeStdout);
-        process.stderr.removeListener('drain', resumeStderr);
-      };
-      proc.on('error', (error) => {
-        removeDrainHandlers();
-        removeKillOnExitHandlers();
-        proc.removeAllListeners('close');
-        reject(error);
-      });
-      proc.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
-        removeDrainHandlers();
-        removeKillOnExitHandlers();
-        stdoutPrinter.flush();
-        stderrPrinter.flush();
-        if (proc.pid === undefined) {
-          reject(new Error('Process has no pid.'));
-        } else {
-          resolve({
-            pid: proc.pid,
-            stdout,
-            stderr,
-            status: code,
-            signal,
-          });
-        }
-      });
-
-      // Like spawnSync, the child reads EOF after the input: nothing else can write to this pipe.
-      if (options?.input) proc.stdin?.write(options.input);
-      proc.stdin?.end();
-    } catch (error) {
-      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+    proc.on('error', (error) => {
+      removeHandlers();
+      proc.removeAllListeners('close');
       reject(error);
+    });
+    proc.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+      removeHandlers();
+      stdoutForwarder.flush();
+      stderrForwarder.flush();
+      if (proc.pid === undefined) {
+        reject(new Error('Process has no pid.'));
+      } else {
+        resolve({
+          pid: proc.pid,
+          stdout: stdoutChunks.join(''),
+          stderr: stderrChunks.join(''),
+          status: code,
+          signal,
+        });
+      }
+    });
+
+    // Like spawnSync, the child reads EOF after the input: nothing else can write to this pipe.
+    if (options?.input) proc.stdin?.write(options.input);
+    proc.stdin?.end();
+  });
+}
+
+function forwardOutput(
+  source: Readable | null,
+  destination: NodeJS.WriteStream,
+  printing: boolean | undefined,
+  omitBlankLines: boolean | undefined,
+  chunks: string[] | undefined
+): { flush: () => void; removeDrainHandler: () => void } {
+  const printer = createRealtimePrinter(destination, omitBlankLines);
+  const resume = (): void => {
+    source?.resume();
+  };
+  // `setEncoding` is undefined in Bun
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  source?.setEncoding?.('utf8');
+  source?.on('data', (data: string) => {
+    chunks?.push(data);
+    if (printing && !printer.write(data)) {
+      source.pause();
+      destination.once('drain', resume);
     }
   });
+  return {
+    flush: printer.flush,
+    removeDrainHandler: () => {
+      destination.removeListener('drain', resume);
+    },
+  };
+}
+
+const cleanupSignals = ['SIGINT', 'SIGTERM', 'SIGQUIT'] as const;
+
+/** Returns a function that removes the handlers this registers on the parent process. */
+function killOnParentExit(proc: ChildProcess, verbose: boolean | undefined): () => void {
+  let stopped = false;
+  const stopProcess = (): void => {
+    if (stopped || !proc.pid) return;
+
+    stopped = true;
+    tryTreeKill(proc.pid, verbose);
+  };
+  const signalHandlers = new Map<NodeJS.Signals, () => void>();
+  const removeHandlers = (): void => {
+    process.removeListener('beforeExit', stopProcess);
+    for (const [signal, handler] of signalHandlers) {
+      process.removeListener(signal, handler);
+    }
+    signalHandlers.clear();
+  };
+  process.on('beforeExit', stopProcess);
+  for (const signal of cleanupSignals) {
+    const handleSignal = (): void => {
+      stopProcess();
+      removeHandlers();
+      if (process.listenerCount(signal) === 0) {
+        process.kill(process.pid, signal);
+      }
+    };
+    signalHandlers.set(signal, handleSignal);
+    process.on(signal, handleSignal);
+  }
+  return removeHandlers;
+}
+
+function tryTreeKill(pid: number, verbose: boolean | undefined): void {
+  if (verbose) {
+    console.info(`treeKill(${pid})`);
+  }
+  try {
+    treeKill(pid);
+  } catch (error) {
+    if (verbose) {
+      console.warn(`Failed to treeKill(${pid})`, error);
+    }
+  }
 }
 
 const ANSI_ESCAPE_CODE_REGEXP = new RegExp(`${String.fromCodePoint(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');

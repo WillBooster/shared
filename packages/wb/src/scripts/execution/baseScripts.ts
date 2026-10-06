@@ -1,5 +1,7 @@
 import path from 'node:path';
 
+import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
+
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import { isProjectEnvironment } from '../../project.js';
@@ -40,31 +42,11 @@ export abstract class BaseScripts {
 
   async startDev(project: Project, argv: ScriptArgv): Promise<string> {
     await ensurePort(project);
-    if (!this.shouldWaitAndOpenApp) return this.startDevProtected(project, argv);
-
-    return buildShellCommand([
-      'YARN',
-      'wb',
-      'concurrently',
-      ...buildEnvReaderOptionArgs(argv),
-      '--kill-others-on-fail',
-      this.startDevProtected(project, argv),
-      this.waitAndOpenApp(project),
-    ]);
+    return this.withWaitAndOpenApp(project, argv, this.startDevProtected(project, argv));
   }
   async startProduction(project: Project, argv: ScriptArgv): Promise<string> {
     await ensurePort(project);
-    if (!this.shouldWaitAndOpenApp) return this.startProductionProtected(project, argv);
-
-    return buildShellCommand([
-      'YARN',
-      'wb',
-      'concurrently',
-      ...buildEnvReaderOptionArgs(argv),
-      '--kill-others-on-fail',
-      this.startProductionProtected(project, argv),
-      this.waitAndOpenApp(project),
-    ]);
+    return this.withWaitAndOpenApp(project, argv, this.startProductionProtected(project, argv));
   }
   async startTest(project: Project, argv: ScriptArgv): Promise<string> {
     await ensurePort(project);
@@ -72,21 +54,19 @@ export abstract class BaseScripts {
   }
   async startDocker(project: Project, argv: ScriptArgv): Promise<string> {
     await ensurePort(project);
-    if (!this.shouldWaitAndOpenApp) {
-      return `${this.buildDocker(project, 'development')}
-      && ${dockerScripts.stopAndStart(project, argv.normalizedDockerOptionsText ?? '', argv.normalizedArgsText ?? '')}`;
-    }
-
+    const startCommand = dockerScripts.stopAndStart(
+      project,
+      argv.normalizedDockerOptionsText ?? '',
+      argv.normalizedArgsText ?? ''
+    );
     return `${this.buildDocker(project, 'development')}
-      && ${buildShellCommand([
-        'YARN',
-        'wb',
-        'concurrently',
-        ...buildEnvReaderOptionArgs(argv),
-        '--kill-others-on-fail',
-        dockerScripts.stopAndStart(project, argv.normalizedDockerOptionsText ?? '', argv.normalizedArgsText ?? ''),
-        this.waitAndOpenApp(project),
-      ])}`;
+      && ${this.withWaitAndOpenApp(project, argv, startCommand)}`;
+  }
+
+  private withWaitAndOpenApp(project: Project, argv: ScriptArgv, startCommand: string): string {
+    if (!this.shouldWaitAndOpenApp) return startCommand;
+
+    return buildConcurrentlyCommand(argv, ['--kill-others-on-fail'], [startCommand, this.waitAndOpenApp(project)]);
   }
 
   protected abstract startDevProtected(_: Project, argv: ScriptArgv): string;
@@ -193,17 +173,11 @@ export abstract class BaseScripts {
     // would otherwise answer 500 and the startup check would never see a 2xx.
     const migrationCommands = isProjectEnvironment(project, 'test') ? this.buildMigrationCommands(project) : [];
     // Use empty NODE_ENV to avoid "production" mode in some frameworks.
-    const startupCheckCommand = `${buildShellEnvironmentAssignment('NODE_ENV', '')} ${buildShellCommand([
-      'YARN',
-      'wb',
-      'concurrently',
-      ...buildEnvReaderOptionArgs(argv),
-      '--kill-others',
-      '--success',
-      'first',
-      this.startDevProtected(project, argv),
-      this.waitApp(project),
-    ])}`;
+    const startupCheckCommand = `${buildShellEnvironmentAssignment('NODE_ENV', '')} ${buildConcurrentlyCommand(
+      argv,
+      untilFirstSuccess,
+      [this.startDevProtected(project, argv), this.waitApp(project)]
+    )}`;
     return [...migrationCommands, startupCheckCommand].join(' && ');
   }
 
@@ -220,17 +194,7 @@ export abstract class BaseScripts {
       return playwrightCommand;
     }
 
-    return buildShellCommand([
-      'YARN',
-      'wb',
-      'concurrently',
-      ...buildEnvReaderOptionArgs(argv),
-      '--kill-others',
-      '--success',
-      'first',
-      `${startCommand} && exit 1`,
-      `${buildE2EReadinessCommand(port, isDocker)} && ${playwrightCommand}`,
-    ]);
+    return buildE2ECommand(argv, startCommand, port, isDocker, playwrightCommand);
   }
 
   /**
@@ -333,6 +297,26 @@ export abstract class BaseScripts {
       project
     )} || ${buildWaitOnLoopbackCommand(port)} && YARN wb open-cli --optional http://\${HOST:-localhost}:${port}`;
   }
+}
+
+const untilFirstSuccess = ['--kill-others', '--success', 'first'];
+
+/** Runs the tests once the server is ready and ends with their result; the server exiting first is a failure. */
+export function buildE2ECommand(
+  argv: EnvReaderOptions,
+  startCommand: string,
+  port: string | number,
+  isDocker: boolean,
+  testCommand: string
+): string {
+  return buildConcurrentlyCommand(argv, untilFirstSuccess, [
+    `${startCommand} && exit 1`,
+    `${buildE2EReadinessCommand(port, isDocker)} && ${testCommand}`,
+  ]);
+}
+
+function buildConcurrentlyCommand(argv: EnvReaderOptions, flags: string[], commands: string[]): string {
+  return buildShellCommand(['YARN', 'wb', 'concurrently', ...buildEnvReaderOptionArgs(argv), ...flags, ...commands]);
 }
 
 export function buildE2EReadinessCommand(port: string | number, isDocker: boolean): string {

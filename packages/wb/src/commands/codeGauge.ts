@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 import { z } from 'zod';
 
-import { findSelfProject, type Project } from '../project.js';
+import { findSelfProjectOrExit, type Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { readNearestPackageJson } from '../utils/nearestPackageJson.js';
 import { printCommand } from '../utils/packageCommand.js';
@@ -59,11 +59,7 @@ export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> =
   describe: 'Print code-gauge threshold violations as warnings without failing',
   builder,
   async handler(argv) {
-    const project = findSelfProject(argv, false);
-    if (!project) {
-      console.error(chalk.red('No project found.'));
-      process.exit(1);
-    }
+    const project = findSelfProjectOrExit(argv, false);
     if (argv.dryRun) {
       printCodeGaugeCommands(project, [argv.base]);
       return;

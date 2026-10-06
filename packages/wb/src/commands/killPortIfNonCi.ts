@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findSelfProject } from '../project.js';
+import { findSelfProjectOrExit } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isCI } from '../utils/ci.js';
 import { computePreferredPort } from '../utils/port.js';
@@ -24,11 +24,7 @@ export const killPortIfNonCiCommand: CommandModule<
 export async function killPortIfNonCi(
   argv: ArgumentsCamelCase<InferredOptionTypes<typeof killPortIfNonCiBuilder & typeof sharedOptionsBuilder>>
 ): Promise<void> {
-  const project = findSelfProject(argv);
-  if (!project) {
-    console.error(chalk.red('No project found.'));
-    process.exit(1);
-  }
+  const project = findSelfProjectOrExit(argv);
 
   if (isCI(project.env.CI)) {
     console.info(`Skip killing port due to CI: ${project.env.CI}`);

@@ -6,7 +6,7 @@ import { treeKill } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findSelfProject, type Project } from '../project.js';
+import { findSelfProjectOrExit, type Project } from '../project.js';
 import { configureEnv, normalizeScript } from '../scripts/run.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -58,11 +58,7 @@ export const concurrentlyCommand: CommandModule<
       process.exit(1);
     }
 
-    const project = findSelfProject(argv);
-    if (!project) {
-      console.error(chalk.red('No project found.'));
-      process.exit(1);
-    }
+    const project = findSelfProjectOrExit(argv);
 
     const commands = (argv.commands ?? []).map(String).filter(Boolean);
     if (commands.length === 0) {
@@ -238,10 +234,7 @@ function isProcessGroupGone(pid: number): boolean {
     process.kill(-pid, 0);
     return false;
   } catch (error) {
-    if (hasErrorCode(error, 'ESRCH')) {
-      return true;
-    }
-    return false;
+    return hasErrorCode(error, 'ESRCH');
   }
 }
 
