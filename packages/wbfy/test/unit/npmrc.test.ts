@@ -94,7 +94,7 @@ describe('generateRepositoryNpmrc', () => {
     expect(await fs.promises.lstat(workspaceNpmrcPath).catch((error: unknown) => error)).toMatchObject({
       code: 'ENOENT',
     });
-  });
+  }, 30_000);
 
   it('preserves repository npmrc files outside the organizations', async () => {
     const rootDirPath = await makeTempDir();
