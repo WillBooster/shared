@@ -22,14 +22,15 @@ export async function generateRepositoryNpmrc(configs: PackageConfig[]): Promise
   const npmrcPaths = new Set(configs.map((config) => path.resolve(config.dirPath, '.npmrc')));
   if (repoResolvesPrivatePackages(rootConfig)) {
     const rootNpmrcPath = path.resolve(rootConfig.dirPath, '.npmrc');
-    const rootGenerated = await fsUtil.generateFile(rootNpmrcPath, privateRegistryScopeMapping);
     npmrcPaths.delete(rootNpmrcPath);
-    for (const npmrcPath of npmrcPaths) {
-      if (!(await fsUtil.removeConfined(npmrcPath)) || !rootGenerated) continue;
-      await fs.promises.symlink(path.relative(path.dirname(npmrcPath), rootNpmrcPath), npmrcPath);
-      console.info(`Generated workspace npmrc link ${npmrcPath}.`);
+    if (await fsUtil.generateFile(rootNpmrcPath, privateRegistryScopeMapping)) {
+      for (const npmrcPath of npmrcPaths) {
+        if (!(await fsUtil.removeConfined(npmrcPath))) continue;
+        await fs.promises.symlink(path.relative(path.dirname(npmrcPath), rootNpmrcPath), npmrcPath);
+        console.info(`Generated workspace npmrc link ${npmrcPath}.`);
+      }
+      return;
     }
-    return;
   }
 
   for (const npmrcPath of npmrcPaths) await removeNpmrc(npmrcPath);

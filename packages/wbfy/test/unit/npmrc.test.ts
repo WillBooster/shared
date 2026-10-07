@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -72,6 +71,18 @@ describe('generateRepositoryNpmrc', () => {
     await fs.promises.appendFile(workspaceNpmrcPath, '//example.test/:_authToken=second\n');
     expect(await fs.promises.readFile(rootNpmrcPath, 'utf8')).toContain('_authToken=second');
 
+    await generateRepositoryNpmrc([rootConfig, workspaceConfig]);
+    const relocatedRootDirPath = await makeTempDir();
+    await fs.promises.cp(rootDirPath, relocatedRootDirPath, { recursive: true, verbatimSymlinks: true });
+    await fs.promises.appendFile(
+      path.join(relocatedRootDirPath, 'apps', 'nested', 'app', '.npmrc'),
+      '//example.test/:_authToken=relocated\n'
+    );
+    expect(await fs.promises.readFile(path.join(relocatedRootDirPath, '.npmrc'), 'utf8')).toContain(
+      '_authToken=relocated'
+    );
+    expect(await fs.promises.readFile(rootNpmrcPath, 'utf8')).toBe(originalContent);
+
     const externalNpmrcPath = path.join(await makeTempDir(), '.npmrc');
     await fs.promises.writeFile(externalNpmrcPath, 'external=true\n');
     await fs.promises.unlink(rootNpmrcPath);
@@ -98,7 +109,9 @@ describe('generateRepositoryNpmrc', () => {
 });
 
 async function makeTempDir(): Promise<string> {
-  const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wbfy-npmrc-'));
+  const tempRootPath = path.resolve('.tmp');
+  await fs.promises.mkdir(tempRootPath, { recursive: true });
+  const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'wbfy-npmrc-'));
   tempDirPaths.push(dirPath);
   return dirPath;
 }
