@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
-import type { CommandModule, InferredOptionTypes } from 'yargs';
+import type { Argv, CommandModule, InferredOptionTypes } from 'yargs';
 import { z } from 'zod';
 
 import { findSelfProjectOrExit, type Project } from '../project.js';
@@ -18,7 +18,7 @@ const builder = {
   },
 } as const;
 
-const _argumentsBuilder = {
+const argumentsBuilder = {
   target: {
     type: 'string',
     describe: 'File or directory to check instead of the whole project',
@@ -26,7 +26,7 @@ const _argumentsBuilder = {
 } as const;
 
 type CodeGaugeCommandOptions = InferredOptionTypes<
-  typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder
+  typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder
 >;
 
 const locationSchema = z.object({ file: z.string(), startLine: z.number(), endLine: z.number() });
@@ -80,7 +80,8 @@ const MAX_PARTNER_LOCATIONS = 3;
 export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> = {
   command: 'code-gauge [target]',
   describe: 'Print code-gauge errors and warnings without failing',
-  builder,
+  builder: (yargs) =>
+    yargs.options(builder).positional('target', argumentsBuilder.target) as Argv<CodeGaugeCommandOptions>,
   async handler(argv) {
     const project = findSelfProjectOrExit(argv, false);
     if (argv.dryRun) {

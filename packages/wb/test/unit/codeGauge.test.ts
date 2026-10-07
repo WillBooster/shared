@@ -41,11 +41,14 @@ it('limits the check to a path and names the parts adding the most cognitive com
     path.join(dir, 'nested.ts'),
     `export function nested(value: number): number {\n${[...nested, '        return 1;', ...closing].join('\n')}\n  return 0;\n}\n`
   );
-  const result = await runCli(dir, ['code-gauge', 'nested.ts']);
+  // Named like a number, which must reach code-gauge as the path it is.
+  await fs.mkdir(path.join(dir, '1.0'));
+  await fs.rename(path.join(dir, 'nested.ts'), path.join(dir, '1.0', 'nested.ts'));
+  const result = await runCli(dir, ['code-gauge', '1.0']);
   expect(result.status, result.stdout + result.stderr).toBe(0);
   expect(stripVTControlCharacters(result.stdout)).toBe(
     'code-gauge: 0 errors, 1 warnings (1 functions, 0 files, 0 duplicated blocks)\n' +
-      'warning: nested.ts:1-16 nested: function cognitive complexity 21 (max 15; largest parts L5-11 15)\n'
+      'warning: 1.0/nested.ts:1-16 nested: function cognitive complexity 21 (max 15; largest parts L5-11 15)\n'
   );
 }, 60_000);
 
