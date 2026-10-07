@@ -52,21 +52,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
 
     let newSettings = (config.isRoot ? buildRootJsonObj(config) : structuredClone(subJsonObj)) as TsConfigJson;
     const generatedTypes = getGeneratedTypes(config);
-    newSettings.extends = getTsconfigExtends(config);
-    newSettings.compilerOptions ??= {};
-    newSettings.compilerOptions.rootDir = getRootDir(config);
-    if (generatedTypes.length > 0) {
-      newSettings.compilerOptions = { ...newSettings.compilerOptions, types: generatedTypes };
-    }
-    if (!config.doesContainJsxOrTsx && !config.doesContainJsxOrTsxInPackages) {
-      delete newSettings.compilerOptions?.jsx;
-    }
-    if (config.depending.prisma) {
-      // Prisma seeds and migration helper scripts often live outside src, but
-      // type-aware linting still needs them covered by the project config.
-      addIncludePath(newSettings, 'prisma/**/*');
-    }
-    if (hasRailwayIac(config)) addIncludePath(newSettings, '.railway/**/*');
+    applyManagedSettings(newSettings, config, generatedTypes);
 
     const filePath = path.resolve(config.dirPath, 'tsconfig.json');
     const existingContent = await fsUtil.readFileIfExists(filePath);
@@ -81,37 +67,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
         return;
       }
       originalSettingsJson = JSON.stringify(sortKeys(structuredClone(oldSettings)));
-      const existingTypes = normalizeStringArray(oldSettings.compilerOptions?.types);
-      const existingEmitMetadata = pickExistingEmitMetadata(oldSettings.compilerOptions);
-      newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
-      delete oldSettings.extends;
-      delete oldSettings.compilerOptions?.jsx;
-      if (config.isRoot) {
-        removeStaleManagedWorkspaceEntries(config, oldSettings, newSettings);
-      }
-      newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge });
-      newSettings.include = newSettings.include?.filter(
-        (dirPath: string) =>
-          !dirPath.includes('@types') && !dirPath.includes('__tests__/') && !dirPath.includes('tests/')
-      );
-      newSettings.compilerOptions ??= {};
-      // wbfy-generated tsconfig.json is a lint/typecheck project, not the emit
-      // contract. It must keep rootDir broad enough for root config files,
-      // scripts, src, and tests. build-ts owns emit and creates a temporary
-      // src-only tsconfig with noEmit=false, emitDeclarationOnly=true,
-      // rootDir="src", and include=["src/**/*"], so preserving noEmit=false or
-      // rootDir="src" here would only break non-src type-aware lint coverage.
-      newSettings.compilerOptions = { ...newSettings.compilerOptions, ...existingEmitMetadata };
-
-      const mergedTypes = [...new Set([...filterExistingTypes(existingTypes, generatedTypes), ...generatedTypes])];
-      if (mergedTypes.length > 0) {
-        newSettings.compilerOptions.types = mergedTypes;
-      } else {
-        delete newSettings.compilerOptions.types;
-      }
-      if (shouldDeleteTypeRoots(generatedTypes)) {
-        delete newSettings.compilerOptions.typeRoots;
-      }
+      newSettings = mergeExistingSettings(config, newSettings, oldSettings, generatedTypes);
     }
     addUndiciTypesPathMapping(newSettings, config);
     sortKeys(newSettings);
@@ -131,6 +87,65 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     const newContent = JSON.stringify(newSettings, undefined, 2);
     await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
+}
+
+function applyManagedSettings(newSettings: TsConfigJson, config: PackageConfig, generatedTypes: string[]): void {
+  newSettings.extends = getTsconfigExtends(config);
+  newSettings.compilerOptions ??= {};
+  newSettings.compilerOptions.rootDir = getRootDir(config);
+  if (generatedTypes.length > 0) {
+    newSettings.compilerOptions = { ...newSettings.compilerOptions, types: generatedTypes };
+  }
+  if (!config.doesContainJsxOrTsx && !config.doesContainJsxOrTsxInPackages) {
+    delete newSettings.compilerOptions?.jsx;
+  }
+  if (config.depending.prisma) {
+    // Prisma seeds and migration helper scripts often live outside src, but
+    // type-aware linting still needs them covered by the project config.
+    addIncludePath(newSettings, 'prisma/**/*');
+  }
+  if (hasRailwayIac(config)) addIncludePath(newSettings, '.railway/**/*');
+}
+
+/** Merges the project's own settings into the generated ones, which win on conflict. Mutates `oldSettings`. */
+function mergeExistingSettings(
+  config: PackageConfig,
+  newSettings: TsConfigJson,
+  oldSettings: TsConfigJson,
+  generatedTypes: string[]
+): TsConfigJson {
+  const existingTypes = normalizeStringArray(oldSettings.compilerOptions?.types);
+  const existingEmitMetadata = pickExistingEmitMetadata(oldSettings.compilerOptions);
+  newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
+  delete oldSettings.extends;
+  delete oldSettings.compilerOptions?.jsx;
+  if (config.isRoot) {
+    removeStaleManagedWorkspaceEntries(config, oldSettings, newSettings);
+  }
+  const mergedSettings: TsConfigJson = merge.all([newSettings, oldSettings, newSettings], {
+    arrayMerge: combineMerge,
+  });
+  mergedSettings.include = mergedSettings.include?.filter(
+    (dirPath: string) => !dirPath.includes('@types') && !dirPath.includes('__tests__/') && !dirPath.includes('tests/')
+  );
+  // wbfy-generated tsconfig.json is a lint/typecheck project, not the emit
+  // contract. It must keep rootDir broad enough for root config files,
+  // scripts, src, and tests. build-ts owns emit and creates a temporary
+  // src-only tsconfig with noEmit=false, emitDeclarationOnly=true,
+  // rootDir="src", and include=["src/**/*"], so preserving noEmit=false or
+  // rootDir="src" here would only break non-src type-aware lint coverage.
+  mergedSettings.compilerOptions = { ...mergedSettings.compilerOptions, ...existingEmitMetadata };
+
+  const mergedTypes = [...new Set([...filterExistingTypes(existingTypes, generatedTypes), ...generatedTypes])];
+  if (mergedTypes.length > 0) {
+    mergedSettings.compilerOptions.types = mergedTypes;
+  } else {
+    delete mergedSettings.compilerOptions.types;
+  }
+  if (shouldDeleteTypeRoots(generatedTypes)) {
+    delete mergedSettings.compilerOptions.typeRoots;
+  }
+  return mergedSettings;
 }
 
 /**

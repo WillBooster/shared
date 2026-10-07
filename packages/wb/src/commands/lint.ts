@@ -4,7 +4,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
-import type { Project } from '../project.js';
+import type { FoundProjects, Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
 import type { BufferedRunResult } from '../scripts/run.js';
 import { normalizeScript, runWithSpawnInParallel, runWithSpawnInParallelBuffered } from '../scripts/run.js';
@@ -125,8 +125,6 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   }
 
   const files = getLintTargetFiles(argv);
-  const shouldRunFormatters = Boolean(argv.format);
-  const shouldRunLinters = !argv.format || argv.fix;
   // The test layout is a static structural rule, so `wb lint` is its home: `wb verify` (via its
   // cleanup step) and CI's lint job then enforce it with no extra wiring, and a stray test file
   // surfaces here instead of at `wb test`, where `--passWithNoTests` would otherwise let the suite
@@ -140,11 +138,71 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   // all, and wbfy chains that script as `bun wb lint --format && bun run format-code` for Dart and
   // Python repositories — failing it there would silently strip their only formatting pass.
   const violatesTestStructure =
-    shouldRunLinters && !argv.dryRun && files.length === 0 && reportTestStructureViolations(projects.descendants);
-  const lintFilePathsByProject = new Map<Project, string[]>();
-  const oxfmtFilePathsByProject = new Map<Project, string[]>();
-  const pythonFilePathsByProject = new Map<Project, string[]>();
-  const dartFilePathsByProject = new Map<Project, string[]>();
+    shouldRunLinters(argv) && !argv.dryRun && files.length === 0 && reportTestStructureViolations(projects.descendants);
+  const plan =
+    files.length > 0 ? await planExplicitLintRun(argv, projects.descendants, files) : planWholeLintRun(argv, projects);
+  const succeeded = await runLintPlan(plan, argv, projects.self);
+  return succeeded && !violatesTestStructure ? 0 : 1;
+}
+
+function shouldRunFormatters(argv: LintCommandArgv): boolean {
+  return Boolean(argv.format);
+}
+
+function shouldRunLinters(argv: LintCommandArgv): boolean {
+  return !argv.format || Boolean(argv.fix);
+}
+
+interface LintPlan {
+  formatterCommands: LintRunCommand[];
+  linterCommands: LintRunCommand[];
+  prettierArgs: string[];
+  sortPackageJsonArgs: string[];
+  /** Whether an explicitly passed file needs a linter that its project lacks. */
+  missingLintTool: boolean;
+}
+
+function planWholeLintRun(argv: LintCommandArgv, projects: FoundProjects): LintPlan {
+  const formatterCommands: LintRunCommand[] = [];
+  const linterCommands: LintRunCommand[] = [];
+  for (const project of projects.descendants) {
+    if (shouldRunLinters(argv)) {
+      const lintCommand = buildLintCommand(
+        project,
+        argv,
+        undefined,
+        buildWorkspaceIgnorePatterns(
+          project,
+          projects.descendants,
+          // The same command: a workspace that lints without the root's type check stays covered.
+          (workspace) => buildLintCommand(workspace, argv) === buildLintCommand(project, argv)
+        )
+      );
+      if (lintCommand) linterCommands.push({ command: lintCommand, project });
+      if (project.hasPoetryLock) linterCommands.push({ command: buildPoetryLintCommand(argv), project });
+      if (project.hasPubspecYaml) linterCommands.push({ command: buildDartLintCommand(), project });
+    }
+    if (shouldRunFormatters(argv)) {
+      if (project.hasOxfmt) formatterCommands.push({ command: buildOxfmtCommand(), project });
+      if (project.hasPoetryLock) formatterCommands.push({ command: buildPoetryFormatCommand(), project });
+      if (project.hasPubspecYaml) formatterCommands.push({ command: buildDartFormatCommand(), project });
+      if (project.hasCargoToml) formatterCommands.push({ command: buildCargoFormatCommand(), project });
+    }
+  }
+  return {
+    formatterCommands,
+    linterCommands,
+    prettierArgs: buildPrettierArgs(projects.self.dirPath, projects.descendants),
+    sortPackageJsonArgs: projects.descendants.map((p) => p.packageJsonPath),
+    missingLintTool: false,
+  };
+}
+
+interface ExplicitLintTargets {
+  lintFilePathsByProject: Map<Project, string[]>;
+  oxfmtFilePathsByProject: Map<Project, string[]>;
+  pythonFilePathsByProject: Map<Project, string[]>;
+  dartFilePathsByProject: Map<Project, string[]>;
   // `cargo fmt --all` always formats the whole workspace, so we track target
   // projects rather than individual file paths. Every project with its own
   // `Cargo.toml` runs its own `cargo fmt --all`; we intentionally do not dedup
@@ -153,217 +211,208 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   // would leave it unformatted, while any genuinely overlapping runs are
   // harmless because rustfmt is deterministic and idempotent. Deduping by real
   // workspace membership would require invoking `cargo locate-project`.
-  const cargoFormatProjects = new Set<Project>();
-  const prettierFilePaths: string[] = [];
-  const packageJsonFilePaths: string[] = [];
-  let missingLintToolForExplicitFiles = false;
-  let prettierArgs: string[];
-  let sortPackageJsonArgs: string[];
-  if (files.length > 0) {
-    const lintTargets = await Promise.all(
-      files.map(async (file) => {
-        const filePath = path.resolve(file);
-        const fileKind = await getLintTargetFileKind(filePath);
-        return { fileKind, filePath };
-      })
-    );
-    for (const { fileKind, filePath } of lintTargets) {
-      if (
-        filePath.endsWith('/test/fixtures') ||
-        filePath.includes('/test/fixtures/') ||
-        filePath.endsWith('/test-fixtures') ||
-        filePath.includes('/test-fixtures/')
-      ) {
-        continue;
-      }
+  cargoFormatProjects: Set<Project>;
+  prettierFilePaths: string[];
+  packageJsonFilePaths: string[];
+  missingLintTool: boolean;
+}
 
-      const extension = path.extname(filePath).slice(1);
-      if (filePath.endsWith('/package.json')) {
-        packageJsonFilePaths.push(filePath);
-        continue;
-      }
-      packageJsonFilePaths.push(...getExplicitPackageJsonPaths(projects.descendants, filePath, fileKind));
+interface ExplicitLintTarget {
+  lintPath: string;
+  fileKind: 'directory' | 'other';
+  extension: string;
+}
 
-      for (const { lintPath, project } of getExplicitLintTargets(projects.descendants, filePath, fileKind)) {
-        if (project.hasPoetryLock && (fileKind === 'directory' || pythonExtensions.has(extension))) {
-          const pythonFilePaths = pythonFilePathsByProject.get(project) ?? [];
-          pythonFilePaths.push(lintPath);
-          pythonFilePathsByProject.set(project, pythonFilePaths);
-          if (fileKind !== 'directory') continue;
-        }
-        if (project.hasPubspecYaml && (fileKind === 'directory' || dartExtensions.has(extension))) {
-          const dartFilePaths = dartFilePathsByProject.get(project) ?? [];
-          dartFilePaths.push(lintPath);
-          dartFilePathsByProject.set(project, dartFilePaths);
-          if (fileKind !== 'directory') continue;
-        }
-        if (project.hasCargoToml && (fileKind === 'directory' || rustExtensions.has(extension))) {
-          cargoFormatProjects.add(project);
-          if (fileKind !== 'directory') continue;
-        }
-        if (fileKind === 'directory' || supportsLintingExtension(project, extension)) {
-          const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
-          lintFilePaths.push(lintPath);
-          lintFilePathsByProject.set(project, lintFilePaths);
-          if (argv.format) {
-            if (fileKind === 'directory' && project.hasOxfmt) {
-              const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
-              oxfmtFilePaths.push(lintPath);
-              oxfmtFilePathsByProject.set(project, oxfmtFilePaths);
-              prettierFilePaths.push(buildPrettierOnlyDirectoryPattern(lintPath), prettierFixtureIgnorePattern);
-            } else {
-              for (const formatterPath of buildExplicitFormatterArgs(project, lintPath, fileKind, extension)) {
-                if (project.hasOxfmt) {
-                  const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
-                  oxfmtFilePaths.push(formatterPath);
-                  oxfmtFilePathsByProject.set(project, oxfmtFilePaths);
-                } else {
-                  prettierFilePaths.push(formatterPath);
-                }
-              }
-            }
-          }
-        } else if (argv.format && (prettierExtensions.has(extension) || oxfmtExtensions.has(extension))) {
-          if (project.hasOxfmt && oxfmtExtensions.has(extension)) {
-            const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
-            oxfmtFilePaths.push(lintPath);
-            oxfmtFilePathsByProject.set(project, oxfmtFilePaths);
-          } else if (prettierExtensions.has(extension)) {
-            prettierFilePaths.push(lintPath);
-          }
-        } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
-          console.error(chalk.red(`No linter found for ${project.name}. Install Oxlint.`));
-          missingLintToolForExplicitFiles = true;
-        }
-      }
+async function planExplicitLintRun(argv: LintCommandArgv, projects: Project[], files: string[]): Promise<LintPlan> {
+  const targets: ExplicitLintTargets = {
+    lintFilePathsByProject: new Map(),
+    oxfmtFilePathsByProject: new Map(),
+    pythonFilePathsByProject: new Map(),
+    dartFilePathsByProject: new Map(),
+    cargoFormatProjects: new Set(),
+    prettierFilePaths: [],
+    packageJsonFilePaths: [],
+    missingLintTool: false,
+  };
+  const explicitPaths = await Promise.all(
+    files.map(async (file) => {
+      const filePath = path.resolve(file);
+      const fileKind = await getLintTargetFileKind(filePath);
+      return { fileKind, filePath };
+    })
+  );
+  for (const { fileKind, filePath } of explicitPaths) {
+    if (isInTestFixtures(filePath)) continue;
+    if (filePath.endsWith('/package.json')) {
+      targets.packageJsonFilePaths.push(filePath);
+      continue;
     }
-    prettierArgs = [...new Set(prettierFilePaths)];
-    sortPackageJsonArgs = [...new Set(packageJsonFilePaths)];
-  } else {
-    prettierArgs = buildPrettierArgs(projects.self.dirPath, projects.descendants);
-    sortPackageJsonArgs = projects.descendants.map((p) => p.packageJsonPath);
-  }
+    targets.packageJsonFilePaths.push(...getExplicitPackageJsonPaths(projects, filePath, fileKind));
 
+    const extension = path.extname(filePath).slice(1);
+    for (const { lintPath, project } of getExplicitLintTargets(projects, filePath, fileKind)) {
+      classifyExplicitLintTarget(targets, argv, project, { lintPath, fileKind, extension });
+    }
+  }
+  return {
+    ...buildExplicitLintCommands(targets, argv),
+    prettierArgs: [...new Set(targets.prettierFilePaths)],
+    sortPackageJsonArgs: [...new Set(targets.packageJsonFilePaths)],
+    missingLintTool: targets.missingLintTool,
+  };
+}
+
+function isInTestFixtures(filePath: string): boolean {
+  return (
+    filePath.endsWith('/test/fixtures') ||
+    filePath.includes('/test/fixtures/') ||
+    filePath.endsWith('/test-fixtures') ||
+    filePath.includes('/test-fixtures/')
+  );
+}
+
+function classifyExplicitLintTarget(
+  targets: ExplicitLintTargets,
+  argv: LintCommandArgv,
+  project: Project,
+  target: ExplicitLintTarget
+): void {
+  const { lintPath, extension } = target;
+  const isDirectory = target.fileKind === 'directory';
+  if (project.hasPoetryLock && (isDirectory || pythonExtensions.has(extension))) {
+    appendPath(targets.pythonFilePathsByProject, project, lintPath);
+    if (!isDirectory) return;
+  }
+  if (project.hasPubspecYaml && (isDirectory || dartExtensions.has(extension))) {
+    appendPath(targets.dartFilePathsByProject, project, lintPath);
+    if (!isDirectory) return;
+  }
+  if (project.hasCargoToml && (isDirectory || rustExtensions.has(extension))) {
+    targets.cargoFormatProjects.add(project);
+    if (!isDirectory) return;
+  }
+  if (isDirectory || supportsLintingExtension(project, extension)) {
+    appendPath(targets.lintFilePathsByProject, project, lintPath);
+    if (argv.format) addFormatterPathsOfLintTarget(targets, project, target);
+  } else if (argv.format && (prettierExtensions.has(extension) || oxfmtExtensions.has(extension))) {
+    if (project.hasOxfmt && oxfmtExtensions.has(extension)) {
+      appendPath(targets.oxfmtFilePathsByProject, project, lintPath);
+    } else if (prettierExtensions.has(extension)) {
+      targets.prettierFilePaths.push(lintPath);
+    }
+  } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
+    console.error(chalk.red(`No linter found for ${project.name}. Install Oxlint.`));
+    targets.missingLintTool = true;
+  }
+}
+
+function addFormatterPathsOfLintTarget(
+  targets: ExplicitLintTargets,
+  project: Project,
+  { lintPath, fileKind, extension }: ExplicitLintTarget
+): void {
+  if (fileKind === 'directory' && project.hasOxfmt) {
+    appendPath(targets.oxfmtFilePathsByProject, project, lintPath);
+    targets.prettierFilePaths.push(buildPrettierOnlyDirectoryPattern(lintPath), prettierFixtureIgnorePattern);
+    return;
+  }
+  for (const formatterPath of buildExplicitFormatterArgs(project, lintPath, fileKind, extension)) {
+    if (project.hasOxfmt) {
+      appendPath(targets.oxfmtFilePathsByProject, project, formatterPath);
+    } else {
+      targets.prettierFilePaths.push(formatterPath);
+    }
+  }
+}
+
+function appendPath(filePathsByProject: Map<Project, string[]>, project: Project, filePath: string): void {
+  const filePaths = filePathsByProject.get(project) ?? [];
+  filePaths.push(filePath);
+  filePathsByProject.set(project, filePaths);
+}
+
+function buildExplicitLintCommands(
+  targets: ExplicitLintTargets,
+  argv: LintCommandArgv
+): Pick<LintPlan, 'formatterCommands' | 'linterCommands'> {
   const formatterCommands: LintRunCommand[] = [];
   const linterCommands: LintRunCommand[] = [];
-  const lintRunOptions = { exitIfFailed: false, preserveColor: !argv.printAllOutput } as const;
-  if (files.length > 0) {
-    if (shouldRunLinters) {
-      for (const [project, lintFilePaths] of lintFilePathsByProject) {
-        const lintCommand = buildLintCommand(project, argv, lintFilePaths);
-        if (!lintCommand) continue;
-
-        linterCommands.push({ command: lintCommand, project });
-      }
-    }
-    for (const [project, pythonFilePaths] of pythonFilePathsByProject) {
-      if (shouldRunLinters) {
-        linterCommands.push({ command: buildPoetryLintCommand(argv, pythonFilePaths), project });
-      }
-      if (shouldRunFormatters) {
-        formatterCommands.push({ command: buildPoetryFormatCommand(pythonFilePaths), project });
-      }
-    }
-    for (const [project, dartFilePaths] of dartFilePathsByProject) {
-      if (shouldRunLinters) {
-        linterCommands.push({ command: buildDartLintCommand(dartFilePaths), project });
-      }
-      if (shouldRunFormatters) {
-        formatterCommands.push({ command: buildDartFormatCommand(dartFilePaths), project });
-      }
-    }
-    if (shouldRunFormatters) {
-      for (const project of cargoFormatProjects) {
-        formatterCommands.push({ command: buildCargoFormatCommand(), project });
-      }
-      for (const [project, oxfmtFilePaths] of oxfmtFilePathsByProject) {
-        formatterCommands.push({ command: buildOxfmtCommand(oxfmtFilePaths), project });
-      }
-    }
-  } else {
-    for (const project of projects.descendants) {
-      if (shouldRunLinters) {
-        const lintCommand = buildLintCommand(
-          project,
-          argv,
-          undefined,
-          buildWorkspaceIgnorePatterns(
-            project,
-            projects.descendants,
-            // The same command: a workspace that lints without the root's type check stays covered.
-            (workspace) => buildLintCommand(workspace, argv) === buildLintCommand(project, argv)
-          )
-        );
-        if (lintCommand) linterCommands.push({ command: lintCommand, project });
-        if (project.hasPoetryLock) linterCommands.push({ command: buildPoetryLintCommand(argv), project });
-        if (project.hasPubspecYaml) linterCommands.push({ command: buildDartLintCommand(), project });
-      }
-      if (shouldRunFormatters) {
-        if (project.hasOxfmt) formatterCommands.push({ command: buildOxfmtCommand(), project });
-        if (project.hasPoetryLock) formatterCommands.push({ command: buildPoetryFormatCommand(), project });
-        if (project.hasPubspecYaml) formatterCommands.push({ command: buildDartFormatCommand(), project });
-        if (project.hasCargoToml) formatterCommands.push({ command: buildCargoFormatCommand(), project });
-      }
+  if (shouldRunLinters(argv)) {
+    for (const [project, lintFilePaths] of targets.lintFilePathsByProject) {
+      const lintCommand = buildLintCommand(project, argv, lintFilePaths);
+      if (lintCommand) linterCommands.push({ command: lintCommand, project });
     }
   }
-  const lintExitCodes: number[] = [];
-
-  if (shouldRunFormatters) {
-    const formatterResults = await runLintCommands(formatterCommands, argv, lintRunOptions);
-    printSilentLintOutputs(formatterResults, argv);
-    lintExitCodes.push(...formatterResults.map((result) => result.exitCode));
-
-    if (lintExitCodes.some((exitCode) => exitCode !== 0)) {
-      return 1;
+  for (const [project, pythonFilePaths] of targets.pythonFilePathsByProject) {
+    if (shouldRunLinters(argv)) {
+      linterCommands.push({ command: buildPoetryLintCommand(argv, pythonFilePaths), project });
+    }
+    if (shouldRunFormatters(argv)) {
+      formatterCommands.push({ command: buildPoetryFormatCommand(pythonFilePaths), project });
     }
   }
-
-  if (missingLintToolForExplicitFiles) {
-    return 1;
-  }
-
-  if (shouldRunFormatters) {
-    if (prettierArgs.length > 0 && projects.self.hasPrettier) {
-      const prettierResult = await runLintCommand(
-        buildShellCommand([
-          'YARN',
-          'prettier',
-          '--cache',
-          '--no-error-on-unmatched-pattern',
-          '--write',
-          '--',
-          ...prettierArgs,
-        ]),
-        projects.self,
-        argv,
-        lintRunOptions
-      );
-      printSilentLintOutputs([prettierResult], argv);
-      lintExitCodes.push(prettierResult.exitCode);
+  for (const [project, dartFilePaths] of targets.dartFilePathsByProject) {
+    if (shouldRunLinters(argv)) {
+      linterCommands.push({ command: buildDartLintCommand(dartFilePaths), project });
     }
-    if (sortPackageJsonArgs.length > 0) {
-      const sortPackageJsonResult = await runLintCommand(
-        buildShellCommand(['YARN', 'sort-package-json', '--', ...sortPackageJsonArgs]),
-        projects.self,
-        argv,
-        lintRunOptions
-      );
-      printSilentLintOutputs([sortPackageJsonResult], argv);
-      lintExitCodes.push(sortPackageJsonResult.exitCode);
-    }
-
-    if (lintExitCodes.some((exitCode) => exitCode !== 0)) {
-      return 1;
+    if (shouldRunFormatters(argv)) {
+      formatterCommands.push({ command: buildDartFormatCommand(dartFilePaths), project });
     }
   }
-
-  if (shouldRunLinters) {
-    const linterResults = await runLintCommands(linterCommands, argv, lintRunOptions);
-    printSilentLintOutputs(linterResults, argv);
-    lintExitCodes.push(...linterResults.map((result) => result.exitCode));
+  if (shouldRunFormatters(argv)) {
+    for (const project of targets.cargoFormatProjects) {
+      formatterCommands.push({ command: buildCargoFormatCommand(), project });
+    }
+    for (const [project, oxfmtFilePaths] of targets.oxfmtFilePathsByProject) {
+      formatterCommands.push({ command: buildOxfmtCommand(oxfmtFilePaths), project });
+    }
   }
+  return { formatterCommands, linterCommands };
+}
 
-  return lintExitCodes.some((exitCode) => exitCode !== 0) || violatesTestStructure ? 1 : 0;
+/** Resolves to whether every command succeeded. */
+async function runLintPlan(plan: LintPlan, argv: LintCommandArgv, selfProject: Project): Promise<boolean> {
+  if (shouldRunFormatters(argv) && !(await runAndReportLintCommands(plan.formatterCommands, argv))) return false;
+  if (plan.missingLintTool) return false;
+  if (shouldRunFormatters(argv) && !(await runRootFormatters(plan, argv, selfProject))) return false;
+  return !shouldRunLinters(argv) || (await runAndReportLintCommands(plan.linterCommands, argv));
+}
+
+async function runAndReportLintCommands(commands: LintRunCommand[], argv: LintCommandArgv): Promise<boolean> {
+  const results = await runLintCommands(commands, argv, buildLintRunOptions(argv));
+  printSilentLintOutputs(results, argv);
+  return results.every((result) => result.exitCode === 0);
+}
+
+async function runRootFormatters(plan: LintPlan, argv: LintCommandArgv, selfProject: Project): Promise<boolean> {
+  const commands: string[] = [];
+  if (plan.prettierArgs.length > 0 && selfProject.hasPrettier) {
+    commands.push(
+      buildShellCommand([
+        'YARN',
+        'prettier',
+        '--cache',
+        '--no-error-on-unmatched-pattern',
+        '--write',
+        '--',
+        ...plan.prettierArgs,
+      ])
+    );
+  }
+  if (plan.sortPackageJsonArgs.length > 0) {
+    commands.push(buildShellCommand(['YARN', 'sort-package-json', '--', ...plan.sortPackageJsonArgs]));
+  }
+  let succeeded = true;
+  for (const command of commands) {
+    const result = await runLintCommand(command, selfProject, argv, buildLintRunOptions(argv));
+    printSilentLintOutputs([result], argv);
+    succeeded &&= result.exitCode === 0;
+  }
+  return succeeded;
+}
+
+function buildLintRunOptions(argv: LintCommandArgv): Parameters<typeof runWithSpawnInParallel>[3] {
+  return { exitIfFailed: false, preserveColor: !argv.printAllOutput };
 }
 
 function runLintCommands(

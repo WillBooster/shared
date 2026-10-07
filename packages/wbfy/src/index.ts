@@ -179,258 +179,320 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       console.info(`Skip ${rootDirPath}: wbfy ${skippableVersionLabel} is already applied. Pass --force to re-apply.`);
       continue;
     }
-    const packagesDirPath = path.join(rootDirPath, 'packages');
-    const dirents = (await ignoreErrorAsync(() => fs.promises.readdir(packagesDirPath, { withFileTypes: true }))) ?? [];
-    const packagesSubDirPaths = dirents
-      .filter((d) => d.isDirectory())
-      .map((d) => path.resolve(packagesDirPath, d.name));
-    // Also cover workspaces declared outside packages/* (e.g. apps/*): they receive the same
-    // managed configs (tsconfig.json, package.json conventions, …) as packages/* children.
-    const rootPackageJson =
-      ignoreError(
-        () =>
-          JSON.parse(fs.readFileSync(path.resolve(rootDirPath, 'package.json'), 'utf8')) as PackageConfig['packageJson']
-      ) ?? {};
-    const workspaceSubDirPaths = getWorkspaceSubDirPaths({
-      dirPath: rootDirPath,
-      packageJson: rootPackageJson,
-      doesContainSubPackageJsons: packagesSubDirPaths.some((subDirPath) =>
-        fs.existsSync(path.resolve(subDirPath, 'package.json'))
-      ),
-    });
-    const subDirPaths = [...new Set([...packagesSubDirPaths, ...workspaceSubDirPaths])].filter(
-      (subDirPath) => subDirPath !== path.resolve(rootDirPath)
-    );
-
-    // Refused writes on core managed files would leave the repository partially updated, so skip
-    // it BEFORE any mutation when one of them is a symlink or resolves outside the repository.
-    const managedFilePaths = [
-      ...['.gitattributes', 'bunfig.toml', 'lefthook.yml', 'package.json', 'tsconfig.json'].map((name) =>
-        path.resolve(rootDirPath, name)
-      ),
-      ...subDirPaths.flatMap((subDirPath) =>
-        ['package.json', 'tsconfig.json'].map((name) => path.resolve(subDirPath, name))
-      ),
-    ];
-    const writableResults = await Promise.all(
-      managedFilePaths.map((filePath) => fsUtil.isConfinedWritablePath(filePath))
-    );
-    if (writableResults.includes(false)) {
-      console.error(`Skip ${rootDirPath}: a managed config file is a symlink or resolves outside the repository.`);
-      hasInvalidPackageConfig = true;
-      continue;
-    }
-
-    const preflightErrors = [rootDirPath, ...subDirPaths].flatMap((dirPath) => {
-      const packageJsonPath = path.resolve(dirPath, 'package.json');
-      if (!fs.existsSync(packageJsonPath)) return [];
-      try {
-        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageConfig['packageJson'];
-        const error = getWorkerTypesScriptError({ packageJson });
-        return error ? [`${dirPath}: ${error}`] : [];
-      } catch {
-        return [`${packageJsonPath} is invalid`];
-      }
-    });
-    if (preflightErrors.length > 0) {
-      console.error(`Skip ${rootDirPath}:\n${preflightErrors.join('\n')}`);
-      hasInvalidPackageConfig = true;
-      continue;
-    }
-
-    // Let getPackageConfig derive isRoot for the entry path: `wbfy <repo>/packages/<app>` is a
-    // supported invocation whose target must keep its child classification, so forcing
-    // `isRoot: true` here would apply root-only processing (lefthook install, root tsconfig,
-    // AGENTS.md, …) to a subpackage.
-    const rootConfig = await getPackageConfig(rootDirPath);
-    if (options.isVerbose) {
-      console.log('rootConfig:', rootConfig);
-    }
-    if (!rootConfig) {
-      console.error(`there is no valid package.json in ${rootDirPath}`);
-      hasInvalidPackageConfig = true;
-      continue;
-    }
-    // Every discovered workspace (including non-packages/* layouts such as apps/*) is a child
-    // package; the packages/* heuristic inside getPackageConfig would misclassify apps/* as roots.
-    const nullableSubPackageConfigs = await Promise.all(
-      subDirPaths.map((subDirPath) => getPackageConfig(subDirPath, { isRoot: false }))
-    );
-    const invalidSubPackageDirPath = subDirPaths.find(
-      (subDirPath, index) => !nullableSubPackageConfigs[index] && fs.existsSync(path.join(subDirPath, 'package.json'))
-    );
-    if (invalidSubPackageDirPath) {
-      console.error(`Skip ${rootDirPath}: ${invalidSubPackageDirPath}/package.json is invalid.`);
-      hasInvalidPackageConfig = true;
-      continue;
-    }
-    const subPackageConfigs = nullableSubPackageConfigs.filter((config) => !!config);
-    const allPackageConfigs = [rootConfig, ...subPackageConfigs];
-    // The managed ignore rule is unanchored, so a nested copy (e.g. workers/api/.env.cloudflare) is
-    // as much a leak as a root one; the wildcard pathspec covers every depth in one query.
-    const trackedCloudflareEnvOutput = allPackageConfigs.some((config) => config.isCloudflare)
-      ? await spawnAndReturnStdout(
-          'git',
-          ['-c', 'core.quotePath=false', 'ls-files', '--', '.env.cloudflare', '*/.env.cloudflare'],
-          rootConfig.dirPath
-        )
-      : '';
-    const trackedCloudflareEnvPaths = trackedCloudflareEnvOutput
-      .split('\n')
-      .filter(Boolean)
-      .map((filePath) => path.resolve(rootConfig.dirPath, filePath));
-    if (trackedCloudflareEnvPaths.length > 0) {
-      console.error(
-        `SECURITY ERROR: Cloudflare credentials must be untracked. Remove ${trackedCloudflareEnvPaths.join(
-          ', '
-        )} from Git, purge the token from history, and rotate CLOUDFLARE_API_TOKEN before rerunning wbfy.`
-      );
-      hasInvalidPackageConfig = true;
-      continue;
-    }
-    const fixTyposPromise = fixTypos(rootConfig);
-
-    await generateRepositoryNpmrc(allPackageConfigs);
-
-    if (options.isVerbose) {
-      for (const config of allPackageConfigs) {
-        console.info(config);
-      }
-    }
-    assertSafeDependencySources(allPackageConfigs);
-    // Managed repositories use Bun with mise (and optionally fnox).
-    const previousBunGlobalStore = readBunGlobalStore(rootDirPath);
-    // Root-level install layout must cover workspace apps too: Next.js commonly lives under
-    // packages/* or apps/* while bunfig.toml exists only at the repository root.
-    const useGlobalStore = resolveBunGlobalStore(allPackageConfigs, previousBunGlobalStore, skipDeps);
-    await generateBunfigToml(rootConfig, useGlobalStore);
-    await generateMiseToml(rootConfig);
-    await generateFnoxToml(rootConfig);
-    // Run after generateFnoxToml so its transactional recipient sync cannot restore a snapshot
-    // over definitions inserted here.
-    await ensureWbEnvDefinitions(rootConfig, allPackageConfigs);
-
-    // The layout must be verified installable BEFORE any `bun add` mutates package.json files:
-    // per-package installs tolerate failures (their status is discarded), so a layout that
-    // cannot install would silently drop every managed dependency update for the rest of the run.
-    // A docs-only repository has no manifest to probe on its first run; generatePackageJson below
-    // creates it before the authoritative refreshBunLock check.
-    // fixTypos must finish here: it rewrites source files that the install's lifecycle scripts may
-    // read, and Markdown and YAML files that the generators below rewrite.
-    await fixTyposPromise;
-    if (
-      !skipDeps &&
-      rootConfig.doesContainPackageJson &&
-      !(await probeIsolatedBunInstall(rootDirPath, rootConfig, previousBunGlobalStore, useGlobalStore))
-    ) {
-      // refreshBunLock below is the authority on whether the final install failed.
-      console.warn(`bun install currently fails in ${rootDirPath} under the isolated linker.`);
-    }
-
-    const shouldRunWorkflows =
-      !isReusableWorkflowsRepo(rootConfig.repository) &&
-      (rootConfig.repository?.startsWith('github:WillBooster/') ||
-        rootConfig.repository?.startsWith('github:WillBoosterLab/'));
-    // Other owners cannot call the organization's reusable workflows (their secrets and runners
-    // do not exist there), so any other GitHub-hosted Node.js repository gets self-contained
-    // workflows instead — keyed on repository state, never on the owner's identity.
-    // rootConfig.isRoot: a direct workspace-child invocation (`wbfy <repo>/packages/<app>`) keeps
-    // isRoot false, and GitHub ignores workflow files nested under a package directory.
-    const shouldRunSelfContainedWorkflows =
-      !shouldRunWorkflows &&
-      !isReusableWorkflowsRepo(rootConfig.repository) &&
-      !!rootConfig.repository?.startsWith('github:') &&
-      rootConfig.isRoot;
-    await Promise.all([
-      generateReadme(rootConfig),
-      generateDockerignore(rootConfig),
-      generateEditorconfig(rootConfig),
-      generateGeminiConfig(rootConfig, allPackageConfigs),
-      generateGitattributes(rootConfig),
-      generateGitHubTemplates(rootConfig),
-      generateIdeaSettings(rootConfig),
-      fixRailwayignore(rootConfig),
-      generateRenovateJsonc(rootConfig, allPackageConfigs),
-      generateReleaserc(rootConfig),
-      ...(shouldRunWorkflows ? [generateWorkflows(rootConfig)] : []),
-      ...(shouldRunSelfContainedWorkflows ? [generateSelfContainedWorkflows(rootConfig, allPackageConfigs)] : []),
-      setupLabels(rootConfig),
-      setupRepositoryRulesets(rootConfig),
-      setupGitHubSettings(rootConfig),
-      // Git hooks are repository-level state: a direct workspace-child invocation must not write a
-      // child lefthook.yml or replace the enclosing repository's hook installation.
-      ...(rootConfig.isRoot ? [generateLefthook(rootConfig, allPackageConfigs)] : []),
-    ]);
-    // After the workflow generator (and its pooled writes) so the instruction files describe the
-    // finalized workflow files instead of lagging one run behind.
-    await generateAgentInstructions(rootConfig, allPackageConfigs);
-
-    // Started only after the loop, so that none of them runs while a generatePackageJson rewrites
-    // package.json through `bun add` and `sort-package-json`.
-    const pooledGenerators: (() => Promise<void>)[] = [];
-    for (const config of allPackageConfigs) {
-      if (config.depending.playwrightTest) {
-        pooledGenerators.push(() => fixPlaywrightConfig(config));
-      }
-      if (config.depending.next) {
-        pooledGenerators.push(() => fixNextConfigJson(config));
-      }
-      if (config.depending.chakra) {
-        pooledGenerators.push(() => fixChakraToaster(config));
-      }
-      await generateGitignore(config, rootConfig);
-      if (!config.isRoot && !config.doesContainPackageJson) {
-        continue;
-      }
-      if (doesContainJava(config)) await generatePrettierignore(config);
-      await generatePackageJson(config, rootConfig, skipDeps);
-
-      if (config.doesContainVscodeSettingsJson) {
-        pooledGenerators.push(() => generateVscodeSettings(config));
-      }
-      if (doesContainJsOrTs(config)) {
-        pooledGenerators.push(
-          () => generateTsconfig(config),
-          () => generateOxfmtConfig(config),
-          () => generateOxlintConfig(config, rootConfig)
-        );
-      } else if (!config.isRoot && config.doesContainPackageJson && doesContainJsOrTs(rootConfig)) {
-        // Monorepo verification can invoke oxlint from every workspace. Give
-        // non-code packages a local config so oxlint does not climb to the
-        // root config and reject root-only type-aware options from a package cwd.
-        pooledGenerators.push(() => generateOxlintConfig(config, rootConfig));
-      }
-      if (config.depending.pyright) {
-        pooledGenerators.push(() => generatePyrightConfigJson(config));
-      }
-    }
-    await Promise.all(pooledGenerators.map((generate) => generate()));
-    // Run after every pooled generator write so normalization cannot overwrite a concurrent
-    // update, and before cleanup so formatter metadata caches observe the changed files.
-    await renormalizeTrackedTextFiles(rootDirPath);
-    // Refresh lock files
-    try {
-      await refreshBunLock(rootDirPath);
-    } catch (error) {
-      // A failed install must fail the CLI: exiting 0 with a stale or missing Bun lockfile would
-      // hide a broken managed configuration.
-      console.error('Failed to refresh the Bun lockfile:', (error as Error | undefined)?.message ?? error);
+    if (!(await willboosterifyRepository(rootDirPath, skipDeps))) {
       hasInvalidPackageConfig = true;
     }
-    try {
-      // Bun writes bun.lock before lifecycle scripts, so a failed install can still leave Guard
-      // URLs behind. Normalize both success and failure output without replacing the install error.
-      const normalizedLockfilePath = normalizeBunLockfile(rootDirPath);
-      if (normalizedLockfilePath) {
-        console.info(`Removed Takumi Guard proxy URLs from ${normalizedLockfilePath} to keep it registry-agnostic.`);
-      }
-    } catch (error) {
-      console.error('Failed to normalize the Bun lockfile:', (error as Error | undefined)?.message ?? error);
-      hasInvalidPackageConfig = true;
-    }
-    await spawnAndReturnStatus('bun', ['cleanup'], rootDirPath);
   }
   return hasInvalidPackageConfig;
+}
+
+/** Returns whether the repository was processed without an error. */
+async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean): Promise<boolean> {
+  const subDirPaths = await listSubPackageDirPaths(rootDirPath);
+  const preflightError =
+    (await findUnwritableManagedFileError(rootDirPath, subDirPaths)) ??
+    findInvalidPackageJsonError(rootDirPath, subDirPaths);
+  if (preflightError) {
+    console.error(preflightError);
+    return false;
+  }
+  const packageConfigs = await loadPackageConfigs(rootDirPath, subDirPaths);
+  if (!packageConfigs) return false;
+  const { rootConfig, allPackageConfigs } = packageConfigs;
+  const cloudflareEnvError = await findTrackedCloudflareEnvError(rootConfig, allPackageConfigs);
+  if (cloudflareEnvError) {
+    console.error(cloudflareEnvError);
+    return false;
+  }
+  const fixTyposPromise = fixTypos(rootConfig);
+
+  await generateRepositoryNpmrc(allPackageConfigs);
+
+  if (options.isVerbose) {
+    for (const config of allPackageConfigs) {
+      console.info(config);
+    }
+  }
+  assertSafeDependencySources(allPackageConfigs);
+  // Managed repositories use Bun with mise (and optionally fnox).
+  const previousBunGlobalStore = readBunGlobalStore(rootDirPath);
+  // Root-level install layout must cover workspace apps too: Next.js commonly lives under
+  // packages/* or apps/* while bunfig.toml exists only at the repository root.
+  const useGlobalStore = resolveBunGlobalStore(allPackageConfigs, previousBunGlobalStore, skipDeps);
+  await generateBunfigToml(rootConfig, useGlobalStore);
+  await generateMiseToml(rootConfig);
+  await generateFnoxToml(rootConfig);
+  // Run after generateFnoxToml so its transactional recipient sync cannot restore a snapshot
+  // over definitions inserted here.
+  await ensureWbEnvDefinitions(rootConfig, allPackageConfigs);
+
+  // The layout must be verified installable BEFORE any `bun add` mutates package.json files:
+  // per-package installs tolerate failures (their status is discarded), so a layout that
+  // cannot install would silently drop every managed dependency update for the rest of the run.
+  // A docs-only repository has no manifest to probe on its first run; generatePackageJson below
+  // creates it before the authoritative refreshBunLock check.
+  // fixTypos must finish here: it rewrites source files that the install's lifecycle scripts may
+  // read, and Markdown and YAML files that the generators below rewrite.
+  await fixTyposPromise;
+  if (
+    !skipDeps &&
+    rootConfig.doesContainPackageJson &&
+    !(await probeIsolatedBunInstall(rootDirPath, rootConfig, previousBunGlobalStore, useGlobalStore))
+  ) {
+    // refreshBunLock below is the authority on whether the final install failed.
+    console.warn(`bun install currently fails in ${rootDirPath} under the isolated linker.`);
+  }
+
+  await generateRepositoryLevelFiles(rootConfig, allPackageConfigs);
+  // After the workflow generator (and its pooled writes) so the instruction files describe the
+  // finalized workflow files instead of lagging one run behind.
+  await generateAgentInstructions(rootConfig, allPackageConfigs);
+  await generatePackageLevelFiles(rootConfig, allPackageConfigs, skipDeps);
+  // Run after every pooled generator write so normalization cannot overwrite a concurrent
+  // update, and before cleanup so formatter metadata caches observe the changed files.
+  await renormalizeTrackedTextFiles(rootDirPath);
+  const isBunLockUpToDate = await refreshAndNormalizeBunLock(rootDirPath);
+  await spawnAndReturnStatus('bun', ['cleanup'], rootDirPath);
+  return isBunLockUpToDate;
+}
+
+async function listSubPackageDirPaths(rootDirPath: string): Promise<string[]> {
+  const packagesDirPath = path.join(rootDirPath, 'packages');
+  const dirents = (await ignoreErrorAsync(() => fs.promises.readdir(packagesDirPath, { withFileTypes: true }))) ?? [];
+  const packagesSubDirPaths = dirents.filter((d) => d.isDirectory()).map((d) => path.resolve(packagesDirPath, d.name));
+  // Also cover workspaces declared outside packages/* (e.g. apps/*): they receive the same
+  // managed configs (tsconfig.json, package.json conventions, …) as packages/* children.
+  const rootPackageJson =
+    ignoreError(
+      () =>
+        JSON.parse(fs.readFileSync(path.resolve(rootDirPath, 'package.json'), 'utf8')) as PackageConfig['packageJson']
+    ) ?? {};
+  const workspaceSubDirPaths = getWorkspaceSubDirPaths({
+    dirPath: rootDirPath,
+    packageJson: rootPackageJson,
+    doesContainSubPackageJsons: packagesSubDirPaths.some((subDirPath) =>
+      fs.existsSync(path.resolve(subDirPath, 'package.json'))
+    ),
+  });
+  return [...new Set([...packagesSubDirPaths, ...workspaceSubDirPaths])].filter(
+    (subDirPath) => subDirPath !== path.resolve(rootDirPath)
+  );
+}
+
+// Refused writes on core managed files would leave the repository partially updated, so skip
+// it BEFORE any mutation when one of them is a symlink or resolves outside the repository.
+async function findUnwritableManagedFileError(rootDirPath: string, subDirPaths: string[]): Promise<string | undefined> {
+  const managedFilePaths = [
+    ...['.gitattributes', 'bunfig.toml', 'lefthook.yml', 'package.json', 'tsconfig.json'].map((name) =>
+      path.resolve(rootDirPath, name)
+    ),
+    ...subDirPaths.flatMap((subDirPath) =>
+      ['package.json', 'tsconfig.json'].map((name) => path.resolve(subDirPath, name))
+    ),
+  ];
+  const writableResults = await Promise.all(
+    managedFilePaths.map((filePath) => fsUtil.isConfinedWritablePath(filePath))
+  );
+  return writableResults.includes(false)
+    ? `Skip ${rootDirPath}: a managed config file is a symlink or resolves outside the repository.`
+    : undefined;
+}
+
+function findInvalidPackageJsonError(rootDirPath: string, subDirPaths: string[]): string | undefined {
+  const preflightErrors = [rootDirPath, ...subDirPaths].flatMap((dirPath) => {
+    const packageJsonPath = path.resolve(dirPath, 'package.json');
+    if (!fs.existsSync(packageJsonPath)) return [];
+    try {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageConfig['packageJson'];
+      const error = getWorkerTypesScriptError({ packageJson });
+      return error ? [`${dirPath}: ${error}`] : [];
+    } catch {
+      return [`${packageJsonPath} is invalid`];
+    }
+  });
+  return preflightErrors.length > 0 ? `Skip ${rootDirPath}:\n${preflightErrors.join('\n')}` : undefined;
+}
+
+/** Returns undefined, after reporting the reason, when the root or a workspace package.json is invalid. */
+async function loadPackageConfigs(
+  rootDirPath: string,
+  subDirPaths: string[]
+): Promise<{ rootConfig: PackageConfig; allPackageConfigs: PackageConfig[] } | undefined> {
+  // Let getPackageConfig derive isRoot for the entry path: `wbfy <repo>/packages/<app>` is a
+  // supported invocation whose target must keep its child classification, so forcing
+  // `isRoot: true` here would apply root-only processing (lefthook install, root tsconfig,
+  // AGENTS.md, …) to a subpackage.
+  const rootConfig = await getPackageConfig(rootDirPath);
+  if (options.isVerbose) {
+    console.log('rootConfig:', rootConfig);
+  }
+  if (!rootConfig) {
+    console.error(`there is no valid package.json in ${rootDirPath}`);
+    return undefined;
+  }
+  // Every discovered workspace (including non-packages/* layouts such as apps/*) is a child
+  // package; the packages/* heuristic inside getPackageConfig would misclassify apps/* as roots.
+  const nullableSubPackageConfigs = await Promise.all(
+    subDirPaths.map((subDirPath) => getPackageConfig(subDirPath, { isRoot: false }))
+  );
+  const invalidSubPackageDirPath = subDirPaths.find(
+    (subDirPath, index) => !nullableSubPackageConfigs[index] && fs.existsSync(path.join(subDirPath, 'package.json'))
+  );
+  if (invalidSubPackageDirPath) {
+    console.error(`Skip ${rootDirPath}: ${invalidSubPackageDirPath}/package.json is invalid.`);
+    return undefined;
+  }
+  const subPackageConfigs = nullableSubPackageConfigs.filter((config) => !!config);
+  return { rootConfig, allPackageConfigs: [rootConfig, ...subPackageConfigs] };
+}
+
+async function findTrackedCloudflareEnvError(
+  rootConfig: PackageConfig,
+  allPackageConfigs: PackageConfig[]
+): Promise<string | undefined> {
+  // The managed ignore rule is unanchored, so a nested copy (e.g. workers/api/.env.cloudflare) is
+  // as much a leak as a root one; the wildcard pathspec covers every depth in one query.
+  const trackedCloudflareEnvOutput = allPackageConfigs.some((config) => config.isCloudflare)
+    ? await spawnAndReturnStdout(
+        'git',
+        ['-c', 'core.quotePath=false', 'ls-files', '--', '.env.cloudflare', '*/.env.cloudflare'],
+        rootConfig.dirPath
+      )
+    : '';
+  const trackedCloudflareEnvPaths = trackedCloudflareEnvOutput
+    .split('\n')
+    .filter(Boolean)
+    .map((filePath) => path.resolve(rootConfig.dirPath, filePath));
+  return trackedCloudflareEnvPaths.length > 0
+    ? `SECURITY ERROR: Cloudflare credentials must be untracked. Remove ${trackedCloudflareEnvPaths.join(
+        ', '
+      )} from Git, purge the token from history, and rotate CLOUDFLARE_API_TOKEN before rerunning wbfy.`
+    : undefined;
+}
+
+async function generateRepositoryLevelFiles(
+  rootConfig: PackageConfig,
+  allPackageConfigs: PackageConfig[]
+): Promise<void> {
+  const shouldRunWorkflows =
+    !isReusableWorkflowsRepo(rootConfig.repository) &&
+    (rootConfig.repository?.startsWith('github:WillBooster/') ||
+      rootConfig.repository?.startsWith('github:WillBoosterLab/'));
+  // Other owners cannot call the organization's reusable workflows (their secrets and runners
+  // do not exist there), so any other GitHub-hosted Node.js repository gets self-contained
+  // workflows instead — keyed on repository state, never on the owner's identity.
+  // rootConfig.isRoot: a direct workspace-child invocation (`wbfy <repo>/packages/<app>`) keeps
+  // isRoot false, and GitHub ignores workflow files nested under a package directory.
+  const shouldRunSelfContainedWorkflows =
+    !shouldRunWorkflows &&
+    !isReusableWorkflowsRepo(rootConfig.repository) &&
+    !!rootConfig.repository?.startsWith('github:') &&
+    rootConfig.isRoot;
+  await Promise.all([
+    generateReadme(rootConfig),
+    generateDockerignore(rootConfig),
+    generateEditorconfig(rootConfig),
+    generateGeminiConfig(rootConfig, allPackageConfigs),
+    generateGitattributes(rootConfig),
+    generateGitHubTemplates(rootConfig),
+    generateIdeaSettings(rootConfig),
+    fixRailwayignore(rootConfig),
+    generateRenovateJsonc(rootConfig, allPackageConfigs),
+    generateReleaserc(rootConfig),
+    ...(shouldRunWorkflows ? [generateWorkflows(rootConfig)] : []),
+    ...(shouldRunSelfContainedWorkflows ? [generateSelfContainedWorkflows(rootConfig, allPackageConfigs)] : []),
+    setupLabels(rootConfig),
+    setupRepositoryRulesets(rootConfig),
+    setupGitHubSettings(rootConfig),
+    // Git hooks are repository-level state: a direct workspace-child invocation must not write a
+    // child lefthook.yml or replace the enclosing repository's hook installation.
+    ...(rootConfig.isRoot ? [generateLefthook(rootConfig, allPackageConfigs)] : []),
+  ]);
+}
+
+type PooledGenerator = () => Promise<void>;
+
+async function generatePackageLevelFiles(
+  rootConfig: PackageConfig,
+  allPackageConfigs: PackageConfig[],
+  skipDeps: boolean
+): Promise<void> {
+  // Started only after the loop, so that none of them runs while a generatePackageJson rewrites
+  // package.json through `bun add` and `sort-package-json`.
+  const pooledGenerators: PooledGenerator[] = [];
+  for (const config of allPackageConfigs) {
+    pooledGenerators.push(...getSourceFixers(config));
+    await generateGitignore(config, rootConfig);
+    if (!config.isRoot && !config.doesContainPackageJson) {
+      continue;
+    }
+    if (doesContainJava(config)) await generatePrettierignore(config);
+    await generatePackageJson(config, rootConfig, skipDeps);
+    pooledGenerators.push(...getToolConfigGenerators(config, rootConfig));
+  }
+  await Promise.all(pooledGenerators.map((generate) => generate()));
+}
+
+function getSourceFixers(config: PackageConfig): PooledGenerator[] {
+  const fixers: PooledGenerator[] = [];
+  if (config.depending.playwrightTest) {
+    fixers.push(() => fixPlaywrightConfig(config));
+  }
+  if (config.depending.next) {
+    fixers.push(() => fixNextConfigJson(config));
+  }
+  if (config.depending.chakra) {
+    fixers.push(() => fixChakraToaster(config));
+  }
+  return fixers;
+}
+
+function getToolConfigGenerators(config: PackageConfig, rootConfig: PackageConfig): PooledGenerator[] {
+  const generators: PooledGenerator[] = [];
+  if (config.doesContainVscodeSettingsJson) {
+    generators.push(() => generateVscodeSettings(config));
+  }
+  if (doesContainJsOrTs(config)) {
+    generators.push(
+      () => generateTsconfig(config),
+      () => generateOxfmtConfig(config),
+      () => generateOxlintConfig(config, rootConfig)
+    );
+  } else if (!config.isRoot && config.doesContainPackageJson && doesContainJsOrTs(rootConfig)) {
+    // Monorepo verification can invoke oxlint from every workspace. Give
+    // non-code packages a local config so oxlint does not climb to the
+    // root config and reject root-only type-aware options from a package cwd.
+    generators.push(() => generateOxlintConfig(config, rootConfig));
+  }
+  if (config.depending.pyright) {
+    generators.push(() => generatePyrightConfigJson(config));
+  }
+  return generators;
+}
+
+/** Returns whether the Bun lockfile was refreshed and normalized without an error. */
+async function refreshAndNormalizeBunLock(rootDirPath: string): Promise<boolean> {
+  let succeeded = true;
+  try {
+    await refreshBunLock(rootDirPath);
+  } catch (error) {
+    // A failed install must fail the CLI: exiting 0 with a stale or missing Bun lockfile would
+    // hide a broken managed configuration.
+    console.error('Failed to refresh the Bun lockfile:', (error as Error | undefined)?.message ?? error);
+    succeeded = false;
+  }
+  try {
+    // Bun writes bun.lock before lifecycle scripts, so a failed install can still leave Guard
+    // URLs behind. Normalize both success and failure output without replacing the install error.
+    const normalizedLockfilePath = normalizeBunLockfile(rootDirPath);
+    if (normalizedLockfilePath) {
+      console.info(`Removed Takumi Guard proxy URLs from ${normalizedLockfilePath} to keep it registry-agnostic.`);
+    }
+  } catch (error) {
+    console.error('Failed to normalize the Bun lockfile:', (error as Error | undefined)?.message ?? error);
+    succeeded = false;
+  }
+  return succeeded;
 }
 
 /**

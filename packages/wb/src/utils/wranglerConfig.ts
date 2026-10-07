@@ -70,6 +70,10 @@ export function selectD1MigrationMechanisms(
   };
 }
 
+export function formatD1DatabaseNames(d1Databases: WranglerD1Database[]): string {
+  return d1Databases.map((database) => database.binding ?? database.database_name ?? 'unnamed binding').join(', ');
+}
+
 const NAME_KEYED_BINDING_PARENTS = new Set(['bindings', 'send_email', 'ratelimits']);
 const RECORD_KEYED_BINDING_KEYS = new Set(['wasm_modules', 'text_blobs', 'data_blobs']);
 

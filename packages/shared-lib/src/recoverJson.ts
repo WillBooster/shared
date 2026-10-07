@@ -30,6 +30,7 @@ const MAX_CANDIDATES = 32;
 const MAX_ERRORS = 32;
 const MAX_DIAGNOSTIC_EXCERPT = 256;
 const QUOTES: Record<string, string> = { '"': '"', "'": "'", '“': '”', '”': '”', '‘': '’', '’': '’' };
+const CLOSERS = { '{': '}', '[': ']' } as const;
 const KEYWORDS: Record<string, string> = {
   true: 'true',
   false: 'false',
@@ -52,54 +53,12 @@ export function recoverJson(text: string): JsonRecovery {
     result.errors.push({ offset: MAX_INPUT_LENGTH, message: 'JSON recovery input exceeds one million characters' });
     return result;
   }
-  const fences = [...text.matchAll(/^(?: {0,3})(`{3,}|~{3,})[^\r\n]*(?:\r\n|[\r\n]|$)/gm)].flatMap((fence) => {
-    const marker = fence[1]!;
-    const markerEnd = fence.index + fence[0].indexOf(marker) + marker.length;
-    const lineEnd = fence.index + fence[0].length;
-    const info = text.slice(markerEnd, lineEnd);
-    const inlinePrefix = /^[ \t]*json(?=[ \t{["'“”‘’])[ \t]*/i.exec(info);
-    const inlineStart = inlinePrefix === null ? lineEnd : markerEnd + inlinePrefix[0].length;
-    const start =
-      text[inlineStart] === '{' || text[inlineStart] === '[' || scalarStart(text, inlineStart, lineEnd)
-        ? inlineStart
-        : lineEnd;
-    return marker[0] === '`' && start === lineEnd && info.includes('`') ? [] : [{ index: fence.index, marker, start }];
-  });
-  if (fences.length > 0) {
-    let consumed = 0;
-    for (const fence of fences) {
-      if (fence.index < consumed) continue;
-      extractRegion(text, consumed, fence.index, result);
-      const parsedThrough = result.candidates.at(-1)?.end ?? consumed;
-      if (parsedThrough > fence.index) {
-        consumed = parsedThrough;
-        continue;
-      }
-      const { marker, start } = fence;
-      const close = new RegExp(`^ {0,3}${marker[0]}{${marker.length},}[ \\t]*$`, 'gm');
-      close.lastIndex = start;
-      const match = close.exec(text);
-      const end = match?.index ?? text.length;
-      extractRegion(text, start, end, result);
-      const extendedEnd = result.candidates.at(-1)?.end ?? start;
-      if (extendedEnd > end) {
-        close.lastIndex = extendedEnd;
-        const outerClose = close.exec(text);
-        if (outerClose !== null && !fences.some((next) => next.index >= extendedEnd && next.index < outerClose.index)) {
-          extractRegion(text, extendedEnd, outerClose.index, result);
-          consumed = outerClose.index + outerClose[0].length;
-          continue;
-        }
-      }
-      consumed = Math.max(
-        result.candidates.at(-1)?.end ?? start,
-        match === null ? text.length : match.index + match[0].length
-      );
-    }
-    extractRegion(text, consumed, text.length, result);
-  } else {
-    extractRegion(text, 0, text.length, result);
+  const fences = findFences(text);
+  let consumed = 0;
+  for (const fence of fences) {
+    if (fence.index >= consumed) consumed = extractThroughFence(text, fences, fence, consumed, result);
   }
+  extractRegion(text, consumed, text.length, result);
   if (result.candidates.length === MAX_CANDIDATES) {
     const error = {
       offset: result.candidates.at(-1)!.end,
@@ -111,137 +70,178 @@ export function recoverJson(text: string): JsonRecovery {
   return result;
 }
 
-function extractRegion(text: string, start: number, end: number, result: JsonRecovery, commentFragment = false): void {
-  if (result.candidates.length >= MAX_CANDIDATES) return;
-  let index = start;
-  let failures = 0;
-  let ambiguousScalarTail = false;
-  let scalarBoundary = true;
-  let uriBoundaryEnd = start;
-  let uriTokenEnd = start;
-  let uriContainerStart = start;
-  while (index < end && /\s/.test(text[index]!)) index++;
-  const firstIndex = index;
-  const initialParser = new RecoveryParser(text, index, end);
-  if (!commentFragment) initialParser.space();
-  const initialValueStart = initialParser.index;
-  if (initialValueStart >= end) {
-    if (initialParser.repairs.some((repair) => repair.kind === 'incomplete') && result.errors.length < MAX_ERRORS)
-      result.errors.push({ offset: index, message: 'Incomplete leading JSON comment' });
-    return;
-  }
-  const first = text[initialValueStart];
-  // Within prose, scalar starts need a line boundary; containers may appear inline.
-  const rootValue = scalarStart(text, initialValueStart, end);
-  const initialValue = rootValue || first === '{' || first === '[';
-  if (!initialValue) index = initialValueStart;
-  while (index < end && result.candidates.length < MAX_CANDIDATES && failures < MAX_ERRORS) {
-    if (!initialValue || index !== firstIndex) {
-      while (index < end && text[index] !== '{' && text[index] !== '[') {
-        if (scalarBoundary && scalarStart(text, index, end)) break;
-        const uriEnd =
-          index === start || !/[\w+.-]/.test(text[index - 1]!) ? unquotedUriEnd(text, index, end) : undefined;
-        if (uriEnd !== undefined) {
-          if (index >= uriTokenEnd) {
-            const whitespace = text.slice(index, end).search(/\s/);
-            uriTokenEnd = whitespace === -1 ? end : index + whitespace;
-            uriContainerStart = index;
-          }
-          if (index >= uriContainerStart) {
-            const container = text.slice(index, uriTokenEnd).search(/[{[]/);
-            uriContainerStart = container === -1 ? uriTokenEnd : index + container;
-          }
-          if (uriContainerStart < uriTokenEnd) uriBoundaryEnd = Math.max(uriBoundaryEnd, uriTokenEnd);
-          index = Math.min(uriEnd, uriContainerStart);
-          scalarBoundary = false;
-          continue;
-        }
-        if (!commentFragment && text[index] === '/') {
-          const trivia = new RecoveryParser(text, index, end);
-          trivia.space();
-          if (trivia.index > index) {
-            if (trivia.repairs.some((repair) => repair.kind === 'incomplete') && result.errors.length < MAX_ERRORS)
-              result.errors.push({ offset: index, message: 'Possibly unterminated comment-like span in prose' });
-            extractRegion(text, index + 2, trivia.index, result, true);
-            scalarBoundary ||= /[\r\n]/.test(text.slice(index, trivia.index));
-            index = trivia.index;
-            continue;
-          }
-        }
-        if (/[\r\n]/.test(text[index]!)) scalarBoundary = true;
-        else if (!/[\s,]/.test(text[index]!)) scalarBoundary = false;
-        index++;
-      }
+interface Fence {
+  index: number;
+  marker: string;
+  /** Where the fenced content starts: after the opening line, or within it when JSON follows the info string. */
+  start: number;
+}
+
+function findFences(text: string): Fence[] {
+  return [...text.matchAll(/^(?: {0,3})(`{3,}|~{3,})[^\r\n]*(?:\r\n|[\r\n]|$)/gm)].flatMap((fence) => {
+    const marker = fence[1]!;
+    const markerEnd = fence.index + fence[0].indexOf(marker) + marker.length;
+    const lineEnd = fence.index + fence[0].length;
+    const info = text.slice(markerEnd, lineEnd);
+    const inlinePrefix = /^[ \t]*json(?=[ \t{["'“”‘’])[ \t]*/i.exec(info);
+    const inlineStart = inlinePrefix === null ? lineEnd : markerEnd + inlinePrefix[0].length;
+    const start =
+      isContainerStart(text[inlineStart]) || scalarStart(text, inlineStart, lineEnd) ? inlineStart : lineEnd;
+    return marker[0] === '`' && start === lineEnd && info.includes('`') ? [] : [{ index: fence.index, marker, start }];
+  });
+}
+
+/** Extracts the prose before `fence` and then its content, returning the offset up to which the text is consumed. */
+function extractThroughFence(
+  text: string,
+  fences: Fence[],
+  fence: Fence,
+  consumed: number,
+  result: JsonRecovery
+): number {
+  extractRegion(text, consumed, fence.index, result);
+  const parsedThrough = result.candidates.at(-1)?.end ?? consumed;
+  if (parsedThrough > fence.index) return parsedThrough;
+  const { marker, start } = fence;
+  const close = new RegExp(`^ {0,3}${marker[0]}{${marker.length},}[ \\t]*$`, 'gm');
+  close.lastIndex = start;
+  const match = close.exec(text);
+  const end = match?.index ?? text.length;
+  extractRegion(text, start, end, result);
+  const extendedEnd = result.candidates.at(-1)?.end ?? start;
+  if (extendedEnd > end) {
+    close.lastIndex = extendedEnd;
+    const outerClose = close.exec(text);
+    if (outerClose !== null && !fences.some((next) => next.index >= extendedEnd && next.index < outerClose.index)) {
+      extractRegion(text, extendedEnd, outerClose.index, result);
+      return outerClose.index + outerClose[0].length;
     }
-    if (index >= end || result.candidates.length >= MAX_CANDIDATES) break;
-    let parser = initialValue && index === firstIndex ? initialParser : new RecoveryParser(text, index, end);
-    const valueStart = parser.index;
+  }
+  return Math.max(result.candidates.at(-1)?.end ?? start, match === null ? text.length : match.index + match[0].length);
+}
+
+function extractRegion(text: string, start: number, end: number, result: JsonRecovery, commentFragment = false): void {
+  if (result.candidates.length < MAX_CANDIDATES) new RegionExtractor(text, start, end, result, commentFragment).run();
+}
+
+class RegionExtractor {
+  private readonly text: string;
+  private readonly start: number;
+  private readonly end: number;
+  private readonly result: JsonRecovery;
+  private readonly commentFragment: boolean;
+  private index: number;
+  private failures = 0;
+  private ambiguousScalarTail = false;
+  private scalarBoundary = true;
+  private uriBoundaryEnd: number;
+  private uriTokenEnd: number;
+  private uriContainerStart: number;
+
+  constructor(text: string, start: number, end: number, result: JsonRecovery, commentFragment: boolean) {
+    this.text = text;
+    this.start = start;
+    this.end = end;
+    this.result = result;
+    this.commentFragment = commentFragment;
+    this.index = start;
+    this.uriBoundaryEnd = start;
+    this.uriTokenEnd = start;
+    this.uriContainerStart = start;
+  }
+
+  run(): void {
+    const { text, end, result } = this;
+    while (this.index < end && /\s/.test(text[this.index]!)) this.index++;
+    const firstIndex = this.index;
+    const initialParser = new RecoveryParser(text, this.index, end);
+    if (!this.commentFragment) initialParser.space();
+    const initialValueStart = initialParser.index;
+    if (initialValueStart >= end) {
+      if (initialParser.repairs.some((repair) => repair.kind === 'incomplete'))
+        this.reportError(this.index, 'Incomplete leading JSON comment');
+      return;
+    }
+    // Within prose, scalar starts need a line boundary; containers may appear inline.
+    const initialValue = scalarStart(text, initialValueStart, end) || isContainerStart(text[initialValueStart]);
+    if (!initialValue) this.index = initialValueStart;
+    while (this.index < end && result.candidates.length < MAX_CANDIDATES && this.failures < MAX_ERRORS) {
+      const atInitialValue = initialValue && this.index === firstIndex;
+      if (!atInitialValue) this.skipProse();
+      if (this.index >= end || result.candidates.length >= MAX_CANDIDATES) break;
+      this.extractCandidate(atInitialValue ? initialParser : new RecoveryParser(text, this.index, end));
+    }
+  }
+
+  /** Advances to the next position where a JSON value may start. */
+  private skipProse(): void {
+    const { text, end } = this;
+    while (this.index < end && !isContainerStart(text[this.index])) {
+      if (this.scalarBoundary && scalarStart(text, this.index, end)) break;
+      if (this.skipUri() || this.skipCommentLikeSpan()) continue;
+      if (/[\r\n]/.test(text[this.index]!)) this.scalarBoundary = true;
+      else if (!/[\s,]/.test(text[this.index]!)) this.scalarBoundary = false;
+      this.index++;
+    }
+  }
+
+  private skipUri(): boolean {
+    const { text, end, index } = this;
+    if (index !== this.start && /[\w+.-]/.test(text[index - 1]!)) return false;
+    const uriEnd = unquotedUriEnd(text, index, end);
+    if (uriEnd === undefined) return false;
+    if (index >= this.uriTokenEnd) {
+      const whitespace = text.slice(index, end).search(/\s/);
+      this.uriTokenEnd = whitespace === -1 ? end : index + whitespace;
+      this.uriContainerStart = index;
+    }
+    if (index >= this.uriContainerStart) {
+      const container = text.slice(index, this.uriTokenEnd).search(/[{[]/);
+      this.uriContainerStart = container === -1 ? this.uriTokenEnd : index + container;
+    }
+    if (this.uriContainerStart < this.uriTokenEnd)
+      this.uriBoundaryEnd = Math.max(this.uriBoundaryEnd, this.uriTokenEnd);
+    this.index = Math.min(uriEnd, this.uriContainerStart);
+    this.scalarBoundary = false;
+    return true;
+  }
+
+  private skipCommentLikeSpan(): boolean {
+    const { text, end, index } = this;
+    if (this.commentFragment || text[index] !== '/') return false;
+    const trivia = new RecoveryParser(text, index, end);
+    trivia.space();
+    if (trivia.index <= index) return false;
+    if (trivia.repairs.some((repair) => repair.kind === 'incomplete'))
+      this.reportError(index, 'Possibly unterminated comment-like span in prose');
+    extractRegion(text, index + 2, trivia.index, this.result, true);
+    this.scalarBoundary ||= /[\r\n]/.test(text.slice(index, trivia.index));
+    this.index = trivia.index;
+    return true;
+  }
+
+  private extractCandidate(bounded: RecoveryParser): void {
+    const { text, end, index } = this;
+    const valueStart = bounded.index;
+    let parser = bounded;
     try {
-      let json = parser.value(0);
-      if (
-        !commentFragment &&
-        (text[valueStart] === '{' || text[valueStart] === '[') &&
-        parser.index === end &&
-        end < text.length
-      ) {
-        const extended = new RecoveryParser(text, index, text.length);
-        try {
-          const extendedJson = extended.value(0);
-          if (
-            extended.index > end &&
-            extended.repairs.every((repair) => repair.reason === 'unescaped-control-character')
-          ) {
-            extended.repairs.push({ offset: end, kind: 'ambiguous', reason: 'literal-fence-in-string' });
-            parser = extended;
-            json = extendedJson;
-          }
-        } catch {
-          // Keep the bounded interpretation when extending it is not a complete JSON document.
-        }
-      }
+      const boundedJson = bounded.value(0);
+      const extended = this.parsePastRegionEnd(bounded, valueStart);
+      parser = extended?.parser ?? bounded;
+      const json = extended?.json ?? boundedJson;
       const valueEnd = parser.index;
-      if (text[valueStart] !== '{' && text[valueStart] !== '[' && !parser.finishScalar(end, valueStart)) {
-        scalarBoundary = false;
-        index = valueEnd;
-        continue;
+      if (!isContainerStart(text[valueStart]) && !parser.finishScalar(end, valueStart)) {
+        this.scalarBoundary = false;
+        this.index = valueEnd;
+        return;
       }
       parser.space();
-      if (!commentFragment && failures === 0 && parser.index < end && /[}\]]/.test(text[parser.index]!)) {
-        const surplusStart = parser.index;
-        while (parser.index < end && /[}\]]/.test(text[parser.index]!)) {
-          parser.repairs.push({ offset: parser.index, kind: 'ambiguous', reason: 'surplus-closing-bracket' });
-          parser.index++;
-          parser.space();
-        }
-        if (result.errors.length < MAX_ERRORS) {
-          const excerptEnd = Math.min(end, surplusStart + MAX_DIAGNOSTIC_EXCERPT);
-          result.errors.push({
-            offset: surplusStart,
-            message: `Surplus closing brackets and possible continuation (${excerptEnd < end ? 'truncated excerpt' : 'excerpt'}): ${JSON.stringify(text.slice(surplusStart, excerptEnd))}`,
-          });
-        }
-      }
-      if (
-        text[valueStart]! in QUOTES &&
-        parser.repairs.some((repair) => repair.reason === 'trailing-scalar-content') &&
-        result.errors.length < MAX_ERRORS
-      ) {
-        const excerptEnd = Math.min(end, valueEnd + MAX_DIAGNOSTIC_EXCERPT);
-        result.errors.push({
-          offset: valueEnd,
-          message: `Ambiguous quoted-scalar tail (${excerptEnd < end ? 'truncated excerpt' : 'excerpt'}): ${JSON.stringify(text.slice(valueEnd, excerptEnd))}`,
-        });
-      }
-      if (commentFragment)
-        parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'fragment-in-comment-like-prose' });
-      if (failures > 0)
-        parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'fragment-after-rejected-document' });
-      if (ambiguousScalarTail)
-        parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'fragment-after-ambiguous-scalar' });
-      if (index < uriBoundaryEnd)
-        parser.repairs.unshift({ offset: index, kind: 'ambiguous', reason: 'ambiguous-uri-boundary' });
-      ambiguousScalarTail ||= parser.repairs.some((repair) => repair.reason === 'trailing-scalar-content');
-      result.candidates.push({
+      this.consumeSurplusClosers(parser);
+      if (text[valueStart]! in QUOTES && parser.hasRepair('trailing-scalar-content'))
+        this.reportExcerpt(valueEnd, 'Ambiguous quoted-scalar tail');
+      this.markFragmentProvenance(parser);
+      this.ambiguousScalarTail ||= parser.hasRepair('trailing-scalar-content');
+      this.result.candidates.push({
         value: JSON.parse(json),
         json,
         start: index,
@@ -250,16 +250,75 @@ function extractRegion(text: string, start: number, end: number, result: JsonRec
         requiresConfirmation: parser.repairs.some((repair) => repair.kind !== 'syntax'),
       });
     } catch (error) {
-      if (result.errors.length < MAX_ERRORS)
-        result.errors.push({ offset: parser.index, message: getErrorMessage(error) });
-      failures++;
-      index = valueStart + 1;
-      scalarBoundary = false;
-      continue;
+      this.reportError(parser.index, getErrorMessage(error));
+      this.failures++;
+      this.index = valueStart + 1;
+      this.scalarBoundary = false;
+      return;
     }
-    index = Math.max(index + 1, parser.index);
-    scalarBoundary = true;
+    this.index = Math.max(index + 1, parser.index);
+    this.scalarBoundary = true;
   }
+
+  /**
+   * Reparses a container that `bounded` ended exactly at the region end against the rest of the text,
+   * as the fence that bounds the region may be literal text inside one of its strings.
+   */
+  private parsePastRegionEnd(
+    bounded: RecoveryParser,
+    valueStart: number
+  ): { parser: RecoveryParser; json: string } | undefined {
+    const { text, end } = this;
+    if (this.commentFragment || !isContainerStart(text[valueStart]) || bounded.index !== end || end >= text.length)
+      return undefined;
+    const parser = new RecoveryParser(text, this.index, text.length);
+    try {
+      const json = parser.value(0);
+      if (parser.index > end && parser.repairs.every((repair) => repair.reason === 'unescaped-control-character')) {
+        parser.repairs.push({ offset: end, kind: 'ambiguous', reason: 'literal-fence-in-string' });
+        return { parser, json };
+      }
+    } catch {
+      // Keep the bounded interpretation when extending it is not a complete JSON document.
+    }
+    return undefined;
+  }
+
+  private consumeSurplusClosers(parser: RecoveryParser): void {
+    if (this.commentFragment || this.failures > 0) return;
+    const surplusStart = parser.index;
+    while (parser.index < this.end && /[}\]]/.test(this.text[parser.index]!)) {
+      parser.repairs.push({ offset: parser.index, kind: 'ambiguous', reason: 'surplus-closing-bracket' });
+      parser.index++;
+      parser.space();
+    }
+    if (parser.index > surplusStart)
+      this.reportExcerpt(surplusStart, 'Surplus closing brackets and possible continuation');
+  }
+
+  private markFragmentProvenance(parser: RecoveryParser): void {
+    const mark = (reason: string): void => {
+      parser.repairs.unshift({ offset: this.index, kind: 'ambiguous', reason });
+    };
+    if (this.commentFragment) mark('fragment-in-comment-like-prose');
+    if (this.failures > 0) mark('fragment-after-rejected-document');
+    if (this.ambiguousScalarTail) mark('fragment-after-ambiguous-scalar');
+    if (this.index < this.uriBoundaryEnd) mark('ambiguous-uri-boundary');
+  }
+
+  private reportExcerpt(offset: number, summary: string): void {
+    const excerptEnd = Math.min(this.end, offset + MAX_DIAGNOSTIC_EXCERPT);
+    const excerpt = JSON.stringify(this.text.slice(offset, excerptEnd));
+    this.reportError(offset, `${summary} (${excerptEnd < this.end ? 'truncated excerpt' : 'excerpt'}): ${excerpt}`);
+  }
+
+  private reportError(offset: number, message: string): void {
+    if (this.result.errors.length < MAX_ERRORS) this.result.errors.push({ offset, message });
+  }
+}
+
+function isContainerStart(char: string | undefined): char is keyof typeof CLOSERS {
+  return char === '{' || char === '[';
 }
 
 function scalarStart(text: string, start: number, end: number): boolean {
@@ -292,8 +351,7 @@ class RecoveryParser {
     const valueEnd = this.index;
     const atom = this.text.slice(start, valueEnd);
     const bullet = atom === '-' && /\s/.test(this.text[valueEnd] ?? '');
-    const retainLiteral =
-      this.text[start]! in QUOTES || this.repairs.some((repair) => repair.reason === 'unquoted-value');
+    const retainLiteral = this.text[start]! in QUOTES || this.hasRepair('unquoted-value');
     this.space();
     if (bullet) return false;
     if (this.index >= regionEnd) return true;
@@ -317,9 +375,9 @@ class RecoveryParser {
       this.repair('incomplete', 'missing-value');
       return 'null';
     }
-    if (char === '{' || char === '[') {
+    if (isContainerStart(char)) {
       if (depth >= MAX_DEPTH) throw new Error('JSON nesting exceeds 128 levels');
-      return this.container(depth, char === '{');
+      return this.container(depth, char);
     }
     if (char !== undefined && char in QUOTES) return this.string(depth > 0 ? 'value' : 'root');
     const start = this.index;
@@ -345,9 +403,10 @@ class RecoveryParser {
     return JSON.stringify(token);
   }
 
-  private container(depth: number, object: boolean): string {
+  private container(depth: number, open: keyof typeof CLOSERS): string {
     this.index++;
-    const close = object ? '}' : ']';
+    const object = open === '{';
+    const close = CLOSERS[open];
     const items: string[] = [];
     const keys = new Set<string>();
     let afterComma = false;
@@ -358,7 +417,7 @@ class RecoveryParser {
         if (this.index >= this.end) this.repair('incomplete', `missing-${close}`);
         else this.index++;
         if (afterComma) this.repair('syntax', 'trailing-comma', commaOffset);
-        return (object ? '{' : '[') + items.join(',') + close;
+        return open + items.join(',') + close;
       }
       if (this.text[this.index] === '}' || this.text[this.index] === ']') throw new Error('Mismatched closing bracket');
       if (this.text[this.index] === ',') {
@@ -372,26 +431,7 @@ class RecoveryParser {
         this.index++;
         continue;
       }
-      let key: string | undefined;
-      if (object) {
-        const start = this.index;
-        if (this.text[this.index]! in QUOTES) key = this.string();
-        else {
-          while (this.index < this.end && !/[\s:,{}[\]]/.test(this.text[this.index]!) && !this.comment()) this.index++;
-          if (this.index === start) throw new Error('Expected an object key');
-          const rawKey = this.text.slice(start, this.index);
-          key = JSON.stringify(rawKey);
-          this.repair(/["'“”‘’]/.test(rawKey) ? 'ambiguous' : 'syntax', 'unquoted-key', start);
-        }
-        const decoded: string = JSON.parse(key);
-        if (keys.has(decoded)) this.repair('ambiguous', 'duplicate-key', start);
-        keys.add(decoded);
-        this.space();
-        if (this.text[this.index] === ':') this.index++;
-        else this.repair('ambiguous', 'missing-colon');
-      }
-      const value = this.value(depth + 1);
-      items.push(key === undefined ? value : `${key}:${value}`);
+      items.push(object ? `${this.key(keys)}:${this.value(depth + 1)}` : this.value(depth + 1));
       this.space();
       afterComma = this.text[this.index] === ',';
       if (afterComma) {
@@ -399,6 +439,28 @@ class RecoveryParser {
         this.index++;
       } else if (this.index < this.end && this.text[this.index] !== close) this.repair('syntax', 'missing-comma');
     }
+  }
+
+  /** Parses an object key and the colon after it, returning the key as JSON. */
+  private key(seen: Set<string>): string {
+    const start = this.index;
+    const key = this.text[start]! in QUOTES ? this.string() : this.unquotedKey();
+    const decoded: string = JSON.parse(key);
+    if (seen.has(decoded)) this.repair('ambiguous', 'duplicate-key', start);
+    seen.add(decoded);
+    this.space();
+    if (this.text[this.index] === ':') this.index++;
+    else this.repair('ambiguous', 'missing-colon');
+    return key;
+  }
+
+  private unquotedKey(): string {
+    const start = this.index;
+    while (this.index < this.end && !/[\s:,{}[\]]/.test(this.text[this.index]!) && !this.comment()) this.index++;
+    if (this.index === start) throw new Error('Expected an object key');
+    const rawKey = this.text.slice(start, this.index);
+    this.repair(/["'“”‘’]/.test(rawKey) ? 'ambiguous' : 'syntax', 'unquoted-key', start);
+    return JSON.stringify(rawKey);
   }
 
   private string(context: 'root' | 'key' | 'value' = 'key'): string {
@@ -428,79 +490,66 @@ class RecoveryParser {
         continue;
       }
       if (family.includes(char)) {
-        const after = this.text.slice(this.index, this.end).trimStart()[0];
+        const after = this.charAfterSpace(this.index);
         const delimited = after === undefined || /[,}\]:"']/.test(after);
-        if (char === close) {
-          if (embeddedQuote) {
-            embeddedQuote = false;
-            this.repair('ambiguous', 'unescaped-quote', this.index - 1);
-            append(char);
-            continue;
-          }
-          if (context !== 'root' && alternative !== undefined && !delimited) {
-            this.index = alternative.end;
-            this.repairs.length = alternative.repairCount;
-            this.repair('ambiguous', 'mismatched-quote', this.index - 1);
-            return JSON.stringify(alternative.value);
-          }
-          const nextClose = this.text.indexOf(close, this.index);
-          const afterNext = this.text.slice(nextClose + 1, this.end).trimStart()[0];
-          if (
-            context === 'value' &&
-            !delimited &&
-            !/\s/.test(this.text[this.index] ?? '') &&
-            nextClose > this.index &&
-            nextClose < this.end &&
-            afterNext !== undefined &&
-            (!/[,}:\]]/.test(afterNext) ||
-              (afterNext === ',' && this.continuesStringAfterComma(nextClose + 1, close))) &&
-            !/[\\*:,{}[\]\r\n]|\/\//.test(this.text.slice(this.index, nextClose)) &&
-            !this.startsKey(nextClose)
-          ) {
-            embeddedQuote = true;
-            this.repair('ambiguous', 'unescaped-quote', this.index - 1);
-            append(char);
-            continue;
-          }
-          return JSON.stringify(value);
-        }
-        if (delimited) alternative ??= { end: this.index, value, repairCount: this.repairs.length };
+        if (char !== close) {
+          if (delimited) alternative ??= { end: this.index, value, repairCount: this.repairs.length };
+        } else if (!embeddedQuote && context !== 'root' && alternative !== undefined && !delimited) {
+          this.index = alternative.end;
+          this.repairs.length = alternative.repairCount;
+          this.repair('ambiguous', 'mismatched-quote', this.index - 1);
+          return JSON.stringify(alternative.value);
+        } else if (embeddedQuote || (context === 'value' && !delimited && this.opensEmbeddedQuote(close))) {
+          embeddedQuote = !embeddedQuote;
+          this.repair('ambiguous', 'unescaped-quote', this.index - 1);
+        } else return JSON.stringify(value);
       }
-      if (char !== '\\') {
+      if (char === '\\') append(this.escapeSequence(open));
+      else {
         if (char.codePointAt(0)! < 32) this.repair('syntax', 'unescaped-control-character', this.index - 1);
         append(char);
-        continue;
-      }
-      const escapeOffset = this.index - 1;
-      if (this.index >= this.end) {
-        append('\\');
-        this.repair('incomplete', 'truncated-escape', escapeOffset);
-        break;
-      }
-      const escape = this.text[this.index++]!;
-      if (escape === 'u') {
-        const hex = this.text.slice(this.index, Math.min(this.index + 4, this.end));
-        if (/^[\da-fA-F]{4}$/.test(hex)) {
-          append(String.fromCodePoint(Number.parseInt(hex, 16)));
-          this.index += 4;
-        } else {
-          append(String.raw`\u`);
-          this.repair(
-            /^[\da-fA-F]{0,3}$/.test(hex) ? 'incomplete' : 'ambiguous',
-            'invalid-unicode-escape',
-            escapeOffset
-          );
-        }
-      } else if (String.raw`"\/bfnrt`.includes(escape)) {
-        append(JSON.parse(`"\\${escape}"`) as string);
-      } else if (escape === "'" && open === "'") append("'");
-      else {
-        append(`\\${escape}`);
-        this.repair('ambiguous', 'invalid-escape', escapeOffset);
       }
     }
     this.repair('incomplete', 'unterminated-string', start);
     return JSON.stringify(value);
+  }
+
+  /** Whether the closing quote just consumed and the next one more plausibly enclose a phrase quoted within the string. */
+  private opensEmbeddedQuote(close: string): boolean {
+    const nextClose = this.text.indexOf(close, this.index);
+    const afterNext = this.charAfterSpace(nextClose + 1);
+    return (
+      !/\s/.test(this.text[this.index] ?? '') &&
+      nextClose > this.index &&
+      nextClose < this.end &&
+      afterNext !== undefined &&
+      (!/[,}:\]]/.test(afterNext) || (afterNext === ',' && this.continuesStringAfterComma(nextClose + 1, close))) &&
+      !/[\\*:,{}[\]\r\n]|\/\//.test(this.text.slice(this.index, nextClose)) &&
+      !this.startsKey(nextClose)
+    );
+  }
+
+  /** Decodes the escape sequence whose backslash was just consumed. */
+  private escapeSequence(open: string): string {
+    const escapeOffset = this.index - 1;
+    if (this.index >= this.end) {
+      this.repair('incomplete', 'truncated-escape', escapeOffset);
+      return '\\';
+    }
+    const escape = this.text[this.index++]!;
+    if (escape === 'u') {
+      const hex = this.text.slice(this.index, Math.min(this.index + 4, this.end));
+      if (/^[\da-fA-F]{4}$/.test(hex)) {
+        this.index += 4;
+        return String.fromCodePoint(Number.parseInt(hex, 16));
+      }
+      this.repair(/^[\da-fA-F]{0,3}$/.test(hex) ? 'incomplete' : 'ambiguous', 'invalid-unicode-escape', escapeOffset);
+      return String.raw`\u`;
+    }
+    if (String.raw`"\/bfnrt`.includes(escape)) return JSON.parse(`"\\${escape}"`) as string;
+    if (escape === "'" && open === "'") return "'";
+    this.repair('ambiguous', 'invalid-escape', escapeOffset);
+    return `\\${escape}`;
   }
 
   private continuesStringAfterComma(start: number, quote: string): boolean {
@@ -515,7 +564,7 @@ class RecoveryParser {
     )
       return false;
     const continuation = this.text.slice(start, end);
-    const after = this.text.slice(end + 1, this.end).trimStart()[0];
+    const after = this.charAfterSpace(end + 1);
     return (
       /^\s*,\s*[\p{L}\p{N}]/u.test(continuation) &&
       !/[\\:{}[\]]/.test(continuation) &&
@@ -544,6 +593,14 @@ class RecoveryParser {
         this.index = end === -1 || end >= this.end ? this.end : end + 2;
       } else break;
     }
+  }
+
+  hasRepair(reason: string): boolean {
+    return this.repairs.some((repair) => repair.reason === reason);
+  }
+
+  private charAfterSpace(index: number): string | undefined {
+    return this.text.slice(index, this.end).trimStart()[0];
   }
 
   private repair(kind: JsonRepair['kind'], reason: string, offset = this.index): void {

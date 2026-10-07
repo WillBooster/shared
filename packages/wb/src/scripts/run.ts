@@ -64,6 +64,7 @@ export async function runWithSpawn(
           wroteSilentProgress = true;
         }, opts.silentProgressIntervalMs)
       : undefined;
+  const printingOutput = captureOutput || (argv.silent && !shouldProcessSilentOutput);
   let killingLeftovers: Promise<string[]> | undefined;
   const ret = await spawnAsync(normalizedScript.runnable, undefined, {
     cwd: project.dirPath,
@@ -86,8 +87,8 @@ export async function runWithSpawn(
     timeout: opts.timeout,
     mergeOutAndError: shouldProcessSilentOutput,
     killOnExit: true,
-    printingStdout: captureOutput || (argv.silent && !shouldProcessSilentOutput),
-    printingStderr: captureOutput || (argv.silent && !shouldProcessSilentOutput),
+    printingStdout: printingOutput,
+    printingStderr: printingOutput,
     omitBlankLinesWhilePrinting: !captureOutput && argv.silent,
     verbose: argv.verbose,
   }).finally(() => {
@@ -103,19 +104,22 @@ export async function runWithSpawn(
   if (leftovers?.length) {
     console.info(chalk.yellow(`Sent SIGTERM to ${leftovers.length} leftover process(es):\n${leftovers.join('\n')}`));
   }
-  if (shouldProcessSilentOutput && (!opts.printSilentOutputOnFailureOnly || exitCode !== 0)) {
-    const output = (opts.processSilentOutput ? opts.processSilentOutput(ret.stdout) : ret.stdout).trim();
-    if (output) {
-      process.stdout.write(output);
-      process.stdout.write('\n');
-    }
-  }
+  if (shouldProcessSilentOutput) printSilentOutput(ret.stdout, exitCode, opts);
   if (argv.silent && exitCode === 0 && opts.silentSuccessMessage) {
     console.info(chalk.green(opts.silentSuccessMessage));
   }
   opts.onSignal?.(ret.signal);
   printFinishedAndExitIfNeeded(normalizedScript.printable, exitCode, opts, { silentSuccess: argv.silent });
   return exitCode;
+}
+
+function printSilentOutput(stdout: string, exitCode: number, opts: Options): void {
+  if (opts.printSilentOutputOnFailureOnly && exitCode === 0) return;
+  const output = (opts.processSilentOutput ? opts.processSilentOutput(stdout) : stdout).trim();
+  if (output) {
+    process.stdout.write(output);
+    process.stdout.write('\n');
+  }
 }
 
 export function runWithSpawnInParallel(

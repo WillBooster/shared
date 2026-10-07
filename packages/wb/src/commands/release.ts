@@ -336,58 +336,74 @@ async function prepareNpmCompatibleLayout(
   modifiedFiles: Map<string, Buffer | undefined>,
   activeChild: ActiveChildRef
 ): Promise<void> {
-  const bunfigPath = path.join(project.dirPath, 'bunfig.toml');
-  const bunfig = fs.existsSync(bunfigPath) ? fs.readFileSync(bunfigPath, 'utf8') : undefined;
-  const hoistedBunfig = bunfig === undefined ? undefined : buildHoistedBunfig(bunfig);
-  if (bunfig !== undefined && hoistedBunfig !== bunfig) {
-    console.info(chalk.cyan('Clean-reinstalling with the hoisted linker so npm can walk node_modules...'));
-    if (!argv.dryRun) {
-      modifiedFiles.set(bunfigPath, Buffer.from(bunfig, 'utf8'));
-      // The hoisted reinstall may rewrite (or create) the lockfile; snapshot the raw bytes so a
-      // successful release leaves no tracked or untracked lockfile changes behind.
-      for (const lockFileName of ['bun.lock', 'bun.lockb']) {
-        const lockFilePath = path.join(project.dirPath, lockFileName);
-        modifiedFiles.set(lockFilePath, fs.existsSync(lockFilePath) ? fs.readFileSync(lockFilePath) : undefined);
-      }
-      fs.writeFileSync(bunfigPath, hoistedBunfig ?? '', 'utf8');
-      const nodeModulesDirPaths = [project.dirPath, ...(await findWorkspacePackageDirs(project))].map((dirPath) =>
-        path.join(dirPath, 'node_modules')
-      );
-      for (const nodeModulesDirPath of nodeModulesDirPaths) {
-        fs.rmSync(nodeModulesDirPath, { force: true, recursive: true });
-      }
-      // Resolve and download with lifecycle scripts DISABLED while the release credentials
-      // (VERDACCIO_TOKEN, NPM_TOKEN, GITHUB_TOKEN, FNOX_AGE_KEY, ...) are in the environment,
-      // so repository- or dependency-defined preinstall/postinstall can never read them —
-      // mirroring reusable-workflows' two-step release install (issue #1003).
-      const installStatus = await spawnAndWait(activeChild, 'bun', ['install', '--ignore-scripts'], {
-        cwd: project.dirPath,
-        env: project.env,
-        stdio: 'inherit',
-      });
-      if (installStatus !== 0) {
-        // Throwing (instead of process.exit, which would skip the caller's finally) lets the
-        // restore run before the process terminates.
-        throw new Error('bun install failed while preparing the release.');
-      }
-      // Replay the skipped lifecycle scripts in a credential-scrubbed environment. A repeated
-      // `bun install` is a no-op that does not replay them, so node_modules is wiped again;
-      // every package is already in bun's cache from the credentialed step, so this re-link
-      // needs no registry credentials.
-      for (const nodeModulesDirPath of nodeModulesDirPaths) {
-        fs.rmSync(nodeModulesDirPath, { force: true, recursive: true });
-      }
-      const replayStatus = await spawnAndWait(activeChild, 'bun', ['install'], {
-        cwd: project.dirPath,
-        env: buildCredentialFreeEnv(project.env),
-        stdio: 'inherit',
-      });
-      if (replayStatus !== 0) {
-        throw new Error('bun install failed while replaying lifecycle scripts for the release.');
-      }
-    }
-  }
+  await reinstallWithHoistedLinker(project, argv, modifiedFiles, activeChild);
+  await rewriteWorkspaceRangesInManifests(project, argv, modifiedFiles);
+}
 
+async function reinstallWithHoistedLinker(
+  project: Project,
+  argv: ReleaseArgv,
+  modifiedFiles: Map<string, Buffer | undefined>,
+  activeChild: ActiveChildRef
+): Promise<void> {
+  const bunfigPath = path.join(project.dirPath, 'bunfig.toml');
+  if (!fs.existsSync(bunfigPath)) return;
+  const bunfig = fs.readFileSync(bunfigPath, 'utf8');
+  const hoistedBunfig = buildHoistedBunfig(bunfig);
+  if (hoistedBunfig === bunfig) return;
+  console.info(chalk.cyan('Clean-reinstalling with the hoisted linker so npm can walk node_modules...'));
+  if (argv.dryRun) return;
+
+  modifiedFiles.set(bunfigPath, Buffer.from(bunfig, 'utf8'));
+  // The hoisted reinstall may rewrite (or create) the lockfile; snapshot the raw bytes so a
+  // successful release leaves no tracked or untracked lockfile changes behind.
+  for (const lockFileName of ['bun.lock', 'bun.lockb']) {
+    const lockFilePath = path.join(project.dirPath, lockFileName);
+    modifiedFiles.set(lockFilePath, fs.existsSync(lockFilePath) ? fs.readFileSync(lockFilePath) : undefined);
+  }
+  fs.writeFileSync(bunfigPath, hoistedBunfig, 'utf8');
+  const nodeModulesDirPaths = [project.dirPath, ...(await findWorkspacePackageDirs(project))].map((dirPath) =>
+    path.join(dirPath, 'node_modules')
+  );
+  for (const nodeModulesDirPath of nodeModulesDirPaths) {
+    fs.rmSync(nodeModulesDirPath, { force: true, recursive: true });
+  }
+  // Resolve and download with lifecycle scripts DISABLED while the release credentials
+  // (VERDACCIO_TOKEN, NPM_TOKEN, GITHUB_TOKEN, FNOX_AGE_KEY, ...) are in the environment,
+  // so repository- or dependency-defined preinstall/postinstall can never read them —
+  // mirroring reusable-workflows' two-step release install (issue #1003).
+  const installStatus = await spawnAndWait(activeChild, 'bun', ['install', '--ignore-scripts'], {
+    cwd: project.dirPath,
+    env: project.env,
+    stdio: 'inherit',
+  });
+  if (installStatus !== 0) {
+    // Throwing (instead of process.exit, which would skip the caller's finally) lets the
+    // restore run before the process terminates.
+    throw new Error('bun install failed while preparing the release.');
+  }
+  // Replay the skipped lifecycle scripts in a credential-scrubbed environment. A repeated
+  // `bun install` is a no-op that does not replay them, so node_modules is wiped again;
+  // every package is already in bun's cache from the credentialed step, so this re-link
+  // needs no registry credentials.
+  for (const nodeModulesDirPath of nodeModulesDirPaths) {
+    fs.rmSync(nodeModulesDirPath, { force: true, recursive: true });
+  }
+  const replayStatus = await spawnAndWait(activeChild, 'bun', ['install'], {
+    cwd: project.dirPath,
+    env: buildCredentialFreeEnv(project.env),
+    stdio: 'inherit',
+  });
+  if (replayStatus !== 0) {
+    throw new Error('bun install failed while replaying lifecycle scripts for the release.');
+  }
+}
+
+async function rewriteWorkspaceRangesInManifests(
+  project: Project,
+  argv: ReleaseArgv,
+  modifiedFiles: Map<string, Buffer | undefined>
+): Promise<void> {
   const workspacePackageDirs = await findWorkspacePackageDirs(project);
   for (const packageJsonPath of [
     project.packageJsonPath,

@@ -235,34 +235,43 @@ function stringifyValue(value: unknown, ctx: Context): string {
       return stringifyString(value, ctx);
     }
     case 'object': {
-      if (value === null) return 'null';
-      const separator = `\n${ctx.indent}`;
-      let str = '';
-      if (Array.isArray(value)) {
-        if (value.length === 0) return '[]';
-        const itemCtx = { indent: ctx.indent + INDENT_STEP, tagPatterns: ctx.tagPatterns };
-        for (const item of value as unknown[]) {
-          str += `${str ? separator : ''}- ${stringifyValue(toSerializable(item), itemCtx)}`;
-        }
-        return str;
-      }
-      if (value instanceof Map) {
-        for (const [key, item] of value) {
-          if (item !== undefined) str += `${str ? separator : ''}${stringifyPair(key, item, ctx)}`;
-        }
-        return str || '{}';
-      }
-      const record = value as Record<string, unknown>;
-      for (const key of Object.keys(record)) {
-        const item = record[key];
-        if (item !== undefined) str += `${str ? separator : ''}${stringifyPair(key, item, ctx)}`;
-      }
-      return str || '{}';
+      return stringifyObject(value, ctx);
     }
     default: {
       throw new TypeError(`Cannot serialize a ${typeof value} value for a prompt`);
     }
   }
+}
+
+function stringifyObject(value: object | null, ctx: Context): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return stringifyArray(value, ctx);
+  return stringifyEntries(value instanceof Map ? value : lazyEntries(value as Record<string, unknown>), ctx);
+}
+
+function stringifyArray(value: unknown[], ctx: Context): string {
+  if (value.length === 0) return '[]';
+  const separator = `\n${ctx.indent}`;
+  const itemCtx = { indent: ctx.indent + INDENT_STEP, tagPatterns: ctx.tagPatterns };
+  let str = '';
+  for (const item of value) {
+    str += `${str ? separator : ''}- ${stringifyValue(toSerializable(item), itemCtx)}`;
+  }
+  return str;
+}
+
+function stringifyEntries(entries: Iterable<[unknown, unknown]>, ctx: Context): string {
+  const separator = `\n${ctx.indent}`;
+  let str = '';
+  for (const [key, item] of entries) {
+    if (item !== undefined) str += `${str ? separator : ''}${stringifyPair(key, item, ctx)}`;
+  }
+  return str || '{}';
+}
+
+// Reads each property only when its turn comes, as serializing an earlier one may run a `toJSON` that mutates the record.
+function* lazyEntries(record: Record<string, unknown>): Generator<[unknown, unknown]> {
+  for (const key of Object.keys(record)) yield [key, record[key]];
 }
 
 function stringifyPair(rawKey: unknown, rawValue: unknown, ctx: Context): string {
