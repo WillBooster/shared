@@ -15,6 +15,7 @@ import { z } from 'zod';
 import type { Project } from '../project.js';
 import type { CheckEnvArgv } from './checkEnv.js';
 import { checkEnv } from './checkEnv.js';
+import { exitWithError } from '../utils/exit.js';
 import { collectFnoxKeyNamesForProfile } from '../utils/fnoxToml.js';
 import { isNonRailwayKey, pushRailwayVariables, resolveRailwayVariables } from './railwayEnv.js';
 
@@ -627,9 +628,4 @@ function buildBaseEnv(context: RailwayContext): NodeJS.ProcessEnv {
   delete env.RAILWAY_ENVIRONMENT_ID;
   delete env.RAILWAY_SERVICE_ID;
   return env;
-}
-
-function exitWithError(message: string): never {
-  console.error(chalk.red(message));
-  process.exit(1);
 }

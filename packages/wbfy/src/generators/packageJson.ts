@@ -233,112 +233,16 @@ async function applyPackageJsonConventions(
   rootConfig: PackageConfig,
   jsonObj: WritablePackageJson
 ): Promise<DependencyUpdates> {
-  const dependencies: string[] = [];
-  const devDependencies = ['sort-package-json'];
-  const pythonDevDependencies: string[] = [];
-  const hasJava = doesContainJava(config);
+  const updates: DependencyUpdates = {
+    dependencies: [],
+    devDependencies: ['sort-package-json'],
+    pythonDevDependencies: [],
+  };
+  const { devDependencies } = updates;
 
-  if (
-    hasJava &&
-    !fs.existsSync(path.join(rootConfig.dirPath, '.prettierrc.json')) &&
-    !fs.existsSync(path.join(config.dirPath, '.prettierrc.json'))
-  ) {
-    jsonObj.prettier = '@willbooster/prettier-config';
-    devDependencies.push('prettier-plugin-java', '@willbooster/prettier-config');
-  }
-  if (hasJava) {
-    devDependencies.push('prettier');
-  }
-
+  addJavaFormatterDependencies(config, rootConfig, jsonObj, devDependencies);
   if (config.isRoot) {
-    // Lefthook generation is best-effort and .lefthook is absent from Docker build contexts, so a
-    // missing normalizer is valid. Once present, its failure must abort install rather than leave a
-    // Guard-pinned lockfile behind; keep that fail-fast grouping explicit before any workspace build.
-    jsonObj.scripts.prepare =
-      '(bun lefthook install || true) && (test ! -f .lefthook/normalize-bun-lockfile.sh || bash .lefthook/normalize-bun-lockfile.sh)';
-    // When @willbooster/wb is a workspace of this repository, the generated `bun wb …` scripts run
-    // its gitignored dist build (bin/index.js imports ../dist/index.js), so a fresh checkout must
-    // build it during install; registry installs ship a prebuilt dist and need no extra step.
-    const wbWorkspaceDir = getWorkspacePackageDirs(rootConfig).get(wbDependency);
-    if (wbWorkspaceDir) {
-      // Quoted unless the name carries no shell meaning, so that `$(…)` or a variable a hostile
-      // directory name could smuggle into the generated script never reaches the shell unquoted.
-      jsonObj.scripts.prepare += ` && bun run --cwd ${quoteForShell(wbWorkspaceDir)} build`;
-    }
-    devDependencies.push(lefthookDependency);
-
-    if (config.depending.semanticRelease) {
-      if (doesReleaseScriptInstallSemanticRelease(jsonObj.scripts.release)) {
-        delete jsonObj.devDependencies['semantic-release'];
-      } else if (
-        !jsonObj.devDependencies['semantic-release'] &&
-        !jsonObj.devDependencies['multi-semantic-release'] &&
-        !jsonObj.devDependencies['@qiwi/multi-semantic-release']
-      ) {
-        devDependencies.push('semantic-release');
-      }
-      jsonObj.version = '0.0.0-semantically-released';
-    }
-
-    if (config.depending.playwrightTest) {
-      // Since artillery requires a specific version of @playwright/test
-      const hasArtillery = jsonObj.dependencies.artillery || jsonObj.devDependencies.artillery;
-      // Since llm-toolbox requires @playwright/test in dependencies
-      if (!hasArtillery && !jsonObj.dependencies['@playwright/test']) {
-        devDependencies.push('@playwright/test');
-      }
-    }
-    if (config.depending.playwrightRuntime) {
-      // Runtime imports need the standalone package after Docker pruning removes devDependencies.
-      jsonObj.dependencies.playwright ??=
-        jsonObj.devDependencies.playwright ??
-        jsonObj.dependencies['@playwright/test'] ??
-        jsonObj.devDependencies['@playwright/test'];
-      dependencies.push('playwright');
-      delete jsonObj.devDependencies.playwright;
-    } else if (config.depending.playwrightTest) {
-      delete jsonObj.dependencies.playwright;
-      delete jsonObj.devDependencies.playwright;
-    }
-
-    if (config.doesContainSubPackageJsons) {
-      // We don't allow non-array workspaces in monorepo. Yarn v1's object form keeps its
-      // declared patterns (workspaces.packages); only extras such as nohoist are dropped.
-      // Force `packages/*` only when it actually matches a workspace manifest: an apps/*-only
-      // monorepo must not get a never-matching pattern appended to its declaration. A
-      // baseline-seeding declaration needs no forced pattern at all — the seeded baseline
-      // (`*/*` or `**`) already covers packages/*. The forced pattern is PREPENDED: Bun
-      // evaluates workspace patterns sequentially, so a positive pattern placed after a user
-      // negation would re-include the negated packages. A declaration that already covers
-      // packages/* under normalization (e.g. `./packages/*`) is kept verbatim: forcing a textual
-      // `packages/*` next to it would persist a duplicate equivalent pattern.
-      const forcedPatterns =
-        !hasImplicitWorkspaceBaseline(jsonObj.workspaces) &&
-        !hasDeclaredPackagesStarPattern(jsonObj.workspaces) &&
-        fg.globSync('packages/*/package.json', { cwd: config.dirPath, ignore: ['**/node_modules/**'] }).length > 0
-          ? ['packages/*']
-          : [];
-      jsonObj.workspaces = merge.all([forcedPatterns, getDeclaredWorkspacePatterns(jsonObj.workspaces)], {
-        arrayMerge: combineMerge,
-      });
-      // Both inputs can be empty (e.g. packages/package.json without any packages/*/package.json
-      // and no declared workspaces); do not persist a meaningless `workspaces: []`.
-      if (Array.isArray(jsonObj.workspaces) && jsonObj.workspaces.length === 0) {
-        delete jsonObj.workspaces;
-      }
-    } else if (Array.isArray(jsonObj.workspaces)) {
-      jsonObj.workspaces = jsonObj.workspaces.filter(
-        (workspace) =>
-          fg.globSync(workspace, {
-            dot: true,
-            cwd: config.dirPath,
-            ignore: globIgnore,
-          }).length > 0
-      );
-      if (jsonObj.workspaces.length === 0) {
-        delete jsonObj.workspaces;
-      }
-    }
+    applyRootPackageJsonConventions(config, rootConfig, jsonObj, updates);
   }
 
   // fixers/nextConfig.ts enables `reactCompiler: true` for every Next.js project, and Next.js
@@ -354,33 +258,7 @@ async function applyPackageJsonConventions(
     devDependencies.push('slidev-check');
   }
 
-  if (!isWbPackage(jsonObj)) {
-    // A `workspace:` specifier depends on the wb developed in this repository (e.g.
-    // WillBooster/shared itself); installing the latest registry release over it would silently
-    // replace the local build with a published one, so leave such a declaration untouched.
-    const wbSpecifier = jsonObj.dependencies[wbDependency] ?? jsonObj.devDependencies[wbDependency];
-    if (!wbSpecifier?.startsWith('workspace:')) {
-      if (shouldKeepWbAsRuntimeDependency(jsonObj)) {
-        dependencies.push(wbDependency);
-      } else {
-        devDependencies.push(wbDependency);
-      }
-    }
-  }
-  // build-ts owns TypeScript execution and declaration emit. wbfy must always
-  // keep existing build-ts users current because older releases can emit .d.ts
-  // files at paths that no longer match package exports.
-  if (
-    jsonObj.dependencies[buildTsDependency] ||
-    jsonObj.devDependencies[buildTsDependency] ||
-    Object.values(jsonObj.scripts).some((script) => script?.includes(buildTsDependency))
-  ) {
-    if (shouldKeepBuildTsAsRuntimeDependency(jsonObj)) {
-      dependencies.push(buildTsDependency);
-    } else {
-      devDependencies.push(buildTsDependency);
-    }
-  }
+  addManagedToolDependencies(jsonObj, updates);
   if (doesContainJsOrTs(config)) {
     devDependencies.push(...oxlintDeps);
     // The generated *.config.ts files are type-checked by the lint project even in JavaScript-only
@@ -395,36 +273,195 @@ async function applyPackageJsonConventions(
   devDependencies.push(...tsconfigBaseDependencies);
 
   if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
-    // TypeScript 7 ships the native compiler as the `typescript` package, so it is
-    // now the managed compiler for every TypeScript repo (typechecking runs `tsc`).
-    devDependencies.push(typescriptDependency);
-    // Next.js's `next build` inspects `@typescript/native-preview` (tsgo) to run its type
-    // check; the `typescript` v7 package alone lacks the API next needs, so keep both
-    // installed for Next.js-family repos. See the typescriptGoDependency comment above.
-    if (config.depending.next || config.depending.blitz || config.depending.vinext) {
-      devDependencies.push(typescriptGoDependency);
-    }
-    if (
-      jsonObj.dependencies.jest ||
-      jsonObj.devDependencies.jest ||
-      jsonObj.dependencies['@jest/globals'] ||
-      jsonObj.devDependencies['@jest/globals'] ||
-      jsonObj.dependencies['ts-jest'] ||
-      jsonObj.devDependencies['ts-jest']
-    ) {
-      devDependencies.push('@types/jest');
-    }
+    addTypeScriptDependencies(config, jsonObj, devDependencies);
   }
 
   if (config.isWillBoosterConfigs) {
     return {
-      dependencies: dependencies.filter((dep) => !dep.includes('@willbooster/')),
+      dependencies: updates.dependencies.filter((dep) => !dep.includes('@willbooster/')),
       devDependencies: devDependencies.filter((dep) => !dep.includes('@willbooster/')),
-      pythonDevDependencies,
+      pythonDevDependencies: updates.pythonDevDependencies,
     };
   }
 
-  return { dependencies, devDependencies, pythonDevDependencies };
+  return updates;
+}
+
+function addJavaFormatterDependencies(
+  config: PackageConfig,
+  rootConfig: PackageConfig,
+  jsonObj: WritablePackageJson,
+  devDependencies: string[]
+): void {
+  if (!doesContainJava(config)) return;
+  if (
+    !fs.existsSync(path.join(rootConfig.dirPath, '.prettierrc.json')) &&
+    !fs.existsSync(path.join(config.dirPath, '.prettierrc.json'))
+  ) {
+    jsonObj.prettier = '@willbooster/prettier-config';
+    devDependencies.push('prettier-plugin-java', '@willbooster/prettier-config');
+  }
+  devDependencies.push('prettier');
+}
+
+function applyRootPackageJsonConventions(
+  config: PackageConfig,
+  rootConfig: PackageConfig,
+  jsonObj: WritablePackageJson,
+  updates: DependencyUpdates
+): void {
+  // Lefthook generation is best-effort and .lefthook is absent from Docker build contexts, so a
+  // missing normalizer is valid. Once present, its failure must abort install rather than leave a
+  // Guard-pinned lockfile behind; keep that fail-fast grouping explicit before any workspace build.
+  jsonObj.scripts.prepare =
+    '(bun lefthook install || true) && (test ! -f .lefthook/normalize-bun-lockfile.sh || bash .lefthook/normalize-bun-lockfile.sh)';
+  // When @willbooster/wb is a workspace of this repository, the generated `bun wb …` scripts run
+  // its gitignored dist build (bin/index.js imports ../dist/index.js), so a fresh checkout must
+  // build it during install; registry installs ship a prebuilt dist and need no extra step.
+  const wbWorkspaceDir = getWorkspacePackageDirs(rootConfig).get(wbDependency);
+  if (wbWorkspaceDir) {
+    // Quoted unless the name carries no shell meaning, so that `$(…)` or a variable a hostile
+    // directory name could smuggle into the generated script never reaches the shell unquoted.
+    jsonObj.scripts.prepare += ` && bun run --cwd ${quoteForShell(wbWorkspaceDir)} build`;
+  }
+  updates.devDependencies.push(lefthookDependency);
+
+  if (config.depending.semanticRelease) {
+    applySemanticReleaseConventions(jsonObj, updates.devDependencies);
+  }
+  applyPlaywrightConventions(config, jsonObj, updates);
+  normalizeWorkspaces(config, jsonObj);
+}
+
+function applySemanticReleaseConventions(jsonObj: WritablePackageJson, devDependencies: string[]): void {
+  if (doesReleaseScriptInstallSemanticRelease(jsonObj.scripts.release)) {
+    delete jsonObj.devDependencies['semantic-release'];
+  } else if (
+    !jsonObj.devDependencies['semantic-release'] &&
+    !jsonObj.devDependencies['multi-semantic-release'] &&
+    !jsonObj.devDependencies['@qiwi/multi-semantic-release']
+  ) {
+    devDependencies.push('semantic-release');
+  }
+  jsonObj.version = '0.0.0-semantically-released';
+}
+
+function applyPlaywrightConventions(
+  config: PackageConfig,
+  jsonObj: WritablePackageJson,
+  updates: DependencyUpdates
+): void {
+  if (config.depending.playwrightTest) {
+    // Since artillery requires a specific version of @playwright/test
+    const hasArtillery = jsonObj.dependencies.artillery || jsonObj.devDependencies.artillery;
+    // Since llm-toolbox requires @playwright/test in dependencies
+    if (!hasArtillery && !jsonObj.dependencies['@playwright/test']) {
+      updates.devDependencies.push('@playwright/test');
+    }
+  }
+  if (config.depending.playwrightRuntime) {
+    // Runtime imports need the standalone package after Docker pruning removes devDependencies.
+    jsonObj.dependencies.playwright ??=
+      jsonObj.devDependencies.playwright ??
+      jsonObj.dependencies['@playwright/test'] ??
+      jsonObj.devDependencies['@playwright/test'];
+    updates.dependencies.push('playwright');
+    delete jsonObj.devDependencies.playwright;
+  } else if (config.depending.playwrightTest) {
+    delete jsonObj.dependencies.playwright;
+    delete jsonObj.devDependencies.playwright;
+  }
+}
+
+function normalizeWorkspaces(config: PackageConfig, jsonObj: WritablePackageJson): void {
+  if (config.doesContainSubPackageJsons) {
+    // We don't allow non-array workspaces in monorepo. Yarn v1's object form keeps its
+    // declared patterns (workspaces.packages); only extras such as nohoist are dropped.
+    // Force `packages/*` only when it actually matches a workspace manifest: an apps/*-only
+    // monorepo must not get a never-matching pattern appended to its declaration. A
+    // baseline-seeding declaration needs no forced pattern at all — the seeded baseline
+    // (`*/*` or `**`) already covers packages/*. The forced pattern is PREPENDED: Bun
+    // evaluates workspace patterns sequentially, so a positive pattern placed after a user
+    // negation would re-include the negated packages. A declaration that already covers
+    // packages/* under normalization (e.g. `./packages/*`) is kept verbatim: forcing a textual
+    // `packages/*` next to it would persist a duplicate equivalent pattern.
+    const forcedPatterns =
+      !hasImplicitWorkspaceBaseline(jsonObj.workspaces) &&
+      !hasDeclaredPackagesStarPattern(jsonObj.workspaces) &&
+      fg.globSync('packages/*/package.json', { cwd: config.dirPath, ignore: ['**/node_modules/**'] }).length > 0
+        ? ['packages/*']
+        : [];
+    jsonObj.workspaces = merge.all([forcedPatterns, getDeclaredWorkspacePatterns(jsonObj.workspaces)], {
+      arrayMerge: combineMerge,
+    });
+    // Both inputs can be empty (e.g. packages/package.json without any packages/*/package.json
+    // and no declared workspaces); do not persist a meaningless `workspaces: []`.
+    if (Array.isArray(jsonObj.workspaces) && jsonObj.workspaces.length === 0) {
+      delete jsonObj.workspaces;
+    }
+  } else if (Array.isArray(jsonObj.workspaces)) {
+    jsonObj.workspaces = jsonObj.workspaces.filter(
+      (workspace) =>
+        fg.globSync(workspace, {
+          dot: true,
+          cwd: config.dirPath,
+          ignore: globIgnore,
+        }).length > 0
+    );
+    if (jsonObj.workspaces.length === 0) {
+      delete jsonObj.workspaces;
+    }
+  }
+}
+
+function addManagedToolDependencies(jsonObj: WritablePackageJson, updates: DependencyUpdates): void {
+  if (!isWbPackage(jsonObj)) {
+    // A `workspace:` specifier depends on the wb developed in this repository (e.g.
+    // WillBooster/shared itself); installing the latest registry release over it would silently
+    // replace the local build with a published one, so leave such a declaration untouched.
+    const wbSpecifier = jsonObj.dependencies[wbDependency] ?? jsonObj.devDependencies[wbDependency];
+    if (!wbSpecifier?.startsWith('workspace:')) {
+      const section = shouldKeepWbAsRuntimeDependency(jsonObj) ? updates.dependencies : updates.devDependencies;
+      section.push(wbDependency);
+    }
+  }
+  // build-ts owns TypeScript execution and declaration emit. wbfy must always
+  // keep existing build-ts users current because older releases can emit .d.ts
+  // files at paths that no longer match package exports.
+  if (
+    jsonObj.dependencies[buildTsDependency] ||
+    jsonObj.devDependencies[buildTsDependency] ||
+    Object.values(jsonObj.scripts).some((script) => script?.includes(buildTsDependency))
+  ) {
+    const section = shouldKeepBuildTsAsRuntimeDependency(jsonObj) ? updates.dependencies : updates.devDependencies;
+    section.push(buildTsDependency);
+  }
+}
+
+function addTypeScriptDependencies(
+  config: PackageConfig,
+  jsonObj: WritablePackageJson,
+  devDependencies: string[]
+): void {
+  // TypeScript 7 ships the native compiler as the `typescript` package, so it is
+  // now the managed compiler for every TypeScript repo (typechecking runs `tsc`).
+  devDependencies.push(typescriptDependency);
+  // Next.js's `next build` inspects `@typescript/native-preview` (tsgo) to run its type
+  // check; the `typescript` v7 package alone lacks the API next needs, so keep both
+  // installed for Next.js-family repos. See the typescriptGoDependency comment above.
+  if (config.depending.next || config.depending.blitz || config.depending.vinext) {
+    devDependencies.push(typescriptGoDependency);
+  }
+  if (
+    jsonObj.dependencies.jest ||
+    jsonObj.devDependencies.jest ||
+    jsonObj.dependencies['@jest/globals'] ||
+    jsonObj.devDependencies['@jest/globals'] ||
+    jsonObj.dependencies['ts-jest'] ||
+    jsonObj.devDependencies['ts-jest']
+  ) {
+    devDependencies.push('@types/jest');
+  }
 }
 
 function doesReleaseScriptInstallSemanticRelease(script: unknown): boolean {
@@ -495,69 +532,7 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   // managed there and must cover dependencies declared anywhere in the repository.
   if (!config.isRoot) return;
   const bunJsonObj = jsonObj as WritablePackageJson & { trustedDependencies?: string[] };
-  // Bun installs optional and peer dependencies by default, so all declaration sections count.
-  // Every declared range is kept per package: a root declaration must not mask a workspace one
-  // (e.g. root @chakra-ui/cli v2 alongside a workspace on v3).
-  const declaredDependencies = new Map<string, string[]>();
-  const addDeclaredDependencies = (packageJson: PackageJson): void => {
-    for (const section of dependencyDeclarationSections) {
-      for (const [dependencyName, versionRange] of Object.entries(packageJson[section] ?? {})) {
-        if (typeof versionRange === 'string') {
-          const versionRanges = declaredDependencies.get(dependencyName);
-          if (versionRanges) {
-            versionRanges.push(versionRange);
-          } else {
-            declaredDependencies.set(dependencyName, [versionRange]);
-          }
-        }
-      }
-    }
-  };
-  addDeclaredDependencies(jsonObj);
-  for (const packageJsonPath of getWorkspacePackageJsonPaths(config)) {
-    try {
-      addDeclaredDependencies(
-        JSON.parse(await fs.promises.readFile(path.resolve(config.dirPath, packageJsonPath), 'utf8')) as PackageJson
-      );
-    } catch {
-      // ignore unreadable workspace package.json
-    }
-  }
-  // Only @chakra-ui/cli v3's `chakra typegen` writes into the installed @chakra-ui/react;
-  // v2's `chakra-cli tokens` writes into @chakra-ui/styled-system instead, so trusting
-  // @chakra-ui/react there would force a useless project-local copy without fixing gen-code.
-  // Mirror wb gen-code's classification: only a range whose leading major parses to 2 selects the
-  // v2 command, so digitless specs like `latest` or catalog references count as v3.
-  const hasChakraCliV3 = (declaredDependencies.get('@chakra-ui/cli') ?? []).some(
-    (versionRange) => /\d+/u.exec(versionRange)?.[0] !== '2'
-  );
-  const requiredWbfyPackages = [
-    ...(hasChakraCliV3 && declaredDependencies.has('@chakra-ui/react') ? ['@chakra-ui/react'] : []),
-    ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
-    // These git-dependency builds import packages they do not declare (e.g. zod), which the
-    // global-store layout places beyond their walk-up; a project-local copy under
-    // node_modules/.bun resolves them (observed in WillBooster/prompt-study).
-    ...(declaredDependencies.has('@willbooster/judge') ? ['@willbooster/judge'] : []),
-    ...(declaredDependencies.has('@willbooster/llm-proxy') ? ['@willbooster/llm-proxy'] : []),
-    // blitz and @blitzjs/auth require react (and other peers) without declaring them, relying on
-    // hoisting, which the global-store layout places beyond their walk-up (observed in
-    // WillBooster/survey-system: `next build` page-data collection dies with "Cannot find module
-    // 'react'" from @blitzjs/auth). @blitzjs/rpc is NOT listed because it properly declares its
-    // react/@tanstack peers, so Bun links them into its store entry. @blitzjs/next is
-    // deliberately NOT listed either: trusting it would run its postinstall (`blitz codegen`),
-    // which patches the installed next package in place — repositories patch out that postinstall
-    // with `bun patch` instead, which also keeps the package project-local.
-    ...(declaredDependencies.has('blitz') ? ['blitz'] : []),
-    ...(declaredDependencies.has('@blitzjs/auth') ? ['@blitzjs/auth'] : []),
-    // Bun does not link @hookform/resolvers' OPTIONAL validator peers (e.g. zod) into its
-    // global-store entry even when the project installs them, so its server-side
-    // `import 'zod'` fails from the store (observed in WillBooster/survey-system).
-    ...(declaredDependencies.has('@hookform/resolvers') ? ['@hookform/resolvers'] : []),
-    // @zoom/rtms installs its native rtms.node binding in a lifecycle script. Without explicit
-    // trust, Bun skips that script and the package fails as soon as the Zoom bot imports it
-    // (observed in WillBooster/smartse-zoom-bot).
-    ...(declaredDependencies.has('@zoom/rtms') ? ['@zoom/rtms'] : []),
-  ];
+  const requiredWbfyPackages = getRequiredTrustedDependencies(await collectDeclaredDependencies(config, jsonObj));
 
   // wbfy fully owns this field: a package whose lifecycle scripts must run gets added to wbfy
   // itself instead of to individual repositories, so unmanaged entries are always removed —
@@ -590,6 +565,81 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   ]);
   await warnAboutRemovedTrustedDependencies(config, existingTrusted ?? [], newTrustedPackages);
   bunJsonObj.trustedDependencies = [...newTrustedPackages].toSorted();
+}
+
+/** Maps every dependency declared in the repository to all of its declared version ranges. */
+async function collectDeclaredDependencies(
+  config: PackageConfig,
+  jsonObj: PackageJson
+): Promise<Map<string, string[]>> {
+  // Bun installs optional and peer dependencies by default, so all declaration sections count.
+  // Every declared range is kept per package: a root declaration must not mask a workspace one
+  // (e.g. root @chakra-ui/cli v2 alongside a workspace on v3).
+  const declaredDependencies = new Map<string, string[]>();
+  addDeclaredDependencies(declaredDependencies, jsonObj);
+  for (const packageJsonPath of getWorkspacePackageJsonPaths(config)) {
+    try {
+      addDeclaredDependencies(
+        declaredDependencies,
+        JSON.parse(await fs.promises.readFile(path.resolve(config.dirPath, packageJsonPath), 'utf8')) as PackageJson
+      );
+    } catch {
+      // ignore unreadable workspace package.json
+    }
+  }
+  return declaredDependencies;
+}
+
+function addDeclaredDependencies(declaredDependencies: Map<string, string[]>, packageJson: PackageJson): void {
+  for (const section of dependencyDeclarationSections) {
+    for (const [dependencyName, versionRange] of Object.entries(packageJson[section] ?? {})) {
+      if (typeof versionRange !== 'string') continue;
+      const versionRanges = declaredDependencies.get(dependencyName);
+      if (versionRanges) {
+        versionRanges.push(versionRange);
+      } else {
+        declaredDependencies.set(dependencyName, [versionRange]);
+      }
+    }
+  }
+}
+
+function getRequiredTrustedDependencies(declaredDependencies: ReadonlyMap<string, string[]>): string[] {
+  // Only @chakra-ui/cli v3's `chakra typegen` writes into the installed @chakra-ui/react;
+  // v2's `chakra-cli tokens` writes into @chakra-ui/styled-system instead, so trusting
+  // @chakra-ui/react there would force a useless project-local copy without fixing gen-code.
+  // Mirror wb gen-code's classification: only a range whose leading major parses to 2 selects the
+  // v2 command, so digitless specs like `latest` or catalog references count as v3.
+  const hasChakraCliV3 = (declaredDependencies.get('@chakra-ui/cli') ?? []).some(
+    (versionRange) => /\d+/u.exec(versionRange)?.[0] !== '2'
+  );
+  return [
+    ...(hasChakraCliV3 && declaredDependencies.has('@chakra-ui/react') ? ['@chakra-ui/react'] : []),
+    ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
+    // These git-dependency builds import packages they do not declare (e.g. zod), which the
+    // global-store layout places beyond their walk-up; a project-local copy under
+    // node_modules/.bun resolves them (observed in WillBooster/prompt-study).
+    ...(declaredDependencies.has('@willbooster/judge') ? ['@willbooster/judge'] : []),
+    ...(declaredDependencies.has('@willbooster/llm-proxy') ? ['@willbooster/llm-proxy'] : []),
+    // blitz and @blitzjs/auth require react (and other peers) without declaring them, relying on
+    // hoisting, which the global-store layout places beyond their walk-up (observed in
+    // WillBooster/survey-system: `next build` page-data collection dies with "Cannot find module
+    // 'react'" from @blitzjs/auth). @blitzjs/rpc is NOT listed because it properly declares its
+    // react/@tanstack peers, so Bun links them into its store entry. @blitzjs/next is
+    // deliberately NOT listed either: trusting it would run its postinstall (`blitz codegen`),
+    // which patches the installed next package in place — repositories patch out that postinstall
+    // with `bun patch` instead, which also keeps the package project-local.
+    ...(declaredDependencies.has('blitz') ? ['blitz'] : []),
+    ...(declaredDependencies.has('@blitzjs/auth') ? ['@blitzjs/auth'] : []),
+    // Bun does not link @hookform/resolvers' OPTIONAL validator peers (e.g. zod) into its
+    // global-store entry even when the project installs them, so its server-side
+    // `import 'zod'` fails from the store (observed in WillBooster/survey-system).
+    ...(declaredDependencies.has('@hookform/resolvers') ? ['@hookform/resolvers'] : []),
+    // @zoom/rtms installs its native rtms.node binding in a lifecycle script. Without explicit
+    // trust, Bun skips that script and the package fails as soon as the Zoom bot imports it
+    // (observed in WillBooster/smartse-zoom-bot).
+    ...(declaredDependencies.has('@zoom/rtms') ? ['@zoom/rtms'] : []),
+  ];
 }
 
 // The packages wbfy itself may write into trustedDependencies; their removal is managed cleanup,
@@ -687,70 +737,83 @@ async function normalizePackageMetadata(
 
   if (!config.doesContainSubPackageJsons) {
     if (config.doesContainPubspecYaml) {
-      jsonObj.scripts.lint = 'flutter analyze';
-      jsonObj.scripts['lint-fix'] = 'bun run lint';
-      const dirs = ['lib', 'test', 'test_driver'].filter((dir) => fs.existsSync(path.resolve(config.dirPath, dir)));
-      if (dirs.length > 0) {
-        jsonObj.scripts['format-code'] = `dart format $(find ${dirs.join(
-          ' '
-        )} -name generated -prune -o -name '*.freezed.dart' -prune -o -name '*.g.dart' -prune -o -name '*.dart' -print)`;
-        jsonObj.scripts.format = appendFormatCodeCommand(jsonObj.scripts.format);
-      }
+      applyFlutterScripts(config, jsonObj.scripts);
     }
-
-    const pythonPackageManager = getPythonPackageManager(config);
-    if (pythonPackageManager) {
-      const scriptRunner = 'bun run';
-      jsonObj.scripts['common/ci-setup'] = `${scriptRunner} setup-${pythonPackageManager}`;
-      delete jsonObj.scripts[`setup-${pythonPackageManager === 'poetry' ? 'uv' : 'poetry'}`];
-      jsonObj.scripts[`setup-${pythonPackageManager}`] = getPythonSetupCommand(pythonPackageManager);
-      const pythonFiles = await fg.glob('**/*.py', {
-        cwd: config.dirPath,
-        dot: true,
-        ignore: await getGlobIgnore(config.dirPath),
-      });
-      const dirNameSet = new Set<string>();
-      for (const pythonFile of pythonFiles) {
-        const [first, second] = pythonFile.split('/');
-        if (first && second) {
-          dirNameSet.add(first);
-        }
-      }
-      if (dirNameSet.size > 0) {
-        const dirNamesStr = [...dirNameSet].join(' ');
-        const pythonRunner = `${pythonPackageManager} run`;
-        jsonObj.scripts['format-code'] =
-          `${pythonRunner} isort --profile black ${dirNamesStr} && ${pythonRunner} black ${dirNamesStr}`;
-        if (jsonObj.scripts.lint) {
-          jsonObj.scripts.lint = `${pythonRunner} flake8 ${dirNamesStr} && ${jsonObj.scripts.lint}`;
-        } else {
-          jsonObj.scripts.lint = `${pythonRunner} flake8 ${dirNamesStr}`;
-          jsonObj.scripts['lint-fix'] = `${scriptRunner} lint`;
-        }
-        jsonObj.scripts.format = appendFormatCodeCommand(jsonObj.scripts.format);
-        dependencyUpdates.pythonDevDependencies.push('black', 'isort', 'flake8');
-      }
-    }
+    await applyPythonScripts(config, jsonObj.scripts, dependencyUpdates);
   }
 
   if (config.repository || jsonObj.repository) {
     jsonObj.repository = formatRepositoryForPackageJson(config.repository ?? jsonObj.repository, jsonObj.repository);
   }
 
-  const genCodeScript = jsonObj.scripts['gen-code'];
   if (shouldGenerateWbGenCodeScript(config)) {
-    // Preserve project-specific steps a repo appended to the managed `bun wb gen-code` (e.g. building extra deploy
-    // assets) instead of discarding them; only the managed gen-code segment is wbfy's to
-    // regenerate. An unparseable script is left alone rather than rewritten from a wrong parse.
-    const segments = genCodeScript === undefined ? [] : splitScriptSegments(genCodeScript);
-    const customSegments = segments?.filter(
-      (segment) => classifyScriptSegment(segment, jsonObj.scripts, true) === 'custom'
-    );
-    if (customSegments) {
-      jsonObj.scripts['gen-code'] = ['bun wb gen-code', ...customSegments].join(' && ');
-    }
+    normalizeGenCodeScript(jsonObj.scripts);
   }
   updatePostinstallScript(jsonObj.scripts, await generatesWorkerTypes(config));
+}
+
+function applyFlutterScripts(config: PackageConfig, scripts: PackageJson.Scripts): void {
+  scripts.lint = 'flutter analyze';
+  scripts['lint-fix'] = 'bun run lint';
+  const dirs = ['lib', 'test', 'test_driver'].filter((dir) => fs.existsSync(path.resolve(config.dirPath, dir)));
+  if (dirs.length > 0) {
+    scripts['format-code'] = `dart format $(find ${dirs.join(
+      ' '
+    )} -name generated -prune -o -name '*.freezed.dart' -prune -o -name '*.g.dart' -prune -o -name '*.dart' -print)`;
+    scripts.format = appendFormatCodeCommand(scripts.format);
+  }
+}
+
+async function applyPythonScripts(
+  config: PackageConfig,
+  scripts: PackageJson.Scripts,
+  dependencyUpdates: DependencyUpdates
+): Promise<void> {
+  const pythonPackageManager = getPythonPackageManager(config);
+  if (!pythonPackageManager) return;
+
+  const scriptRunner = 'bun run';
+  scripts['common/ci-setup'] = `${scriptRunner} setup-${pythonPackageManager}`;
+  delete scripts[`setup-${pythonPackageManager === 'poetry' ? 'uv' : 'poetry'}`];
+  scripts[`setup-${pythonPackageManager}`] = getPythonSetupCommand(pythonPackageManager);
+  const pythonFiles = await fg.glob('**/*.py', {
+    cwd: config.dirPath,
+    dot: true,
+    ignore: await getGlobIgnore(config.dirPath),
+  });
+  const dirNameSet = new Set<string>();
+  for (const pythonFile of pythonFiles) {
+    const [first, second] = pythonFile.split('/');
+    if (first && second) {
+      dirNameSet.add(first);
+    }
+  }
+  if (dirNameSet.size === 0) return;
+
+  const dirNamesStr = [...dirNameSet].join(' ');
+  const pythonRunner = `${pythonPackageManager} run`;
+  scripts['format-code'] =
+    `${pythonRunner} isort --profile black ${dirNamesStr} && ${pythonRunner} black ${dirNamesStr}`;
+  if (scripts.lint) {
+    scripts.lint = `${pythonRunner} flake8 ${dirNamesStr} && ${scripts.lint}`;
+  } else {
+    scripts.lint = `${pythonRunner} flake8 ${dirNamesStr}`;
+    scripts['lint-fix'] = `${scriptRunner} lint`;
+  }
+  scripts.format = appendFormatCodeCommand(scripts.format);
+  dependencyUpdates.pythonDevDependencies.push('black', 'isort', 'flake8');
+}
+
+function normalizeGenCodeScript(scripts: PackageJson.Scripts): void {
+  // Preserve project-specific steps a repo appended to the managed `bun wb gen-code` (e.g. building extra deploy
+  // assets) instead of discarding them; only the managed gen-code segment is wbfy's to
+  // regenerate. An unparseable script is left alone rather than rewritten from a wrong parse.
+  const genCodeScript = scripts['gen-code'];
+  const segments = genCodeScript === undefined ? [] : splitScriptSegments(genCodeScript);
+  const customSegments = segments?.filter((segment) => classifyScriptSegment(segment, scripts, true) === 'custom');
+  if (customSegments) {
+    scripts['gen-code'] = ['bun wb gen-code', ...customSegments].join(' && ');
+  }
 }
 
 function shouldGenerateWbGenCodeScript(config: PackageConfig): boolean {

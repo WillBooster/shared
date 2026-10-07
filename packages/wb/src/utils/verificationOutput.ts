@@ -30,30 +30,22 @@ export function startVerificationOutput(logPath: string): {
   let finished = false;
   capturingVerificationOutput = true;
 
-  const capture = (original: typeof process.stdout.write, stream: NodeJS.WriteStream): typeof original =>
-    ((chunk, encodingOrCallback, callback) => {
-      const buffer =
-        typeof chunk === 'string'
-          ? Buffer.from(chunk, typeof encodingOrCallback === 'string' ? encodingOrCallback : 'utf8')
-          : chunk;
-      if (!logError) {
-        try {
-          let offset = 0;
-          while (offset < buffer.length) {
-            const written = fs.writeSync(logFile, buffer, offset, buffer.length - offset);
-            if (written === 0) throw new Error('Log write made no progress');
-            offset += written;
-            logSize += written;
-          }
-        } catch (error) {
-          logError = error instanceof Error ? error : new Error('Unknown log write error');
-        }
+  const appendToLog = (buffer: Uint8Array): void => {
+    if (logError) return;
+    try {
+      let offset = 0;
+      while (offset < buffer.length) {
+        const written = fs.writeSync(logFile, buffer, offset, buffer.length - offset);
+        if (written === 0) throw new Error('Log write made no progress');
+        offset += written;
+        logSize += written;
       }
-      const done = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
-      if (succeeded || logError) return original.call(stream, buffer, undefined, done);
-      if (done) queueMicrotask(done);
-      return true;
-    }) as typeof original;
+    } catch (error) {
+      logError = toError(error, 'Unknown log write error');
+    }
+  };
+  const capture = (original: typeof process.stdout.write, stream: NodeJS.WriteStream): typeof original =>
+    captureWrite(original, stream, appendToLog, () => succeeded || Boolean(logError));
 
   process.stdout.write = capture(stdoutWrite, process.stdout);
   process.stderr.write = capture(stderrWrite, process.stderr);
@@ -82,21 +74,15 @@ export function startVerificationOutput(logPath: string): {
       }
       if (!logError) fs.appendFileSync(logPath, message);
     } catch (error) {
-      logError ??= error instanceof Error ? error : new Error('Unknown log I/O error');
+      logError ??= toError(error, 'Unknown log I/O error');
     }
     if (logError && !exitCode) process.exitCode = 1;
     const output = succeeded
       ? message
       : `Failed step: ${stepName ?? 'verification setup'} (exit code ${exitCode})\n${tail}${message}`;
     await Promise.all([
-      new Promise<void>((resolve, reject) => {
-        stdoutWrite(`${output}${logError ? `Log incomplete: ${String(logError)}\n` : ''}`, (error) =>
-          error ? reject(error) : resolve()
-        );
-      }),
-      new Promise<void>((resolve, reject) => {
-        stderrWrite('', (error) => (error ? reject(error) : resolve()));
-      }),
+      flush(stdoutWrite, `${output}${logError ? `Log incomplete: ${String(logError)}\n` : ''}`),
+      flush(stderrWrite, ''),
     ]);
   };
   // An unexpected process.exit() still closes the saved log. Normal failures await the flush.
@@ -114,6 +100,36 @@ export function startVerificationOutput(logPath: string): {
     },
     finish,
   };
+}
+
+/** Replaces a stream's `write` to save every chunk and show it only while `isShown()`. */
+function captureWrite(
+  original: typeof process.stdout.write,
+  stream: NodeJS.WriteStream,
+  save: (buffer: Uint8Array) => void,
+  isShown: () => boolean
+): typeof original {
+  return ((chunk, encodingOrCallback, callback) => {
+    const buffer =
+      typeof chunk === 'string'
+        ? Buffer.from(chunk, typeof encodingOrCallback === 'string' ? encodingOrCallback : 'utf8')
+        : chunk;
+    save(buffer);
+    const done = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
+    if (isShown()) return original.call(stream, buffer, undefined, done);
+    if (done) queueMicrotask(done);
+    return true;
+  }) as typeof original;
+}
+
+function toError(error: unknown, fallbackMessage: string): Error {
+  return error instanceof Error ? error : new Error(fallbackMessage);
+}
+
+function flush(write: typeof process.stdout.write, text: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    write(text, (error) => (error ? reject(error) : resolve()));
+  });
 }
 
 function forward(stream: NodeJS.WriteStream): Writable {

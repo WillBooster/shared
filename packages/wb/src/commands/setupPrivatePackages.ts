@@ -264,20 +264,17 @@ async function collectPrivatePackages(
   // compatible requirement and fail loudly on a genuine conflict.
   const packagesToProcess: PrivatePackage[] = [];
   const queuedPackages = new Map<string, PrivatePackage>();
+  // Returns whether `requested` names a package nobody has requested yet.
+  const enqueueIfNew = (requested: PrivatePackage): boolean => {
+    if (queuedPackages.has(requested.name)) return false;
+    queuedPackages.set(requested.name, requested);
+    packagesToProcess.push(requested);
+    return true;
+  };
   for (const packageJson of manifestPackageJsons) {
     for (const requested of findPrivateDependencies(packageJson, outDirPath, registryOutDirPath)) {
-      const queued = queuedPackages.get(requested.name);
-      if (!queued) {
-        queuedPackages.set(requested.name, requested);
-        packagesToProcess.push(requested);
-        continue;
-      }
-      const narrower = narrowerCompatibleRequirement(queued, requested);
-      if (narrower === undefined) {
-        assertNoVersionConflict(queued, requested, packageJson.name ?? 'a workspace manifest');
-      } else {
-        queued.versionSpecifier = narrower.versionSpecifier;
-      }
+      if (enqueueIfNew(requested)) continue;
+      narrowRequirement(queuedPackages.get(requested.name)!, requested, packageJson.name ?? 'a workspace manifest');
     }
   }
 
@@ -286,13 +283,7 @@ async function collectPrivatePackages(
     if (!privatePackage) continue;
     if (privatePackages.has(privatePackage.name)) continue;
 
-    if (privatePackage.kind === 'git') {
-      privatePackage.sourceDirPath = findInstalledPackageDir(rootDirPath, privatePackage.name);
-    } else {
-      const installed = findInstalledRegistryPackage(rootDirPath, privatePackage);
-      privatePackage.sourceDirPath = installed?.dirPath;
-      privatePackage.resolvedVersion = installed?.version;
-    }
+    selectInstalledCopy(rootDirPath, privatePackage);
     // Selected BEFORE the deep scan: a manifest inside the package may refer back to the package
     // itself, and that requirement must be validated against the selection (assertNoVersionConflict
     // below), never narrow the already-selected specifier.
@@ -300,29 +291,17 @@ async function collectPrivatePackages(
     // Nested private dependencies of an installed package are discoverable right away; registry
     // packages without a usable installed copy are inspected after download instead
     // (collectNestedPrivatePackages).
-    if (privatePackage.sourceDirPath) {
-      for (const packageJsonPath of await findPackageJsonPaths(privatePackage.sourceDirPath)) {
-        const packageJson = await readPackageJson(packageJsonPath);
-        for (const nested of findPrivateDependencies(packageJson, outDirPath, registryOutDirPath)) {
-          const queued = queuedPackages.get(nested.name);
-          if (!queued) {
-            queuedPackages.set(nested.name, nested);
-            packagesToProcess.push(nested);
-            continue;
-          }
-          if (privatePackages.has(nested.name)) {
-            // Already materialized (or selected): the requirement must admit that selection.
-            assertNoVersionConflict(queued, nested, privatePackage.name);
-          } else {
-            // Still queued: keep the NARROWER compatible requirement so discovery order cannot
-            // turn compatible constraints (e.g. `^1.0.0` and `1.2.3`) into a spurious conflict.
-            const narrower = narrowerCompatibleRequirement(queued, nested);
-            if (narrower === undefined) {
-              assertNoVersionConflict(queued, nested, privatePackage.name);
-            } else {
-              queued.versionSpecifier = narrower.versionSpecifier;
-            }
-          }
+    if (!privatePackage.sourceDirPath) continue;
+    for (const packageJsonPath of await findPackageJsonPaths(privatePackage.sourceDirPath)) {
+      const packageJson = await readPackageJson(packageJsonPath);
+      for (const nested of findPrivateDependencies(packageJson, outDirPath, registryOutDirPath)) {
+        if (enqueueIfNew(nested)) continue;
+        const queued = queuedPackages.get(nested.name)!;
+        if (privatePackages.has(nested.name)) {
+          // Already materialized (or selected): the requirement must admit that selection.
+          assertNoVersionConflict(queued, nested, privatePackage.name);
+        } else {
+          narrowRequirement(queued, nested, privatePackage.name);
         }
       }
     }
@@ -355,15 +334,9 @@ async function collectNestedPrivatePackages(
       const existing = privatePackages.get(nested.name);
       if (existing) {
         if (existing.kind === 'registry' && !existing.sourceDirPath && existing.resolvedVersion === undefined) {
-          // Still awaiting its download (no installed copy selected, nothing extracted yet): keep
-          // the NARROWER compatible requirement, exactly as collectPrivatePackages does for
-          // queued packages, so late-discovered nested constraints cannot fabricate conflicts.
-          const narrower = narrowerCompatibleRequirement(existing, nested);
-          if (narrower === undefined) {
-            assertNoVersionConflict(existing, nested, extractedPackage.name);
-          } else {
-            existing.versionSpecifier = narrower.versionSpecifier;
-          }
+          // Still awaiting its download (no installed copy selected, nothing extracted yet), so
+          // its requirement may still narrow, exactly as for collectPrivatePackages' queued packages.
+          narrowRequirement(existing, nested, extractedPackage.name);
         } else {
           // Collapsing different requested versions into one materialization would silently
           // violate the dependent's requirement, so conflicts must fail loudly.
@@ -372,25 +345,18 @@ async function collectNestedPrivatePackages(
         continue;
       }
 
-      if (nested.kind === 'git') {
-        nested.sourceDirPath = findInstalledPackageDir(rootDirPath, nested.name);
+      selectInstalledCopy(rootDirPath, nested);
+      if (nested.kind === 'git' || nested.sourceDirPath) {
         await copyInstalledPackage(rootDirPath, nested, toStagedPath(nested.targetDirPath));
       } else {
-        const installed = findInstalledRegistryPackage(rootDirPath, nested);
-        nested.sourceDirPath = installed?.dirPath;
-        nested.resolvedVersion = installed?.version;
-        if (nested.sourceDirPath) {
-          await copyInstalledPackage(rootDirPath, nested, toStagedPath(nested.targetDirPath));
-        } else {
-          await downloadAndExtractRegistryPackage(
-            auth,
-            nested.name,
-            nested.versionSpecifier ?? 'latest',
-            toStagedPath(nested.targetDirPath)
-          );
-          nested.resolvedVersion = readInstalledVersion(toStagedPath(nested.targetDirPath), nested.name);
-          console.info(`Downloaded ${nested.name} (nested dependency) to ${nested.targetDirPath}`);
-        }
+        await downloadAndExtractRegistryPackage(
+          auth,
+          nested.name,
+          nested.versionSpecifier ?? 'latest',
+          toStagedPath(nested.targetDirPath)
+        );
+        nested.resolvedVersion = readInstalledVersion(toStagedPath(nested.targetDirPath), nested.name);
+        console.info(`Downloaded ${nested.name} (nested dependency) to ${nested.targetDirPath}`);
       }
       privatePackages.set(nested.name, nested);
       await collectNestedPrivatePackages(
@@ -403,6 +369,29 @@ async function collectNestedPrivatePackages(
         toStagedPath
       );
     }
+  }
+}
+
+function selectInstalledCopy(rootDirPath: string, privatePackage: PrivatePackage): void {
+  if (privatePackage.kind === 'git') {
+    privatePackage.sourceDirPath = findInstalledPackageDir(rootDirPath, privatePackage.name);
+    return;
+  }
+  const installed = findInstalledRegistryPackage(rootDirPath, privatePackage);
+  privatePackage.sourceDirPath = installed?.dirPath;
+  privatePackage.resolvedVersion = installed?.version;
+}
+
+/**
+ * Keeps the NARROWER compatible requirement on the not-yet-selected `pending` package, so discovery
+ * order cannot turn compatible constraints (e.g. `^1.0.0` and `1.2.3`) into a spurious conflict.
+ */
+function narrowRequirement(pending: PrivatePackage, requested: PrivatePackage, requesterName: string): void {
+  const narrower = narrowerCompatibleRequirement(pending, requested);
+  if (narrower === undefined) {
+    assertNoVersionConflict(pending, requested, requesterName);
+  } else {
+    pending.versionSpecifier = narrower.versionSpecifier;
   }
 }
 

@@ -156,46 +156,12 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
     const ageRecipients = getFnoxAgeRecipients(rootConfig);
     const rootDirPath = path.resolve(rootConfig.dirPath);
     if (!fs.existsSync(path.resolve(rootDirPath, 'fnox.toml'))) {
-      // A nested-only fnox layout is unsupported: setupSecrets would take the dotenv path and
-      // delete FNOX_AGE_KEY even though the nested config's CI still needs it.
-      try {
-        // Only age-using configs carry that risk. Without a root providing the age provider, a
-        // stray config that declares none uses no age encryption at all (e.g. a plaintext test
-        // fixture or example config any repository may legitimately commit), so it neither needs
-        // recipient synchronization nor owns an FNOX_AGE_KEY and must not block the run.
-        const fnoxLikeFilePaths = await listFnoxLikeFilePaths(rootDirPath);
-        const strayFilePaths = fnoxLikeFilePaths.filter((filePath) => declaresFnoxAgeProvider(filePath));
-        if (strayFilePaths.length > 0) {
-          failFnoxSync(
-            `Failed to synchronize fnox age recipients because fnox configs exist without a root fnox.toml: ${strayFilePaths.join(', ')}. Add a root fnox.toml.`
-          );
-        }
-      } catch (error) {
-        // Fail closed: without git information a nested-only fnox layout cannot be ruled out, and
-        // setupSecrets would otherwise take the dotenv path and delete FNOX_AGE_KEY.
-        failFnoxSync(
-          `Failed to check for nested fnox configs due to: ${(error as Error | undefined)?.message ?? error}`
-        );
-      }
+      await failOnAgeConfigsWithoutRootFnoxToml(rootDirPath);
       return;
     }
-    // A failed visibility lookup collapses isPublicRepo to false, which would silently re-encrypt
-    // a public repository's world-readable ciphertexts to the org-internal CI identity (and vice
-    // versa drop the public one). Fail instead of guessing whenever visibility changes the roster.
-    if (!rootConfig.isRepoVisibilityKnown && doesFnoxRecipientSetDependOnVisibility(rootConfig)) {
-      failFnoxSync(
-        `Failed to synchronize fnox age recipients because the visibility of ${rootConfig.repoAuthor}/${rootConfig.repoName} could not be determined (GitHub lookup failed) and the CI recipient depends on it. Check network and gh authentication, then rerun wbfy.`
-      );
-      return;
-    }
-    // Both CI identities are visibility-constrained, so a repository can fall through BOTH (e.g. a
-    // public WillBoosterLab repository, whose organization has no PUBLIC_FNOX_AGE_KEY secret).
-    // Re-encrypting for a roster without a CI identity would leave CI unable to decrypt anything,
-    // failing only at runtime in Actions; fail loudly here instead.
-    if (!resolveFnoxCiAgeKeySecretName(rootConfig)) {
-      failFnoxSync(
-        `Failed to synchronize fnox age recipients because no CI identity is scoped to ${rootConfig.repoAuthor}/${rootConfig.repoName} (public repositories are supported only in the WillBooster organization). Provision the matching organization secret and extend the CI scopes in wbfy first.`
-      );
+    const ciIdentityIssue = findFnoxCiIdentityIssue(rootConfig);
+    if (ciIdentityIssue) {
+      failFnoxSync(`Failed to synchronize fnox age recipients because ${ciIdentityIssue}`);
       return;
     }
     // The migration is transactional over every managed fnox.toml: reruns must retry from the
@@ -205,128 +171,8 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
     // A failed synchronization must fail the whole wbfy run: exiting zero with stale recipients
     // would leave secrets undecryptable for new recipients while looking successful.
     try {
-      // Any fnox config (including aliases and local overrides) in an ancestor directory would
-      // merge into (and possibly be REWRITTEN by) this repository's `fnox reencrypt` through
-      // hierarchical loading, using this repository's recipient set for foreign secrets.
-      for (let dirPath = path.dirname(rootDirPath); ; dirPath = path.dirname(dirPath)) {
-        const ancestorFnoxFileNames = listFnoxLikeFileNames(dirPath);
-        if (ancestorFnoxFileNames.length > 0) {
-          failFnoxSync(
-            `Failed to synchronize fnox age recipients because an ancestor directory contains fnox configs that fnox would hierarchically merge and rewrite: ${ancestorFnoxFileNames
-              .map((name) => path.join(dirPath, name))
-              .join(', ')}. Remove them or move the repository.`
-          );
-          return;
-        }
-        if (path.dirname(dirPath) === dirPath) break;
-      }
-      // fnox also loads committed config aliases this generator cannot keep in sync.
-      const fnoxLikeFilePaths = await listFnoxLikeFilePaths(rootDirPath);
-      const unsupportedFilePaths = fnoxLikeFilePaths.filter((filePath) => path.basename(filePath) !== 'fnox.toml');
-      if (unsupportedFilePaths.length > 0) {
-        failFnoxSync(
-          `Failed to synchronize fnox age recipients because only fnox.toml files are supported: ${unsupportedFilePaths.join(', ')}. Merge them into the adjacent fnox.toml.`
-        );
-        return;
-      }
-      const dirPaths = listFnoxTomlDirPaths(fnoxLikeFilePaths);
-      if (!dirPaths.includes(rootDirPath)) {
-        failFnoxSync(
-          `Failed to synchronize fnox age recipients because ${path.resolve(rootDirPath, 'fnox.toml')} is invisible to git (gitignored?). Commit it or remove it.`
-        );
-        return;
-      }
-      // Git-based discovery cannot see gitignored files, so also inspect every directory in each
-      // managed config's hierarchy through the filesystem: a gitignored alias (e.g. .fnox.toml)
-      // or a gitignored fnox.toml in an intermediate directory would still be loaded by fnox and
-      // could override the provider used for nested re-encryption.
-      const managedDirPaths = new Set(dirPaths);
-      for (const dirPath of dirPaths) {
-        for (const hierarchyDirPath of listAncestorDirPaths(dirPath, rootDirPath)) {
-          const strayFileNames = listFnoxLikeFileNames(hierarchyDirPath).filter(
-            (name) => name !== 'fnox.local.toml' && !(name === 'fnox.toml' && managedDirPaths.has(hierarchyDirPath))
-          );
-          if (strayFileNames.length > 0) {
-            failFnoxSync(
-              `Failed to synchronize fnox age recipients because fnox would load unmanaged (gitignored?) configs: ${strayFileNames
-                .map((name) => path.join(hierarchyDirPath, name))
-                .join(', ')}. Commit them as fnox.toml or remove them.`
-            );
-            return;
-          }
-          // A fnox.local.toml anywhere in the merged hierarchy (not only next to a managed
-          // config) can override providers.
-          const localIssue = findFnoxLocalTomlIssue(hierarchyDirPath);
-          if (localIssue) {
-            failFnoxSync(
-              `Failed to synchronize fnox age recipients because ${localIssue}. Keep only machine-local secret overrides there.`
-            );
-            return;
-          }
-        }
-      }
-      // The in-memory snapshots do not survive a killed process, so a durable marker is written
-      // before the first mutation and removed only when the tree is consistent again. A leftover
-      // marker means a previous run was killed mid-migration (or could not restore): some
-      // ciphertexts may not match the recipients, or may even be undecryptable for the executor's
-      // identity when a recipient was being removed — states this code cannot repair safely
-      // because the working tree may have changed since (branch switches, manual edits). The
-      // fnox.toml files are git-tracked, so the user restores them via git and clears the marker.
-      migrationMarkerPath = path.resolve(rootDirPath, '.tmp', 'wbfy-fnox-migration-marker');
-      if (fs.existsSync(migrationMarkerPath)) {
-        failFnoxSync(
-          `Failed to synchronize fnox age recipients because a previous migration was interrupted. Restore the fnox.toml files via git (e.g. \`git status\` and \`git restore -- '*fnox*.toml'\` if you have no intentional local changes), then delete ${migrationMarkerPath} and rerun wbfy.`
-        );
-        return;
-      }
-
-      // A tracked symlink named fnox.toml (or a symlinked parent directory) would make the
-      // rewrite and `fnox reencrypt` read and MODIFY files outside this repository.
-      const realRootDirPath = fs.realpathSync(rootDirPath);
-      for (const dirPath of dirPaths) {
-        const fnoxTomlPath = path.resolve(dirPath, 'fnox.toml');
-        const realPath = fs.realpathSync(fnoxTomlPath);
-        if (fs.lstatSync(fnoxTomlPath).isSymbolicLink() || !realPath.startsWith(realRootDirPath + path.sep)) {
-          failFnoxSync(
-            `Failed to synchronize fnox age recipients because ${fnoxTomlPath} is a symlink or resolves outside the repository (${realPath}). Replace it with a regular in-repository file.`
-          );
-          return;
-        }
-        snapshots.set(fnoxTomlPath, fs.readFileSync(fnoxTomlPath, 'utf8'));
-      }
-
-      // Sorted order processes ancestors before descendants, so configs inheriting an updated
-      // provider re-encrypt against the already-updated recipients.
-      const changedDirPaths: string[] = [];
-      let anyFailed = false;
-      for (const dirPath of dirPaths) {
-        const ancestorChanged = changedDirPaths.some((changedDirPath) => dirPath.startsWith(changedDirPath + path.sep));
-        // Every dirPath was snapshotted above. A missing snapshot must fail hard: falling back to
-        // an empty string would flow into replaceAgeRecipients and overwrite the real fnox.toml
-        // with a recipients-only file, destroying every committed secret.
-        const snapshotContent = snapshots.get(path.resolve(dirPath, 'fnox.toml'));
-        if (snapshotContent === undefined) throw new Error(`Missing fnox.toml snapshot for ${dirPath}.`);
-        const result = await synchronizeFnoxAgeRecipients(
-          dirPath,
-          rootDirPath,
-          dirPath === rootDirPath,
-          ancestorChanged,
-          snapshotContent,
-          ageRecipients
-        );
-        if (result === 'changed') changedDirPaths.push(dirPath);
-        anyFailed ||= result === 'failed';
-      }
-      if (anyFailed) {
-        // A failed re-encryption may have rewritten some ciphertexts, so restore unconditionally.
-        // The marker is removed only when restoration fully succeeded and the tree is consistent.
-        // Restore ONLY when this run owns the marker: every committed-config mutation happens
-        // after marker acquisition, so a non-owner (e.g. losing a race against a concurrent wbfy)
-        // has changed nothing and must not overwrite the owner's in-progress migration.
-        if (migrationMarkerOwned && restoreSnapshots(snapshots)) removeOwnedMigrationMarker();
-      } else {
-        removeOwnedMigrationMarker();
-      }
+      const refusalReason = await migrateFnoxTomls(rootDirPath, ageRecipients, snapshots);
+      if (refusalReason) failFnoxSync(`Failed to synchronize fnox age recipients because ${refusalReason}`);
     } catch (error) {
       if (migrationMarkerOwned && restoreSnapshots(snapshots)) {
         removeOwnedMigrationMarker();
@@ -337,6 +183,196 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
       migrationMarkerOwned = false;
     }
   });
+}
+
+// A nested-only fnox layout is unsupported: setupSecrets would take the dotenv path and
+// delete FNOX_AGE_KEY even though the nested config's CI still needs it.
+async function failOnAgeConfigsWithoutRootFnoxToml(rootDirPath: string): Promise<void> {
+  try {
+    // Only age-using configs carry that risk. Without a root providing the age provider, a
+    // stray config that declares none uses no age encryption at all (e.g. a plaintext test
+    // fixture or example config any repository may legitimately commit), so it neither needs
+    // recipient synchronization nor owns an FNOX_AGE_KEY and must not block the run.
+    const fnoxLikeFilePaths = await listFnoxLikeFilePaths(rootDirPath);
+    const strayFilePaths = fnoxLikeFilePaths.filter((filePath) => declaresFnoxAgeProvider(filePath));
+    if (strayFilePaths.length > 0) {
+      failFnoxSync(
+        `Failed to synchronize fnox age recipients because fnox configs exist without a root fnox.toml: ${strayFilePaths.join(', ')}. Add a root fnox.toml.`
+      );
+    }
+  } catch (error) {
+    // Fail closed: without git information a nested-only fnox layout cannot be ruled out, and
+    // setupSecrets would otherwise take the dotenv path and delete FNOX_AGE_KEY.
+    failFnoxSync(`Failed to check for nested fnox configs due to: ${(error as Error | undefined)?.message ?? error}`);
+  }
+}
+
+function findFnoxCiIdentityIssue(rootConfig: PackageConfig): string | undefined {
+  // A failed visibility lookup collapses isPublicRepo to false, which would silently re-encrypt
+  // a public repository's world-readable ciphertexts to the org-internal CI identity (and vice
+  // versa drop the public one). Fail instead of guessing whenever visibility changes the roster.
+  if (!rootConfig.isRepoVisibilityKnown && doesFnoxRecipientSetDependOnVisibility(rootConfig)) {
+    return `the visibility of ${rootConfig.repoAuthor}/${rootConfig.repoName} could not be determined (GitHub lookup failed) and the CI recipient depends on it. Check network and gh authentication, then rerun wbfy.`;
+  }
+  // Both CI identities are visibility-constrained, so a repository can fall through BOTH (e.g. a
+  // public WillBoosterLab repository, whose organization has no PUBLIC_FNOX_AGE_KEY secret).
+  // Re-encrypting for a roster without a CI identity would leave CI unable to decrypt anything,
+  // failing only at runtime in Actions; fail loudly here instead.
+  if (!resolveFnoxCiAgeKeySecretName(rootConfig)) {
+    return `no CI identity is scoped to ${rootConfig.repoAuthor}/${rootConfig.repoName} (public repositories are supported only in the WillBooster organization). Provision the matching organization secret and extend the CI scopes in wbfy first.`;
+  }
+  return undefined;
+}
+
+/**
+ * Synchronizes every managed fnox.toml, filling `snapshots` before the first mutation. Returns why
+ * the migration was refused without mutating anything, or undefined once it was attempted.
+ */
+async function migrateFnoxTomls(
+  rootDirPath: string,
+  ageRecipients: readonly FnoxAgeRecipient[],
+  snapshots: Map<string, string>
+): Promise<string | undefined> {
+  const ancestorIssue = findAncestorFnoxConfigIssue(rootDirPath);
+  if (ancestorIssue) return ancestorIssue;
+  const fnoxLikeFilePaths = await listFnoxLikeFilePaths(rootDirPath);
+  const dirPaths = listFnoxTomlDirPaths(fnoxLikeFilePaths);
+  const configIssue =
+    findTrackedFnoxConfigIssue(fnoxLikeFilePaths, dirPaths, rootDirPath) ??
+    findUnmanagedFnoxConfigIssue(dirPaths, rootDirPath);
+  if (configIssue) return configIssue;
+  // The in-memory snapshots do not survive a killed process, so a durable marker is written
+  // before the first mutation and removed only when the tree is consistent again. A leftover
+  // marker means a previous run was killed mid-migration (or could not restore): some
+  // ciphertexts may not match the recipients, or may even be undecryptable for the executor's
+  // identity when a recipient was being removed — states this code cannot repair safely
+  // because the working tree may have changed since (branch switches, manual edits). The
+  // fnox.toml files are git-tracked, so the user restores them via git and clears the marker.
+  migrationMarkerPath = path.resolve(rootDirPath, '.tmp', 'wbfy-fnox-migration-marker');
+  if (fs.existsSync(migrationMarkerPath)) {
+    return `a previous migration was interrupted. Restore the fnox.toml files via git (e.g. \`git status\` and \`git restore -- '*fnox*.toml'\` if you have no intentional local changes), then delete ${migrationMarkerPath} and rerun wbfy.`;
+  }
+  const snapshotIssue = snapshotFnoxTomls(dirPaths, rootDirPath, snapshots);
+  if (snapshotIssue) return snapshotIssue;
+
+  if (await synchronizeEachFnoxToml(dirPaths, rootDirPath, snapshots, ageRecipients)) {
+    removeOwnedMigrationMarker();
+    return undefined;
+  }
+  // A failed re-encryption may have rewritten some ciphertexts, so restore unconditionally.
+  // The marker is removed only when restoration fully succeeded and the tree is consistent.
+  // Restore ONLY when this run owns the marker: every committed-config mutation happens
+  // after marker acquisition, so a non-owner (e.g. losing a race against a concurrent wbfy)
+  // has changed nothing and must not overwrite the owner's in-progress migration.
+  if (migrationMarkerOwned && restoreSnapshots(snapshots)) removeOwnedMigrationMarker();
+  return undefined;
+}
+
+// Any fnox config (including aliases and local overrides) in an ancestor directory would
+// merge into (and possibly be REWRITTEN by) this repository's `fnox reencrypt` through
+// hierarchical loading, using this repository's recipient set for foreign secrets.
+function findAncestorFnoxConfigIssue(rootDirPath: string): string | undefined {
+  for (let dirPath = path.dirname(rootDirPath); ; dirPath = path.dirname(dirPath)) {
+    const ancestorFnoxFileNames = listFnoxLikeFileNames(dirPath);
+    if (ancestorFnoxFileNames.length > 0) {
+      return `an ancestor directory contains fnox configs that fnox would hierarchically merge and rewrite: ${ancestorFnoxFileNames
+        .map((name) => path.join(dirPath, name))
+        .join(', ')}. Remove them or move the repository.`;
+    }
+    if (path.dirname(dirPath) === dirPath) return undefined;
+  }
+}
+
+function findTrackedFnoxConfigIssue(
+  fnoxLikeFilePaths: string[],
+  dirPaths: string[],
+  rootDirPath: string
+): string | undefined {
+  // fnox also loads committed config aliases this generator cannot keep in sync.
+  const unsupportedFilePaths = fnoxLikeFilePaths.filter((filePath) => path.basename(filePath) !== 'fnox.toml');
+  if (unsupportedFilePaths.length > 0) {
+    return `only fnox.toml files are supported: ${unsupportedFilePaths.join(', ')}. Merge them into the adjacent fnox.toml.`;
+  }
+  if (!dirPaths.includes(rootDirPath)) {
+    return `${path.resolve(rootDirPath, 'fnox.toml')} is invisible to git (gitignored?). Commit it or remove it.`;
+  }
+  return undefined;
+}
+
+// Git-based discovery cannot see gitignored files, so also inspect every directory in each
+// managed config's hierarchy through the filesystem: a gitignored alias (e.g. .fnox.toml)
+// or a gitignored fnox.toml in an intermediate directory would still be loaded by fnox and
+// could override the provider used for nested re-encryption.
+function findUnmanagedFnoxConfigIssue(dirPaths: string[], rootDirPath: string): string | undefined {
+  const managedDirPaths = new Set(dirPaths);
+  for (const dirPath of dirPaths) {
+    for (const hierarchyDirPath of listAncestorDirPaths(dirPath, rootDirPath)) {
+      const strayFileNames = listFnoxLikeFileNames(hierarchyDirPath).filter(
+        (name) => name !== 'fnox.local.toml' && !(name === 'fnox.toml' && managedDirPaths.has(hierarchyDirPath))
+      );
+      if (strayFileNames.length > 0) {
+        return `fnox would load unmanaged (gitignored?) configs: ${strayFileNames
+          .map((name) => path.join(hierarchyDirPath, name))
+          .join(', ')}. Commit them as fnox.toml or remove them.`;
+      }
+      // A fnox.local.toml anywhere in the merged hierarchy (not only next to a managed
+      // config) can override providers.
+      const localIssue = findFnoxLocalTomlIssue(hierarchyDirPath);
+      if (localIssue) return `${localIssue}. Keep only machine-local secret overrides there.`;
+    }
+  }
+  return undefined;
+}
+
+// A tracked symlink named fnox.toml (or a symlinked parent directory) would make the
+// rewrite and `fnox reencrypt` read and MODIFY files outside this repository.
+function snapshotFnoxTomls(
+  dirPaths: string[],
+  rootDirPath: string,
+  snapshots: Map<string, string>
+): string | undefined {
+  const realRootDirPath = fs.realpathSync(rootDirPath);
+  for (const dirPath of dirPaths) {
+    const fnoxTomlPath = path.resolve(dirPath, 'fnox.toml');
+    const realPath = fs.realpathSync(fnoxTomlPath);
+    if (fs.lstatSync(fnoxTomlPath).isSymbolicLink() || !realPath.startsWith(realRootDirPath + path.sep)) {
+      return `${fnoxTomlPath} is a symlink or resolves outside the repository (${realPath}). Replace it with a regular in-repository file.`;
+    }
+    snapshots.set(fnoxTomlPath, fs.readFileSync(fnoxTomlPath, 'utf8'));
+  }
+  return undefined;
+}
+
+/** Returns whether every fnox.toml was synchronized without a failure. */
+async function synchronizeEachFnoxToml(
+  dirPaths: string[],
+  rootDirPath: string,
+  snapshots: Map<string, string>,
+  ageRecipients: readonly FnoxAgeRecipient[]
+): Promise<boolean> {
+  // Sorted order processes ancestors before descendants, so configs inheriting an updated
+  // provider re-encrypt against the already-updated recipients.
+  const changedDirPaths: string[] = [];
+  let anyFailed = false;
+  for (const dirPath of dirPaths) {
+    const ancestorChanged = changedDirPaths.some((changedDirPath) => dirPath.startsWith(changedDirPath + path.sep));
+    // Every dirPath was snapshotted beforehand. A missing snapshot must fail hard: falling back to
+    // an empty string would flow into replaceAgeRecipients and overwrite the real fnox.toml
+    // with a recipients-only file, destroying every committed secret.
+    const snapshotContent = snapshots.get(path.resolve(dirPath, 'fnox.toml'));
+    if (snapshotContent === undefined) throw new Error(`Missing fnox.toml snapshot for ${dirPath}.`);
+    const result = await synchronizeFnoxAgeRecipients(
+      dirPath,
+      rootDirPath,
+      dirPath === rootDirPath,
+      ancestorChanged,
+      snapshotContent,
+      ageRecipients
+    );
+    if (result === 'changed') changedDirPaths.push(dirPath);
+    anyFailed ||= result === 'failed';
+  }
+  return !anyFailed;
 }
 
 async function synchronizeFnoxAgeRecipients(

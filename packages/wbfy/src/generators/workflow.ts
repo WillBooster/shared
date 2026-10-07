@@ -215,46 +215,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     }
     await fs.promises.mkdir(workflowsPath, { recursive: true });
 
-    const entries = await fs.promises.readdir(workflowsPath, { withFileTypes: true });
-    // wbfy writes .yml workflows, so each kind maps to its .yml file.
-    const fileNamesByKind = new Map<string, string>();
-    for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.endsWith('.yml')) continue;
-      fileNamesByKind.set(entry.name.slice(0, -'.yml'.length), entry.name);
-    }
-    const mandatoryKinds = ['test', 'semantic-pr'];
-    if (rootConfig.depending.semanticRelease) {
-      mandatoryKinds.push('release');
-    }
-    if (rootConfig.cargoTomlDirPaths.length > 0) {
-      mandatoryKinds.push('test-rust');
-    }
-    // A previous run may have mistaken a gitignored third-party checkout for repository Rust code.
-    // Remove only the generated-style caller: a same-named custom workflow with any other job stays.
-    if (rootConfig.cargoTomlDirPaths.length === 0) {
-      const testRustFileName = fileNamesByKind.get('test-rust');
-      if (testRustFileName && jobsAllCallReusableWorkflow(workflowsPath, testRustFileName, 'test-rust')) {
-        fileNamesByKind.delete('test-rust');
-        await fsUtil.removeConfined(path.join(workflowsPath, testRustFileName));
-      }
-    }
-    const closeCommentFileName = fileNamesByKind.get('close-comment');
-    if (closeCommentFileName && jobsAllCallReusableWorkflow(workflowsPath, closeCommentFileName, 'close-comment')) {
-      fileNamesByKind.delete('close-comment');
-      await fsUtil.removeConfined(path.join(workflowsPath, closeCommentFileName));
-    }
-    fileNamesByKind.delete('wbfy');
-    for (const kind of mandatoryKinds) {
-      if (!fileNamesByKind.has(kind)) {
-        fileNamesByKind.set(kind, `${kind}.yml`);
-      }
-    }
-    if (fileNamesByKind.has('sync')) {
-      // The sync workflow's generation owns the force-sync workflow, so processing it as an
-      // independent kind would race concurrent writes on the same path.
-      fileNamesByKind.delete('sync-force');
-    }
-
+    const fileNamesByKind = await collectWorkflowFileNamesByKind(rootConfig, workflowsPath);
     await runAllInPool(
       // 実際はKnownKind以外の値も代入されることに注意
       [...fileNamesByKind].map(
@@ -264,6 +225,56 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       )
     );
   });
+}
+
+/** Maps each workflow kind to generate to its file, deleting generated callers that no longer apply. */
+async function collectWorkflowFileNamesByKind(
+  rootConfig: PackageConfig,
+  workflowsPath: string
+): Promise<Map<string, string>> {
+  const entries = await fs.promises.readdir(workflowsPath, { withFileTypes: true });
+  // wbfy writes .yml workflows, so each kind maps to its .yml file.
+  const fileNamesByKind = new Map<string, string>();
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.yml')) continue;
+    fileNamesByKind.set(entry.name.slice(0, -'.yml'.length), entry.name);
+  }
+  const mandatoryKinds = ['test', 'semantic-pr'];
+  if (rootConfig.depending.semanticRelease) {
+    mandatoryKinds.push('release');
+  }
+  if (rootConfig.cargoTomlDirPaths.length > 0) {
+    mandatoryKinds.push('test-rust');
+  } else {
+    // A previous run may have mistaken a gitignored third-party checkout for repository Rust code.
+    await removeGeneratedCaller(workflowsPath, fileNamesByKind, 'test-rust');
+  }
+  await removeGeneratedCaller(workflowsPath, fileNamesByKind, 'close-comment');
+  fileNamesByKind.delete('wbfy');
+  for (const kind of mandatoryKinds) {
+    if (!fileNamesByKind.has(kind)) {
+      fileNamesByKind.set(kind, `${kind}.yml`);
+    }
+  }
+  if (fileNamesByKind.has('sync')) {
+    // The sync workflow's generation owns the force-sync workflow, so processing it as an
+    // independent kind would race concurrent writes on the same path.
+    fileNamesByKind.delete('sync-force');
+  }
+  return fileNamesByKind;
+}
+
+// Removes only the generated-style caller: a same-named custom workflow with any other job stays.
+async function removeGeneratedCaller(
+  workflowsPath: string,
+  fileNamesByKind: Map<string, string>,
+  kind: string
+): Promise<void> {
+  const fileName = fileNamesByKind.get(kind);
+  if (fileName && jobsAllCallReusableWorkflow(workflowsPath, fileName, kind)) {
+    fileNamesByKind.delete(kind);
+    await fsUtil.removeConfined(path.join(workflowsPath, fileName));
+  }
 }
 
 export function isReusableWorkflowsRepo(repository?: string): boolean {
@@ -314,33 +325,11 @@ async function writeWorkflowYaml(
   // A non-generated test-rust.yml in a repo without Rust code merely shares the name; leave it alone.
   if (kind === 'test-rust' && config.cargoTomlDirPaths.length === 0) return;
 
-  let newSettings = structuredClone(kind in workflows ? workflows[kind as keyof typeof workflows] : {}) as Workflow;
+  const template = structuredClone(kind in workflows ? workflows[kind as keyof typeof workflows] : {}) as Workflow;
   const oldContent = await fsUtil.readFileIfExists(filePath);
-  if (oldContent !== undefined) {
-    let oldSettings: Workflow;
-    try {
-      oldSettings = yaml.load(oldContent) as Workflow;
-    } catch {
-      // An existing workflow wbfy cannot parse must be left untouched: writing the template
-      // without merging would silently discard the repository's workflow.
-      console.warn(`Skipped generating ${filePath} because the existing content is not parsable as YAML.`);
-      return;
-    }
-    // yaml.load returns undefined for empty/comment-only files and non-objects for scalar
-    // documents without throwing; deepmerge would crash on them.
-    if (typeof oldSettings !== 'object' || oldSettings === null || Array.isArray(oldSettings)) {
-      console.warn(`Skipped generating ${filePath} because the existing content is not a workflow.`);
-      return;
-    }
-    const existingJob = oldSettings.jobs?.[kind];
-    if (newSettings.jobs?.[kind]?.uses && existingJob && !parseOrgReusableWorkflowCall(existingJob.uses)) {
-      return;
-    }
-    if (kind === 'release' && existingJob && isSkippedReleaseCaller(config.repoAuthor, existingJob.uses)) return;
-    newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
-  }
-
-  if (!('jobs' in newSettings)) return;
+  let newSettings =
+    oldContent === undefined ? template : mergeExistingWorkflow(config, kind, filePath, template, oldContent);
+  if (!newSettings || !('jobs' in newSettings)) return;
 
   if (kind.startsWith('deploy')) {
     newSettings = {
@@ -363,8 +352,60 @@ async function writeWorkflowYaml(
     newSettings.jobs.release.with.trigger_deploy_workflow = deployProductionFileName;
   }
 
+  if (!normalizeOrgReusableWorkflowJobs(config, newSettings.jobs, kind)) return;
+  addReadOnlyPermissionsToDeployJobs(newSettings);
+
+  if (kind === 'release' && !normalizeReleaseWorkflow(config, newSettings)) {
+    await fsUtil.removeConfined(filePath);
+    return;
+  }
+  if (kind === 'test' || kind === 'test-rust') {
+    removeTestPathFilters(newSettings);
+  }
+  await writeYaml(newSettings, filePath);
+
+  if (kind === 'sync') {
+    await writeSyncForceWorkflow(newSettings, workflowsPath);
+  }
+}
+
+/** Returns the template merged over the existing workflow, or undefined when the file must stay untouched. */
+function mergeExistingWorkflow(
+  config: PackageConfig,
+  kind: KnownKind,
+  filePath: string,
+  template: Workflow,
+  oldContent: string
+): Workflow | undefined {
+  let oldSettings: Workflow;
+  try {
+    oldSettings = yaml.load(oldContent) as Workflow;
+  } catch {
+    // An existing workflow wbfy cannot parse must be left untouched: writing the template
+    // without merging would silently discard the repository's workflow.
+    console.warn(`Skipped generating ${filePath} because the existing content is not parsable as YAML.`);
+    return undefined;
+  }
+  // yaml.load returns undefined for empty/comment-only files and non-objects for scalar
+  // documents without throwing; deepmerge would crash on them.
+  if (typeof oldSettings !== 'object' || oldSettings === null || Array.isArray(oldSettings)) {
+    console.warn(`Skipped generating ${filePath} because the existing content is not a workflow.`);
+    return undefined;
+  }
+  const existingJob = oldSettings.jobs?.[kind];
+  if (template.jobs?.[kind]?.uses && existingJob && !parseOrgReusableWorkflowCall(existingJob.uses)) {
+    return undefined;
+  }
+  if (kind === 'release' && existingJob && isSkippedReleaseCaller(config.repoAuthor, existingJob.uses)) {
+    return undefined;
+  }
+  return merge.all([template, oldSettings, template], { arrayMerge: combineMerge }) as Workflow;
+}
+
+/** Normalizes every job calling an organization reusable workflow and returns whether any exists. */
+function normalizeOrgReusableWorkflowJobs(config: PackageConfig, jobs: Workflow['jobs'], kind: KnownKind): boolean {
   let isReusableWorkflow = false;
-  for (const job of Object.values(newSettings.jobs)) {
+  for (const job of Object.values(jobs)) {
     // Ignore empty jobs (a bare `jobName:` parses as null), non-reusable workflows, and other
     // organizations' reusable workflows: a same-named `reusable-workflows` repository elsewhere
     // follows a different contract, and normalizing its callers (secret injection/removal,
@@ -374,72 +415,69 @@ async function writeWorkflowYaml(
     normalizeJob(config, job, kind);
     isReusableWorkflow = true;
   }
-  if (!isReusableWorkflow) return;
+  return isReusableWorkflow;
+}
 
-  // Deploy callers need no repository writes: the called reusable workflow inherits the caller's
-  // token permissions, repositories default the token to write, and the reusable deploy workflow
-  // at main performs no GITHUB_TOKEN writes. The read-only default is injected at the JOB level
-  // (job permissions do not affect sibling jobs, so inline jobs or pinned callees — whose write
-  // needs are unaudited — keep theirs), and only when neither the workflow nor the job declares
-  // its own permissions (OIDC deploys always do, for id-token). run-script callers are excluded
-  // because arbitrary package scripts may push commits.
-  if (!newSettings.permissions) {
-    for (const job of Object.values(newSettings.jobs)) {
-      if (!job) continue;
-      const call = parseOrgReusableWorkflowCall(job.uses);
-      if (!job.permissions && call?.workflowName === 'deploy' && call.ref === 'main') {
-        job.permissions = { contents: 'read' };
-      }
+// Deploy callers need no repository writes: the called reusable workflow inherits the caller's
+// token permissions, repositories default the token to write, and the reusable deploy workflow
+// at main performs no GITHUB_TOKEN writes. The read-only default is injected at the JOB level
+// (job permissions do not affect sibling jobs, so inline jobs or pinned callees — whose write
+// needs are unaudited — keep theirs), and only when neither the workflow nor the job declares
+// its own permissions (OIDC deploys always do, for id-token). run-script callers are excluded
+// because arbitrary package scripts may push commits.
+function addReadOnlyPermissionsToDeployJobs(settings: Workflow): void {
+  if (settings.permissions) return;
+  for (const job of Object.values(settings.jobs)) {
+    if (!job) continue;
+    const call = parseOrgReusableWorkflowCall(job.uses);
+    if (!job.permissions && call?.workflowName === 'deploy' && call.ref === 'main') {
+      job.permissions = { contents: 'read' };
     }
   }
+}
 
-  switch (kind) {
-    case 'release': {
-      if (newSettings.on?.schedule) {
-        delete newSettings.on.push;
-      } else if (newSettings.on?.push && config.release.branches.length > 0) {
-        newSettings.on.push.branches = config.release.branches;
-      } else {
-        await fsUtil.removeConfined(filePath);
-        return;
-      }
-      if (config.isPublicRepo) {
-        newSettings.permissions ??= {};
-        newSettings.permissions['id-token'] = 'write';
-      } else {
-        delete newSettings.permissions?.['id-token'];
-      }
-      break;
-    }
-    case 'test':
-    case 'test-rust': {
-      // Don't use `paths-ignore` for test because GitHub's Branch Protection and Rulesets require job running.
-      if (newSettings.on?.pull_request) {
-        delete newSettings.on.pull_request['paths-ignore'];
-      }
-      if (newSettings.on?.push) {
-        delete newSettings.on.push['paths-ignore'];
-        newSettings.on.push.branches = newSettings.on.push.branches.filter((branch) => branch !== 'renovate/**');
-      }
-      break;
-    }
+/** Returns false when no trigger remains, in which case the release workflow must be removed. */
+function normalizeReleaseWorkflow(config: PackageConfig, settings: Workflow): boolean {
+  if (settings.on?.schedule) {
+    delete settings.on.push;
+  } else if (settings.on?.push && config.release.branches.length > 0) {
+    settings.on.push.branches = config.release.branches;
+  } else {
+    return false;
   }
-  await writeYaml(newSettings, filePath);
-
-  if (kind === 'sync') {
-    if (!newSettings.jobs.sync?.with) return;
-
-    // Generate the force-sync workflow based on the sync workflow if it exists.
-    newSettings.jobs['sync-force'] = newSettings.jobs.sync;
-    const params = newSettings.jobs.sync.with.sync_params_without_dest;
-    if (typeof params !== 'string') return;
-
-    newSettings.jobs.sync.with.sync_params_without_dest = `--force ${params}`;
-    newSettings.name = 'Force to Sync';
-    newSettings.on = { workflow_dispatch: null };
-    delete newSettings.jobs.sync;
-    await writeYaml(newSettings, path.join(workflowsPath, 'sync-force.yml'));
+  if (config.isPublicRepo) {
+    settings.permissions ??= {};
+    settings.permissions['id-token'] = 'write';
+  } else {
+    delete settings.permissions?.['id-token'];
   }
+  return true;
+}
+
+// Don't use `paths-ignore` for test because GitHub's Branch Protection and Rulesets require job running.
+function removeTestPathFilters(settings: Workflow): void {
+  if (settings.on?.pull_request) {
+    delete settings.on.pull_request['paths-ignore'];
+  }
+  if (settings.on?.push) {
+    delete settings.on.push['paths-ignore'];
+    settings.on.push.branches = settings.on.push.branches.filter((branch) => branch !== 'renovate/**');
+  }
+}
+
+/** Generates the force-sync workflow from the already written sync workflow, consuming `syncSettings`. */
+async function writeSyncForceWorkflow(syncSettings: Workflow, workflowsPath: string): Promise<void> {
+  if (!syncSettings.jobs.sync?.with) return;
+
+  syncSettings.jobs['sync-force'] = syncSettings.jobs.sync;
+  const params = syncSettings.jobs.sync.with.sync_params_without_dest;
+  if (typeof params !== 'string') return;
+
+  syncSettings.jobs.sync.with.sync_params_without_dest = `--force ${params}`;
+  syncSettings.name = 'Force to Sync';
+  syncSettings.on = { workflow_dispatch: null };
+  delete syncSettings.jobs.sync;
+  await writeYaml(syncSettings, path.join(workflowsPath, 'sync-force.yml'));
 }
 
 // wb's global options that consume a following value token (from sharedOptionsBuilder plus
@@ -491,86 +529,106 @@ function skipRunnerOptions(tokens: string[], startIndex: number): number {
  */
 export function invokesWbDeploy(deployScript: string, scriptNames: ReadonlySet<string>): boolean {
   for (const tokens of parseShellCommands(deployScript) ?? []) {
-    let index = 0;
-    // Leading launchers run the following command: `env` (with options + KEY=value assignments)
-    // and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options). The grammar parses the
-    // `time` keyword as a wrapper, so `time wb deploy` already yields `wb` first. Other launchers
-    // (`exec`, `nice`, …) are NOT modeled: they leave a non-`wb` first token, so the command simply
-    // does not match. This is a deliberate false-negative for generated guidance.
-    if (tokens[index] === 'env') {
-      index++;
-      while (index < tokens.length) {
-        const token = tokens[index] ?? '';
-        if (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(token)) index++;
-        // env's directory value may be separate or attached (`-Cdir`, `--chdir=dir`). It changes
-        // where wb runs but not whether the command invokes wb deploy.
-        else if (token === '-C' || token === '--chdir') index += 2;
-        else if (token.startsWith('-C') || token.startsWith('--chdir=')) index++;
-        else if (token === '-u') index += 2;
-        else if (token.startsWith('-')) index++;
-        else break;
-      }
-    }
-    // `command CMD` executes CMD, but `command -v`/`-V CMD` only QUERY its availability without
-    // running it, so a deploy behind them does not run. The `v`/`V` flag may be clustered with
-    // other option letters (`command -pv wb`), so match any option letter cluster containing it.
-    while (tokens[index] === 'command') {
-      index++;
-      let queriesOnly = false;
-      while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
-        if (/^-[A-Za-z]*[vV][A-Za-z]*$/u.test(tokens[index] ?? '')) queriesOnly = true;
-        index++;
-      }
-      if (queriesOnly) {
-        index = -1;
-        break;
-      }
-    }
-    if (index < 0) continue;
-    // Resolve a runner prefix to whether the following token is a BINARY (the wb executable) or a
-    // package SCRIPT name. `bunx`/`npx` and `<pm> x|dlx|exec` run a binary; `<pm> run|run-script`
-    // (and bare `npm <name>`, or any runner followed by `--`) run a package script — so
-    // `npm run wb deploy` executes the script named `wb`, not the wb binary, and must be rejected.
-    if (['npm', 'pnpm', 'yarn', 'bun'].includes(tokens[index] ?? '')) {
-      const runner = tokens[index] ?? '';
-      index = skipRunnerOptions(tokens, index + 1);
-      const subcommand = tokens[index] ?? '';
-      if (['run', 'run-script'].includes(subcommand)) continue; // runs a package script, not wb
-      // Executor subcommands are runner-SPECIFIC: bun reserves only `x` (`bun dlx`/`bun exec` run a
-      // package script named dlx/exec). Real built-in executors (`exec`/`x`, and `dlx` for pnpm)
-      // take precedence over a same-named script, so they are NOT shadow-checked. Only `yarn dlx` is
-      // ambiguous — a Berry built-in but a package SCRIPT in Yarn Classic — so a declared `dlx`
-      // script makes `yarn dlx` decline (fall through to the package-script checks).
-      const isYarnDlxShadowedByScript = runner === 'yarn' && subcommand === 'dlx' && scriptNames.has('dlx');
-      if (runnerExecutorSubcommandsByRunner[runner]?.has(subcommand) && !isYarnDlxShadowedByScript) {
-        index++; // binary runner (pnpm dlx, bun x, `npm exec -- wb …`)
-        if (tokens[index] === '--') index++; // the executor's optional `--` before the command
-      } else if (runner === 'npm') {
-        continue; // bare `npm wb` never runs a binary
-      } else if (tokens[index] === 'wb' && scriptNames.has('wb')) {
-        // Bare `bun/pnpm/yarn wb` runs a package SCRIPT named `wb` when one exists (passing `deploy`
-        // as its argument), not the wb binary.
-        continue;
-      }
-    } else if (['bunx', 'npx'].includes(tokens[index] ?? '')) {
-      index = skipRunnerOptions(tokens, index + 1);
-    }
-    if (tokens[index] !== 'wb') continue;
-    const wbArgs = tokens.slice(index + 1);
-    // Skip global options (and any value token a value-bearing option consumes) so the FIRST
-    // command token decides: `wb --cascade-env production deploy` and `wb -w packages/api deploy`
-    // match, while subcommands owning their own `deploy` (`wb prisma deploy`, `wb retry deploy`)
-    // do not. `--opt=value` carries its value inline, so only the space-separated form skips one.
-    let commandIndex = 0;
-    while (commandIndex < wbArgs.length && (wbArgs[commandIndex] ?? '').startsWith('-')) {
-      const flag = wbArgs[commandIndex] ?? '';
-      commandIndex++;
-      if (wbGlobalValueOptions.has(flag) && commandIndex < wbArgs.length) commandIndex++;
-    }
-    if (wbArgs[commandIndex] !== 'deploy') continue;
-    return true;
+    if (commandInvokesWbDeploy(tokens, scriptNames)) return true;
   }
   return false;
+}
+
+function commandInvokesWbDeploy(tokens: string[], scriptNames: ReadonlySet<string>): boolean {
+  const commandIndex = skipCommandBuiltins(tokens, skipEnvLauncher(tokens));
+  if (commandIndex === undefined) return false;
+  const executableIndex = skipPackageRunner(tokens, commandIndex, scriptNames);
+  if (executableIndex === undefined || tokens[executableIndex] !== 'wb') return false;
+  return isWbDeployInvocation(tokens.slice(executableIndex + 1));
+}
+
+// Leading launchers run the following command: `env` (with options + KEY=value assignments)
+// and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options). The grammar parses the
+// `time` keyword as a wrapper, so `time wb deploy` already yields `wb` first. Other launchers
+// (`exec`, `nice`, …) are NOT modeled: they leave a non-`wb` first token, so the command simply
+// does not match. This is a deliberate false-negative for generated guidance.
+function skipEnvLauncher(tokens: string[]): number {
+  if (tokens[0] !== 'env') return 0;
+  let index = 1;
+  while (index < tokens.length) {
+    const token = tokens[index] ?? '';
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(token)) index++;
+    // env's directory value may be separate or attached (`-Cdir`, `--chdir=dir`). It changes
+    // where wb runs but not whether the command invokes wb deploy.
+    else if (token === '-C' || token === '--chdir') index += 2;
+    else if (token.startsWith('-C') || token.startsWith('--chdir=')) index++;
+    else if (token === '-u') index += 2;
+    else if (token.startsWith('-')) index++;
+    else break;
+  }
+  return index;
+}
+
+/**
+ * Returns the index after leading `command` builtins, or undefined when one only queries.
+ *
+ * `command CMD` executes CMD, but `command -v`/`-V CMD` only QUERY its availability without
+ * running it, so a deploy behind them does not run. The `v`/`V` flag may be clustered with
+ * other option letters (`command -pv wb`), so match any option letter cluster containing it.
+ */
+function skipCommandBuiltins(tokens: string[], startIndex: number): number | undefined {
+  let index = startIndex;
+  while (tokens[index] === 'command') {
+    index++;
+    while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
+      if (/^-[A-Za-z]*[vV][A-Za-z]*$/u.test(tokens[index] ?? '')) return undefined;
+      index++;
+    }
+  }
+  return index;
+}
+
+/**
+ * Returns the index of the binary a leading package runner executes, or undefined when it runs a
+ * package script instead.
+ *
+ * `bunx`/`npx` and `<pm> x|dlx|exec` run a binary; `<pm> run|run-script` (and bare `npm <name>`,
+ * or any runner followed by `--`) run a package script — so `npm run wb deploy` executes the
+ * script named `wb`, not the wb binary, and must be rejected.
+ */
+function skipPackageRunner(tokens: string[], startIndex: number, scriptNames: ReadonlySet<string>): number | undefined {
+  const runner = tokens[startIndex] ?? '';
+  if (['bunx', 'npx'].includes(runner)) return skipRunnerOptions(tokens, startIndex + 1);
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(runner)) return startIndex;
+
+  const index = skipRunnerOptions(tokens, startIndex + 1);
+  const subcommand = tokens[index] ?? '';
+  if (['run', 'run-script'].includes(subcommand)) return undefined;
+  // Executor subcommands are runner-SPECIFIC: bun reserves only `x` (`bun dlx`/`bun exec` run a
+  // package script named dlx/exec). Real built-in executors (`exec`/`x`, and `dlx` for pnpm)
+  // take precedence over a same-named script, so they are NOT shadow-checked. Only `yarn dlx` is
+  // ambiguous — a Berry built-in but a package SCRIPT in Yarn Classic — so a declared `dlx`
+  // script makes `yarn dlx` decline (fall through to the package-script checks).
+  const isYarnDlxShadowedByScript = runner === 'yarn' && subcommand === 'dlx' && scriptNames.has('dlx');
+  if (runnerExecutorSubcommandsByRunner[runner]?.has(subcommand) && !isYarnDlxShadowedByScript) {
+    // Binary runner (pnpm dlx, bun x, `npm exec -- wb …`), with the executor's optional `--` before the command.
+    return tokens[index + 1] === '--' ? index + 2 : index + 1;
+  }
+  // Bare `npm wb` never runs a binary.
+  if (runner === 'npm') return undefined;
+  // Bare `bun/pnpm/yarn wb` runs a package SCRIPT named `wb` when one exists (passing `deploy`
+  // as its argument), not the wb binary.
+  if (tokens[index] === 'wb' && scriptNames.has('wb')) return undefined;
+  return index;
+}
+
+// Skip global options (and any value token a value-bearing option consumes) so the FIRST
+// command token decides: `wb --cascade-env production deploy` and `wb -w packages/api deploy`
+// match, while subcommands owning their own `deploy` (`wb prisma deploy`, `wb retry deploy`)
+// do not. `--opt=value` carries its value inline, so only the space-separated form skips one.
+function isWbDeployInvocation(wbArgs: string[]): boolean {
+  let commandIndex = 0;
+  while (commandIndex < wbArgs.length && (wbArgs[commandIndex] ?? '').startsWith('-')) {
+    const flag = wbArgs[commandIndex] ?? '';
+    commandIndex++;
+    if (wbGlobalValueOptions.has(flag) && commandIndex < wbArgs.length) commandIndex++;
+  }
+  return wbArgs[commandIndex] === 'deploy';
 }
 
 /**
@@ -660,42 +718,8 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   }
   const requiredPermissions = calledReusableWorkflow ? reusableWorkflowPermissions[calledReusableWorkflow] : undefined;
   if (requiredPermissions) job.permissions = { ...requiredPermissions };
-  if (secrets && calledReusableWorkflow === 'test') {
-    // The callee's "Test deploy script" step runs `wb deploy --dry-run`, which plans the Railway IaC.
-    if (fs.existsSync(path.resolve(config.dirPath, '.railway', 'railway.ts'))) {
-      secrets.RAILWAY_API_TOKEN = '${{ secrets.RAILWAY_API_TOKEN }}';
-    } else {
-      delete secrets.RAILWAY_API_TOKEN;
-    }
-  }
-  if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
-    // The callee routes public (default-registry) installs through the Takumi Guard
-    // malicious-package-blocking proxy when this token resolves; an unset organization secret
-    // expands to '' and the callee treats that as "feature off", so passing it is always safe.
-    secrets.TAKUMI_GUARD_TOKEN = '${{ secrets.TAKUMI_GUARD_TOKEN }}';
-    // The callee generates the workspace .npmrc for @willbooster-private/* from VERDACCIO_TOKEN
-    // before installing dependencies. Only repositories that actually resolve private packages
-    // (or publish to Verdaccio) get the pass-through: everywhere else the credential would flow
-    // into CI runs that never use it, so the line is removed instead. The GitHub secret itself is
-    // always registered manually and stays registered either way.
-    if (repoResolvesPrivatePackages(config)) {
-      secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
-    } else {
-      delete secrets.VERDACCIO_TOKEN;
-    }
-    if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
-      // Public repositories commit world-readable ciphertexts, so they decrypt with a dedicated
-      // CI identity (the PUBLIC_FNOX_AGE_KEY organization secret) instead of the org-internal
-      // one; the callee still receives it under its declared FNOX_AGE_KEY name. When no CI
-      // identity resolves (see fnoxAgeKeyMapping), leave any existing mapping untouched and add
-      // none: creating or rewriting one on incomplete information would map a possibly-public
-      // repository to the wrong identity, and a fnox recipient sync failure does not stop this
-      // generator from writing files — the failed run's rerun fills the mapping in.
-      const mapping = fnoxAgeKeyMapping(config);
-      if (mapping) {
-        secrets.FNOX_AGE_KEY = mapping;
-      }
-    }
+  if (secrets) {
+    setCalleeSecrets(config, secrets, calledReusableWorkflow);
   }
   if (kind === 'test-rust') {
     const [rustDirPath] = config.cargoTomlDirPaths;
@@ -708,34 +732,17 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
 
   // Reconstruct from the parsed call so a differently cased owner (GitHub is case-insensitive
   // there) is also normalized to the repository's own organization / mirror.
-  if (orgWorkflowCall && config.repository?.startsWith('github:WillBooster/')) {
-    job.uses = `WillBooster/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
-  } else if (orgWorkflowCall && config.repository?.startsWith('github:WillBoosterLab/')) {
-    job.uses = `WillBoosterLab/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
+  const organization = ['WillBooster', 'WillBoosterLab'].find((name) =>
+    config.repository?.startsWith(`github:${name}/`)
+  );
+  if (orgWorkflowCall && organization) {
+    job.uses = `${organization}/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
   }
 
   if (config.doesContainDockerfile && !job.with.ci_label && kind.startsWith('test')) {
     job.with.ci_label = 'large';
   }
-  const acceptsRunnerInput = ['test', 'test-rust', 'deploy', 'release', 'run-script'].includes(
-    orgWorkflowCall?.workflowName ?? ''
-  );
-  if (config.isRepoVisibilityKnown) {
-    if (config.isPublicRepo && acceptsRunnerInput) {
-      job.with.github_hosted_runner = true;
-    } else {
-      delete job.with.github_hosted_runner;
-    }
-    if (!config.isPublicRepo && job.with.runs_on !== undefined) {
-      const labels = selfHostedRunnerInputSchema.safeParse(job.with.runs_on);
-      if (labels.success) {
-        job.with.runs_on = JSON.stringify(labels.data);
-      } else {
-        console.warn(`Removed runs_on from ${job.uses}: private repositories require a self-hosted label array.`);
-        delete job.with.runs_on;
-      }
-    }
-  }
+  normalizeRunnerInputs(config, job.with, job.uses, orgWorkflowCall?.workflowName);
 
   if (Object.keys(job.with).length > 0) {
     sortKeys(job.with);
@@ -743,13 +750,76 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     delete job.with;
   }
   if (secrets) {
-    if (Object.keys(secrets).length > 0) {
-      const newSecrets = sortKeys(secrets);
-      delete job.secrets;
-      job.secrets = newSecrets;
+    // Delete-then-assign moves `secrets` to the end of the job's keys.
+    delete job.secrets;
+    if (Object.keys(secrets).length > 0) job.secrets = sortKeys(secrets);
+  }
+}
+
+function setCalleeSecrets(
+  config: PackageConfig,
+  secrets: Record<string, unknown>,
+  calledReusableWorkflow: string | undefined
+): void {
+  if (calledReusableWorkflow === 'test') {
+    // The callee's "Test deploy script" step runs `wb deploy --dry-run`, which plans the Railway IaC.
+    if (fs.existsSync(path.resolve(config.dirPath, '.railway', 'railway.ts'))) {
+      secrets.RAILWAY_API_TOKEN = '${{ secrets.RAILWAY_API_TOKEN }}';
     } else {
-      delete job.secrets;
+      delete secrets.RAILWAY_API_TOKEN;
     }
+  }
+  if (!calledReusableWorkflow || !installCapableReusableWorkflows.has(calledReusableWorkflow)) return;
+
+  // The callee routes public (default-registry) installs through the Takumi Guard
+  // malicious-package-blocking proxy when this token resolves; an unset organization secret
+  // expands to '' and the callee treats that as "feature off", so passing it is always safe.
+  secrets.TAKUMI_GUARD_TOKEN = '${{ secrets.TAKUMI_GUARD_TOKEN }}';
+  // The callee generates the workspace .npmrc for @willbooster-private/* from VERDACCIO_TOKEN
+  // before installing dependencies. Only repositories that actually resolve private packages
+  // (or publish to Verdaccio) get the pass-through: everywhere else the credential would flow
+  // into CI runs that never use it, so the line is removed instead. The GitHub secret itself is
+  // always registered manually and stays registered either way.
+  if (repoResolvesPrivatePackages(config)) {
+    secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
+  } else {
+    delete secrets.VERDACCIO_TOKEN;
+  }
+  if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
+    // Public repositories commit world-readable ciphertexts, so they decrypt with a dedicated
+    // CI identity (the PUBLIC_FNOX_AGE_KEY organization secret) instead of the org-internal
+    // one; the callee still receives it under its declared FNOX_AGE_KEY name. When no CI
+    // identity resolves (see fnoxAgeKeyMapping), leave any existing mapping untouched and add
+    // none: creating or rewriting one on incomplete information would map a possibly-public
+    // repository to the wrong identity, and a fnox recipient sync failure does not stop this
+    // generator from writing files — the failed run's rerun fills the mapping in.
+    const mapping = fnoxAgeKeyMapping(config);
+    if (mapping) {
+      secrets.FNOX_AGE_KEY = mapping;
+    }
+  }
+}
+
+function normalizeRunnerInputs(
+  config: PackageConfig,
+  inputs: Record<string, unknown>,
+  uses: string | undefined,
+  calleeName: string | undefined
+): void {
+  if (!config.isRepoVisibilityKnown) return;
+  const acceptsRunnerInput = ['test', 'test-rust', 'deploy', 'release', 'run-script'].includes(calleeName ?? '');
+  if (config.isPublicRepo && acceptsRunnerInput) {
+    inputs.github_hosted_runner = true;
+  } else {
+    delete inputs.github_hosted_runner;
+  }
+  if (config.isPublicRepo || inputs.runs_on === undefined) return;
+  const labels = selfHostedRunnerInputSchema.safeParse(inputs.runs_on);
+  if (labels.success) {
+    inputs.runs_on = JSON.stringify(labels.data);
+  } else {
+    console.warn(`Removed runs_on from ${uses}: private repositories require a self-hosted label array.`);
+    delete inputs.runs_on;
   }
 }
 

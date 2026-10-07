@@ -137,93 +137,18 @@ export async function getPackageConfig(
   const packageJsonPath = path.resolve(dirPath, 'package.json');
   try {
     const doesContainPackageJson = fs.existsSync(packageJsonPath);
-    let dependencies: PackageJson['dependencies'] = {};
-    let devDependencies: PackageJson['devDependencies'] = {};
-    let packageJson: PackageJson = {};
-    let esmPackage = false;
-    if (doesContainPackageJson) {
-      const packageJsonText = fs.readFileSync(packageJsonPath, 'utf8');
-      packageJson = JSON.parse(packageJsonText) as PackageJson;
-      dependencies = packageJson.dependencies ?? {};
-      devDependencies = packageJson.devDependencies ?? {};
-      esmPackage = packageJson.type === 'module';
-    }
+    const packageJson = doesContainPackageJson
+      ? (JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageJson)
+      : {};
 
-    let releaseBranches: string[] = [];
-    let releasePlugins: string[] = [];
-    let releasePluginsAreExplicit = false;
-    let releaseNpmPluginPublishesRoot = false;
-    // The FIRST existing search place wins (cosmiconfig short-circuits), so a JS/YAML/TS config
-    // or an `extends` preset makes the effective plugin list statically uninspectable (mirrors
-    // readExplicitSemanticReleasePlugins in wb's release.ts). Treating it as unknown keeps
-    // `release.npm` conservatively true, so applyPackageJsonConventions never forces
-    // `private: true` on a monorepo that actually publishes to npm.
-    let releasePluginsAreUnknown = false;
-    try {
-      type ReleaseConfig =
-        | {
-            branches?: unknown;
-            plugins?: (string | [string, Record<string, unknown>])[];
-            extends?: unknown;
-          }
-        | undefined;
-      // cosmiconfig searches package.json's `release` key BEFORE any rc/config file
-      // (semantic-release 25 delegates to cosmiconfig 9's default searchPlaces).
-      let releaseConfig = (packageJson as { release?: ReleaseConfig }).release;
-      if (releaseConfig === undefined) {
-        for (const { fileName, jsonParseable } of semanticReleaseConfigSearchPlaces) {
-          const releasercPath = path.resolve(dirPath, fileName);
-          if (!fs.existsSync(releasercPath)) continue;
-          if (!jsonParseable) {
-            releasePluginsAreUnknown = true;
-            break;
-          }
-          // `.releaserc` and `.config/releaserc` may also hold YAML; a JSON.parse failure lands
-          // in the catch below and marks the plugin list unknown instead of silently reporting
-          // "no plugins".
-          releaseConfig = JSON.parse(await fsp.readFile(releasercPath, 'utf8')) as ReleaseConfig;
-          break;
-        }
-      }
-      // semantic-release accepts a scalar branch or branch objects ({ name, prerelease, ... });
-      // normalize to plain branch names for consumers such as the workflow generator.
-      const rawBranches = releaseConfig?.branches;
-      releaseBranches = (Array.isArray(rawBranches) ? rawBranches : rawBranches === undefined ? [] : [rawBranches])
-        .map((branch: unknown) =>
-          typeof branch === 'string' ? branch : (branch as { name?: unknown } | undefined)?.name
-        )
-        .filter((branchName): branchName is string => typeof branchName === 'string');
-      if (Array.isArray(releaseConfig?.plugins)) {
-        releasePluginsAreExplicit = true;
-        for (const pluginEntry of releaseConfig.plugins) {
-          const [pluginName, pluginOptions] = Array.isArray(pluginEntry) ? pluginEntry : [pluginEntry, undefined];
-          if (typeof pluginName !== 'string') continue;
-          releasePlugins.push(pluginName);
-          if (!npmPublishingReleasePlugins.has(pluginName)) continue;
-          // With pkgRoot the plugin publishes another manifest (it resolves pkgRoot against the
-          // repo root, so `.` and `./` both mean the root itself), and @semantic-release/npm's
-          // npmPublish: false disables publishing entirely; only the remaining shape proves the
-          // ROOT is published.
-          const pkgRoot = pluginOptions?.pkgRoot;
-          const publishesRoot =
-            (pluginName !== '@semantic-release/npm' || pluginOptions?.npmPublish !== false) &&
-            (pkgRoot === undefined ||
-              (typeof pkgRoot === 'string' && path.resolve(dirPath, pkgRoot) === path.resolve(dirPath)));
-          releaseNpmPluginPublishesRoot ||= publishesRoot;
-        }
-      } else if (releaseConfig && releaseConfig.extends !== undefined) {
-        releasePluginsAreUnknown = true;
-      }
-    } catch {
-      releasePluginsAreUnknown = true;
-    }
+    const release = await readReleaseSettings(dirPath, packageJson);
     // Without an explicit plugin list, semantic-release's default list applies, which includes
     // @semantic-release/npm.
     const usesSemanticRelease = !!(
-      devDependencies['semantic-release'] ||
-      releaseBranches.length > 0 ||
-      releasePlugins.length > 0 ||
-      releasePluginsAreUnknown
+      packageJson.devDependencies?.['semantic-release'] ||
+      release.branches.length > 0 ||
+      release.plugins.length > 0 ||
+      release.pluginsAreUnknown
     );
 
     // The caller may classify explicitly (index.ts passes false for every discovered workspace,
@@ -232,48 +157,15 @@ export async function getPackageConfig(
     // classification.
     const isRoot = options?.isRoot ?? !isWorkspaceOfEnclosingRoot(dirPath);
 
-    let repoInfo: Record<string, unknown> | undefined;
     // Fetch visibility for the CLI entry even when it is a workspace child (`wbfy
     // <repo>/packages/<app>`): generators read isPublicRepo from their rootConfig parameter,
     // which IS the child config in that invocation, so a stub `false` there would drop the
     // public-repo publishConfig handling. Discovered children (options.isRoot === false) still
     // skip the fetch — they inherit the enclosing root's visibility via rootConfig instead.
-    if (options?.isRoot !== false) {
-      repoInfo = await fetchRepoInfo(dirPath, packageJson);
-    }
-
-    let dockerfile = '';
-    try {
-      dockerfile = await fsp.readFile(path.resolve(dirPath, 'Dockerfile'), 'utf8');
-    } catch {
-      // do nothing
-    }
-
-    const wbfyJsonPath = path.resolve(dirPath, 'wbfy.json');
-    let wbfyJson: WbfyJson | undefined;
-    try {
-      const wbfyJsonText = await fsp.readFile(wbfyJsonPath, 'utf8');
-      wbfyJson = wbfyJsonSchema.parse(JSON.parse(wbfyJsonText));
-    } catch {
-      // do nothing
-    }
-
-    const repoFullName = typeof repoInfo?.full_name === 'string' ? repoInfo.full_name : undefined;
-    let repoAuthor: string | undefined;
-    let repoName: string | undefined;
-    if (repoFullName) {
-      const repoParts = repoFullName.split('/');
-      if (repoParts.length >= 2) {
-        repoAuthor = repoParts[0];
-        repoName = repoParts[1];
-      }
-    }
-    // Only the root fetches repo info, and that fetch needs network and a token, so identity-derived
-    // flags below would otherwise be false for every workspace package and for every offline or
-    // rate-limited run. The git remote answers the same question locally, for every package.
-    if (!repoAuthor || !repoName) {
-      [repoAuthor, repoName] = await resolveLocalRepoIdentity(dirPath, packageJson);
-    }
+    const repoInfo = options?.isRoot === false ? undefined : await fetchRepoInfo(dirPath, packageJson);
+    const dockerfile = await readDockerfile(dirPath);
+    const wbfyJson = await readWbfyJson(dirPath);
+    const [repoAuthor, repoName] = await resolveRepoIdentity(dirPath, packageJson, repoInfo);
     // Built from the RESOLVED identity so workspace packages and offline runs also get it; consumers derive
     // the owner from this field (e.g. to set `author`).
     const repository = repoAuthor && repoName ? `github:${repoAuthor}/${repoName}` : undefined;
@@ -318,7 +210,7 @@ export async function getPackageConfig(
       isCloudflare: detectCloudflare(packageJson, doesContainWranglerConfig, workflowContents),
       doesContainWranglerConfig,
       isRailway: detectRailway(dirPath, packageJson, workflowContents),
-      isEsmPackage: esmPackage,
+      isEsmPackage: packageJson.type === 'module',
       isWillBoosterConfigs: detectIsWillBoosterConfigs(dirPath, packageJsonPath, repoName),
       cargoTomlDirPaths: findCargoTomlDirPaths(dirPath, globIgnore),
       // Also honor declared workspace patterns beyond packages/* (e.g. apps/*): treating an
@@ -352,66 +244,210 @@ export async function getPackageConfig(
       doesContainTypeScriptInPackages: containsAnyInWorkspaces('{app,src,test,scripts}/**/*.{cts,mts,ts,tsx}'),
       doesContainJsxOrTsxInPackages: containsAnyInWorkspaces('{app,src,test}/**/*.{t,j}sx'),
       doesContainJavaInPackages: containsAnyInWorkspaces('**/*.java'),
-      depending: {
-        blitz: !!dependencies.blitz,
-        chakra: !!devDependencies['@chakra-ui/cli'],
-        drizzle: !!dependencies['drizzle-orm'] || !!devDependencies['drizzle-kit'],
-        firebase: !!devDependencies['firebase-tools'],
-        genI18nTs: !!dependencies['gen-i18n-ts'] || !!devDependencies['gen-i18n-ts'],
+      depending: detectDependencies(packageJson, {
         litestream: dockerfile.includes('install-litestream.sh'),
-        react: !!dependencies.react,
-        next: !!dependencies.next,
-        // A bare `playwright` is a library, e.g. the provider of `@vitest/browser-playwright`.
-        playwrightTest: !!dependencies['@playwright/test'] || !!devDependencies['@playwright/test'],
         playwrightRuntime: importsPlaywrightAtRuntime,
-        prisma: !!dependencies['@prisma/client'] || !!devDependencies.prisma,
-        pyright: !!devDependencies.pyright,
-        reactNative: !!dependencies['react-native'],
         semanticRelease: usesSemanticRelease,
-        slidev: !!dependencies['@slidev/cli'] || !!devDependencies['@slidev/cli'],
-        storybook: !!devDependencies['@storybook/react'],
-        tauri:
-          !!dependencies['@tauri-apps/api'] ||
-          !!devDependencies['@tauri-apps/api'] ||
-          !!dependencies['@tauri-apps/cli'] ||
-          !!devDependencies['@tauri-apps/cli'] ||
-          doesContainTauriConfig,
-        vinext: !!dependencies.vinext || !!devDependencies.vinext,
-        vite: !!dependencies.vite || !!devDependencies.vite,
-        wb: !!dependencies['@willbooster/wb'] || !!devDependencies['@willbooster/wb'],
-      },
+        tauriConfig: doesContainTauriConfig,
+      }),
       release: {
-        branches: releaseBranches,
-        npm: releasePluginsAreExplicit
-          ? releasePlugins.some((pluginName) => npmPublishingReleasePlugins.has(pluginName)) || releasePluginsAreUnknown
+        branches: release.branches,
+        npm: release.pluginsAreExplicit
+          ? release.plugins.some((pluginName) => npmPublishingReleasePlugins.has(pluginName)) ||
+            release.pluginsAreUnknown
           : usesSemanticRelease,
-        npmPublishesRoot: releaseNpmPluginPublishesRoot,
+        npmPublishesRoot: release.npmPluginPublishesRoot,
       },
       miseTasks: await readMiseTasks(dirPath),
       packageJson,
       wbfyJson,
     };
-    if (
-      config.doesContainGemfile ||
-      config.doesContainGoMod ||
-      config.doesContainPackageJson ||
-      config.doesContainPoetryLock ||
-      config.doesContainUvLock ||
-      config.doesContainPomXml ||
-      config.doesContainPubspecYaml ||
-      config.doesContainTauriConfig ||
-      config.doesContainTemplateYaml ||
-      // A repository can legitimately contain only documentation. Its Git metadata is enough to
-      // establish that the CLI target is a project root; requiring a language manifest here would
-      // make wbfy unable to create the package.json that it manages for such repositories. Both
-      // ordinary checkouts (`.git` directory) and worktrees (`.git` file) satisfy this check.
-      (config.isRoot && fs.existsSync(path.resolve(dirPath, '.git')))
-    ) {
-      return config;
-    }
+    if (isProjectDir(config)) return config;
   } catch {
     // do nothing
   }
+}
+
+type ReleaseConfig =
+  | {
+      branches?: unknown;
+      plugins?: (string | [string, Record<string, unknown>])[];
+      extends?: unknown;
+    }
+  | undefined;
+
+interface ReleaseSettings {
+  branches: string[];
+  plugins: string[];
+  pluginsAreExplicit: boolean;
+  // A JS/YAML/TS config or an `extends` preset makes the effective plugin list statically
+  // uninspectable (mirrors readExplicitSemanticReleasePlugins in wb's release.ts). Treating it as
+  // unknown keeps `release.npm` conservatively true, so applyPackageJsonConventions never forces
+  // `private: true` on a monorepo that actually publishes to npm.
+  pluginsAreUnknown: boolean;
+  npmPluginPublishesRoot: boolean;
+}
+
+async function readReleaseSettings(dirPath: string, packageJson: PackageJson): Promise<ReleaseSettings> {
+  const settings: ReleaseSettings = {
+    branches: [],
+    plugins: [],
+    pluginsAreExplicit: false,
+    pluginsAreUnknown: false,
+    npmPluginPublishesRoot: false,
+  };
+  try {
+    const releaseConfig = await readReleaseConfig(dirPath, packageJson);
+    if (releaseConfig === 'uninspectable') {
+      settings.pluginsAreUnknown = true;
+      return settings;
+    }
+    // semantic-release accepts a scalar branch or branch objects ({ name, prerelease, ... });
+    // normalize to plain branch names for consumers such as the workflow generator.
+    const rawBranches = releaseConfig?.branches;
+    settings.branches = (Array.isArray(rawBranches) ? rawBranches : rawBranches === undefined ? [] : [rawBranches])
+      .map((branch: unknown) =>
+        typeof branch === 'string' ? branch : (branch as { name?: unknown } | undefined)?.name
+      )
+      .filter((branchName): branchName is string => typeof branchName === 'string');
+    if (Array.isArray(releaseConfig?.plugins)) {
+      settings.pluginsAreExplicit = true;
+      for (const pluginEntry of releaseConfig.plugins) {
+        const [pluginName, pluginOptions] = Array.isArray(pluginEntry) ? pluginEntry : [pluginEntry, undefined];
+        if (typeof pluginName !== 'string') continue;
+        settings.plugins.push(pluginName);
+        settings.npmPluginPublishesRoot ||= doesReleasePluginPublishRoot(dirPath, pluginName, pluginOptions);
+      }
+    } else if (releaseConfig && releaseConfig.extends !== undefined) {
+      settings.pluginsAreUnknown = true;
+    }
+  } catch {
+    settings.pluginsAreUnknown = true;
+  }
+  return settings;
+}
+
+/**
+ * Reads the semantic-release config that cosmiconfig would load, whose FIRST existing search place
+ * wins, or 'uninspectable' when that place is not JSON.
+ */
+async function readReleaseConfig(dirPath: string, packageJson: PackageJson): Promise<ReleaseConfig | 'uninspectable'> {
+  // cosmiconfig searches package.json's `release` key BEFORE any rc/config file
+  // (semantic-release 25 delegates to cosmiconfig 9's default searchPlaces).
+  const releaseConfig = (packageJson as { release?: ReleaseConfig }).release;
+  if (releaseConfig !== undefined) return releaseConfig;
+  for (const { fileName, jsonParseable } of semanticReleaseConfigSearchPlaces) {
+    const releasercPath = path.resolve(dirPath, fileName);
+    if (!fs.existsSync(releasercPath)) continue;
+    if (!jsonParseable) return 'uninspectable';
+    // `.releaserc` and `.config/releaserc` may also hold YAML; a JSON.parse failure is caught by
+    // the caller and marks the plugin list unknown instead of silently reporting "no plugins".
+    return JSON.parse(await fsp.readFile(releasercPath, 'utf8')) as ReleaseConfig;
+  }
+  return undefined;
+}
+
+function doesReleasePluginPublishRoot(
+  dirPath: string,
+  pluginName: string,
+  pluginOptions: Record<string, unknown> | undefined
+): boolean {
+  if (!npmPublishingReleasePlugins.has(pluginName)) return false;
+  // With pkgRoot the plugin publishes another manifest (it resolves pkgRoot against the
+  // repo root, so `.` and `./` both mean the root itself), and @semantic-release/npm's
+  // npmPublish: false disables publishing entirely; only the remaining shape proves the
+  // ROOT is published.
+  const pkgRoot = pluginOptions?.pkgRoot;
+  return (
+    (pluginName !== '@semantic-release/npm' || pluginOptions?.npmPublish !== false) &&
+    (pkgRoot === undefined || (typeof pkgRoot === 'string' && path.resolve(dirPath, pkgRoot) === path.resolve(dirPath)))
+  );
+}
+
+async function readDockerfile(dirPath: string): Promise<string> {
+  try {
+    return await fsp.readFile(path.resolve(dirPath, 'Dockerfile'), 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+async function readWbfyJson(dirPath: string): Promise<WbfyJson | undefined> {
+  try {
+    const wbfyJsonText = await fsp.readFile(path.resolve(dirPath, 'wbfy.json'), 'utf8');
+    return wbfyJsonSchema.parse(JSON.parse(wbfyJsonText));
+  } catch {
+    return undefined;
+  }
+}
+
+async function resolveRepoIdentity(
+  dirPath: string,
+  packageJson: PackageJson,
+  repoInfo: Record<string, unknown> | undefined
+): Promise<[string | undefined, string | undefined]> {
+  const repoFullName = typeof repoInfo?.full_name === 'string' ? repoInfo.full_name : undefined;
+  const [repoAuthor, repoName] = repoFullName?.split('/') ?? [];
+  if (repoAuthor && repoName) return [repoAuthor, repoName];
+  // Only the root fetches repo info, and that fetch needs network and a token, so identity-derived
+  // flags would otherwise be false for every workspace package and for every offline or
+  // rate-limited run. The git remote answers the same question locally, for every package.
+  return resolveLocalRepoIdentity(dirPath, packageJson);
+}
+
+function detectDependencies(
+  packageJson: PackageJson,
+  detected: { litestream: boolean; playwrightRuntime: boolean; semanticRelease: boolean; tauriConfig: boolean }
+): PackageConfig['depending'] {
+  const dependencies = packageJson.dependencies ?? {};
+  const devDependencies = packageJson.devDependencies ?? {};
+  return {
+    blitz: !!dependencies.blitz,
+    chakra: !!devDependencies['@chakra-ui/cli'],
+    drizzle: !!dependencies['drizzle-orm'] || !!devDependencies['drizzle-kit'],
+    firebase: !!devDependencies['firebase-tools'],
+    genI18nTs: !!dependencies['gen-i18n-ts'] || !!devDependencies['gen-i18n-ts'],
+    litestream: detected.litestream,
+    react: !!dependencies.react,
+    next: !!dependencies.next,
+    // A bare `playwright` is a library, e.g. the provider of `@vitest/browser-playwright`.
+    playwrightTest: !!dependencies['@playwright/test'] || !!devDependencies['@playwright/test'],
+    playwrightRuntime: detected.playwrightRuntime,
+    prisma: !!dependencies['@prisma/client'] || !!devDependencies.prisma,
+    pyright: !!devDependencies.pyright,
+    reactNative: !!dependencies['react-native'],
+    semanticRelease: detected.semanticRelease,
+    slidev: !!dependencies['@slidev/cli'] || !!devDependencies['@slidev/cli'],
+    storybook: !!devDependencies['@storybook/react'],
+    tauri:
+      !!dependencies['@tauri-apps/api'] ||
+      !!devDependencies['@tauri-apps/api'] ||
+      !!dependencies['@tauri-apps/cli'] ||
+      !!devDependencies['@tauri-apps/cli'] ||
+      detected.tauriConfig,
+    vinext: !!dependencies.vinext || !!devDependencies.vinext,
+    vite: !!dependencies.vite || !!devDependencies.vite,
+    wb: !!dependencies['@willbooster/wb'] || !!devDependencies['@willbooster/wb'],
+  };
+}
+
+function isProjectDir(config: PackageConfig): boolean {
+  return (
+    config.doesContainGemfile ||
+    config.doesContainGoMod ||
+    config.doesContainPackageJson ||
+    config.doesContainPoetryLock ||
+    config.doesContainUvLock ||
+    config.doesContainPomXml ||
+    config.doesContainPubspecYaml ||
+    config.doesContainTauriConfig ||
+    config.doesContainTemplateYaml ||
+    // A repository can legitimately contain only documentation. Its Git metadata is enough to
+    // establish that the CLI target is a project root; requiring a language manifest here would
+    // make wbfy unable to create the package.json that it manages for such repositories. Both
+    // ordinary checkouts (`.git` directory) and worktrees (`.git` file) satisfy this check.
+    (config.isRoot && fs.existsSync(path.resolve(config.dirPath, '.git')))
+  );
 }
 
 /**

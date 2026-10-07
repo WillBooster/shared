@@ -64,19 +64,7 @@ export async function assertPrivateWorkflowRunners(config: PackageConfig, workfl
       if (!job?.['runs-on']) continue;
       const runner = job['runs-on'];
       if (isSelfHosted(runner)) continue;
-      const match = typeof runner === 'string' && /^\$\{\{\s*matrix\.(\w+)\s*\}\}$/u.exec(runner);
-      const candidates: unknown[] = [];
-      if (match && job.strategy) {
-        const key = match[1]!;
-        const matrix = job.strategy.matrix;
-        const values = z.array(z.unknown()).safeParse(matrix[key]);
-        if (values.success) candidates.push(...values.data);
-        const include = z.array(z.record(z.string(), z.unknown())).safeParse(matrix.include);
-        if (include.success)
-          candidates.push(...include.data.map((row) => row[key]).filter((value) => value !== undefined));
-      } else {
-        candidates.push(runner);
-      }
+      const candidates = listRunnerCandidates(runner, job.strategy?.matrix);
       const allowed =
         candidates.length > 0 &&
         candidates.every(
@@ -94,6 +82,22 @@ export async function assertPrivateWorkflowRunners(config: PackageConfig, workfl
       }
     }
   }
+}
+
+/** Expands a `${{ matrix.<key> }}` runner into every value its matrix supplies; any other runner stands for itself. */
+function listRunnerCandidates(
+  runner: z.infer<typeof runnerSchema>,
+  matrix: Record<string, unknown> | undefined
+): unknown[] {
+  const key = typeof runner === 'string' ? /^\$\{\{\s*matrix\.(\w+)\s*\}\}$/u.exec(runner)?.[1] : undefined;
+  if (!key || !matrix) return [runner];
+
+  const candidates: unknown[] = [];
+  const values = z.array(z.unknown()).safeParse(matrix[key]);
+  if (values.success) candidates.push(...values.data);
+  const include = z.array(z.record(z.string(), z.unknown())).safeParse(matrix.include);
+  if (include.success) candidates.push(...include.data.map((row) => row[key]).filter((value) => value !== undefined));
+  return candidates;
 }
 
 function isSelfHosted(runner: unknown): boolean {

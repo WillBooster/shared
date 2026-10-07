@@ -49,18 +49,8 @@ export async function fetchWithRetry(
   { findCreated, repeatable }: RetryOptions = {}
 ): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
-    let response: Response | undefined;
-    let connectionError: unknown;
-    try {
-      const received = await fetch(url, init);
-      // Read here so that a connection dropped while receiving the body is retried too.
-      const body = await received.arrayBuffer();
-      response = new Response(body.byteLength > 0 ? body : undefined, received);
-    } catch (error) {
-      // fetch and reading the body reject with a TypeError when the connection fails or drops.
-      if (!(error instanceof TypeError)) throw error;
-      connectionError = error;
-    }
+    const result = await fetchWholeResponse(url, init);
+    const response = result instanceof Response ? result : undefined;
     if (attempt > 0 && init.method === 'DELETE' && response && (await isAbsent(response))) {
       return new Response(undefined, { status: 204 });
     }
@@ -68,10 +58,7 @@ export async function fetchWithRetry(
     if (response && rateLimitDelay === undefined && response.status < 500) return response;
     const isUncertainPost = init.method === 'POST' && !repeatable && rateLimitDelay === undefined;
     const delay = isUncertainPost ? retryDelays[0]! : Math.max(retryDelays[attempt] ?? Infinity, rateLimitDelay ?? 0);
-    if (delay > maxRetryDelay || (isUncertainPost && !findCreated)) {
-      if (!response) throw connectionError;
-      return response;
-    }
+    if (delay > maxRetryDelay || (isUncertainPost && !findCreated)) return unwrapResponse(result);
 
     const reason = response ? `${response.status} ${response.statusText}` : 'a dropped connection';
     const action = isUncertainPost ? 'Looking for the result of' : 'Retrying';
@@ -79,11 +66,28 @@ export async function fetchWithRetry(
     await new Promise((resolve) => setTimeout(resolve, delay * 1000));
     if (isUncertainPost && findCreated) {
       const created = await findCreated();
-      if (created) return Response.json(created);
-      if (!response) throw connectionError;
-      return response;
+      return created ? Response.json(created) : unwrapResponse(result);
     }
   }
+}
+
+/** Resolves to the connection error instead of rejecting when the connection fails or drops. */
+async function fetchWholeResponse(url: string, init: RequestInit): Promise<Response | TypeError> {
+  try {
+    const received = await fetch(url, init);
+    // Read here so that a connection dropped while receiving the body is retried too.
+    const body = await received.arrayBuffer();
+    return new Response(body.byteLength > 0 ? body : undefined, received);
+  } catch (error) {
+    // fetch and reading the body reject with a TypeError when the connection fails or drops.
+    if (!(error instanceof TypeError)) throw error;
+    return error;
+  }
+}
+
+function unwrapResponse(result: Response | TypeError): Response {
+  if (result instanceof TypeError) throw result;
+  return result;
 }
 
 /** Returns whether the response reports that the target does not exist. */

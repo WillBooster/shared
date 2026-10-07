@@ -10,7 +10,11 @@ import { readBunTestTimeout } from '../../utils/bunfig.js';
 import { ensurePort } from '../../utils/port.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../utils/shell.js';
 import { findWranglerConfigPath, getLocalWranglerStateDir, wrapWithLocalD1DatabaseUrl } from '../../utils/wrangler.js';
-import { resolveWranglerConfig, selectD1MigrationMechanisms } from '../../utils/wranglerConfig.js';
+import {
+  formatD1DatabaseNames,
+  resolveWranglerConfig,
+  selectD1MigrationMechanisms,
+} from '../../utils/wranglerConfig.js';
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
@@ -128,9 +132,7 @@ export abstract class BaseScripts {
     if (errorMessage) throw new Error(errorMessage);
     if (unmanagedD1Databases.length > 0) {
       console.warn(
-        `No D1 migration mechanism detected for ${unmanagedD1Databases
-          .map((database) => database.binding ?? database.database_name ?? 'unnamed binding')
-          .join(', ')}; wb will not run local D1 migrations for them.`
+        `No D1 migration mechanism detected for ${formatD1DatabaseNames(unmanagedD1Databases)}; wb will not run local D1 migrations for them.`
       );
     }
     // The start commands apply wrangler-native migrations separately. Drizzle must stay ORM-only
@@ -405,8 +407,10 @@ function appendPlaywrightBailOption(commandArgs: string[], bail?: boolean): stri
   return buildShellCommand([...commandArgs, '--max-failures=1']);
 }
 
+type PlaywrightOptionValueMode = 'optional' | 'required' | 'variadic';
+
 export function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
-  let pendingValueMode: 'optional' | 'required' | 'variadic' | undefined;
+  let pendingValueMode: PlaywrightOptionValueMode | undefined;
   const targetIndexes: number[] = [];
 
   for (const [index, arg] of args.entries()) {
@@ -421,32 +425,23 @@ export function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
     if (arg === '--') {
       return [...targetIndexes, ...args.slice(index + 1).map((_, offset) => index + 1 + offset)];
     }
-    if (arg.startsWith('--')) {
-      if (arg === '--project') {
-        pendingValueMode = 'variadic';
-        continue;
-      }
-      if (arg.includes('=')) continue;
-      if (PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES.has(arg)) {
-        pendingValueMode = 'required';
-      } else if (PLAYWRIGHT_TEST_OPTIONS_WITH_OPTIONAL_VALUES.has(arg)) {
-        pendingValueMode = 'optional';
-      }
-      continue;
-    }
     if (arg.startsWith('-') && arg !== '-') {
-      const shortOption = arg.slice(0, 2);
-      if (arg.length === 2 && PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES.has(shortOption)) {
-        pendingValueMode = 'required';
-      } else if (arg === '-u') {
-        pendingValueMode = 'optional';
-      }
+      pendingValueMode = getPlaywrightOptionValueMode(arg);
       continue;
     }
     targetIndexes.push(index);
   }
 
   return targetIndexes;
+}
+
+function getPlaywrightOptionValueMode(option: string): PlaywrightOptionValueMode | undefined {
+  if (option === '--project') return 'variadic';
+  if (option === '-u' || PLAYWRIGHT_TEST_OPTIONS_WITH_OPTIONAL_VALUES.has(option)) return 'optional';
+  const optionsWithRequiredValues = option.startsWith('--')
+    ? PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES
+    : PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES;
+  return optionsWithRequiredValues.has(option) ? 'required' : undefined;
 }
 
 const PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES = new Set([
