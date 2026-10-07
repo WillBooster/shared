@@ -469,6 +469,7 @@ async function deployCodeAndSecrets(
     return false;
   }
   if (deployStatus !== 0) {
+    // After runWranglerWithSecretsFile returns: process.exit inside it would skip its finally cleanup.
     console.error(chalk.red(`wrangler deploy failed with exit code ${deployStatus ?? 'unknown'}.`));
     process.exit(deployStatus ?? 1);
   }
@@ -494,8 +495,8 @@ async function runWranglerWithSecretsFile(
   // - SIGHUP/SIGQUIT are forwarded to wrangler as SIGTERM: wrangler's launcher relays only
   //   SIGINT/SIGTERM to its inner Node process, and anything else would orphan a deployment
   //   that keeps mutating the remote Worker after wb exits.
-  // - The re-raise below uses the signal wb itself received: wrangler catches SIGINT and
-  //   exits numerically (e.g. 143), which must not masquerade as an ordinary failure.
+  // - The signal wb itself received is returned for the caller to re-raise: wrangler catches
+  //   SIGINT and exits numerically (e.g. 143), which must not masquerade as an ordinary failure.
   const secretsDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-deploy-'));
   const shutdownSignals = ['SIGHUP', 'SIGINT', 'SIGTERM', 'SIGQUIT'] as const;
   const signalHandlers = new Map<NodeJS.Signals, () => void>();
@@ -537,7 +538,6 @@ async function runWranglerWithSecretsFile(
       });
     });
   } finally {
-    // process.exit skips finally blocks, so the exit-on-failure below stays outside.
     for (const [shutdownSignal, signalHandler] of signalHandlers) {
       process.off(shutdownSignal, signalHandler);
     }
