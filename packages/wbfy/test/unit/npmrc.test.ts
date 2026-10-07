@@ -66,6 +66,18 @@ describe('generateRepositoryNpmrc', () => {
     expect(await fs.promises.readFile(rootNpmrcPath, 'utf8')).toBe(originalContent);
     await fs.promises.appendFile(workspaceNpmrcPath, '//example.test/:_authToken=second\n');
     expect(await fs.promises.readFile(rootNpmrcPath, 'utf8')).toContain('_authToken=second');
+
+    const externalNpmrcPath = path.join(await makeTempDir(), '.npmrc');
+    await fs.promises.writeFile(externalNpmrcPath, 'external=true\n');
+    await fs.promises.unlink(rootNpmrcPath);
+    await fs.promises.symlink(externalNpmrcPath, rootNpmrcPath);
+    await fs.promises.unlink(workspaceNpmrcPath);
+    await fs.promises.writeFile(workspaceNpmrcPath, '//example.test/:_authToken=stale\n');
+    await generateRepositoryNpmrc([rootConfig, workspaceConfig]);
+    expect(await fs.promises.readFile(externalNpmrcPath, 'utf8')).toBe('external=true\n');
+    expect(await fs.promises.lstat(workspaceNpmrcPath).catch((error: unknown) => error)).toMatchObject({
+      code: 'ENOENT',
+    });
   });
 
   it('does not treat a directly targeted workspace as the repository root', async () => {
