@@ -133,7 +133,6 @@ function violatingFunction(name: string): string {
 `;
 }
 
-/** Cognitive complexity 36 exceeds the error limit, while 7 parameters exceed only the warning limit. */
 function deeplyNestedFunction(name: string): string {
   const depth = 8;
   const opened = Array.from({ length: depth }, (_, i) => `${'  '.repeat(i + 1)}if (value > ${i}) {`);
