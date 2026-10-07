@@ -33,6 +33,41 @@ it('prints every violation with its level and limits them to the changes with --
   expect(changed.stdout).not.toContain(committedViolation);
 }, 60_000);
 
+it('limits the check to a path and names the parts adding the most cognitive complexity', async () => {
+  const dir = await createFixture();
+  const nested = Array.from({ length: 6 }, (_, depth) => `${'  '.repeat(depth + 1)}if (value > ${depth}) {`);
+  const closing = Array.from({ length: 6 }, (_, depth) => `${'  '.repeat(6 - depth)}}`);
+  await fs.writeFile(
+    path.join(dir, 'nested.ts'),
+    `export function nested(value: number): number {\n${[...nested, '        return 1;', ...closing].join('\n')}\n  return 0;\n}\n`
+  );
+  // Named like a number, which must reach code-gauge as the path it is.
+  await fs.mkdir(path.join(dir, '1.0'));
+  await fs.rename(path.join(dir, 'nested.ts'), path.join(dir, '1.0', 'nested.ts'));
+  const result = await runCli(dir, ['code-gauge', '1.0']);
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  expect(stripVTControlCharacters(result.stdout)).toBe(
+    'code-gauge: 0 errors, 1 warnings (1 functions, 0 files, 0 duplicated blocks)\n' +
+      'warning: 1.0/nested.ts:1-16 nested: function cognitive complexity 21 (max 15; largest parts L5-11 15)\n'
+  );
+}, 60_000);
+
+it('says so when a path holds no file to check, and prints a path with a space as one argument', async () => {
+  const dir = await createFixture();
+  await fs.mkdir(path.join(dir, 'my dir', 'test'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'my dir', 'test', 'only.test.ts'), violatingFunction('tested'));
+  const empty = await runCli(dir, ['code-gauge', 'my dir']);
+  expect(empty.status, empty.stdout + empty.stderr).toBe(0);
+  expect(stripVTControlCharacters(empty.stdout)).toBe('code-gauge: no file was checked under my dir\n');
+
+  // Unchanged files are not what the message is about.
+  const unchanged = await runCli(dir, ['code-gauge', '--base', 'HEAD', 'committed.ts']);
+  expect(unchanged.stdout).toBe('');
+
+  const dryRun = await runCli(dir, ['code-gauge', '--dry-run', 'my dir']);
+  expect(stripVTControlCharacters(dryRun.stdout)).toContain("check --json 'my dir'");
+}, 60_000);
+
 it('shows the violations after the verification recap without failing', async () => {
   const dir = await createFixture();
   const result = await runCli(dir, ['verify']);
@@ -79,7 +114,7 @@ it('lists a changed warning before an unchanged error and names the level of a m
   const result = await runCli(dir, ['verify']);
   expect(result.status, result.stdout + result.stderr).toBe(0);
   expect(stripVTControlCharacters(result.stdout)).toContain(
-    `code-gauge: 1 errors, 1 warnings (2 functions, 0 files, 0 duplicated blocks), 1 in code this branch changed (listed first)\n${addedViolation}\nerror: committed.ts:1-21 committed: function cognitive complexity 36 (max 30), function parameter count 7 (warning max 6)\n`
+    `code-gauge: 1 errors, 1 warnings (2 functions, 0 files, 0 duplicated blocks), 1 in code this branch changed (listed first)\n${addedViolation}\nerror: committed.ts:1-21 committed: function cognitive complexity 36 (max 30; largest parts L8-14 21), function parameter count 7 (warning max 6)\n`
   );
 }, 60_000);
 
