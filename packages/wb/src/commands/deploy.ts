@@ -89,7 +89,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     // A stray exported CLOUDFLARE_ENV would bake the wrong environment into the build and
     // apply the environment suffix twice on deploy; it is re-set explicitly where needed.
     // A dotenv file defining it still surfaces through project.env, which the explicit `--env`
-    // flags below override.
+    // flags of the wrangler commands override.
     delete process.env.CLOUDFLARE_ENV;
 
     const project = findSelfProjectOrExit(argv);
@@ -207,13 +207,13 @@ function selectD1MigrationsOrExit({ project, resolvedConfig }: WorkerDeployConte
 }
 
 function assertDeployCredentials(project: Project, drizzleD1Database: WranglerD1Database | undefined): void {
-  // A drizzle-selected D1 database routes both the migration in step 3 and any deploy/post
+  // A drizzle-selected D1 database routes both the migration in applyD1Migrations and any deploy/post
   // hook through drizzle-kit's d1-http driver, which needs CLOUDFLARE_API_TOKEN even for
   // local, wrangler-OAuth deploys. Failing here keeps the fail-fast ordering: a missing token
   // must abort before the deploy goes live, not during migration or deploy/post
   // (https://github.com/WillBooster/shared/issues/956). Wrangler-native projects (with or
   // without hooks) must not require the token: a local wrangler OAuth login suffices there,
-  // even though step 5 still exports CLOUDFLARE_D1_DATABASE_ID to their hooks.
+  // even though runPostDeployHook still exports CLOUDFLARE_D1_DATABASE_ID to their hooks.
   if (drizzleD1Database && !project.env.CLOUDFLARE_API_TOKEN) {
     exitWithError('CLOUDFLARE_API_TOKEN is required for remote drizzle-kit migrations.');
   }
@@ -369,8 +369,8 @@ async function buildWorker({
       exitWithError(`${deployConfigPath} not found; the vinext build did not produce a deploy config.`);
     }
     // Wrangler validates its config schema only when it runs, so a dry run of the built
-    // config surfaces config and bundle errors BEFORE the remote migrations below mutate
-    // the database, mirroring the plain-Worker dry run. No --env: the built config already
+    // config surfaces config and bundle errors BEFORE applyD1Migrations mutates the remote
+    // database, mirroring the plain-Worker dry run. No --env: the built config already
     // has the environment applied.
     await runWithSpawn(
       `YARN wrangler deploy --dry-run --config ${shellEscapeArgument(deployConfigPath)}`,
@@ -379,8 +379,8 @@ async function buildWorker({
     );
   } else {
     // Plain Workers are first compiled by wrangler during the deploy itself; a dry run
-    // surfaces compile errors (e.g. a missing entry point) BEFORE the remote migrations
-    // below mutate the database.
+    // surfaces compile errors (e.g. a missing entry point) BEFORE applyD1Migrations mutates
+    // the remote database.
     await runWithSpawn(
       `YARN wrangler deploy --dry-run --config ${shellEscapeArgument(wranglerConfigPath)}${resolvedConfig.usesEnvSection ? ` --env ${shellEscapeArgument(envName)}` : ''}`,
       project,
@@ -398,8 +398,7 @@ async function applyD1Migrations(
   // 3. Apply D1 migrations to the remote database with the project's single migration
   //    mechanism (wrangler-native for an explicit pattern or flat SQL, else drizzle-kit when
   //    the drizzle config targets sqlite/d1-http/durable-sqlite). Migrations must be backward
-  //    compatible: the old Worker serves
-  //    traffic until the deploy below.
+  //    compatible: the old Worker serves traffic until deployCodeAndSecrets replaces it.
   const envOption = resolvedConfig.usesEnvSection ? ` --env ${shellEscapeArgument(envName)}` : '';
   for (const database of wranglerNativeD1Databases) {
     const databaseName = database.database_name ?? database.binding;
