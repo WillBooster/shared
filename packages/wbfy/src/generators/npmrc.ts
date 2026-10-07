@@ -17,9 +17,10 @@ export async function generateRepositoryNpmrc(configs: PackageConfig[]): Promise
   const repoAuthor = configs[0]?.repoAuthor;
   if (repoAuthor !== 'WillBooster' && repoAuthor !== 'WillBoosterLab') return;
 
-  const npmrcPaths = new Set(configs.map((config) => path.resolve(config.dirPath, '.npmrc')));
   const rootConfig = configs.find((config) => config.isRoot);
-  if (rootConfig && repoResolvesPrivatePackages(rootConfig)) {
+  if (!rootConfig) return;
+  const npmrcPaths = new Set(configs.map((config) => path.resolve(config.dirPath, '.npmrc')));
+  if (repoResolvesPrivatePackages(rootConfig)) {
     const rootNpmrcPath = path.resolve(rootConfig.dirPath, '.npmrc');
     const rootGenerated = await fsUtil.generateFile(rootNpmrcPath, privateRegistryScopeMapping);
     npmrcPaths.delete(rootNpmrcPath);

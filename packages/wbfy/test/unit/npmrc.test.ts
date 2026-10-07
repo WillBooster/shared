@@ -47,7 +47,11 @@ describe('generateRepositoryNpmrc', () => {
     );
     await fs.promises.writeFile(
       path.join(workspaceDirPath, 'package.json'),
-      JSON.stringify({ name: 'workspace', dependencies: { '@willbooster-private/shared': '1.0.0' } })
+      JSON.stringify({
+        name: 'workspace',
+        repository: 'github:WillBooster/shared',
+        dependencies: { '@willbooster-private/shared': '1.0.0' },
+      })
     );
     const rootConfig = await getPackageConfig(rootDirPath, { isRoot: true });
     const workspaceConfig = await getPackageConfig(workspaceDirPath, { isRoot: false });
@@ -59,6 +63,7 @@ describe('generateRepositoryNpmrc', () => {
 
     await generateRepositoryNpmrc([rootConfig, workspaceConfig]);
     const originalContent = await fs.promises.readFile(rootNpmrcPath, 'utf8');
+    await generateRepositoryNpmrc([workspaceConfig]);
     await fs.promises.appendFile(workspaceNpmrcPath, '//example.test/:_authToken=temporary\n');
     expect(await fs.promises.readFile(rootNpmrcPath, 'utf8')).toContain('_authToken=temporary');
 
@@ -78,24 +83,6 @@ describe('generateRepositoryNpmrc', () => {
     expect(await fs.promises.lstat(workspaceNpmrcPath).catch((error: unknown) => error)).toMatchObject({
       code: 'ENOENT',
     });
-  });
-
-  it('does not treat a directly targeted workspace as the repository root', async () => {
-    const workspaceDirPath = await makeTempDir();
-    const npmrcPath = path.join(workspaceDirPath, '.npmrc');
-    await fs.promises.writeFile(
-      path.join(workspaceDirPath, 'package.json'),
-      JSON.stringify({
-        name: 'app',
-        dependencies: { '@willbooster-private/shared': '1.0.0' },
-      })
-    );
-    await fs.promises.writeFile(npmrcPath, 'registry=https://example.test/\n');
-    fsUtil.setRootDirPath(workspaceDirPath);
-
-    await generateRepositoryNpmrc([packageConfig(workspaceDirPath, 'WillBooster', false)]);
-
-    expect(await fs.promises.lstat(npmrcPath).catch((error: unknown) => error)).toMatchObject({ code: 'ENOENT' });
   });
 
   it('preserves repository npmrc files outside the organizations', async () => {
