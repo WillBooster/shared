@@ -113,6 +113,8 @@ async function makeTempDir(): Promise<string> {
   await fs.promises.mkdir(tempRootPath, { recursive: true });
   const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'wbfy-npmrc-'));
   tempDirPaths.push(dirPath);
+  const gitInit = Bun.spawn(['git', 'init', '--quiet', dirPath], { stdout: 'pipe', stderr: 'pipe' });
+  if ((await gitInit.exited) !== 0) throw new Error(await new Response(gitInit.stderr).text());
   return dirPath;
 }
 
