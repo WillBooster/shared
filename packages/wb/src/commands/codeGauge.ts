@@ -18,7 +18,16 @@ const builder = {
   },
 } as const;
 
-type CodeGaugeCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
+const _argumentsBuilder = {
+  target: {
+    type: 'string',
+    describe: 'File or directory to check instead of the whole project',
+  },
+} as const;
+
+type CodeGaugeCommandOptions = InferredOptionTypes<
+  typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder
+>;
 
 const locationSchema = z.object({ file: z.string(), startLine: z.number(), endLine: z.number() });
 const levelSchema = z.enum(['warning', 'error']);
@@ -27,6 +36,16 @@ const violationSchema = locationSchema.extend({
   level: levelSchema,
   name: z.string().optional(),
   exceeded: z.array(z.object({ metric: z.string(), value: z.number(), level: levelSchema, limit: z.number() })),
+  largestBlocks: z
+    .array(
+      z.object({
+        name: z.string().optional(),
+        startLine: z.number(),
+        endLine: z.number(),
+        cognitiveComplexity: z.number(),
+      })
+    )
+    .optional(),
   partners: z.array(locationSchema).optional(),
 });
 const reportSchema = z.object({
@@ -59,16 +78,16 @@ const MAX_VERIFY_VIOLATION_LINES = 10;
 const MAX_PARTNER_LOCATIONS = 3;
 
 export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> = {
-  command: 'code-gauge',
+  command: 'code-gauge [target]',
   describe: 'Print code-gauge errors and warnings without failing',
   builder,
   async handler(argv) {
     const project = findSelfProjectOrExit(argv, false);
     if (argv.dryRun) {
-      printCodeGaugeCommands(project, [argv.base]);
+      printCodeGaugeCommands(project, [argv.base], argv.target);
       return;
     }
-    const check = await runCodeGaugeCheck(project, argv.base);
+    const check = await runCodeGaugeCheck(project, argv.base, argv.target);
     const report = formatReport(check, formatViolationLines(check.report?.violations ?? []));
     if (report) console.info(report);
   },
@@ -115,7 +134,7 @@ export function printCodeGaugeCommandsForVerify(project: Project): void {
   printCodeGaugeCommands(project, [undefined, VERIFY_BASE_REF]);
 }
 
-function printCodeGaugeCommands(project: Project, bases: (string | undefined)[]): void {
+function printCodeGaugeCommands(project: Project, bases: (string | undefined)[], target?: string): void {
   let cliPath;
   try {
     cliPath = resolveCodeGaugeCliPath();
@@ -124,7 +143,7 @@ function printCodeGaugeCommands(project: Project, bases: (string | undefined)[])
     cliPath = '<code-gauge CLI not found>';
   }
   for (const base of bases) {
-    printCommand(['node', cliPath, ...buildCheckArgs(base)].join(' '), project.dirPath);
+    printCommand(['node', cliPath, ...buildCheckArgs(base, target)].join(' '), project.dirPath);
   }
 }
 
@@ -144,13 +163,17 @@ function isSameViolation(violation: Violation, branchViolation: Violation): bool
     : violation.startLine === branchViolation.startLine && violation.endLine === branchViolation.endLine;
 }
 
-async function runCodeGaugeCheck(project: Project, base?: string): Promise<CodeGaugeCheck> {
+async function runCodeGaugeCheck(project: Project, base?: string, target?: string): Promise<CodeGaugeCheck> {
   try {
     // Run by node, not by the runtime running wb: code-gauge loads a native addon.
-    const { status, stderr, stdout } = await spawnAsync('node', [resolveCodeGaugeCliPath(), ...buildCheckArgs(base)], {
-      cwd: project.dirPath,
-      env: project.env,
-    });
+    const { status, stderr, stdout } = await spawnAsync(
+      'node',
+      [resolveCodeGaugeCliPath(), ...buildCheckArgs(base, target)],
+      {
+        cwd: project.dirPath,
+        env: project.env,
+      }
+    );
     return { report: parseReport(stdout), status: status ?? 2, stderr };
   } catch (error) {
     // A code-gauge that cannot be located or started is an incomplete check, not a wb failure.
@@ -158,8 +181,13 @@ async function runCodeGaugeCheck(project: Project, base?: string): Promise<CodeG
   }
 }
 
-function buildCheckArgs(base?: string): string[] {
-  return ['check', '--json', ...(base === undefined ? [] : ['--base', base])];
+function buildCheckArgs(base?: string, target?: string): string[] {
+  return [
+    'check',
+    '--json',
+    ...(base === undefined ? [] : ['--base', base]),
+    ...(target === undefined ? [] : [target]),
+  ];
 }
 
 /** Resolved from wb's own dependency, so target repositories need not declare code-gauge. */
@@ -211,11 +239,10 @@ function formatViolationLines(violations: Violation[]): string[] {
 }
 
 function describeViolation(violation: Violation): string {
-  const exceeded = violation.exceeded.map((limit) => formatExceededThreshold(limit, violation.level)).join(', ');
+  const exceeded = violation.exceeded.map((limit) => formatExceededThreshold(limit, violation)).join(', ');
   if (violation.kind === 'file') return `${violation.file}: ${exceeded}`;
   if (violation.kind === 'function') {
-    // A computed name can span lines in the source; a violation stays on one line.
-    return `${formatLocation(violation)} ${violation.name?.replaceAll(/\s*[\n\r]\s*/g, ' ')}: ${exceeded}`;
+    return `${formatLocation(violation)} ${toOneLine(violation.name ?? '')}: ${exceeded}`;
   }
 
   const partners = violation.partners ?? [];
@@ -230,7 +257,7 @@ function describeViolation(violation: Violation): string {
 /** Names the level of a limit milder than its line's, so an error line shows which limits make it one. */
 function formatExceededThreshold(
   { level, limit, metric, value }: Violation['exceeded'][number],
-  lineLevel: Violation['level']
+  violation: Violation
 ): string {
   const label = metric.replaceAll(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
   // `duplicateLines` is the only metric that violates from its limit on instead of above it.
@@ -238,7 +265,22 @@ function formatExceededThreshold(
   // Rounded up so that a violating value never prints as equal to the maximum; the inner rounding
   // drops binary floating-point noise such as 26.4 * 10 = 264.00000000000006.
   const roundedValue = Math.ceil(Number((value * 10).toFixed(6))) / 10;
-  return `${label} ${roundedValue} (${level === lineLevel ? '' : `${level} `}max ${maxAllowed})`;
+  const blocks = metric === 'functionCognitiveComplexity' ? formatLargestBlocks(violation.largestBlocks) : '';
+  return `${label} ${roundedValue} (${level === violation.level ? '' : `${level} `}max ${maxAllowed}${blocks})`;
+}
+
+/** The parts of the function to look at first, each with the complexity it adds. */
+function formatLargestBlocks(blocks: Violation['largestBlocks'] = []): string {
+  const parts = blocks.map(({ cognitiveComplexity, endLine, name, startLine }) => {
+    const lines = endLine === startLine ? `L${startLine}` : `L${startLine}-${endLine}`;
+    return `${lines}${name ? ` ${toOneLine(name)}` : ''} ${cognitiveComplexity}`;
+  });
+  return parts.length > 0 ? `; largest parts ${parts.join(', ')}` : '';
+}
+
+/** A computed name can span lines in the source; a violation stays on one line. */
+function toOneLine(name: string): string {
+  return name.replaceAll(/\s*[\n\r]\s*/g, ' ');
 }
 
 function formatLocation({ endLine, file, startLine }: Location): string {

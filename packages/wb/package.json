@@ -41,7 +41,7 @@
     "@textlint/module-interop": "15.8.0",
     "@textlint/textlint-plugin-markdown": "15.8.0",
     "chalk": "6.0.0",
-    "code-gauge": "9.0.0",
+    "code-gauge": "10.0.0",
     "dotenv": "18.0.4",
     "dotenv-expand": "13.0.0",
     "fast-glob": "3.3.3",

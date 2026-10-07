@@ -33,6 +33,22 @@ it('prints every violation with its level and limits them to the changes with --
   expect(changed.stdout).not.toContain(committedViolation);
 }, 60_000);
 
+it('limits the check to a path and names the parts adding the most cognitive complexity', async () => {
+  const dir = await createFixture();
+  const nested = Array.from({ length: 6 }, (_, depth) => `${'  '.repeat(depth + 1)}if (value > ${depth}) {`);
+  const closing = Array.from({ length: 6 }, (_, depth) => `${'  '.repeat(6 - depth)}}`);
+  await fs.writeFile(
+    path.join(dir, 'nested.ts'),
+    `export function nested(value: number): number {\n${[...nested, '        return 1;', ...closing].join('\n')}\n  return 0;\n}\n`
+  );
+  const result = await runCli(dir, ['code-gauge', 'nested.ts']);
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  expect(stripVTControlCharacters(result.stdout)).toBe(
+    'code-gauge: 0 errors, 1 warnings (1 functions, 0 files, 0 duplicated blocks)\n' +
+      'warning: nested.ts:1-16 nested: function cognitive complexity 21 (max 15; largest parts L5-11 15)\n'
+  );
+}, 60_000);
+
 it('shows the violations after the verification recap without failing', async () => {
   const dir = await createFixture();
   const result = await runCli(dir, ['verify']);
@@ -79,7 +95,7 @@ it('lists a changed warning before an unchanged error and names the level of a m
   const result = await runCli(dir, ['verify']);
   expect(result.status, result.stdout + result.stderr).toBe(0);
   expect(stripVTControlCharacters(result.stdout)).toContain(
-    `code-gauge: 1 errors, 1 warnings (2 functions, 0 files, 0 duplicated blocks), 1 in code this branch changed (listed first)\n${addedViolation}\nerror: committed.ts:1-21 committed: function cognitive complexity 36 (max 30), function parameter count 7 (warning max 6)\n`
+    `code-gauge: 1 errors, 1 warnings (2 functions, 0 files, 0 duplicated blocks), 1 in code this branch changed (listed first)\n${addedViolation}\nerror: committed.ts:1-21 committed: function cognitive complexity 36 (max 30; largest parts L8-14 21), function parameter count 7 (warning max 6)\n`
   );
 }, 60_000);
 

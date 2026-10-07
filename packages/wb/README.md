@@ -19,7 +19,7 @@ Commands:
                                  WB_ENV. Prefix scripts that write to remote
                                  environments with this command to fail fast on
                                  missing secrets.
-  wb code-gauge                  Print code-gauge errors and warnings without
+  wb code-gauge [target]         Print code-gauge errors and warnings without
                                  failing
   wb concurrently <commands...>  Run commands concurrently
   wb deploy                      Deploy to the WB_ENV environment. A Cloudflare
@@ -191,12 +191,13 @@ For `wb verify` and `wb verify --full`, a log-write failure falls back to printi
 
 `wb code-gauge` runs [`code-gauge check`](https://github.com/WillBooster/code-gauge#threshold-check-code-gauge-check)
 on the project and prints every threshold violation as an error or a warning: functions and files
-over a metric limit, and duplicated blocks. `--base <ref>` limits them to what the working tree
-changed since the merge-base with `<ref>`. The command always exits with 0, including when there
-are errors or the check cannot complete.
+over a metric limit, and duplicated blocks. A path limits the check to that file or directory, and
+`--base <ref>` to what the working tree changed since the merge-base with `<ref>`. The command
+always exits with 0, including when there are errors or the check cannot complete.
 
 ```sh
 bun wb code-gauge
+bun wb code-gauge packages/app/src
 bun wb code-gauge --base origin/HEAD
 ```
 
@@ -204,8 +205,9 @@ bun wb code-gauge --base origin/HEAD
 violations after the recap: the totals per level, how many are in code changed since the merge-base
 with `origin/HEAD`, and at most 10 violations: those in the changed code first, then the rest, each
 group with its errors before its warnings. A limit milder than its line's level names its own, as in
-`error: ... function cognitive complexity 56 (max 30), function ncss 41 (warning max 30)`. The step
-never fails verification.
+`error: ... function cognitive complexity 56 (max 30; largest parts L12-31 19, L33-40 isLegacy 8), function ncss 41 (warning max 30)`,
+where the largest parts are the lines adding the most to the cognitive complexity. The step never
+fails verification.
 
 wb uses its own `code-gauge` and code-gauge's default thresholds; a `code-gauge.config.json` in the
 repository overrides them.
