@@ -9,9 +9,9 @@ import { buildWb } from '../helpers/build.js';
 
 const cliPath = path.resolve('bin/index.js');
 const fixturePaths: string[] = [];
-const committedViolation = 'warning: committed.ts:1-3 committed: function parameter count 8 (max 7)';
+const committedViolation = 'warning: committed.ts:1-3 committed: function parameter count 8 (max 6)';
 // Named to sort after the committed file, so that listing it first shows the reordering.
-const addedViolation = 'warning: worktree.ts:1-3 worktree: function parameter count 8 (max 7)';
+const addedViolation = 'warning: worktree.ts:1-3 worktree: function parameter count 8 (max 6)';
 
 beforeAll(buildWb, 120_000);
 
@@ -68,7 +68,7 @@ it('lists a duplicated block the branch changed first although the two reports s
   const result = await runCli(dir, ['verify']);
   expect(result.status, result.stdout + result.stderr).toBe(0);
   expect(stripVTControlCharacters(result.stdout)).toContain(
-    '3 duplicated blocks), 1 in code this branch changed (listed first)\nerror: z.ts:1-39: '
+    '3 duplicated blocks), 1 in code this branch changed (listed first)\nwarning: z.ts:1-39: '
   );
 }, 60_000);
 
@@ -79,7 +79,7 @@ it('lists a changed warning before an unchanged error and names the level of a m
   const result = await runCli(dir, ['verify']);
   expect(result.status, result.stdout + result.stderr).toBe(0);
   expect(stripVTControlCharacters(result.stdout)).toContain(
-    `code-gauge: 1 errors, 1 warnings (2 functions, 0 files, 0 duplicated blocks), 1 in code this branch changed (listed first)\n${addedViolation}\nerror: committed.ts:1-17 committed: function cognitive complexity 21 (warning max 15), function nesting depth 6 (max 5)\n`
+    `code-gauge: 1 errors, 1 warnings (2 functions, 0 files, 0 duplicated blocks), 1 in code this branch changed (listed first)\n${addedViolation}\nerror: committed.ts:1-21 committed: function cognitive complexity 36 (max 30), function parameter count 7 (warning max 6)\n`
   );
 }, 60_000);
 
@@ -133,13 +133,13 @@ function violatingFunction(name: string): string {
 `;
 }
 
-/** Nesting depth 6 exceeds the error limit, while cognitive complexity 21 exceeds only the warning limit. */
+/** Cognitive complexity 36 exceeds the error limit, while 7 parameters exceed only the warning limit. */
 function deeplyNestedFunction(name: string): string {
-  const depth = 6;
+  const depth = 8;
   const opened = Array.from({ length: depth }, (_, i) => `${'  '.repeat(i + 1)}if (value > ${i}) {`);
   const closed = Array.from({ length: depth }, (_, i) => `${'  '.repeat(depth - i)}}`);
-  return `export function ${name}(value: number): number {
-  let result = 0;
+  return `export function ${name}(value: number, a = 0, b = 0, c = 0, d = 0, e = 0, f = 0): number {
+  let result = a + b + c + d + e + f;
 ${opened.join('\n')}
 ${'  '.repeat(depth + 1)}result = value;
 ${closed.join('\n')}
