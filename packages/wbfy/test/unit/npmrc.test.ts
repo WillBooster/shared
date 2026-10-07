@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { generateRepositoryNpmrc } from '../../src/generators/npmrc.js';
-import type { PackageConfig } from '../../src/packageConfig.js';
+import { getPackageConfig, type PackageConfig } from '../../src/packageConfig.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
 
 const tempDirPaths: string[] = [];
@@ -37,36 +37,36 @@ describe('generateRepositoryNpmrc', () => {
     ).toMatchObject({ code: 'ENOENT' });
   });
 
-  it.each(['WillBooster', 'WillBoosterLab'])(
-    'generates only the non-secret private registry mapping for %s repositories that need it',
-    async (repoAuthor) => {
-      const rootDirPath = await makeTempDir();
-      const workspaceDirPath = path.join(rootDirPath, 'packages', 'app');
-      await fs.promises.mkdir(workspaceDirPath, { recursive: true });
-      await fs.promises.writeFile(
-        path.join(rootDirPath, 'package.json'),
-        JSON.stringify({
-          name: 'app',
-          dependencies: { '@willbooster-private/shared': '1.0.0' },
-        })
-      );
-      await fs.promises.writeFile(path.join(rootDirPath, '.npmrc'), '//example.test/:_authToken=secret\n');
-      await fs.promises.writeFile(path.join(workspaceDirPath, '.npmrc'), 'registry=https://example.test/\n');
-      fsUtil.setRootDirPath(rootDirPath);
+  it('routes temporary workspace authentication to the root and regenerates links without retaining credentials', async () => {
+    const rootDirPath = await makeTempDir();
+    const workspaceDirPath = path.join(rootDirPath, 'apps', 'nested', 'app');
+    await fs.promises.mkdir(workspaceDirPath, { recursive: true });
+    await fs.promises.writeFile(
+      path.join(rootDirPath, 'package.json'),
+      JSON.stringify({ name: 'app', repository: 'github:WillBooster/shared', workspaces: ['apps/nested/*'] })
+    );
+    await fs.promises.writeFile(
+      path.join(workspaceDirPath, 'package.json'),
+      JSON.stringify({ name: 'workspace', dependencies: { '@willbooster-private/shared': '1.0.0' } })
+    );
+    const rootConfig = await getPackageConfig(rootDirPath, { isRoot: true });
+    const workspaceConfig = await getPackageConfig(workspaceDirPath, { isRoot: false });
+    if (!rootConfig || !workspaceConfig) throw new Error('Failed to load fixture manifests');
+    fsUtil.setRootDirPath(rootDirPath);
+    const rootNpmrcPath = path.join(rootDirPath, '.npmrc');
+    const workspaceNpmrcPath = path.join(workspaceDirPath, '.npmrc');
+    await fs.promises.writeFile(workspaceNpmrcPath, 'registry=https://example.test/\n');
 
-      await generateRepositoryNpmrc([
-        packageConfig(rootDirPath, repoAuthor, true),
-        packageConfig(workspaceDirPath, repoAuthor, false),
-      ]);
+    await generateRepositoryNpmrc([rootConfig, workspaceConfig]);
+    const originalContent = await fs.promises.readFile(rootNpmrcPath, 'utf8');
+    await fs.promises.appendFile(workspaceNpmrcPath, '//example.test/:_authToken=temporary\n');
+    expect(await fs.promises.readFile(rootNpmrcPath, 'utf8')).toContain('_authToken=temporary');
 
-      expect(await fs.promises.readFile(path.join(rootDirPath, '.npmrc'), 'utf8')).toBe(
-        '@willbooster-private:registry=https://verdaccio-production-e389.up.railway.app/\n'
-      );
-      expect(
-        await fs.promises.lstat(path.join(workspaceDirPath, '.npmrc')).catch((error: unknown) => error)
-      ).toMatchObject({ code: 'ENOENT' });
-    }
-  );
+    await generateRepositoryNpmrc([rootConfig, workspaceConfig]);
+    expect(await fs.promises.readFile(rootNpmrcPath, 'utf8')).toBe(originalContent);
+    await fs.promises.appendFile(workspaceNpmrcPath, '//example.test/:_authToken=second\n');
+    expect(await fs.promises.readFile(rootNpmrcPath, 'utf8')).toContain('_authToken=second');
+  });
 
   it('does not treat a directly targeted workspace as the repository root', async () => {
     const workspaceDirPath = await makeTempDir();
