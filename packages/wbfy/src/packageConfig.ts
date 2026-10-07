@@ -288,6 +288,9 @@ interface ReleaseSettings {
   npmPluginPublishesRoot: boolean;
 }
 
+// A symbol, so that no value parsed from a config file can equal it.
+const UNINSPECTABLE = Symbol('uninspectable');
+
 async function readReleaseSettings(dirPath: string, packageJson: PackageJson): Promise<ReleaseSettings> {
   const settings: ReleaseSettings = {
     branches: [],
@@ -298,7 +301,7 @@ async function readReleaseSettings(dirPath: string, packageJson: PackageJson): P
   };
   try {
     const releaseConfig = await readReleaseConfig(dirPath, packageJson);
-    if (releaseConfig === 'uninspectable') {
+    if (releaseConfig === UNINSPECTABLE) {
       settings.pluginsAreUnknown = true;
       return settings;
     }
@@ -329,9 +332,12 @@ async function readReleaseSettings(dirPath: string, packageJson: PackageJson): P
 
 /**
  * Reads the semantic-release config that cosmiconfig would load, whose FIRST existing search place
- * wins, or 'uninspectable' when that place is not JSON.
+ * wins, or UNINSPECTABLE when that place is not JSON.
  */
-async function readReleaseConfig(dirPath: string, packageJson: PackageJson): Promise<ReleaseConfig | 'uninspectable'> {
+async function readReleaseConfig(
+  dirPath: string,
+  packageJson: PackageJson
+): Promise<ReleaseConfig | typeof UNINSPECTABLE> {
   // cosmiconfig searches package.json's `release` key BEFORE any rc/config file
   // (semantic-release 25 delegates to cosmiconfig 9's default searchPlaces).
   const releaseConfig = (packageJson as { release?: ReleaseConfig }).release;
@@ -339,7 +345,7 @@ async function readReleaseConfig(dirPath: string, packageJson: PackageJson): Pro
   for (const { fileName, jsonParseable } of semanticReleaseConfigSearchPlaces) {
     const releasercPath = path.resolve(dirPath, fileName);
     if (!fs.existsSync(releasercPath)) continue;
-    if (!jsonParseable) return 'uninspectable';
+    if (!jsonParseable) return UNINSPECTABLE;
     // `.releaserc` and `.config/releaserc` may also hold YAML; a JSON.parse failure is caught by
     // the caller and marks the plugin list unknown instead of silently reporting "no plugins".
     return JSON.parse(await fsp.readFile(releasercPath, 'utf8')) as ReleaseConfig;
