@@ -194,7 +194,8 @@ on the project and prints every threshold violation as an error or a warning: fu
 over a metric limit, and duplicated blocks. A path limits the check to that file or directory (a directory's
 test files are not checked, and a directory holding nothing else is reported as such; a file named
 itself is always checked), and
-`--base <ref>` to what the working tree changed since the merge-base with `<ref>`. The command
+`--base <ref>` to what the working tree changed since the merge-base with `<ref>`, in which case a
+path without a changed file to check prints nothing. The command
 always exits with 0, including when there are errors or the check cannot complete.
 
 ```sh

@@ -96,7 +96,8 @@ export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> =
       console.info(report);
     } else if (argv.target !== undefined && argv.base === undefined && check.report?.summary.checkedFileCount === 0) {
       // Silence would read as a clean result, while nothing under the path was checked at all.
-      // With --base, no checked file means no changed one, which is a clean result.
+      // With --base the count is of changed files, so zero does not tell an unchanged path from one
+      // holding nothing to check, and the message would be false for the former.
       console.info(chalk.yellow(`code-gauge: no file was checked under ${argv.target}`));
     }
   },
