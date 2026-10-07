@@ -191,7 +191,8 @@ For `wb verify` and `wb verify --full`, a log-write failure falls back to printi
 
 `wb code-gauge` runs [`code-gauge check`](https://github.com/WillBooster/code-gauge#threshold-check-code-gauge-check)
 on the project and prints every threshold violation as an error or a warning: functions and files
-over a metric limit, and duplicated blocks. A path limits the check to that file or directory, and
+over a metric limit, and duplicated blocks. A path limits the check to that file or directory (test files are
+not checked, and a path holding nothing else is reported as such), and
 `--base <ref>` to what the working tree changed since the merge-base with `<ref>`. The command
 always exits with 0, including when there are errors or the check cannot complete.
 

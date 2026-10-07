@@ -10,6 +10,7 @@ import { findSelfProjectOrExit, type Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { readNearestPackageJson } from '../utils/nearestPackageJson.js';
 import { printCommand } from '../utils/packageCommand.js';
+import { buildShellCommand } from '../utils/shell.js';
 
 const builder = {
   base: {
@@ -56,6 +57,7 @@ const reportSchema = z.object({
     functionViolationCount: z.number(),
     fileViolationCount: z.number(),
     duplicationViolationCount: z.number(),
+    checkedFileCount: z.number(),
   }),
   violations: z.array(violationSchema),
   errors: z.array(z.string()),
@@ -90,7 +92,12 @@ export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> =
     }
     const check = await runCodeGaugeCheck(project, argv.base, argv.target);
     const report = formatReport(check, formatViolationLines(check.report?.violations ?? []));
-    if (report) console.info(report);
+    if (report) {
+      console.info(report);
+    } else if (argv.target !== undefined && check.report?.summary.checkedFileCount === 0) {
+      // Silence would read as a clean result, while nothing under the path was checked at all.
+      console.info(chalk.yellow(`code-gauge: no file was checked under ${argv.target}`));
+    }
   },
 };
 
@@ -144,7 +151,7 @@ function printCodeGaugeCommands(project: Project, bases: (string | undefined)[],
     cliPath = '<code-gauge CLI not found>';
   }
   for (const base of bases) {
-    printCommand(['node', cliPath, ...buildCheckArgs(base, target)].join(' '), project.dirPath);
+    printCommand(buildShellCommand(['node', cliPath, ...buildCheckArgs(base, target)]), project.dirPath);
   }
 }
 

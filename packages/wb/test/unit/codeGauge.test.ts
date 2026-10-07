@@ -52,6 +52,18 @@ it('limits the check to a path and names the parts adding the most cognitive com
   );
 }, 60_000);
 
+it('says so when a path holds no file to check, and prints a path with a space as one argument', async () => {
+  const dir = await createFixture();
+  await fs.mkdir(path.join(dir, 'my dir', 'test'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'my dir', 'test', 'only.test.ts'), violatingFunction('tested'));
+  const empty = await runCli(dir, ['code-gauge', 'my dir']);
+  expect(empty.status, empty.stdout + empty.stderr).toBe(0);
+  expect(stripVTControlCharacters(empty.stdout)).toBe('code-gauge: no file was checked under my dir\n');
+
+  const dryRun = await runCli(dir, ['code-gauge', '--dry-run', 'my dir']);
+  expect(stripVTControlCharacters(dryRun.stdout)).toContain("check --json 'my dir'");
+}, 60_000);
+
 it('shows the violations after the verification recap without failing', async () => {
   const dir = await createFixture();
   const result = await runCli(dir, ['verify']);
