@@ -24,9 +24,11 @@ export async function generateRepositoryNpmrc(configs: PackageConfig[]): Promise
     if (!(await fsUtil.generateFile(rootNpmrcPath, privateRegistryScopeMapping))) return;
     npmrcPaths.delete(rootNpmrcPath);
     for (const npmrcPath of npmrcPaths) {
+      const linkTarget = path.relative(path.dirname(npmrcPath), rootNpmrcPath);
+      if ((await fs.promises.readlink(npmrcPath).catch(() => {})) === linkTarget) continue;
       await removeNpmrc(npmrcPath);
       if (!(await fsUtil.isConfinedWritablePath(npmrcPath))) continue;
-      await fs.promises.symlink(path.relative(path.dirname(npmrcPath), rootNpmrcPath), npmrcPath);
+      await fs.promises.symlink(linkTarget, npmrcPath);
     }
     return;
   }
