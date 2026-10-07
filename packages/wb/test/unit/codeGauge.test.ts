@@ -60,6 +60,10 @@ it('says so when a path holds no file to check, and prints a path with a space a
   expect(empty.status, empty.stdout + empty.stderr).toBe(0);
   expect(stripVTControlCharacters(empty.stdout)).toBe('code-gauge: no file was checked under my dir\n');
 
+  // Unchanged files are not what the message is about.
+  const unchanged = await runCli(dir, ['code-gauge', '--base', 'HEAD', 'committed.ts']);
+  expect(unchanged.stdout).toBe('');
+
   const dryRun = await runCli(dir, ['code-gauge', '--dry-run', 'my dir']);
   expect(stripVTControlCharacters(dryRun.stdout)).toContain("check --json 'my dir'");
 }, 60_000);
