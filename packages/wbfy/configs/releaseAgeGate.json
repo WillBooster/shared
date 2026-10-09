@@ -72,8 +72,6 @@
     "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": "2026-10-16",
     "@anthropic-ai/claude-agent-sdk-linux-x64": "2026-10-16",
     "@anthropic-ai/claude-agent-sdk-linux-x64-musl": "2026-10-16",
-    "@anthropic-ai/claude-agent-sdk-win32-arm64": "2026-10-16",
-    "@anthropic-ai/claude-agent-sdk-win32-x64": "2026-10-16",
     "@openai/codex-sdk": "2026-10-16",
     "next": "2026-09-30",
     "@next/env": "2026-09-30",
