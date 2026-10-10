@@ -15,9 +15,12 @@ interface MiseToml {
 
 // The oldest Bun runtime wbfy supports.
 export const minimumBunVersion = '1.4.0';
+// The oldest Bun wbfy pins, even when `mise latest` still hides it behind its release-age filter:
+// `wb test`'s parallel unit runs can hang on Bun 1.4.2's synchronous spawns (oven-sh/bun#34069).
+export const minimumPinnedBunVersion = '1.4.3';
 
 /**
- * Pins Node.js and the latest Bun and (when fnox.toml exists) fnox versions. Only the changed pin
+ * Pins Node.js and the latest Bun (at least `minimumPinnedBunVersion`) and (when fnox.toml exists) fnox versions. Only the changed pin
  * lines are edited in place: re-serializing the parsed TOML would drop every comment and collapse
  * multi-line strings (e.g. mise task scripts) in the rest of the file.
  */
@@ -38,7 +41,7 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
         await liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
         config.dirPath
       ),
-      bun: await pinLatestToolVersion('bun', tools.bun, config.dirPath),
+      bun: await pinLatestToolVersion('bun', tools.bun, config.dirPath, minimumPinnedBunVersion),
     };
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       pins.fnox = await pinLatestToolVersion('fnox', tools.fnox, config.dirPath);
@@ -82,15 +85,23 @@ function parseTools(content: string): Record<string, unknown> | undefined {
   }
 }
 
-/** Updates to the latest release across major versions without downgrading existing exact pins. */
-async function pinLatestToolVersion(tool: string, version: unknown, cwd: string): Promise<unknown> {
+/**
+ * Updates to the latest release across major versions, or to `minimumVersion` when that is newer, without
+ * downgrading existing exact pins.
+ */
+async function pinLatestToolVersion(
+  tool: string,
+  version: unknown,
+  cwd: string,
+  minimumVersion?: string
+): Promise<unknown> {
   // Resolve independently of the target's trust state and tool aliases.
   const resolvedVersion = await spawnAndReturnStdout('mise', ['--no-config', 'latest', tool], cwd);
-  if (!semver.valid(resolvedVersion)) return version ?? 'latest';
   // A cached release listing can lag behind another machine that already updated the pin.
-  return typeof version === 'string' && semver.valid(version) && semver.gt(version, resolvedVersion)
-    ? version
-    : resolvedVersion;
+  const candidates = [resolvedVersion, version, minimumVersion].filter(
+    (candidate): candidate is string => typeof candidate === 'string' && semver.valid(candidate) !== null
+  );
+  return semver.rsort(candidates)[0] ?? version ?? 'latest';
 }
 
 /**
