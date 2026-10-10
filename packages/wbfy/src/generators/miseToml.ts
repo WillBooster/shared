@@ -13,14 +13,12 @@ interface MiseToml {
   tools?: Record<string, unknown>;
 }
 
-// The oldest Bun runtime wbfy supports.
-export const minimumBunVersion = '1.4.0';
-// The oldest Bun wbfy pins, even when `mise latest` still hides it behind its release-age filter:
-// `wb test`'s parallel unit runs can hang on Bun 1.4.2's synchronous spawns (oven-sh/bun#34069).
-export const minimumPinnedBunVersion = '1.4.3';
+// The oldest Bun that wbfy runs on and pins, even while `mise latest` still hides it behind its
+// release-age filter: Bun 1.4.2's synchronous spawns can hang (oven-sh/bun#34069).
+export const minimumBunVersion = '1.4.3';
 
 /**
- * Pins Node.js and the latest Bun (at least `minimumPinnedBunVersion`) and (when fnox.toml exists) fnox versions. Only the changed pin
+ * Pins Node.js and the latest Bun (at least `minimumBunVersion`) and (when fnox.toml exists) fnox versions. Only the changed pin
  * lines are edited in place: re-serializing the parsed TOML would drop every comment and collapse
  * multi-line strings (e.g. mise task scripts) in the rest of the file.
  */
@@ -41,7 +39,7 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
         await liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
         config.dirPath
       ),
-      bun: await pinLatestToolVersion('bun', tools.bun, config.dirPath, minimumPinnedBunVersion),
+      bun: await pinLatestToolVersion('bun', tools.bun, config.dirPath, minimumBunVersion),
     };
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       pins.fnox = await pinLatestToolVersion('fnox', tools.fnox, config.dirPath);
