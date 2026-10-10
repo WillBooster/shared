@@ -196,7 +196,7 @@ export abstract class BaseScripts {
       return playwrightCommand;
     }
 
-    return buildE2ECommand(argv, startCommand, port, isDocker, playwrightCommand);
+    return buildE2ECommand(argv, startCommand, port, isDocker, playwrightCommand, project.playwrightWebServerUrlPath);
   }
 
   /**
@@ -306,11 +306,12 @@ export function buildE2ECommand(
   startCommand: string,
   port: string | number,
   isDocker: boolean,
-  testCommand: string
+  testCommand: string,
+  readinessPath = ''
 ): string {
   return buildConcurrentlyCommand(argv, untilFirstSuccess, [
     `${startCommand} && exit 1`,
-    `${buildE2EReadinessCommand(port, isDocker)} && ${testCommand}`,
+    `${buildE2EReadinessCommand(port, isDocker, readinessPath)} && ${testCommand}`,
   ]);
 }
 
@@ -318,9 +319,9 @@ function buildConcurrentlyCommand(argv: EnvReaderOptions, flags: string[], comma
   return buildShellCommand(['YARN', 'wb', 'concurrently', ...buildEnvReaderOptionArgs(argv), ...flags, ...commands]);
 }
 
-export function buildE2EReadinessCommand(port: string | number, isDocker: boolean): string {
+export function buildE2EReadinessCommand(port: string | number, isDocker: boolean, readinessPath = ''): string {
   const listeningCommand = buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000');
-  const respondingCommand = buildHttpReadinessCommand(port);
+  const respondingCommand = buildHttpReadinessCommand(port, readinessPath);
   // docker-proxy accepts TCP before the app is ready, so every path requires an HTTP response.
   // Direct servers then require another response after the normal two-second polling interval.
   // Wrangler exposes no stronger readiness signal than a completed response, and starting a full
@@ -346,12 +347,15 @@ export function buildWaitOnLoopbackCommand(port: string | number | undefined, wa
  * Builds an HTTP readiness check that requires an actual response from the app. A TCP check alone
  * is not enough for Dockerized servers: docker-proxy accepts connections as soon as the port is
  * published, long before the app inside the container listens, so tests would start against a dead
- * backend and the run dies in a kill-others cascade. Any HTTP status counts as ready (curl without
- * -f), so redirecting or auth-guarded servers still pass — the reason the boot check moved from
- * http-get to tcp in the first place.
+ * backend and the run dies in a kill-others cascade. Redirects and client errors count as ready
+ * (curl without -f), so redirecting or auth-guarded servers still pass — the reason the boot check
+ * moved from http-get to tcp in the first place; curl's `--retry` still retries the statuses it
+ * treats as transient (408, 429, 500, 502, 503, 504). The request goes to the path of the Playwright config's
+ * `webServer.url` when it names one: the root page of an app may be costly, or may cache what it
+ * computed from the database before the tests prepared their data.
  */
-function buildHttpReadinessCommand(port: string | number): string {
-  return `curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:${port}`;
+function buildHttpReadinessCommand(port: string | number, readinessPath: string): string {
+  return `curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:${port}${readinessPath}`;
 }
 
 function findCustomProductionStartScriptPath(project: Project): string | undefined {

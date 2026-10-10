@@ -128,6 +128,22 @@ describe('BaseScripts.testE2E', () => {
     );
   });
 
+  it("requests the path of the Playwright config's webServer url as the readiness check", async () => {
+    const command = await scripts.testE2EProduction(
+      {
+        env: { WB_ENV: 'test', PORT: '3000' },
+        packageJson: { scripts: {} },
+        playwrightWebServerUrlPath: '/api/ping',
+        skipLaunchingServerForPlaywright: false,
+      } as unknown as Project,
+      {} as TestArgv,
+      {}
+    );
+
+    expect(command).toContain('http://localhost:3000/api/ping && sleep 2 && curl');
+    expect(command).toContain('http://localhost:3000/api/ping && BUN playwright test');
+  });
+
   it('propagates Docker readiness without the direct-server stabilization delay', async () => {
     const command = await scripts.testE2EDocker(
       {
