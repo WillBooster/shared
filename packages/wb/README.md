@@ -168,8 +168,9 @@ Use `--grep-invert` for inverse Playwright name filters across versions.
 Before running Playwright against an app that wb starts itself (on CI, or without a `webServer`
 block), wb waits until the app answers an HTTP request. The request goes to the path of the first
 `webServer.url` in `playwright.config.ts` when that is a string or template literal ending in a
-plain path (`/api/ping` for `` `${baseURL}/api/ping` ``) and no nested object (such as `env`)
-precedes it in the `webServer` block, and to the root path otherwise. Any HTTP
+plain path (`/api/ping` for `` `${baseURL}/api/ping` ``) and no brace precedes it in
+the `webServer` block (neither a nested object such as `env` nor a `${…}` in `command`), and to the
+root path otherwise. Any HTTP
 status counts as an answer.
 
 When a test command of `wb test` or a phase of `wb test-on-ci` exits, wb sends `SIGTERM` to the
