@@ -10,8 +10,8 @@ const bunfigSchema = z.object({
 
 /**
  * The per-test default timeout in milliseconds that the project declares as `[test] timeout`.
- * Bun 1.4.3 does not read that key itself (https://github.com/oven-sh/bun/issues/7789) and applies a
- * preload's `setDefaultTimeout` only to the first file each process runs
+ * Bun 1.4.3 does not read that key itself (https://github.com/oven-sh/bun/issues/7789), and a preload's
+ * `setDefaultTimeout` reaches only one file of a run without per-file isolation, such as the e2e run
  * (https://github.com/oven-sh/bun/issues/43787), so only `bun test --timeout` covers every file.
  * Only the project's own bunfig.toml counts: `bun test` loads none from an ancestor directory.
  */

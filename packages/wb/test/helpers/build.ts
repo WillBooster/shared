@@ -8,8 +8,7 @@ import { expect } from 'bun:test';
  * Builds dist/ for tests that run bin/index.js. Every such test file must call this in `beforeAll`:
  * `bun test --parallel` runs files in concurrent workers, and build-ts deletes dist/ before writing,
  * so a rebuild breaks another worker's CLI run. The lock serializes the workers, and only the first
- * of a run builds: buildIfNeeded alone would rebuild for a worker whose environment an earlier test
- * file changed, since workers run their files in one global.
+ * of a run builds, so later files skip spawning the build.
  */
 export async function buildWb(): Promise<void> {
   // Only workers of one parallel run race each other, so the lock is named after that run's
