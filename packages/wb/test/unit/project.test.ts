@@ -183,6 +183,7 @@ describe('project', () => {
     { url: '`${baseURL}/api/ping`', expected: '/api/ping' },
     { url: "'http://localhost:3000/health'", expected: '/health' },
     { url: '`http://localhost:${port}`', expected: '' },
+    { url: "'http://localhost'", expected: '' },
     { url: 'process.env.NEXT_PUBLIC_BASE_URL', expected: '' },
   ])('reads the path of the Playwright webServer url $url', async ({ expected, url }) => {
     const dirPath = await fs.promises.mkdtemp(path.join(tempDir, 'playwright-'));
@@ -192,6 +193,7 @@ describe('project', () => {
       `export default defineConfig({
   use: { baseURL },
   webServer: { command: 'bun wb start --mode test', url: ${url}, reuseExistingServer: !!process.env.CI },
+  metadata: { url: 'http://localhost:3000/unrelated' },
 });
 `
     );

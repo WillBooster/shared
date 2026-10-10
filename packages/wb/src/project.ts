@@ -402,14 +402,20 @@ export class Project {
   /**
    * The URL path that the first `webServer.url` of the Playwright config ends with (`/api/ping` for
    * `${baseURL}/api/ping`), or an empty string when it names none. Only a string or template
-   * literal whose path is plain text is recognized.
+   * literal whose path is plain text is recognized, and only when no nested object precedes `url`
+   * in the `webServer` object.
    */
   @memoizeOne
   get playwrightWebServerUrlPath(): string {
     try {
       const configText = fs.readFileSync(this.findFile('playwright.config.ts'), 'utf8');
-      const url = /\bwebServer\s*:[\s\S]*?\burl\s*:\s*(['"`])(.*?)\1/.exec(configText)?.[2] ?? '';
-      return /^(?:https?:\/\/)?[^/]*(\/[\w.~/-]*)$/.exec(url)?.[1] ?? '';
+      // `[^{}]*?` keeps the match inside the `webServer` object itself: an expression-valued `url`
+      // must not pick up a `url` literal of a later, unrelated property.
+      const url =
+        /\bwebServer\s*:\s*\[?\s*\{[^{}]*?\burl\s*:\s*(['"`])(.*?)\1/
+          .exec(configText)?.[2]
+          ?.replace(/^https?:\/\//, '') ?? '';
+      return /^[^/]*(\/[\w.~/-]*)$/.exec(url)?.[1] ?? '';
     } catch {
       return '';
     }
