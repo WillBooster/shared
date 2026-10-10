@@ -180,19 +180,31 @@ describe('project', () => {
   });
 
   it.each([
-    { url: '`${baseURL}/api/ping`', expected: '/api/ping' },
-    { url: "'http://localhost:3000/health'", expected: '/health' },
-    { url: '`http://localhost:${port}`', expected: '' },
-    { url: "'http://localhost'", expected: '' },
-    { url: 'process.env.NEXT_PUBLIC_BASE_URL', expected: '' },
-  ])('reads the path of the Playwright webServer url $url', async ({ expected, url }) => {
+    { webServer: '{ command, url: `${baseURL}/api/ping` }', expected: '/api/ping' },
+    { webServer: "{ command, url: 'http://localhost:3000/health' }", expected: '/health' },
+    // The member order wbfy writes, and braces inside the command.
+    {
+      webServer:
+        "{ env: {\n...process.env,\nA: 'true',\n}, gracefulShutdown: { timeout: 500 }, command, url: `${baseURL}/api/ping` }",
+      expected: '/api/ping',
+    },
+    { webServer: '{ command: `start --port ${port} "{}"`, url: `${baseURL}/api/ping` }', expected: '/api/ping' },
+    { webServer: '{ command, url: `http://localhost:${port}` }', expected: '' },
+    { webServer: "{ command, url: 'http://localhost' }", expected: '' },
+    { webServer: '{ command, url: process.env.NEXT_PUBLIC_BASE_URL }', expected: '' },
+    {
+      webServer: "[{ command, url: process.env.APP_URL }, { command, url: 'http://localhost:4000/api/health' }]",
+      expected: '',
+    },
+    { webServer: "{ command, url: process.env.APP_URL, env: { url: 'http://localhost:4000/nested' } }", expected: '' },
+  ])('reads the path of the Playwright webServer url from $webServer', async ({ expected, webServer }) => {
     const dirPath = await fs.promises.mkdtemp(path.join(tempDir, 'playwright-'));
     await fs.promises.writeFile(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'app' }));
     await fs.promises.writeFile(
       path.join(dirPath, 'playwright.config.ts'),
       `export default defineConfig({
   use: { baseURL },
-  webServer: { command: 'bun wb start --mode test', url: ${url}, reuseExistingServer: !!process.env.CI },
+  webServer: ${webServer},
   metadata: { url: 'http://localhost:3000/unrelated' },
 });
 `
