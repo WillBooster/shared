@@ -179,6 +179,26 @@ describe('project', () => {
     expect(getAbsoluteFileDatabaseUrlPath(project)).toBe('/app/drizzle/mount/prod.sqlite3');
   });
 
+  it.each([
+    { url: '`${baseURL}/api/ping`', expected: '/api/ping' },
+    { url: "'http://localhost:3000/health'", expected: '/health' },
+    { url: '`http://localhost:${port}`', expected: '' },
+    { url: 'process.env.NEXT_PUBLIC_BASE_URL', expected: '' },
+  ])('reads the path of the Playwright webServer url $url', async ({ expected, url }) => {
+    const dirPath = await fs.promises.mkdtemp(path.join(tempDir, 'playwright-'));
+    await fs.promises.writeFile(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'app' }));
+    await fs.promises.writeFile(
+      path.join(dirPath, 'playwright.config.ts'),
+      `export default defineConfig({
+  use: { baseURL },
+  webServer: { command: 'bun wb start --mode test', url: ${url}, reuseExistingServer: !!process.env.CI },
+});
+`
+    );
+
+    expect(findSelfProject({}, false, dirPath)?.playwrightWebServerUrlPath).toBe(expected);
+  });
+
   it.if(isMiseAvailable())('lets mise env override an already-activated shell env for project commands', async () => {
     const dirPath = path.join('..', 'shared-lib-node', 'test', 'fixtures', 'app3');
     const originalPort = process.env.PORT;

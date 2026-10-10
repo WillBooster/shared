@@ -399,6 +399,22 @@ export class Project {
     }
   }
 
+  /**
+   * The URL path that the first `webServer.url` of the Playwright config ends with (`/api/ping` for
+   * `${baseURL}/api/ping`), or an empty string when it names none. Only a string or template
+   * literal whose path is plain text is recognized.
+   */
+  @memoizeOne
+  get playwrightWebServerUrlPath(): string {
+    try {
+      const configText = fs.readFileSync(this.findFile('playwright.config.ts'), 'utf8');
+      const url = /\bwebServer\s*:[\s\S]*?\burl\s*:\s*(['"`])(.*?)\1/.exec(configText)?.[2] ?? '';
+      return /^(?:https?:\/\/)?[^/]*(\/[\w.~/-]*)$/.exec(url)?.[1] ?? '';
+    } catch {
+      return '';
+    }
+  }
+
   @memoizeOne
   get skipLaunchingServerForPlaywright(): boolean {
     // On CI wb launches the app itself so the run does not depend on Playwright's `reuseExistingServer`
