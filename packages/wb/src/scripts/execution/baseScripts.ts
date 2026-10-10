@@ -349,8 +349,8 @@ export function buildWaitOnLoopbackCommand(port: string | number | undefined, wa
  * published, long before the app inside the container listens, so tests would start against a dead
  * backend and the run dies in a kill-others cascade. Redirects and client errors count as ready
  * (curl without -f), so redirecting or auth-guarded servers still pass — the reason the boot check
- * moved from http-get to tcp in the first place; curl's `--retry` still retries a 408, 429, or 5xx
- * response. The request goes to the path of the Playwright config's
+ * moved from http-get to tcp in the first place; curl's `--retry` still retries the statuses it
+ * treats as transient (408, 429, 500, 502, 503, 504). The request goes to the path of the Playwright config's
  * `webServer.url` when it names one: the root page of an app may be costly, or may cache what it
  * computed from the database before the tests prepared their data.
  */
