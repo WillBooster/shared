@@ -55,7 +55,7 @@
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
     "@willbooster/wb": "workspace:*",
-    "build-ts": "21.0.20",
+    "build-ts": "21.0.21",
     "oxfmt": "0.71.0",
     "oxlint": "1.86.0",
     "oxlint-tsgolint": "7.0.2003",
