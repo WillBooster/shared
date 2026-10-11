@@ -8,7 +8,13 @@ import fg from 'fast-glob';
 import type { PackageJson } from 'type-fest';
 import { z } from 'zod';
 
-import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
+import {
+  getAnonymousOctokit,
+  getOctokit,
+  gitHubUtil,
+  hasGitHubToken,
+  isGitHubPermissionOrVisibilityError,
+} from './utils/githubUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
 import { classifyScriptSegment, splitScriptSegments } from './utils/managedScriptSegment.js';
 import { spawnAndReturnStdout } from './utils/spawnUtil.js';
@@ -902,12 +908,7 @@ async function requestRepoInfo(urlOrFullName: string): Promise<Record<string, un
     // Metadata permission. The owner MUST be passed: getOctokit() without it prefers the
     // WillBooster PAT, which cannot read private WillBoosterLab repositories, collapsing their
     // visibility to unknown (and e.g. skipping the wbfy caller generation indefinitely).
-    const octokit = await getOctokit(org);
-    const response = await octokit.request('GET /repos/{owner}/{repo}', {
-      owner: org,
-      repo: name,
-    });
-    return response.data;
+    return await requestRepo(org, name);
   } catch (error) {
     const redirectedFullName = getRedirectedRepoFullName(error);
     if (redirectedFullName) {
@@ -917,12 +918,7 @@ async function requestRepoInfo(urlOrFullName: string): Promise<Record<string, un
       const [redirectedOrg, redirectedName] = redirectedFullName.split('/');
       if (redirectedOrg && redirectedName) {
         try {
-          const redirectedOctokit = await getOctokit(redirectedOrg);
-          const response = await redirectedOctokit.request('GET /repos/{owner}/{repo}', {
-            owner: redirectedOrg,
-            repo: redirectedName,
-          });
-          return response.data;
+          return await requestRepo(redirectedOrg, redirectedName);
         } catch {
           // Fall back to the bare identity below: the repository is still canonicalized, only
           // its visibility stays unknown.
@@ -930,6 +926,18 @@ async function requestRepoInfo(urlOrFullName: string): Promise<Record<string, un
       }
       return { full_name: redirectedFullName };
     }
+  }
+}
+
+async function requestRepo(owner: string, repo: string): Promise<Record<string, unknown>> {
+  try {
+    const response = await getOctokit(owner).request('GET /repos/{owner}/{repo}', { owner, repo });
+    return response.data;
+  } catch (error) {
+    // A stale or under-scoped token is refused even for a public repository, which anyone can read.
+    if (!hasGitHubToken(owner) || !isGitHubPermissionOrVisibilityError(error)) throw error;
+    const response = await getAnonymousOctokit().request('GET /repos/{owner}/{repo}', { owner, repo });
+    return response.data;
   }
 }
 

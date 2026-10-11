@@ -1,7 +1,5 @@
 import { Octokit } from '@octokit/core';
 
-import { spawnOrUndefined } from './spawnUtil.js';
-
 class GitHubUtil {
   getOrgAndName(urlOrFullName: string): [string, string] {
     const urlWithoutProtocol = urlOrFullName.split(':').at(-1);
@@ -22,7 +20,7 @@ export function isGitHubPermissionOrVisibilityError(error: unknown): boolean {
 
 const octokitCache = new Map<string, Octokit>();
 
-export async function getOctokit(owner?: string): Promise<Octokit> {
+export function getOctokit(owner?: string): Octokit {
   // GitHub owner names are case-insensitive, so credential selection (and the cache key) must
   // not depend on how a remote URL happens to spell the organization.
   const key = owner?.toLowerCase() ?? '';
@@ -30,46 +28,42 @@ export async function getOctokit(owner?: string): Promise<Octokit> {
   if (cached) return cached;
 
   const octokit = new Octokit({
-    auth: (await getGitHubToken(owner)) || undefined,
+    auth: getGitHubToken(owner) || undefined,
   });
   octokitCache.set(key, octokit);
   return octokit;
 }
 
-export async function hasGitHubToken(owner: string): Promise<boolean> {
-  return !!(await getGitHubToken(owner));
+let anonymousOctokit: Octokit | undefined;
+
+/** A client that sends no credential, for reading what GitHub shows to anyone (e.g. a public repository). */
+export function getAnonymousOctokit(): Octokit {
+  anonymousOctokit ??= new Octokit();
+  return anonymousOctokit;
 }
 
-async function getGitHubToken(owner?: string): Promise<string | undefined> {
+export function hasGitHubToken(owner: string): boolean {
+  return !!getGitHubToken(owner);
+}
+
+function getGitHubToken(owner?: string): string | undefined {
+  // Read only the environment, never a CLI session (`gh auth token`): the caller exports the token,
+  // which keeps credential lookups out of this published package.
   // Case-insensitive on purpose: a noncanonically cased remote (e.g. github.com/willboosterlab/…)
   // must still select the organization's own PAT — falling through to the generic branch would
   // prefer the OTHER organization's PAT, which cannot read this organization's private
   // repositories.
   const normalizedOwner = owner?.toLowerCase();
   if (normalizedOwner === 'willbooster') {
-    return process.env.GH_BOT_PAT_FOR_WILLBOOSTER || (await getGitHubCliToken());
+    return process.env.GH_BOT_PAT_FOR_WILLBOOSTER || process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   }
   if (normalizedOwner === 'willboosterlab') {
-    return process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB || (await getGitHubCliToken());
+    return process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB || process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   }
   return (
     process.env.GH_BOT_PAT_FOR_WILLBOOSTER ||
     process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB ||
     process.env.GH_TOKEN ||
-    process.env.GITHUB_TOKEN ||
-    (await getGitHubCliToken())
+    process.env.GITHUB_TOKEN
   );
-}
-
-let gitHubCliToken: Promise<string | undefined> | undefined;
-
-function getGitHubCliToken(): Promise<string | undefined> {
-  gitHubCliToken ??= readGitHubCliToken();
-  return gitHubCliToken;
-}
-
-async function readGitHubCliToken(): Promise<string | undefined> {
-  // Some local runs rely on GitHub CLI authentication instead of exported env tokens.
-  const result = await spawnOrUndefined('gh', ['auth', 'token'], { stdio: ['ignore', 'pipe', 'ignore'] });
-  return (result?.status === 0 && result.stdout.trim()) || undefined;
 }

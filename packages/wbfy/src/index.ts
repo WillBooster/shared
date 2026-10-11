@@ -51,6 +51,7 @@ import type { PackageConfig } from './packageConfig.js';
 import { getPackageConfig, getWorkerTypesScriptError } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
+import { hasGitHubToken } from './utils/githubUtil.js';
 import { doesContainJava, doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { spawnAndReturnStatus, spawnAndReturnStdout } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
@@ -199,11 +200,13 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   const packageConfigs = await loadPackageConfigs(rootDirPath, subDirPaths);
   if (!packageConfigs) return false;
   const { rootConfig, allPackageConfigs } = packageConfigs;
-  const cloudflareEnvError = await findTrackedCloudflareEnvError(rootConfig, allPackageConfigs);
-  if (cloudflareEnvError) {
-    console.error(cloudflareEnvError);
+  const configError =
+    findUnknownVisibilityError(rootConfig) ?? (await findTrackedCloudflareEnvError(rootConfig, allPackageConfigs));
+  if (configError) {
+    console.error(configError);
     return false;
   }
+  warnIfGitHubTokenIsMissing(rootConfig);
   const fixTyposPromise = fixTypos(rootConfig);
 
   await generateRepositoryNpmrc(allPackageConfigs);
@@ -254,6 +257,20 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   const isBunLockUpToDate = await refreshAndNormalizeBunLock(rootDirPath);
   await spawnAndReturnStatus('bun', ['cleanup'], rootDirPath);
   return isBunLockUpToDate;
+}
+
+function findUnknownVisibilityError(rootConfig: PackageConfig): string | undefined {
+  if (!rootConfig.isWillBoosterRepo || rootConfig.isRepoVisibilityKnown) return;
+  // An unknown visibility would rewrite tracked files into their public variants (e.g. English agent
+  // instructions and templates) and skip every workflow.
+  return `wbfy could not read the visibility of ${rootConfig.repoAuthor}/${rootConfig.repoName}, which decides generated files and workflows. Check the network connection and GitHub's rate limit, that the repository exists under that name, and that GH_TOKEN (or GH_BOT_PAT_FOR_<ORG>) is set to a GitHub token that can read it, then re-run.`;
+}
+
+function warnIfGitHubTokenIsMissing(rootConfig: PackageConfig): void {
+  if (!rootConfig.isWillBoosterRepo || !rootConfig.repoAuthor || hasGitHubToken(rootConfig.repoAuthor)) return;
+  console.warn(
+    `No GitHub token for ${rootConfig.repoAuthor}, so repository settings, labels, and (where wbfy manages them) rulesets are skipped. Set GH_TOKEN to a GitHub token with administration permission on the repository and re-run with --force to apply them.`
+  );
 }
 
 async function listSubPackageDirPaths(rootDirPath: string): Promise<string[]> {

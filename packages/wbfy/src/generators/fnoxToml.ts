@@ -208,12 +208,6 @@ async function failOnAgeConfigsWithoutRootFnoxToml(rootDirPath: string): Promise
 }
 
 function findFnoxCiIdentityIssue(rootConfig: PackageConfig): string | undefined {
-  // A failed visibility lookup collapses isPublicRepo to false, which would silently re-encrypt
-  // a public repository's world-readable ciphertexts to the org-internal CI identity (and vice
-  // versa drop the public one). Fail instead of guessing whenever visibility changes the roster.
-  if (!rootConfig.isRepoVisibilityKnown && doesFnoxRecipientSetDependOnVisibility(rootConfig)) {
-    return `the visibility of ${rootConfig.repoAuthor}/${rootConfig.repoName} could not be determined (GitHub lookup failed) and the CI recipient depends on it. Check network and gh authentication, then rerun wbfy.`;
-  }
   // Both CI identities are visibility-constrained, so a repository can fall through BOTH (e.g. a
   // public WillBoosterLab repository, whose organization has no PUBLIC_FNOX_AGE_KEY secret).
   // Re-encrypting for a roster without a CI identity would leave CI unable to decrypt anything,
@@ -527,17 +521,6 @@ export function resolveFnoxCiAgeKeySecretName(
   return ciPrincipal?.ciAgeKeySecretName;
 }
 
-/** Whether the recipient set differs between the public and private reading of the repository. */
-export function doesFnoxRecipientSetDependOnVisibility(
-  rootConfig: Pick<PackageConfig, 'repoAuthor' | 'repoName'>
-): boolean {
-  const publicKeysFor = (isPublicRepo: boolean): string =>
-    getFnoxAgeRecipients({ ...rootConfig, isPublicRepo, isRepoVisibilityKnown: true })
-      .map(({ publicKey }) => publicKey)
-      .join('\n');
-  return publicKeysFor(true) !== publicKeysFor(false);
-}
-
 export function getFnoxAgeRecipients(rootConfig: FnoxRepositoryIdentity): FnoxAgeRecipient[] {
   return FNOX_AGE_PRINCIPALS.filter((principal) =>
     matchesFnoxRepositoryScope(principal.repositoryScope, rootConfig)
@@ -554,8 +537,8 @@ export function matchesFnoxRepositoryScope(scope: FnoxRepositoryScope, repositor
   const name = repository.repoName?.toLowerCase();
   if (!owner || !name) return false;
 
-  // An unknown visibility (failed GitHub lookup) matches no visibility-constrained scope: callers
-  // that would rewrite recipients fail instead of encrypting to the wrong CI identity.
+  // An unknown visibility (failed GitHub lookup) matches no visibility-constrained scope, so no recipient
+  // set is built from a guessed visibility; the CLI aborts before fnox generation in that state.
   if (
     scope.visibility &&
     (!repository.isRepoVisibilityKnown || (scope.visibility === 'public') !== repository.isPublicRepo)
