@@ -261,7 +261,7 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
 function warnIfGitHubTokenIsMissing(rootConfig: PackageConfig): void {
   if (!rootConfig.isWillBoosterRepo || !rootConfig.repoAuthor || hasGitHubToken(rootConfig.repoAuthor)) return;
   console.warn(
-    `No GitHub token for ${rootConfig.repoAuthor}, so repository settings, labels, and rulesets are skipped, and so are workflows that depend on a private repository's visibility. Set GH_TOKEN to a GitHub token with access to the repository and re-run.`
+    `No GitHub token for ${rootConfig.repoAuthor}, so repository settings, labels, and rulesets are skipped, and so are workflows that depend on a private repository's visibility. Set GH_TOKEN to a GitHub token with access to the repository and re-run with --force, since this run records its version as applied.`
   );
 }
 
