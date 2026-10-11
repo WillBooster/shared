@@ -29,7 +29,7 @@ export async function publish(_config, { nextRelease, logger }) {
   while (!(await isInstallable(url))) {
     if (Date.now() >= deadline) {
       throw new Error(
-        `${name}@${nextRelease.version} is not installable from ${publishConfig.registry} after ${scopedVersionTimeoutMs / 60_000} minutes; npm may be holding it for review. The unscoped wbfy is left unpublished.`
+        `${name}@${nextRelease.version} is not installable from ${publishConfig.registry} after ${scopedVersionTimeoutMs / 60_000} minutes; npm may be holding it for review. The unscoped wbfy skips this version, so wbfy@latest stays on the previous release.`
       );
     }
     logger.log(`Waiting for npm to make ${name}@${nextRelease.version} installable`);

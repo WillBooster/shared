@@ -16,7 +16,7 @@ This tool must keep idempotency, i.e., it always yields the same result when a u
 
 ## How to Use
 
-`bunx wbfy` and `bunx @willbooster/wbfy` run the same CLI. Both packages are published with the same version; `wbfy` depends on that exact version of `@willbooster/wbfy`.
+`bunx @willbooster/wbfy` is the canonical package; `bunx wbfy` runs the same CLI through a wrapper that depends on the exact same version of `@willbooster/wbfy`. The wrapper is published only after npm makes that version installable, so it skips a version npm holds for over an hour, and `wbfy@latest` then stays on the previous release.
 
 1. `bunx @willbooster/wbfy <project directory>`
 2. `bunx @willbooster/wbfy generate-user-agent-configs` to overwrite your user-level agent instruction files (`~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`) with the organization's fixed content and merge the organization's settings (disabling Claude Code's commit/PR attribution and both agents' auto memory) into `~/.claude/settings.json` and `~/.gemini/settings.json`
