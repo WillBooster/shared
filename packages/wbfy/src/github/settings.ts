@@ -1,3 +1,4 @@
+import type { Octokit } from '@octokit/core';
 import { withRetry } from '@willbooster/shared-lib/src';
 
 import { logger } from '../logger.js';
@@ -57,11 +58,7 @@ export async function setupGitHubSettings(config: PackageConfig): Promise<void> 
   });
 }
 
-async function disableDiscussions(
-  octokit: Awaited<ReturnType<typeof getOctokit>>,
-  owner: string,
-  repo: string
-): Promise<void> {
+async function disableDiscussions(octokit: Octokit, owner: string, repo: string): Promise<void> {
   const repositoryResponse = await octokit.graphql<{ repository?: { id?: string } }>(
     `query($owner: String!, $repo: String!) {
       repository(owner: $owner, name: $repo) { id }

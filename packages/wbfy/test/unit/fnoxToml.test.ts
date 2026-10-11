@@ -38,8 +38,8 @@ test('selects the CI identity by repository visibility', () => {
       ({ name }) => name
     )
   ).toEqual([...developerNames, 'remin']);
-  // An unknown visibility (failed GitHub lookup) grants NEITHER CI identity; generateFnoxToml
-  // fails instead of rewriting recipients in that state.
+  // An unknown visibility (failed GitHub lookup) grants NEITHER CI identity; wbfy aborts the run
+  // before generating anything in that state.
   expect(
     getFnoxAgeRecipients(
       createConfig({ repository: 'github:WillBooster/example', isPublicRepo: false, isRepoVisibilityKnown: false })
