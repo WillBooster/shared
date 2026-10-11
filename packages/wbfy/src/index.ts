@@ -147,9 +147,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
   // happens to be skipped would surface it only later.
   const bunVersion = Bun.version;
   if (Bun.semver.order(bunVersion, minimumBunVersion) < 0) {
-    console.error(
-      `wbfy requires Bun >= ${minimumBunVersion} (found ${bunVersion}). Upgrade Bun (e.g., set \`bun = "${minimumBunVersion}"\` in mise.toml and run \`mise install\`) and re-run.`
-    );
+    console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${bunVersion}). Upgrade Bun and re-run.`);
     return true;
   }
 
