@@ -116,7 +116,7 @@ async function pinLatestToolVersion(
  */
 async function liftOutdatedToolVersionWithinMajor(selector: string, version: unknown, cwd: string): Promise<unknown> {
   if (typeof version !== 'string' || !semver.valid(version)) return version;
-  const latestVersion = await spawnAndReturnStdout('mise', ['latest', selector], cwd);
+  const latestVersion = await spawnAndReturnStdout('mise', ['--no-config', 'latest', selector], cwd);
   return semver.valid(latestVersion) &&
     semver.major(latestVersion) === semver.major(version) &&
     semver.lt(version, latestVersion)
@@ -144,7 +144,7 @@ async function pinConcreteToolVersion(tool: string, version: unknown, cwd: strin
   // `lts/*` fallback) rather than the newest release.
   const defaultSelector = tool === 'node' ? 'node@lts' : tool;
   const selector = range && range !== 'latest' ? `${tool}@${range}` : defaultSelector;
-  const resolvedVersion = await spawnAndReturnStdout('mise', ['latest', selector], cwd);
+  const resolvedVersion = await spawnAndReturnStdout('mise', ['--no-config', 'latest', selector], cwd);
   return semver.valid(resolvedVersion) ? resolvedVersion : (version ?? 'latest');
 }
 

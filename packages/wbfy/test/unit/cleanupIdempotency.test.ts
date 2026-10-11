@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { expect, test } from 'bun:test';
+import { z } from 'zod';
 
 const packageDirPath = path.resolve(import.meta.dirname, '..', '..');
 const distIndexPath = path.join(packageDirPath, 'dist', 'index.js');
@@ -29,7 +30,13 @@ test.each(smallProjectFixtures)(
       writeSmallProjectFixture(tempDirPath, fixture);
 
       await runCommand('git', ['init'], tempDirPath);
+      await runCommand('mise', ['trust', path.join(tempDirPath, 'mise.toml')], tempDirPath);
       await runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
+      const runtime = await runCommand('mise', ['exec', '--', 'bun', '--version'], tempDirPath);
+      const tools = z
+        .object({ tools: z.object({ bun: z.string() }) })
+        .parse(Bun.TOML.parse(fs.readFileSync(path.join(tempDirPath, 'mise.toml'), 'utf8')));
+      expect(runtime.stdout.trim()).toBe(tools.tools.bun);
 
       await runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
       await runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
@@ -48,11 +55,68 @@ test.each(smallProjectFixtures)(
       expect(statusResult.status).toBe(0);
       expect(statusResult.stdout.trim()).toBe('');
     } finally {
-      fs.rmSync(tempDirPath, { force: true, recursive: true });
+      await removeFixture(tempDirPath, path.join(tempDirPath, 'mise.toml'));
     }
   },
   300 * 1000
 );
+
+test('rejects a linked mise configuration without modifying the repository or trusting the external file', async () => {
+  await ensureBuiltCli();
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-mise-link-'));
+  const repoDirPath = path.join(tempDirPath, 'repo');
+  const externalPath = path.join(tempDirPath, 'external.toml');
+  try {
+    fs.mkdirSync(repoDirPath);
+    writeSmallProjectFixture(repoDirPath, smallProjectFixtures[0]!);
+    fs.renameSync(path.join(repoDirPath, 'mise.toml'), externalPath);
+    fs.symlinkSync(externalPath, path.join(repoDirPath, 'mise.toml'));
+    await runCommand('git', ['init'], repoDirPath);
+    await runCommand('git', ['add', '-A'], repoDirPath);
+    await runCommand(
+      'git',
+      [
+        '-c',
+        'user.email=agent@willbooster.com',
+        '-c',
+        'user.name=WillBooster',
+        'commit',
+        '--no-verify',
+        '-m',
+        'test: baseline',
+      ],
+      repoDirPath
+    );
+
+    const result = await spawnAsync('bun', [distIndexPath, repoDirPath], {
+      cwd: packageDirPath,
+      env: { ...process.env, MISE_PARANOID: '1' },
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain('a managed config file is a symlink');
+    const after = await runCommand('git', ['status', '--short'], repoDirPath);
+    expect(after.stdout.trim()).toBe('');
+    expect(fs.readFileSync(externalPath, 'utf8')).toBe('[tools]\nbun = "0.1.0"\n');
+
+    const runtime = await spawnAsync('mise', ['exec', '--', 'bun', '--version'], {
+      cwd: repoDirPath,
+      env: { ...process.env, MISE_PARANOID: '1' },
+    });
+    expect(runtime.status).not.toBe(0);
+    expect(runtime.stderr).toContain('not trusted');
+  } finally {
+    await removeFixture(tempDirPath, externalPath);
+  }
+}, 300_000);
+
+async function removeFixture(dirPath: string, miseTomlPath: string): Promise<void> {
+  // Cleanup must preserve the test failure even if mise cannot launch.
+  await spawnAsync('mise', ['untrust', miseTomlPath], {
+    cwd: packageDirPath,
+    env: { ...process.env, MISE_PARANOID: '1' },
+  }).catch(() => {});
+  fs.rmSync(dirPath, { force: true, recursive: true });
+}
 
 async function ensureBuiltCli(): Promise<void> {
   if (isDistUpToDate()) return;
@@ -102,6 +166,7 @@ function writeSmallProjectFixture(dirPath: string, fixture: (typeof smallProject
     )}\n`
   );
   fs.writeFileSync(path.join(dirPath, 'README.md'), '# Small Project\n');
+  fs.writeFileSync(path.join(dirPath, 'mise.toml'), '[tools]\nbun = "0.1.0"\n');
   fs.writeFileSync(path.join(dirPath, 'src', fixture.sourceFileName), fixture.source);
 }
 
@@ -115,6 +180,7 @@ async function runCommand(
     cwd,
     env: {
       ...process.env,
+      MISE_PARANOID: '1',
       ...extraEnv,
     },
   });

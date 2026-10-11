@@ -224,6 +224,12 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   const useGlobalStore = resolveBunGlobalStore(allPackageConfigs, previousBunGlobalStore, skipDeps);
   await generateBunfigToml(rootConfig, useGlobalStore);
   await generateMiseToml(rootConfig);
+  // Mise shims reject untrusted configs; pin edits also invalidate trust in paranoid mode.
+  // Install lifecycle scripts, native build backends, and cleanup invoke those shims, so
+  // trust the generated config before any of them run.
+  if ((await spawnAndReturnStatus('mise', ['trust', path.join(rootDirPath, 'mise.toml')], rootDirPath)) !== 0) {
+    return false;
+  }
   await generateFnoxToml(rootConfig);
   // Run after generateFnoxToml so its transactional recipient sync cannot restore a snapshot
   // over definitions inserted here.
@@ -300,7 +306,7 @@ async function listSubPackageDirPaths(rootDirPath: string): Promise<string[]> {
 // it BEFORE any mutation when one of them is a symlink or resolves outside the repository.
 async function findUnwritableManagedFileError(rootDirPath: string, subDirPaths: string[]): Promise<string | undefined> {
   const managedFilePaths = [
-    ...['.gitattributes', 'bunfig.toml', 'lefthook.yml', 'package.json', 'tsconfig.json'].map((name) =>
+    ...['.gitattributes', 'bunfig.toml', 'lefthook.yml', 'mise.toml', 'package.json', 'tsconfig.json'].map((name) =>
       path.resolve(rootDirPath, name)
     ),
     ...subDirPaths.flatMap((subDirPath) =>
