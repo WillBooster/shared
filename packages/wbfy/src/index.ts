@@ -306,7 +306,7 @@ async function listSubPackageDirPaths(rootDirPath: string): Promise<string[]> {
 // it BEFORE any mutation when one of them is a symlink or resolves outside the repository.
 async function findUnwritableManagedFileError(rootDirPath: string, subDirPaths: string[]): Promise<string | undefined> {
   const managedFilePaths = [
-    ...['.gitattributes', 'bunfig.toml', 'lefthook.yml', 'package.json', 'tsconfig.json'].map((name) =>
+    ...['.gitattributes', 'bunfig.toml', 'lefthook.yml', 'mise.toml', 'package.json', 'tsconfig.json'].map((name) =>
       path.resolve(rootDirPath, name)
     ),
     ...subDirPaths.flatMap((subDirPath) =>

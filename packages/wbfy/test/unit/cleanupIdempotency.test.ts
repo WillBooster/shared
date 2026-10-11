@@ -62,6 +62,55 @@ test.each(smallProjectFixtures)(
   300 * 1000
 );
 
+test('rejects a linked mise configuration without modifying the repository or trusting the external file', async () => {
+  await ensureBuiltCli();
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-mise-link-'));
+  const repoDirPath = path.join(tempDirPath, 'repo');
+  const externalPath = path.join(tempDirPath, 'external.toml');
+  try {
+    fs.mkdirSync(repoDirPath);
+    writeSmallProjectFixture(repoDirPath, smallProjectFixtures[0]!);
+    fs.renameSync(path.join(repoDirPath, 'mise.toml'), externalPath);
+    fs.symlinkSync(externalPath, path.join(repoDirPath, 'mise.toml'));
+    await runCommand('git', ['init'], repoDirPath);
+    await runCommand('git', ['add', '-A'], repoDirPath);
+    await runCommand(
+      'git',
+      [
+        '-c',
+        'user.email=agent@willbooster.com',
+        '-c',
+        'user.name=WillBooster',
+        'commit',
+        '--no-verify',
+        '-m',
+        'test: baseline',
+      ],
+      repoDirPath
+    );
+
+    const result = await spawnAsync('bun', [distIndexPath, repoDirPath], {
+      cwd: packageDirPath,
+      env: { ...process.env, MISE_PARANOID: '1' },
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain('a managed config file is a symlink');
+    const after = await runCommand('git', ['status', '--short'], repoDirPath);
+    expect(after.stdout.trim()).toBe('');
+    expect(fs.readFileSync(externalPath, 'utf8')).toBe('[tools]\nbun = "0.1.0"\n');
+
+    const runtime = await spawnAsync('mise', ['exec', '--', 'bun', '--version'], {
+      cwd: repoDirPath,
+      env: { ...process.env, MISE_PARANOID: '1' },
+    });
+    expect(runtime.status).not.toBe(0);
+    expect(runtime.stderr).toContain('not trusted');
+  } finally {
+    await runCommand('mise', ['untrust', externalPath], repoDirPath);
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+}, 300_000);
+
 async function ensureBuiltCli(): Promise<void> {
   if (isDistUpToDate()) return;
 
