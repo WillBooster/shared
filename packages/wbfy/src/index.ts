@@ -269,7 +269,7 @@ function findUnknownVisibilityError(rootConfig: PackageConfig): string | undefin
 function warnIfGitHubTokenIsMissing(rootConfig: PackageConfig): void {
   if (!rootConfig.isWillBoosterRepo || !rootConfig.repoAuthor || hasGitHubToken(rootConfig.repoAuthor)) return;
   console.warn(
-    `No GitHub token for ${rootConfig.repoAuthor}, so repository settings, labels, and rulesets are skipped. Set GH_TOKEN to a GitHub token with administration permission on the repository and re-run with --force to apply them.`
+    `No GitHub token for ${rootConfig.repoAuthor}, so repository settings, labels, and (where wbfy manages them) rulesets are skipped. Set GH_TOKEN to a GitHub token with administration permission on the repository and re-run with --force to apply them.`
   );
 }
 
