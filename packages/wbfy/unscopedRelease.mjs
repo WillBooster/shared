@@ -18,7 +18,7 @@ export function prepare(_config, { cwd, nextRelease }) {
 // npm scans every new version before releasing it, usually within minutes, and may hold one for review or
 // block it while `npm publish` has already succeeded. Publishing the unscoped wrapper before its scoped
 // dependency is installable would leave `wbfy@latest` uninstallable, and a version that never appears must
-// fail the release instead of passing unnoticed. Keep this plugin between the two npm publishers.
+// fail the release instead of passing unnoticed. release.config.mjs runs it after the scoped package's npm and GitHub publishers.
 const scopedVersionTimeoutMs = 60 * 60 * 1000;
 const scopedVersionPollIntervalMs = 30 * 1000;
 

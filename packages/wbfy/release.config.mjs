@@ -7,13 +7,11 @@ const config = createBundledWorkspaceReleaseConfig(import.meta.url);
 
 export default {
   ...config,
-  plugins: config.plugins.flatMap((plugin) =>
-    plugin === '@semantic-release/npm'
-      ? [
-          plugin,
-          fileURLToPath(new URL('unscopedRelease.mjs', import.meta.url)),
-          ['@semantic-release/npm', { pkgRoot: unscopedPackageDir }],
-        ]
-      : [plugin]
-  ),
+  // The unscoped wrapper goes last: its wait for npm to release @willbooster/wbfy can fail the run, and a
+  // failed publish step skips every later one, including the canonical package's GitHub release.
+  plugins: [
+    ...config.plugins,
+    fileURLToPath(new URL('unscopedRelease.mjs', import.meta.url)),
+    ['@semantic-release/npm', { pkgRoot: unscopedPackageDir }],
+  ],
 };
