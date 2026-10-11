@@ -13,6 +13,10 @@ import { getPackageConfig } from '../../src/packageConfig.js';
 // the entry keeps its child classification, but repository visibility must still be fetched
 // because generators read isPublicRepo from this config as their rootConfig.
 test('fetches repository visibility when the CLI entry is a workspace child', async () => {
+  // wbfy reads its token only from the environment; an anonymous lookup shares a 60-requests-per-hour
+  // quota per IP, so authenticate like CI does with the developer's GitHub CLI session.
+  const { stdout: gitHubCliToken } = await spawnAsync('gh', ['auth', 'token']);
+  process.env.GH_TOKEN ||= gitHubCliToken.trim();
   const config = await getPackageConfig(path.resolve(import.meta.dirname, '..', '..', '..', 'shared-lib'));
   expect(config?.isRoot).toBe(false);
   expect(config?.isPublicRepo).toBe(true);
