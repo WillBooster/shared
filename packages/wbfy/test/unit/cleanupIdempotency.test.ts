@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { expect, test } from 'bun:test';
+import { z } from 'zod';
 
 const packageDirPath = path.resolve(import.meta.dirname, '..', '..');
 const distIndexPath = path.join(packageDirPath, 'dist', 'index.js');
@@ -29,7 +30,13 @@ test.each(smallProjectFixtures)(
       writeSmallProjectFixture(tempDirPath, fixture);
 
       await runCommand('git', ['init'], tempDirPath);
+      await runCommand('mise', ['trust', path.join(tempDirPath, 'mise.toml')], tempDirPath);
       await runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
+      const runtime = await runCommand('mise', ['exec', '--', 'bun', '--version'], tempDirPath);
+      const tools = z
+        .object({ tools: z.object({ bun: z.string() }) })
+        .parse(Bun.TOML.parse(fs.readFileSync(path.join(tempDirPath, 'mise.toml'), 'utf8')));
+      expect(runtime.stdout.trim()).toBe(tools.tools.bun);
 
       await runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
       await runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
@@ -48,6 +55,7 @@ test.each(smallProjectFixtures)(
       expect(statusResult.status).toBe(0);
       expect(statusResult.stdout.trim()).toBe('');
     } finally {
+      await runCommand('mise', ['untrust', path.join(tempDirPath, 'mise.toml')], tempDirPath);
       fs.rmSync(tempDirPath, { force: true, recursive: true });
     }
   },
@@ -102,6 +110,7 @@ function writeSmallProjectFixture(dirPath: string, fixture: (typeof smallProject
     )}\n`
   );
   fs.writeFileSync(path.join(dirPath, 'README.md'), '# Small Project\n');
+  fs.writeFileSync(path.join(dirPath, 'mise.toml'), '[tools]\nbun = "0.1.0"\n');
   fs.writeFileSync(path.join(dirPath, 'src', fixture.sourceFileName), fixture.source);
 }
 
