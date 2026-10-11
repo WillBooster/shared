@@ -51,6 +51,7 @@ import type { PackageConfig } from './packageConfig.js';
 import { getPackageConfig, getWorkerTypesScriptError } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
+import { hasGitHubToken } from './utils/githubUtil.js';
 import { doesContainJava, doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { spawnAndReturnStatus, spawnAndReturnStdout } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
@@ -205,6 +206,7 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
     console.error(configError);
     return false;
   }
+  warnIfGitHubTokenIsMissing(rootConfig);
   const fixTyposPromise = fixTypos(rootConfig);
 
   await generateRepositoryNpmrc(allPackageConfigs);
@@ -262,6 +264,13 @@ function findUnknownVisibilityError(rootConfig: PackageConfig): string | undefin
   // An unknown visibility would rewrite tracked files into their public variants (e.g. English agent
   // instructions and templates) and skip every workflow.
   return `wbfy could not read the visibility of ${rootConfig.repoAuthor}/${rootConfig.repoName}, which decides generated files and workflows. Set GH_TOKEN (or GH_BOT_PAT_FOR_<ORG>) to a GitHub token that can read the repository and re-run.`;
+}
+
+function warnIfGitHubTokenIsMissing(rootConfig: PackageConfig): void {
+  if (!rootConfig.isWillBoosterRepo || !rootConfig.repoAuthor || hasGitHubToken(rootConfig.repoAuthor)) return;
+  console.warn(
+    `No GitHub token for ${rootConfig.repoAuthor}, so repository settings, labels, and rulesets are skipped. Set GH_TOKEN to a GitHub token with access to the repository and re-run with --force to apply them.`
+  );
 }
 
 async function listSubPackageDirPaths(rootDirPath: string): Promise<string[]> {
