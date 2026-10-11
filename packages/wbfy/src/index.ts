@@ -263,7 +263,7 @@ function findUnknownVisibilityError(rootConfig: PackageConfig): string | undefin
   if (!rootConfig.isWillBoosterRepo || rootConfig.isRepoVisibilityKnown) return;
   // An unknown visibility would rewrite tracked files into their public variants (e.g. English agent
   // instructions and templates) and skip every workflow.
-  return `wbfy could not read the visibility of ${rootConfig.repoAuthor}/${rootConfig.repoName}, which decides generated files and workflows. Set GH_TOKEN (or GH_BOT_PAT_FOR_<ORG>) to a GitHub token that can read the repository and re-run.`;
+  return `wbfy could not read the visibility of ${rootConfig.repoAuthor}/${rootConfig.repoName}, which decides generated files and workflows. Check the network connection and GitHub's rate limit, and that GH_TOKEN (or GH_BOT_PAT_FOR_<ORG>) is set to a GitHub token that can read the repository, then re-run.`;
 }
 
 function warnIfGitHubTokenIsMissing(rootConfig: PackageConfig): void {
