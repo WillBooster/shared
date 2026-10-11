@@ -902,7 +902,7 @@ async function requestRepoInfo(urlOrFullName: string): Promise<Record<string, un
     // Metadata permission. The owner MUST be passed: getOctokit() without it prefers the
     // WillBooster PAT, which cannot read private WillBoosterLab repositories, collapsing their
     // visibility to unknown (and e.g. skipping the wbfy caller generation indefinitely).
-    const octokit = await getOctokit(org);
+    const octokit = getOctokit(org);
     const response = await octokit.request('GET /repos/{owner}/{repo}', {
       owner: org,
       repo: name,
@@ -917,7 +917,7 @@ async function requestRepoInfo(urlOrFullName: string): Promise<Record<string, un
       const [redirectedOrg, redirectedName] = redirectedFullName.split('/');
       if (redirectedOrg && redirectedName) {
         try {
-          const redirectedOctokit = await getOctokit(redirectedOrg);
+          const redirectedOctokit = getOctokit(redirectedOrg);
           const response = await redirectedOctokit.request('GET /repos/{owner}/{repo}', {
             owner: redirectedOrg,
             repo: redirectedName,

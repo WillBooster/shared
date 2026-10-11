@@ -9,9 +9,9 @@ export async function setupGitHubSettings(config: PackageConfig): Promise<void> 
     const { repoAuthor: owner, repoName: repo } = config;
     if (!owner || !repo) return;
     if (owner !== 'WillBooster' && owner !== 'WillBoosterLab') return;
-    if (!(await hasGitHubToken(owner))) return;
+    if (!hasGitHubToken(owner)) return;
 
-    const octokit = await getOctokit(owner);
+    const octokit = getOctokit(owner);
 
     try {
       // Repository settings need administration permission, unlike file generation.

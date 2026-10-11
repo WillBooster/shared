@@ -180,7 +180,7 @@ async function hasAnyWorkflowRun(
   const [owner, repo] = repository.split('/');
   if (!owner || !repo) return true;
   try {
-    const octokit = await getOctokit(owner);
+    const octokit = getOctokit(owner);
     const response = await octokit.request('GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs', {
       owner,
       repo,

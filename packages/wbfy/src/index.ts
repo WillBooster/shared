@@ -51,6 +51,7 @@ import type { PackageConfig } from './packageConfig.js';
 import { getPackageConfig, getWorkerTypesScriptError } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
+import { hasGitHubToken } from './utils/githubUtil.js';
 import { doesContainJava, doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { spawnAndReturnStatus, spawnAndReturnStdout } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
@@ -199,6 +200,7 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   const packageConfigs = await loadPackageConfigs(rootDirPath, subDirPaths);
   if (!packageConfigs) return false;
   const { rootConfig, allPackageConfigs } = packageConfigs;
+  warnIfGitHubTokenIsMissing(rootConfig);
   const cloudflareEnvError = await findTrackedCloudflareEnvError(rootConfig, allPackageConfigs);
   if (cloudflareEnvError) {
     console.error(cloudflareEnvError);
@@ -254,6 +256,13 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   const isBunLockUpToDate = await refreshAndNormalizeBunLock(rootDirPath);
   await spawnAndReturnStatus('bun', ['cleanup'], rootDirPath);
   return isBunLockUpToDate;
+}
+
+function warnIfGitHubTokenIsMissing(rootConfig: PackageConfig): void {
+  if (!rootConfig.isWillBoosterRepo || !rootConfig.repoAuthor || hasGitHubToken(rootConfig.repoAuthor)) return;
+  console.warn(
+    `No GitHub token for ${rootConfig.repoAuthor}, so repository settings, labels, and rulesets are skipped, and so are workflows that depend on a private repository's visibility. Set GH_TOKEN to a GitHub token with access to the repository and re-run.`
+  );
 }
 
 async function listSubPackageDirPaths(rootDirPath: string): Promise<string[]> {
