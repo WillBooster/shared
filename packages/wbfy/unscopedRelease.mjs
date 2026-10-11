@@ -15,6 +15,38 @@ export function prepare(_config, { cwd, nextRelease }) {
   writeUnscopedPackage(cwd, nextRelease.version);
 }
 
+// npm scans every new version before releasing it, usually within minutes, and may hold one for review or
+// block it while `npm publish` has already succeeded. Publishing the unscoped wrapper before its scoped
+// dependency is installable would leave `wbfy@latest` uninstallable, and a version that never appears must
+// fail the release instead of passing unnoticed. Keep this plugin between the two npm publishers.
+const scopedVersionTimeoutMs = 60 * 60 * 1000;
+const scopedVersionPollIntervalMs = 30 * 1000;
+
+export async function publish(_config, { nextRelease, logger }) {
+  const { name, publishConfig } = scopedPackage;
+  const url = new URL(`${name.replace('/', '%2f')}/${nextRelease.version}`, publishConfig.registry);
+  const deadline = Date.now() + scopedVersionTimeoutMs;
+  while (!(await isInstallable(url))) {
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `${name}@${nextRelease.version} is not installable from ${publishConfig.registry} after ${scopedVersionTimeoutMs / 60_000} minutes; npm may be holding it for review. The unscoped wbfy is left unpublished.`
+      );
+    }
+    logger.log(`Waiting for npm to make ${name}@${nextRelease.version} installable`);
+    await new Promise((resolve) => setTimeout(resolve, scopedVersionPollIntervalMs));
+  }
+}
+
+async function isInstallable(url) {
+  try {
+    const response = await fetch(url);
+    return response.ok;
+  } catch {
+    // A transient network failure is retried like a version npm has not released yet.
+    return false;
+  }
+}
+
 function writeUnscopedPackage(cwd, version) {
   const { name, description, repository, license, author, engines, publishConfig } = scopedPackage;
   const dirPath = path.join(cwd, unscopedPackageDir);
