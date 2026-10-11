@@ -51,7 +51,6 @@ import type { PackageConfig } from './packageConfig.js';
 import { getPackageConfig, getWorkerTypesScriptError } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
-import { hasGitHubToken } from './utils/githubUtil.js';
 import { doesContainJava, doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { spawnAndReturnStatus, spawnAndReturnStdout } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
@@ -201,7 +200,7 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   if (!packageConfigs) return false;
   const { rootConfig, allPackageConfigs } = packageConfigs;
   const configError =
-    findMissingGitHubTokenError(rootConfig) ?? (await findTrackedCloudflareEnvError(rootConfig, allPackageConfigs));
+    findUnknownVisibilityError(rootConfig) ?? (await findTrackedCloudflareEnvError(rootConfig, allPackageConfigs));
   if (configError) {
     console.error(configError);
     return false;
@@ -258,11 +257,11 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   return isBunLockUpToDate;
 }
 
-function findMissingGitHubTokenError(rootConfig: PackageConfig): string | undefined {
-  if (!rootConfig.isWillBoosterRepo || !rootConfig.repoAuthor || hasGitHubToken(rootConfig.repoAuthor)) return;
-  // Without a token a private repository's visibility is unknown, which would rewrite tracked files into
-  // their public variants (e.g. English agent instructions and templates) and skip every workflow.
-  return `No GitHub token for ${rootConfig.repoAuthor}. wbfy needs one to read the repository's visibility, which decides generated files and workflows, and to apply repository settings, labels, and rulesets. Set GH_TOKEN to a GitHub token that can read the repository and re-run.`;
+function findUnknownVisibilityError(rootConfig: PackageConfig): string | undefined {
+  if (!rootConfig.isWillBoosterRepo || rootConfig.isRepoVisibilityKnown) return;
+  // An unknown visibility would rewrite tracked files into their public variants (e.g. English agent
+  // instructions and templates) and skip every workflow.
+  return `wbfy could not read the visibility of ${rootConfig.repoAuthor}/${rootConfig.repoName}, which decides generated files and workflows. Set GH_TOKEN (or GH_BOT_PAT_FOR_<ORG>) to a GitHub token that can read the repository and re-run.`;
 }
 
 async function listSubPackageDirPaths(rootDirPath: string): Promise<string[]> {
