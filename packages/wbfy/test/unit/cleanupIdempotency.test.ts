@@ -55,8 +55,7 @@ test.each(smallProjectFixtures)(
       expect(statusResult.status).toBe(0);
       expect(statusResult.stdout.trim()).toBe('');
     } finally {
-      await runCommand('mise', ['untrust', path.join(tempDirPath, 'mise.toml')], tempDirPath);
-      fs.rmSync(tempDirPath, { force: true, recursive: true });
+      await removeFixture(tempDirPath, path.join(tempDirPath, 'mise.toml'));
     }
   },
   300 * 1000
@@ -106,10 +105,18 @@ test('rejects a linked mise configuration without modifying the repository or tr
     expect(runtime.status).not.toBe(0);
     expect(runtime.stderr).toContain('not trusted');
   } finally {
-    await runCommand('mise', ['untrust', externalPath], repoDirPath);
-    fs.rmSync(tempDirPath, { force: true, recursive: true });
+    await removeFixture(tempDirPath, externalPath);
   }
 }, 300_000);
+
+async function removeFixture(dirPath: string, miseTomlPath: string): Promise<void> {
+  // Cleanup must preserve the test failure even if mise cannot launch.
+  await spawnAsync('mise', ['untrust', miseTomlPath], {
+    cwd: packageDirPath,
+    env: { ...process.env, MISE_PARANOID: '1' },
+  }).catch(() => {});
+  fs.rmSync(dirPath, { force: true, recursive: true });
+}
 
 async function ensureBuiltCli(): Promise<void> {
   if (isDistUpToDate()) return;
