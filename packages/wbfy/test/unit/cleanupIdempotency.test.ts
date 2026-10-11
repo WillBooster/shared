@@ -124,6 +124,7 @@ async function runCommand(
     cwd,
     env: {
       ...process.env,
+      MISE_PARANOID: '1',
       ...extraEnv,
     },
   });
