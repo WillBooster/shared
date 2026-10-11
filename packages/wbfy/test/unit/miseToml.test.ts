@@ -5,7 +5,7 @@ import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { afterEach, expect, test } from 'bun:test';
 import semver from 'semver';
 
-import { generateMiseToml } from '../../src/generators/miseToml.js';
+import { generateMiseToml, minimumPinnedBunVersion } from '../../src/generators/miseToml.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -47,7 +47,7 @@ test('updates Bun and fnox without downgrading newer pins or rewriting the rest 
   // Require successful live lookups: accepting original pins would let a broken updater pass.
   const { stdout: latestBunOutput } = await spawnAsync('mise', ['--no-config', 'latest', 'bun']);
   const { stdout: latestFnoxOutput } = await spawnAsync('mise', ['--no-config', 'latest', 'fnox']);
-  const latestBun = latestBunOutput.trim();
+  const latestBun = semver.rsort([latestBunOutput.trim(), minimumPinnedBunVersion])[0] ?? '';
   const latestFnox = latestFnoxOutput.trim();
   const content = await generateFrom({ 'mise.toml': miseToml('0.1.0', ''), 'fnox.toml': '' });
 
