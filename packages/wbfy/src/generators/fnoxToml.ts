@@ -212,7 +212,7 @@ function findFnoxCiIdentityIssue(rootConfig: PackageConfig): string | undefined 
   // a public repository's world-readable ciphertexts to the org-internal CI identity (and vice
   // versa drop the public one). Fail instead of guessing whenever visibility changes the roster.
   if (!rootConfig.isRepoVisibilityKnown && doesFnoxRecipientSetDependOnVisibility(rootConfig)) {
-    return `the visibility of ${rootConfig.repoAuthor}/${rootConfig.repoName} could not be determined (GitHub lookup failed) and the CI recipient depends on it. Check network and gh authentication, then rerun wbfy.`;
+    return `the visibility of ${rootConfig.repoAuthor}/${rootConfig.repoName} could not be determined (GitHub lookup failed) and the CI recipient depends on it. Check network and that GH_TOKEN (or the organization's PAT) can read the repository, then rerun wbfy.`;
   }
   // Both CI identities are visibility-constrained, so a repository can fall through BOTH (e.g. a
   // public WillBoosterLab repository, whose organization has no PUBLIC_FNOX_AGE_KEY secret).
