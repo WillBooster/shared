@@ -537,8 +537,8 @@ export function matchesFnoxRepositoryScope(scope: FnoxRepositoryScope, repositor
   const name = repository.repoName?.toLowerCase();
   if (!owner || !name) return false;
 
-  // An unknown visibility (failed GitHub lookup) matches no visibility-constrained scope: callers
-  // that would rewrite recipients fail instead of encrypting to the wrong CI identity.
+  // An unknown visibility (failed GitHub lookup) matches no visibility-constrained scope, so no recipient
+  // set is built from a guessed visibility; the CLI aborts before fnox generation in that state.
   if (
     scope.visibility &&
     (!repository.isRepoVisibilityKnown || (scope.visibility === 'public') !== repository.isPublicRepo)

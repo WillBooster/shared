@@ -191,6 +191,7 @@ const workflows = {
 type KnownKind = keyof typeof workflows | 'deploy';
 
 export async function generateWorkflows(rootConfig: PackageConfig): Promise<void> {
+  // The CLI aborts earlier for such a repository; this guard keeps direct callers from guessing.
   if (!rootConfig.isRepoVisibilityKnown) {
     console.warn('Skipped workflow generation because repository visibility is unknown.');
     return;
