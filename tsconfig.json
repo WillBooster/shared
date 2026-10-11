@@ -26,6 +26,7 @@
   "exclude": ["packages/*/test/fixtures", "test/fixtures", "packages/*/test/fixtures/**/*", "test/fixtures/**/*"],
   "extends": ["@tsconfig/bun/tsconfig.json", "@tsconfig/node-lts/tsconfig.json", "@tsconfig/node-ts/tsconfig.json"],
   "include": [
+    "*.config.mts",
     "*.config.ts",
     "packages/*/*.config.ts",
     "packages/*/scripts/**/*",
