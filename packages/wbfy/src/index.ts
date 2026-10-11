@@ -224,9 +224,9 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   const useGlobalStore = resolveBunGlobalStore(allPackageConfigs, previousBunGlobalStore, skipDeps);
   await generateBunfigToml(rootConfig, useGlobalStore);
   await generateMiseToml(rootConfig);
-  // Editing tool pins invalidates mise's content-based trust. The install lifecycle scripts,
-  // native build backends, and cleanup all invoke mise shims, so trust the generated config
-  // before any of them run rather than leaving a partially configured repository.
+  // Mise shims reject untrusted configs; pin edits also invalidate trust in paranoid mode.
+  // Install lifecycle scripts, native build backends, and cleanup invoke those shims, so
+  // trust the generated config before any of them run.
   if ((await spawnAndReturnStatus('mise', ['trust', path.join(rootDirPath, 'mise.toml')], rootDirPath)) !== 0) {
     return false;
   }
