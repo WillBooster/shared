@@ -1,4 +1,3 @@
-import { Octokit } from '@octokit/core';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -9,7 +8,13 @@ import fg from 'fast-glob';
 import type { PackageJson } from 'type-fest';
 import { z } from 'zod';
 
-import { getOctokit, gitHubUtil, hasGitHubToken, isGitHubPermissionOrVisibilityError } from './utils/githubUtil.js';
+import {
+  getAnonymousOctokit,
+  getOctokit,
+  gitHubUtil,
+  hasGitHubToken,
+  isGitHubPermissionOrVisibilityError,
+} from './utils/githubUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
 import { classifyScriptSegment, splitScriptSegments } from './utils/managedScriptSegment.js';
 import { spawnAndReturnStdout } from './utils/spawnUtil.js';
@@ -931,7 +936,7 @@ async function requestRepo(owner: string, repo: string): Promise<Record<string, 
   } catch (error) {
     // A stale or under-scoped token is refused even for a public repository, which anyone can read.
     if (!hasGitHubToken(owner) || !isGitHubPermissionOrVisibilityError(error)) throw error;
-    const response = await new Octokit().request('GET /repos/{owner}/{repo}', { owner, repo });
+    const response = await getAnonymousOctokit().request('GET /repos/{owner}/{repo}', { owner, repo });
     return response.data;
   }
 }

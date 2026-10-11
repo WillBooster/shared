@@ -34,6 +34,14 @@ export function getOctokit(owner?: string): Octokit {
   return octokit;
 }
 
+let anonymousOctokit: Octokit | undefined;
+
+/** A client that sends no credential, for reading what GitHub shows to anyone (e.g. a public repository). */
+export function getAnonymousOctokit(): Octokit {
+  anonymousOctokit ??= new Octokit();
+  return anonymousOctokit;
+}
+
 export function hasGitHubToken(owner: string): boolean {
   return !!getGitHubToken(owner);
 }
