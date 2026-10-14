@@ -34,7 +34,12 @@ export async function fixJapaneseSpacing(
   const filePaths = filterTargetPaths(await listMarkdownFiles(rootDirPath), targetPaths);
   const kernel = new TextlintKernel();
   for (const filePath of filePaths) {
-    const text = await fs.readFile(filePath, 'utf8');
+    // `git ls-files --cached` still lists a tracked file deleted from the working tree.
+    const text = await fs.readFile(filePath, 'utf8').catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    });
+    if (text === undefined) continue;
     const { output } = await kernel.fixText(text, {
       filePath,
       ext: '.md',

@@ -36,7 +36,9 @@ describe('fixJapaneseSpacing', () => {
       }
       await fs.writeFile(path.join(dirPath, '.gitignore'), 'ignored.md\n');
       await fs.writeFile(path.join(dirPath, '.textlintignore'), 'raw/\n');
-      await spawnAsync('git', ['add', 'docs', 'raw', 'test'], { cwd: dirPath });
+      await fs.writeFile(path.join(dirPath, 'deleted.md'), original);
+      await spawnAsync('git', ['add', 'docs', 'raw', 'test', 'deleted.md'], { cwd: dirPath });
+      await fs.rm(path.join(dirPath, 'deleted.md'));
 
       await fixJapaneseSpacing(dirPath, undefined, false);
 
