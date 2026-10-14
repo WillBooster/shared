@@ -7,7 +7,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { fixJapaneseSpacing } from '../../src/utils/japaneseSpacing.js';
 
-const original = `この 2 つの LLM
+const original = `この 2 つの LLM と 𠮷 A
 
 > 引用の Gmail の添付
 
@@ -15,7 +15,7 @@ const original = `この 2 つの LLM
 echo "この 2 つ"
 \`\`\`
 `;
-const fixed = `この2つのLLM
+const fixed = `この2つのLLMと 𠮷A
 
 > 引用の Gmail の添付
 

@@ -40,13 +40,7 @@ export async function fixJapaneseSpacing(
       throw error;
     });
     if (text === undefined) continue;
-    const { output } = await kernel.fixText(text, {
-      filePath,
-      ext: '.md',
-      plugins: [{ pluginId: 'markdown', plugin: { Processor: MarkdownProcessor } }],
-      rules,
-      filterRules,
-    });
+    const output = await fixText(kernel, text, filePath);
     if (output === text) continue;
     if (dryRun) {
       console.info(`Would fix Japanese spacing: ${filePath}`);
@@ -54,6 +48,27 @@ export async function fixJapaneseSpacing(
       await fs.writeFile(filePath, output);
     }
   }
+}
+
+// The rule computes each removed space's offset as if every Japanese character were one UTF-16 code
+// unit, so after a supplementary CJK character (e.g. 𠮷) it would delete the low surrogate instead.
+// Such characters are therefore fixed as a one-unit CJK stand-in absent from the text, which the rule
+// treats alike; as it only removes spaces, the stand-ins keep their order and are restored in turn.
+const supplementaryCjkPattern = /[\uD840-\uD87F][\uDC00-\uDFFF]/g;
+
+async function fixText(kernel: TextlintKernel, text: string, filePath: string): Promise<string> {
+  const supplementaryCjks = text.match(supplementaryCjkPattern) ?? [];
+  let standIn = 0x34_00;
+  while (text.includes(String.fromCodePoint(standIn))) standIn++;
+  const { output } = await kernel.fixText(text.replaceAll(supplementaryCjkPattern, String.fromCodePoint(standIn)), {
+    filePath,
+    ext: '.md',
+    plugins: [{ pluginId: 'markdown', plugin: { Processor: MarkdownProcessor } }],
+    rules,
+    filterRules,
+  });
+  let index = 0;
+  return output.replaceAll(String.fromCodePoint(standIn), () => supplementaryCjks[index++] ?? '');
 }
 
 async function listMarkdownFiles(rootDirPath: string): Promise<string[]> {
