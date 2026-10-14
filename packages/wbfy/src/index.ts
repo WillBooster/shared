@@ -142,10 +142,11 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
   await ensureGlobalReleaseAgeGates();
 
   // wbfy manages repositories through Bun + mise and uses Bun 1.4 runtime APIs. The version floor
-  // also ensures the generated bunfig.toml options produce the install layout wbfy validates. It
-  // stays unconditional even though the already-applied check below can make a run a no-op: an
-  // outdated Bun is a broken environment wbfy must report, and hiding it whenever every path
-  // happens to be skipped would surface it only later.
+  // also ensures the generated bunfig.toml options produce the install layout wbfy validates, and
+  // excludes Bun 1.4.2, whose synchronous spawns can hang under `bun test --parallel`
+  // (oven-sh/bun#34069). It stays unconditional even though the already-applied check below can
+  // make a run a no-op: an outdated Bun is a broken environment wbfy must report, and hiding it
+  // whenever every path happens to be skipped would surface it only later.
   const bunVersion = Bun.version;
   if (Bun.semver.order(bunVersion, minimumBunVersion) < 0) {
     console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${bunVersion}). Upgrade Bun and re-run.`);
@@ -224,6 +225,12 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   const useGlobalStore = resolveBunGlobalStore(allPackageConfigs, previousBunGlobalStore, skipDeps);
   await generateBunfigToml(rootConfig, useGlobalStore);
   await generateMiseToml(rootConfig);
+  // Mise shims reject untrusted configs; pin edits also invalidate trust in paranoid mode.
+  // Install lifecycle scripts, native build backends, and cleanup invoke those shims, so
+  // trust the generated config before any of them run.
+  if ((await spawnAndReturnStatus('mise', ['trust', path.join(rootDirPath, 'mise.toml')], rootDirPath)) !== 0) {
+    return false;
+  }
   await generateFnoxToml(rootConfig);
   // Run after generateFnoxToml so its transactional recipient sync cannot restore a snapshot
   // over definitions inserted here.
@@ -300,7 +307,7 @@ async function listSubPackageDirPaths(rootDirPath: string): Promise<string[]> {
 // it BEFORE any mutation when one of them is a symlink or resolves outside the repository.
 async function findUnwritableManagedFileError(rootDirPath: string, subDirPaths: string[]): Promise<string | undefined> {
   const managedFilePaths = [
-    ...['.gitattributes', 'bunfig.toml', 'lefthook.yml', 'package.json', 'tsconfig.json'].map((name) =>
+    ...['.gitattributes', 'bunfig.toml', 'lefthook.yml', 'mise.toml', 'package.json', 'tsconfig.json'].map((name) =>
       path.resolve(rootDirPath, name)
     ),
     ...subDirPaths.flatMap((subDirPath) =>
