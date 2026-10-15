@@ -27,6 +27,10 @@ const filterRules: TextlintKernelFilterRule[] = [
   },
 ];
 
+// A superset of the rule's matches (it requires a CJK character, which is non-ASCII, on one side),
+// so files that cannot change skip the costly Markdown parse.
+const spaceCandidatePattern = /[\dA-Za-z][ \u3000][^\u0000-\u007F]|[^\u0000-\u007F][ \u3000][\dA-Za-z]/;
+
 /**
  * Removes spaces between Japanese and half-width characters in the Markdown files under `rootDirPath`
  * that Git does not ignore and `.textlintignore` does not list, restricted to `targetPaths` (files or
@@ -45,7 +49,7 @@ export async function fixJapaneseSpacing(
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
       throw error;
     });
-    if (text === undefined) continue;
+    if (text === undefined || !spaceCandidatePattern.test(text)) continue;
     const output = await fixText(kernel, text, filePath);
     if (output === text) continue;
     if (dryRun) {

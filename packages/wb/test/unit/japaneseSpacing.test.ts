@@ -27,6 +27,10 @@ echo "この 2 つ"
 describe('fixJapaneseSpacing', () => {
   it('fixes only the Markdown files that Git and .textlintignore do not exclude', async () => {
     const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-japanese-spacing-'));
+    // A global ignore file would hide `untracked.md` from the `git ls-files` that the fix spawns too.
+    const isolatedGitEnv = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+    const originalGitEnv = Object.fromEntries(Object.keys(isolatedGitEnv).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, isolatedGitEnv);
     try {
       await spawnAsync('git', ['init', '-q'], { cwd: dirPath });
       const files = ['docs/a.md', 'raw/b.md', 'test/fixtures/c.md', 'untracked.md', 'ignored.md'];
@@ -53,6 +57,10 @@ describe('fixJapaneseSpacing', () => {
         'ignored.md': original,
       });
     } finally {
+      for (const [key, value] of Object.entries(originalGitEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
       await fs.rm(dirPath, { recursive: true, force: true });
     }
   });
