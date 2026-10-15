@@ -220,6 +220,20 @@ fails verification.
 wb uses its own `code-gauge` and code-gauge's default thresholds; a `code-gauge.config.json` in the
 repository overrides them.
 
+## Japanese spacing in Markdown
+
+`wb lint --format` (and so the pre-commit hook and `wb verify`) removes the spaces between Japanese
+and half-width alphanumeric characters in the plain text of Markdown paragraphs, lists, tables, and
+inline links, e.g. `この 2 つの LLM` becomes `この2つのLLM`, before oxfmt formats them. Everything
+else keeps its spacing: code, blockquotes (which often cite external text verbatim), headings (whose
+anchors links must keep matching), reference links (whose text must keep matching their
+definitions), image alt text, HTML tags and their attributes, HTML blocks without blank lines, and
+link titles, as well as the spaces next to inline code, outside bold or italic spans, and around
+half-width parentheses. Text between HTML tags that a blank line separates from them (e.g. inside
+`<details>`) is a paragraph and gets fixed. It covers the `*.md` files that Git tracks or does not
+ignore, except test fixtures and the paths matched by a `.textlintignore` in any directory, with
+gitignore syntax relative to that directory. It fixes text only and never fails `wb lint`.
+
 ## Slidev checks
 
 `wb slidev-check` checks slide text with textlint, then checks rendered Slidev decks.

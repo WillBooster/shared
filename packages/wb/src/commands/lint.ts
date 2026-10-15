@@ -10,6 +10,7 @@ import type { BufferedRunResult } from '../scripts/run.js';
 import { normalizeScript, runWithSpawnInParallel, runWithSpawnInParallelBuffered } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { printBufferedOutput, shouldPrintBufferedOutput } from '../utils/output.js';
+import { fixJapaneseSpacing, isInTestFixtures } from '../utils/japaneseSpacing.js';
 import { buildShellCommand } from '../utils/shell.js';
 import { reportTestStructureViolations } from '../utils/testStructure.js';
 import { isCapturingVerificationOutput } from '../utils/verificationOutput.js';
@@ -141,7 +142,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
     shouldRunLinters(argv) && !argv.dryRun && files.length === 0 && reportTestStructureViolations(projects.descendants);
   const plan =
     files.length > 0 ? await planExplicitLintRun(argv, projects.descendants, files) : planWholeLintRun(argv, projects);
-  const succeeded = await runLintPlan(plan, argv, projects.self);
+  const succeeded = await runLintPlan(plan, argv, projects, files.length > 0 ? files : undefined);
   return succeeded && !violatesTestStructure ? 0 : 1;
 }
 
@@ -262,15 +263,6 @@ async function planExplicitLintRun(argv: LintCommandArgv, projects: Project[], f
   };
 }
 
-function isInTestFixtures(filePath: string): boolean {
-  return (
-    filePath.endsWith('/test/fixtures') ||
-    filePath.includes('/test/fixtures/') ||
-    filePath.endsWith('/test-fixtures') ||
-    filePath.includes('/test-fixtures/')
-  );
-}
-
 function classifyExplicitLintTarget(
   targets: ExplicitLintTargets,
   argv: LintCommandArgv,
@@ -371,10 +363,19 @@ function buildExplicitLintCommands(
 }
 
 /** Resolves to whether every command succeeded. */
-async function runLintPlan(plan: LintPlan, argv: LintCommandArgv, selfProject: Project): Promise<boolean> {
+async function runLintPlan(
+  plan: LintPlan,
+  argv: LintCommandArgv,
+  projects: FoundProjects,
+  files: string[] | undefined
+): Promise<boolean> {
+  // Runs before oxfmt, which then realigns the Markdown tables whose cells got shorter.
+  if (shouldRunFormatters(argv)) {
+    await fixJapaneseSpacing(projects.root.dirPath, files ?? [projects.self.dirPath], argv.dryRun);
+  }
   if (shouldRunFormatters(argv) && !(await runAndReportLintCommands(plan.formatterCommands, argv))) return false;
   if (plan.missingLintTool) return false;
-  if (shouldRunFormatters(argv) && !(await runRootFormatters(plan, argv, selfProject))) return false;
+  if (shouldRunFormatters(argv) && !(await runRootFormatters(plan, argv, projects.self))) return false;
   return !shouldRunLinters(argv) || (await runAndReportLintCommands(plan.linterCommands, argv));
 }
 

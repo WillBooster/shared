@@ -1,0 +1,67 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
+import { describe, expect, it } from 'bun:test';
+
+import { fixJapaneseSpacing } from '../../src/utils/japaneseSpacing.js';
+
+const original = `この 2 つの LLM と 𠮷 A
+
+> 引用の Gmail の添付
+
+\`\`\`sh
+echo "この 2 つ"
+\`\`\`
+`;
+const fixed = `この2つのLLMと 𠮷A
+
+> 引用の Gmail の添付
+
+\`\`\`sh
+echo "この 2 つ"
+\`\`\`
+`;
+
+describe('fixJapaneseSpacing', () => {
+  it('fixes only the Markdown files that Git and .textlintignore do not exclude', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-japanese-spacing-'));
+    // A global ignore file would hide `untracked.md` from the `git ls-files` that the fix spawns too.
+    const isolatedGitEnv = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+    const originalGitEnv = Object.fromEntries(Object.keys(isolatedGitEnv).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, isolatedGitEnv);
+    try {
+      await spawnAsync('git', ['init', '-q'], { cwd: dirPath });
+      const files = ['docs/a.md', 'raw/b.md', 'test/fixtures/c.md', 'untracked.md', 'ignored.md'];
+      for (const file of files) {
+        await fs.mkdir(path.dirname(path.join(dirPath, file)), { recursive: true });
+        await fs.writeFile(path.join(dirPath, file), original);
+      }
+      await fs.writeFile(path.join(dirPath, '.gitignore'), 'ignored.md\n');
+      await fs.writeFile(path.join(dirPath, '.textlintignore'), 'raw/\n');
+      await fs.writeFile(path.join(dirPath, 'deleted.md'), original);
+      await spawnAsync('git', ['add', 'docs', 'raw', 'test', 'deleted.md'], { cwd: dirPath });
+      await fs.rm(path.join(dirPath, 'deleted.md'));
+
+      await fixJapaneseSpacing(dirPath, undefined, false);
+
+      const contents = Object.fromEntries(
+        await Promise.all(files.map(async (file) => [file, await fs.readFile(path.join(dirPath, file), 'utf8')]))
+      );
+      expect(contents).toEqual({
+        'docs/a.md': fixed,
+        'raw/b.md': original,
+        'test/fixtures/c.md': original,
+        'untracked.md': fixed,
+        'ignored.md': original,
+      });
+    } finally {
+      for (const [key, value] of Object.entries(originalGitEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      await fs.rm(dirPath, { recursive: true, force: true });
+    }
+  });
+});
