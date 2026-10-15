@@ -27,9 +27,11 @@ const filterRules: TextlintKernelFilterRule[] = [
   },
 ];
 
-// A superset of the rule's matches (it requires a CJK character, which is non-ASCII, on one side),
-// so files that cannot change skip the costly Markdown parse.
-const spaceCandidatePattern = /[\dA-Za-z][ \u3000][^\u0000-\u007F]|[^\u0000-\u007F][ \u3000][\dA-Za-z]/;
+// The rule's own patterns, copied from its private `ZenRegExpStr` (v3.0.3), so that files the rule
+// cannot change skip the costly Markdown parse. It must stay a superset of the rule's class, or fixes
+// are missed.
+const zenPattern = String.raw`[、。]|[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]|[\uD840-\uD87F][\uDC00-\uDFFF]|[ぁ-んァ-ヶ]`;
+const spaceCandidatePattern = new RegExp(`[A-Za-z0-9][ \u3000](?:${zenPattern})|(?:${zenPattern})[ \u3000][A-Za-z0-9]`);
 
 /**
  * Removes spaces between Japanese and half-width characters in the Markdown files under `rootDirPath`
