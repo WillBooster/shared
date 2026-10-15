@@ -62,7 +62,10 @@ export async function fixJapaneseSpacing(
 // treats alike; as it only removes spaces, the stand-ins keep their order and are restored in turn.
 const supplementaryCjkPattern = /[\uD840-\uD87F][\uDC00-\uDFFF]/g;
 
-async function fixText(kernel: TextlintKernel, text: string, filePath: string): Promise<string> {
+async function fixText(kernel: TextlintKernel, textWithBom: string, filePath: string): Promise<string> {
+  // The Markdown processor drops a leading BOM, which would otherwise make every such file look fixed.
+  const bom = textWithBom.startsWith('\uFEFF') ? '\uFEFF' : '';
+  const text = textWithBom.slice(bom.length);
   const supplementaryCjks = text.match(supplementaryCjkPattern) ?? [];
   let standIn = 0x34_00;
   while (text.includes(String.fromCodePoint(standIn))) standIn++;
@@ -74,7 +77,7 @@ async function fixText(kernel: TextlintKernel, text: string, filePath: string): 
     filterRules,
   });
   let index = 0;
-  return output.replaceAll(String.fromCodePoint(standIn), () => supplementaryCjks[index++] ?? '');
+  return bom + output.replaceAll(String.fromCodePoint(standIn), () => supplementaryCjks[index++] ?? '');
 }
 
 async function listMarkdownFiles(rootDirPath: string): Promise<string[]> {
