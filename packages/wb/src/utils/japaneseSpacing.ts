@@ -16,9 +16,14 @@ const rules: TextlintKernelRule[] = [
     options: { space: 'never', lintStyledNode: true },
   },
 ];
-// Blockquotes often cite external text verbatim, which must keep its original spacing.
+// Blockquotes often cite external text verbatim, which must keep its original spacing. The text of a
+// shortcut or collapsed reference link is also its label, which must keep matching its definition.
 const filterRules: TextlintKernelFilterRule[] = [
-  { ruleId: 'node-types', rule: moduleInterop(nodeTypesFilter), options: { nodeTypes: ['BlockQuote'] } },
+  {
+    ruleId: 'node-types',
+    rule: moduleInterop(nodeTypesFilter),
+    options: { nodeTypes: ['BlockQuote', 'LinkReference'] },
+  },
 ];
 
 /**
@@ -73,11 +78,9 @@ async function fixText(kernel: TextlintKernel, text: string, filePath: string): 
 
 async function listMarkdownFiles(rootDirPath: string): Promise<string[]> {
   const listed = await gitLsMarkdownFiles(rootDirPath, ['--exclude-standard']);
-  const ignoreFilePath = path.join(rootDirPath, '.textlintignore');
+  // Unlike `--exclude-from`, this resolves anchored patterns against the ignore file's own directory.
   const ignored = new Set(
-    (await fs.stat(ignoreFilePath).catch(() => {}))
-      ? await gitLsMarkdownFiles(rootDirPath, ['--ignored', `--exclude-from=${ignoreFilePath}`])
-      : []
+    await gitLsMarkdownFiles(rootDirPath, ['--ignored', '--exclude-per-directory=.textlintignore'])
   );
   return listed
     .filter((filePath) => !ignored.has(filePath))
