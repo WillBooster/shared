@@ -17,12 +17,13 @@ const rules: TextlintKernelRule[] = [
   },
 ];
 // Blockquotes often cite external text verbatim, which must keep its original spacing. The text of a
-// shortcut or collapsed reference link is also its label, which must keep matching its definition.
+// shortcut or collapsed reference link is also its label, which must keep matching its definition,
+// and a heading's text determines its anchor, which links in this or other files must keep matching.
 const filterRules: TextlintKernelFilterRule[] = [
   {
     ruleId: 'node-types',
     rule: moduleInterop(nodeTypesFilter),
-    options: { nodeTypes: ['BlockQuote', 'LinkReference'] },
+    options: { nodeTypes: ['BlockQuote', 'Header', 'LinkReference'] },
   },
 ];
 

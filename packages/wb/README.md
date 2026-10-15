@@ -225,8 +225,8 @@ repository overrides them.
 `wb lint --format` (and so the pre-commit hook and `wb verify`) removes the spaces between Japanese
 and half-width alphanumeric characters in Markdown files, e.g. `この 2 つの LLM` becomes
 `この2つのLLM`, before oxfmt formats them. Code, inline code, blockquotes, which often cite
-external text verbatim, and reference links, whose text must keep matching their definitions, are
-left unchanged, as are the spaces next to inline code, outside bold or italic spans, and around
+external text verbatim, headings, whose anchors links must keep matching, and reference links, whose
+text must keep matching their definitions, are left unchanged, as are the spaces next to inline code, outside bold or italic spans, and around
 half-width parentheses. It covers the `*.md` files that Git tracks or
 does not ignore, except test fixtures and the paths listed in a `.textlintignore` at the project
 root (gitignore syntax). It fixes text only and never fails `wb lint`.
