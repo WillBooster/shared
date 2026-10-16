@@ -14,12 +14,16 @@ test('uses the repository directory name before the first package.json is genera
 
   try {
     fsUtil.setRootDirPath(dirPath);
+    await fs.promises.writeFile(path.join(dirPath, 'CLAUDE.md'), 'old');
+    await fs.promises.writeFile(path.join(dirPath, 'GEMINI.md'), 'old');
     const config = createConfig({ dirPath, isRoot: true, doesContainPackageJson: false, packageJson: {} });
     await generateAgentInstructions(config, [config]);
 
     const content = await fs.promises.readFile(path.join(dirPath, 'AGENTS.md'), 'utf8');
     expect(content).toContain(`- Name: \`${path.basename(dirPath)}\``);
     expect(content).not.toContain('- Name: `unknown`');
+    expect(fs.existsSync(path.join(dirPath, 'CLAUDE.md'))).toBe(false);
+    expect(fs.existsSync(path.join(dirPath, 'GEMINI.md'))).toBe(false);
   } finally {
     fsUtil.setRootDirPath(undefined);
     await fs.promises.rm(dirPath, { force: true, recursive: true });

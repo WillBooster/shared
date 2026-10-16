@@ -38,9 +38,10 @@ async function generateUserAgentConfigs(files: Record<string, string>): Promise<
   }
 }
 
-test("turns off memory and attribution while keeping the developer's own Claude settings", async () => {
+test("turns off memory, attribution, and telemetry while keeping the developer's own Claude and Antigravity CLI settings", async () => {
   const { exitCode, files } = await generateUserAgentConfigs({
     '.claude/settings.json': '{\n  "effortLevel": "medium",\n  "attribution": { "commit": "keep me" }\n}\n',
+    '.gemini/antigravity-cli/settings.json': '{\n  "trustedWorkspaces": ["/repo"],\n  "enableTelemetry": true\n}\n',
   });
 
   expect(exitCode).toBe(0);
@@ -48,6 +49,10 @@ test("turns off memory and attribution while keeping the developer's own Claude 
     attribution: { commit: '', pr: '', sessionUrl: false },
     autoMemoryEnabled: false,
     effortLevel: 'medium',
+  });
+  expect(JSON.parse(files['.gemini/antigravity-cli/settings.json'] ?? '')).toEqual({
+    enableTelemetry: false,
+    trustedWorkspaces: ['/repo'],
   });
 });
 
