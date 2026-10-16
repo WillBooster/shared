@@ -52,8 +52,8 @@
     "@willbooster/wb": "workspace:*",
     "blitz": "3.0.2",
     "build-ts": "21.0.25",
-    "oxfmt": "0.71.0",
-    "oxlint": "1.86.0",
+    "oxfmt": "0.72.0",
+    "oxlint": "1.87.0",
     "oxlint-tsgolint": "7.0.2003",
     "sort-package-json": "4.0.0"
   },
