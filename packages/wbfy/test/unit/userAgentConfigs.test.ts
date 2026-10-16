@@ -100,13 +100,20 @@ test('renders the Claude Code and Antigravity CLI status lines in the same forma
         context_window: { used_percentage: 0 },
         quota: {
           '3p-5h': { remaining_fraction: 1, reset_in_seconds: 4 * 3600 + 59 * 60 + 30 },
+          '3p-weekly': { remaining_fraction: 1, reset_in_seconds: 6 * 86_400 + 23 * 3600 + 30 },
           'gemini-5h': { remaining_fraction: 0.8453743, reset_in_seconds: 2 * 3600 + 54 * 60 + 30 },
           'gemini-weekly': { remaining_fraction: 0.88562787, reset_in_seconds: 5 * 86_400 + 3600 + 30 },
         },
       })
     ).toBe(
-      `${homePath}-sibling [Gemini 4 Argon (medium)] [ctx: 100%] [Gemini: 85% (2h54m) / 89% (5d1h)] [Other: 100% (4h59m) / -]`
+      `${homePath}-sibling [Gemini 4 Argon (medium)] [ctx: 100%] [Gemini: 85% (2h54m) / 89% (5d1h)] [Other: 100% (4h59m) / 100% (6d23h)]`
     );
+    expect(
+      await render({
+        cwd: repoPath,
+        rate_limits: { five_hour: { used_percentage: 2, resets_at: nowInSeconds + 2 * 3600 + 30 * 60 + 30 } },
+      })
+    ).toBe('~/repo on git:status-line [5h / week: 98% (2h30m) / -]');
   } finally {
     await fs.promises.rm(homePath, { force: true, recursive: true });
   }
