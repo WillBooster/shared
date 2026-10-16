@@ -107,9 +107,9 @@ function buildTypeScriptTypeCheckCommands(project: Project, projects: Project[])
 }
 
 function compilesItself(project: Project): boolean {
-  // `bun check` needs no `typescript` dependency, so wbfy's `typecheck` script marks the packages
-  // that contain TypeScript.
-  return !!project.packageJson.scripts?.typecheck;
+  // `bun check` needs no `typescript` dependency, so wbfy marks the packages that contain
+  // TypeScript with a `typecheck` script; a package not yet wbfy-managed may declare `typescript` instead.
+  return !!project.packageJson.scripts?.typecheck || project.hasOwnDependency('typescript');
 }
 
 export const tcCommand: CommandModule<unknown, TypeCheckCommandOptions> = {
