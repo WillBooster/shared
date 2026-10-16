@@ -55,9 +55,16 @@ const agentSettings = [
     },
   },
   {
+    relativePath: '.gemini/antigravity-cli/settings.json',
+    acceptsComments: false,
+    settings: {
+      enableTelemetry: false,
+    },
+  },
+  {
     relativePath: '.gemini/settings.json',
-    // Gemini CLI strips comments before parsing its settings file, unlike Claude Code, which
-    // rejects a commented file as malformed.
+    // Gemini CLI strips comments before parsing its settings file, unlike Claude Code and
+    // Antigravity CLI, which reject a commented file as malformed.
     acceptsComments: true,
     settings: {
       experimental: {

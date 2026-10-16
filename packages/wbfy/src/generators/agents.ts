@@ -28,7 +28,7 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     const deployFacts = { ownsGeneratedWorkerTypes: generatedWorkerTypes.includes(true), usesWbDeploy };
 
     const agentsMdPath = path.resolve(rootConfig.dirPath, 'AGENTS.md');
-    const agentsMdContent = generateAgentInstruction(rootConfig, allConfigs, 'Codex CLI', deployFacts, extraContent);
+    const agentsMdContent = generateAgentInstruction(rootConfig, allConfigs, undefined, deployFacts, extraContent);
     const cursorRulesPath = path.resolve(rootConfig.dirPath, '.cursor/rules/general.mdc');
     const cursorRulesContent = generateCursorGeneralMdcContent(rootConfig, allConfigs, deployFacts, extraContent);
     await runAllInPool([
@@ -78,14 +78,17 @@ export const LANGUAGE_BOUND_TEXT_EXCEPTION =
 function generateAgentInstruction(
   rootConfig: PackageConfig,
   allConfigs: PackageConfig[],
-  toolName: string,
+  toolName: string | undefined,
   deployFacts: DeployFacts,
   extraContent?: string
 ): string {
   const packageManager = 'bun';
   const description = rootConfig.packageJson?.description;
+  const coAuthorTrailer = toolName
+    ? `\`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\``
+    : `\`Co-authored-by: WillBooster (<agent>) <agent@willbooster.com>\` (replacing \`<agent>\` with your agent name, e.g., \`Codex CLI\`, \`Claude Code\`, \`Antigravity CLI\`, or \`Gemini CLI\`)`;
   const coAuthorInstruction = rootConfig.isWillBoosterRepo
-    ? `\n  - End your commit message with a blank line followed by \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`, the only AI attribution to add.`
+    ? `\n  - End your commit message with a blank line followed by ${coAuthorTrailer}, the only AI attribution to add.`
     : '';
   const prTemplateInstruction = `\n${PULL_REQUEST_BODY_RULES.replaceAll(/^/gm, '  ')}`;
   const requirementsExemption =
