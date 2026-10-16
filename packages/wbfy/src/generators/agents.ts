@@ -33,9 +33,8 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     const cursorRulesContent = generateCursorGeneralMdcContent(rootConfig, allConfigs, deployFacts, extraContent);
     await runAllInPool([
       () => fsUtil.generateFile(agentsMdPath, agentsMdContent),
-      ...(['CLAUDE.md', 'GEMINI.md'] as const).map(
-        (fileName) => () => fsUtil.removeConfined(path.resolve(rootConfig.dirPath, fileName))
-      ),
+      () => fsUtil.removeConfined(path.resolve(rootConfig.dirPath, 'CLAUDE.md')),
+      () => fsUtil.removeConfined(path.resolve(rootConfig.dirPath, 'GEMINI.md')),
       () => fsUtil.generateFile(cursorRulesPath, cursorRulesContent),
     ]);
   });
