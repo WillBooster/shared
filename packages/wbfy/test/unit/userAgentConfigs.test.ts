@@ -92,7 +92,7 @@ test('renders the Claude Code and Antigravity CLI status lines in the same forma
           seven_day: { used_percentage: 12, resets_at: nowInSeconds + 5 * 86_400 + 3600 + 30 },
         },
       })
-    ).toBe('~/repo on git:status-line [Opus 5.5 · medium] [ctx 94%] [5h 98% 2h30m] [wk 88% 5d1h]');
+    ).toBe('~/repo on git:status-line [Opus 5.5 (medium)] [ctx: 94%] [5h / week: 98% (2h30m) / 88% (5d1h)]');
     expect(
       await render({
         cwd: `${homePath}-sibling`,
@@ -100,13 +100,12 @@ test('renders the Claude Code and Antigravity CLI status lines in the same forma
         context_window: { used_percentage: 0 },
         quota: {
           '3p-5h': { remaining_fraction: 1, reset_in_seconds: 4 * 3600 + 59 * 60 + 30 },
-          '3p-weekly': { remaining_fraction: 1, reset_in_seconds: 6 * 86_400 + 23 * 3600 + 30 },
           'gemini-5h': { remaining_fraction: 0.8453743, reset_in_seconds: 2 * 3600 + 54 * 60 + 30 },
           'gemini-weekly': { remaining_fraction: 0.88562787, reset_in_seconds: 5 * 86_400 + 3600 + 30 },
         },
       })
     ).toBe(
-      `${homePath}-sibling [Gemini 4 Argon · medium] [ctx 100%] [5h 85% 2h54m] [wk 89% 5d1h] [3P 5h 100% 4h59m] [3P wk 100% 6d23h]`
+      `${homePath}-sibling [Gemini 4 Argon (medium)] [ctx: 100%] [Gemini: 85% (2h54m) / 89% (5d1h)] [Other: 100% (4h59m) / -]`
     );
   } finally {
     await fs.promises.rm(homePath, { force: true, recursive: true });
