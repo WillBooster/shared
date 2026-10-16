@@ -181,13 +181,16 @@ function pruneCapabilityDependentCompilerDependencies(config: PackageConfig, jso
 
 /**
  * `wb typecheck` runs `bun check`, which bundles its own compiler, so only `next build` and
- * scripts calling `tsc` (e.g. to emit declarations or CommonJS) still need the `typescript` package.
+ * scripts or mise tasks calling `tsc` (e.g. to emit declarations or CommonJS) still need the `typescript` package.
  */
 function needsTypeScriptCompiler(config: PackageConfig, jsonObj: WritablePackageJson): boolean {
   return (
     isNextFamily(config) ||
     // Deliberately loose (paths, quotes, operators): a false match only keeps `typescript`.
-    Object.values(jsonObj.scripts).some((script) => script && /(?<![\w-])tsc(?![\w-])/u.test(script))
+    // mise tasks count because generated scripts may bridge to them (`mise run <name>`).
+    [...Object.values(jsonObj.scripts), ...Object.values(config.miseTasks)].some(
+      (script) => script && /(?<![\w-])tsc(?![\w-])/u.test(script)
+    )
   );
 }
 
