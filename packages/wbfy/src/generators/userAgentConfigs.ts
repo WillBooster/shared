@@ -57,7 +57,7 @@ const agentSettings = [
       autoMemoryEnabled: false,
       statusLine: {
         type: 'command',
-        command: `sh ${claudeStatusLineScriptPath}`,
+        command: `sh '${claudeStatusLineScriptPath}'`,
       },
     },
   },
@@ -68,7 +68,7 @@ const agentSettings = [
       enableTelemetry: false,
       statusLine: {
         type: 'command',
-        command: `sh ${antigravityStatusLineScriptPath}`,
+        command: `sh '${antigravityStatusLineScriptPath}'`,
         enabled: true,
         stack_with_default: false,
       },
@@ -128,7 +128,7 @@ printf '%s' "$input" | jq -j --arg home "$HOME" --arg git "$git_info" '
   def claudeLimit: if . == null then null else { left: (100 - .used_percentage), resetsAt: .resets_at } end;
   def antigravityLimit: if . == null then null else { left: (.remaining_fraction * 100), resetsAt: (now + .reset_in_seconds) } end;
   def limit($label): if . == null then "" else " [\($label) \(.left | round)% \([.resetsAt - now, 0] | max | duration)]" end;
-  (.cwd | if startswith($home) then "~" + .[($home | length):] else . end)
+  (.cwd | if . == $home or startswith($home + "/") then "~" + .[($home | length):] else . end)
   + $git
   + ((.effort.level // .model.effort | if . == null then "" else " · \(.)" end) as $effort
     | .model.display_name | if . == null then "" else " [\(sub(" \\([^)]*\\)$"; ""))\($effort)]" end)

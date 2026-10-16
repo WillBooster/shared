@@ -49,13 +49,13 @@ test("turns off memory, attribution, and telemetry and sets the status line whil
     attribution: { commit: '', pr: '', sessionUrl: false },
     autoMemoryEnabled: false,
     effortLevel: 'medium',
-    statusLine: { type: 'command', command: expect.stringMatching(/^sh .+\/\.claude\/statusline-command\.sh$/u) },
+    statusLine: { type: 'command', command: expect.stringMatching(/^sh '.+\/\.claude\/statusline-command\.sh'$/u) },
   });
   expect(JSON.parse(files['.gemini/antigravity-cli/settings.json'] ?? '')).toEqual({
     enableTelemetry: false,
     statusLine: {
       type: 'command',
-      command: expect.stringMatching(/^sh .+\/\.gemini\/antigravity-cli\/statusline-command\.sh$/u),
+      command: expect.stringMatching(/^sh '.+\/\.gemini\/antigravity-cli\/statusline-command\.sh'$/u),
       enabled: true,
       stack_with_default: false,
     },
