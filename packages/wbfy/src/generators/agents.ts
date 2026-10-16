@@ -27,20 +27,15 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     const generatedWorkerTypes = await Promise.all(allConfigs.map((config) => generatesWorkerTypes(config)));
     const deployFacts = { ownsGeneratedWorkerTypes: generatedWorkerTypes.includes(true), usesWbDeploy };
 
+    const agentsMdPath = path.resolve(rootConfig.dirPath, 'AGENTS.md');
+    const agentsMdContent = generateAgentInstruction(rootConfig, allConfigs, 'Codex CLI', deployFacts, extraContent);
     const cursorRulesPath = path.resolve(rootConfig.dirPath, '.cursor/rules/general.mdc');
     const cursorRulesContent = generateCursorGeneralMdcContent(rootConfig, allConfigs, deployFacts, extraContent);
     await runAllInPool([
-      ...(
-        [
-          ['AGENTS.md', 'Codex CLI'],
-          ['CLAUDE.md', 'Claude Code'],
-          ['GEMINI.md', 'Gemini CLI'],
-        ] as const
-      ).map(([fileName, toolName]) => {
-        const content = generateAgentInstruction(rootConfig, allConfigs, toolName, deployFacts, extraContent);
-        const filePath = path.resolve(rootConfig.dirPath, fileName);
-        return () => fsUtil.generateFile(filePath, content);
-      }),
+      () => fsUtil.generateFile(agentsMdPath, agentsMdContent),
+      ...(['CLAUDE.md', 'GEMINI.md'] as const).map(
+        (fileName) => () => fsUtil.removeConfined(path.resolve(rootConfig.dirPath, fileName))
+      ),
       () => fsUtil.generateFile(cursorRulesPath, cursorRulesContent),
     ]);
   });
@@ -123,7 +118,7 @@ ${TEST_WRITING_RULES}
 - In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.)${requirementsExemption}, describe only the current implementation: drop any statement naming an identifier, feature, or concept you cannot confirm exists in the final diff or the current codebase (e.g., one added and later removed or renamed along the way). Whenever documentation or comments no longer match the current implementation (removed options, deprecated usage, outdated behavior), delete or rewrite them, even in files you are not otherwise changing. Mention a past state only where it is needed to understand why the current design is as it is, or when explicitly asked; files that record history by design (e.g., a changelog) are exempt.
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`, \`gh issue create --body-file -\`).
 - Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.
-- \`AGENTS.md\`, \`CLAUDE.md\`, \`GEMINI.md\`, \`.cursor/rules/general.mdc\`, and \`.gemini/styleguide.md\` are generated from \`AGENTS_EXTRA.md\` and overwritten on every \`wbfy\` run; to change agent instructions, edit only \`AGENTS_EXTRA.md\`.${generateStackInstructions(rootConfig, allConfigs, deployFacts, packageManager)}
+- \`AGENTS.md\`, \`.cursor/rules/general.mdc\`, and \`.gemini/styleguide.md\` are generated from \`AGENTS_EXTRA.md\` and overwritten on every \`wbfy\` run; to change agent instructions, edit only \`AGENTS_EXTRA.md\`.${generateStackInstructions(rootConfig, allConfigs, deployFacts, packageManager)}
 
 ${generateAgentCodingStyle(rootConfig, allConfigs)}
 `
