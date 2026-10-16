@@ -74,7 +74,7 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
 }
 
 /**
- * Every type-check command this project runs, as `BUN`/`YARN`-prefixed scripts. Exported so
+ * Every type-check command this project runs, as scripts for `normalizeScript`. Exported so
  * `wb verify`'s step recap can name the same tools instead of re-deriving the conditions, which
  * would silently go stale the next time this list changes.
  */

@@ -186,7 +186,7 @@ function pruneCapabilityDependentCompilerDependencies(config: PackageConfig, jso
 function needsTypeScriptCompiler(config: PackageConfig, jsonObj: WritablePackageJson): boolean {
   return (
     isNextFamily(config) ||
-    Object.values(jsonObj.scripts).some((script) => script && /(?:^|[\s&;|/])tsc(?:\s|$)/u.test(script))
+    Object.values(jsonObj.scripts).some((script) => script && /(?:^|[\s&;|(/])tsc(?=[\s&;|)]|$)/u.test(script))
   );
 }
 
