@@ -53,8 +53,7 @@
     "oxlint-tsgolint": "7.0.2003",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "sort-package-json": "4.0.0",
-    "typescript": "7.0.2"
+    "sort-package-json": "4.0.0"
   },
   "peerDependencies": {
     "react": "~19.2.0 || ~19.3.0",
