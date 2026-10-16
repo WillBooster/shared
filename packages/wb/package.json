@@ -76,8 +76,7 @@
     "semantic-release": "25.0.9",
     "sort-package-json": "4.0.0",
     "textlint-rule-no-hankaku-kana": "2.0.1",
-    "type-fest": "5.10.0",
-    "typescript": "7.0.2"
+    "type-fest": "5.10.0"
   },
   "engines": {
     "node": ">= 22.18.0"

@@ -40,7 +40,7 @@ type VerifyCodeCommandArgv = ArgumentsCamelCase<VerifyCodeCommandOptions>;
 /** A completed `wb verify` step, recorded so the final summary can prove every step actually ran. */
 interface VerifyStep {
   /**
-   * A short description of what the step ran, e.g. `tsc --noEmit`. Aggregated across the descendant
+   * A short description of what the step ran, e.g. `bun check`. Aggregated across the descendant
    * projects, so ` + ` means each tool ran somewhere, not that one command ran them all. Omitted when
    * nothing beyond the step name describes it.
    */
@@ -148,7 +148,7 @@ async function verifyCode(
     )
   );
   // Type-aware lint reports TypeScript diagnostics only for the files oxlint actually lints, and
-  // the shared config ignores directories tsc still compiles (e.g. `__generated__`, `@types`,
+  // the shared config ignores directories the compiler still checks (e.g. `__generated__`, `@types`,
   // `dist`). Keep the typecheck command so `verify` stays equivalent to "the repository compiles".
   // The overlap with lint is deliberate: `--type-aware` also powers type-aware lint rules, and
   // dropping only `--type-check` from lint saves ~0.1s, far less than the coverage it would cost.

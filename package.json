@@ -48,8 +48,7 @@
     "oxlint": "1.86.0",
     "oxlint-tsgolint": "7.0.2003",
     "semantic-release": "25.0.9",
-    "sort-package-json": "4.0.0",
-    "typescript": "7.0.2"
+    "sort-package-json": "4.0.0"
   },
   "engines": {
     "node": ">= 22.18.0"

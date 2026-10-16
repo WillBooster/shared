@@ -13,7 +13,8 @@ import { buildLintCommand, buildWorkspaceIgnorePatterns } from './lint.js';
 
 const builder = {} as const;
 
-const tscCommand = 'BUN tsc --noEmit';
+// Not `BUN check`: normalizeScript rewrites `BUN ` to `bun run `, which would look up a `check` script.
+const bunCheckCommand = 'bun check';
 
 type TypeCheckCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
 export type TypeCheckCommandArgv = ArgumentsCamelCase<TypeCheckCommandOptions>;
@@ -46,7 +47,7 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
 
       const nextDirPath = path.join(project.dirPath, '.next');
       // Only the compiler reads Next.js's generated types; deleting the cache cannot fix an oxlint error.
-      if (exitCode && commands.includes(tscCommand) && fs.existsSync(nextDirPath)) {
+      if (exitCode && commands.includes(bunCheckCommand) && fs.existsSync(nextDirPath)) {
         fs.rmSync(nextDirPath, { force: true, recursive: true });
         console.info(chalk.yellow('Removed `.next` directory. We will re-try type checking.'));
         removedNextDir = true;
@@ -87,12 +88,13 @@ export function buildTypeCheckCommands(project: Project, projects: Project[]): s
 
 function buildTypeScriptTypeCheckCommands(project: Project, projects: Project[]): string[] {
   if (project.packageJson.workspaces && !project.hasSourceCode) {
-    // Not `tsc`: the tsconfig.json of a workspace root without sources of its own also includes
-    // its workspaces' sources, which type-check only under each workspace's own compiler options,
-    // and tsc cannot check a subset of a project. Oxlint reports diagnostics only for the files it
-    // visits, each under its nearest tsconfig.json, so the root checks through it the files that
-    // no workspace compiles (e.g. `test/`, `scripts/`, `*.config.ts`). Oxlint applies config
-    // overrides after `-A all`, so override lint errors can still fail this check.
+    // Not `bun check`: the tsconfig.json of a workspace root without sources of its own also
+    // includes its workspaces' sources, which type-check only under each workspace's own compiler
+    // options, and `bun check <files>` still reports errors in every file they import. Oxlint
+    // reports diagnostics only for the files it visits, each under its nearest tsconfig.json, so
+    // the root checks through it the files that no workspace compiles (e.g. `test/`, `scripts/`,
+    // `*.config.ts`). Oxlint applies config overrides after `-A all`, so override lint errors can
+    // still fail this check.
     const command = buildLintCommand(
       project,
       { fix: false, format: false, quiet: true, allowAllRules: true },
@@ -101,15 +103,13 @@ function buildTypeScriptTypeCheckCommands(project: Project, projects: Project[])
     );
     return command?.includes('--type-check') ? [command] : [];
   }
-  return compilesItself(project) ? [tscCommand] : [];
+  return compilesItself(project) ? [bunCheckCommand] : [];
 }
 
 function compilesItself(project: Project): boolean {
-  // TypeScript 7 ships the native compiler as `typescript` (`tsc`); wbfy removes the
-  // `@typescript/native-preview` (tsgo) preview from non-Next.js repos (Next.js-family
-  // repos keep it for `next build`), so repos still on the preview should run wbfy
-  // instead of relying on a tsgo fallback here.
-  return project.hasOwnDependency('typescript');
+  // `bun check` needs no `typescript` dependency, so wbfy's `typecheck` script marks the packages
+  // that contain TypeScript.
+  return !!project.packageJson.scripts?.typecheck;
 }
 
 export const tcCommand: CommandModule<unknown, TypeCheckCommandOptions> = {
