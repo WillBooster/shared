@@ -38,8 +38,7 @@ const typescriptDependency = 'typescript';
 // programmatic API. Next.js's build-time `verifyTypeScriptSetup` needs that API, so
 // `next build` fails ("trying to use TypeScript but do not have the required package(s)")
 // with only `typescript` v7 installed. Next.js resolves the tsgo binary through the
-// separate `@typescript/native-preview` package, so Next.js-family repos must install
-// both; other repos only need `typescript` for `tsc` typechecks.
+// separate `@typescript/native-preview` package, so Next.js-family repos must install both.
 const typescriptGoDependency = '@typescript/native-preview';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
@@ -174,7 +173,29 @@ function pruneCapabilityDependentCompilerDependencies(config: PackageConfig, jso
   if (!config.doesContainTypeScript && !config.doesContainTypeScriptInPackages) {
     delete jsonObj.dependencies[typescriptDependency];
     delete jsonObj.devDependencies[typescriptDependency];
+  } else if (!needsTypeScriptCompiler(config, jsonObj)) {
+    // A `typescript` in `dependencies` is a library imported at runtime (e.g. wbfy's own AST parsing).
+    delete jsonObj.devDependencies[typescriptDependency];
   }
+}
+
+/**
+ * `wb typecheck` runs `bun check`, which bundles its own compiler, so only `next build` and
+ * scripts or mise tasks calling `tsc` (e.g. to emit declarations or CommonJS) still need the `typescript` package.
+ */
+function needsTypeScriptCompiler(config: PackageConfig, jsonObj: WritablePackageJson): boolean {
+  return (
+    isNextFamily(config) ||
+    // Deliberately loose (paths, quotes, operators): a false match only keeps `typescript`.
+    // mise tasks count because generated scripts may bridge to them (`mise run <name>`).
+    [...Object.values(jsonObj.scripts), ...Object.values(config.miseTasks)].some(
+      (script) => script && /(?<![\w-])tsc(?![\w-])/u.test(script)
+    )
+  );
+}
+
+function isNextFamily(config: PackageConfig): boolean {
+  return config.depending.next || config.depending.blitz || config.depending.vinext;
 }
 
 function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): void {
@@ -443,13 +464,10 @@ function addTypeScriptDependencies(
   jsonObj: WritablePackageJson,
   devDependencies: string[]
 ): void {
-  // TypeScript 7 ships the native compiler as the `typescript` package, so it is
-  // now the managed compiler for every TypeScript repo (typechecking runs `tsc`).
-  devDependencies.push(typescriptDependency);
-  // Next.js's `next build` inspects `@typescript/native-preview` (tsgo) to run its type
-  // check; the `typescript` v7 package alone lacks the API next needs, so keep both
-  // installed for Next.js-family repos. See the typescriptGoDependency comment above.
-  if (config.depending.next || config.depending.blitz || config.depending.vinext) {
+  if (needsTypeScriptCompiler(config, jsonObj)) {
+    devDependencies.push(typescriptDependency);
+  }
+  if (isNextFamily(config)) {
     devDependencies.push(typescriptGoDependency);
   }
   if (
