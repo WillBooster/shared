@@ -13,6 +13,9 @@ import { jsoncUtil } from '../utils/jsoncUtil.js';
  */
 const userAgentInstructionFilePaths = ['.codex/AGENTS.md', '.claude/CLAUDE.md', '.gemini/GEMINI.md'] as const;
 
+const claudeStatusLineScriptPath = path.join(os.homedir(), '.claude/statusline-command.sh');
+const antigravityStatusLineScriptPath = path.join(os.homedir(), '.gemini/antigravity-cli/statusline-command.sh');
+
 // This content is loaded into every agent session, so it is kept as short as it can be while
 // staying unambiguous: e.g., the excluded organizations are written as shell brace expansion, which
 // the agents read as a path condition without any runtime matching.
@@ -52,6 +55,10 @@ const agentSettings = [
         sessionUrl: false,
       },
       autoMemoryEnabled: false,
+      statusLine: {
+        type: 'command',
+        command: `sh ${claudeStatusLineScriptPath}`,
+      },
     },
   },
   {
@@ -59,6 +66,12 @@ const agentSettings = [
     acceptsComments: false,
     settings: {
       enableTelemetry: false,
+      statusLine: {
+        type: 'command',
+        command: `sh ${antigravityStatusLineScriptPath}`,
+        enabled: true,
+        stack_with_default: false,
+      },
     },
   },
   {
@@ -75,14 +88,18 @@ const agentSettings = [
 ] as const;
 
 /**
- * Overwrites the user-level instruction files of every supported agent with the fixed content and
- * merges the fixed settings into each agent's user settings. Returns false when any file was
- * skipped (e.g. a symlinked or unparsable file), so the command can fail loudly.
+ * Overwrites the user-level instruction files and status line scripts of every supported agent with
+ * the fixed content and merges the fixed settings into each agent's user settings. Returns false
+ * when any file was skipped (e.g. a symlinked or unparsable file), so the command can fail loudly.
  */
 export async function generateUserAgentConfigs(): Promise<boolean> {
   let hasWrittenAll = true;
   for (const relativePath of userAgentInstructionFilePaths) {
     const hasWritten = await fsUtil.generateFile(path.join(os.homedir(), relativePath), userAgentInstructionContent);
+    hasWrittenAll &&= hasWritten;
+  }
+  for (const scriptPath of [claudeStatusLineScriptPath, antigravityStatusLineScriptPath]) {
+    const hasWritten = await fsUtil.generateFile(scriptPath, statusLineScriptContent);
     hasWrittenAll &&= hasWritten;
   }
   for (const { acceptsComments, relativePath, settings } of agentSettings) {
@@ -92,6 +109,35 @@ export async function generateUserAgentConfigs(): Promise<boolean> {
   }
   return hasWrittenAll;
 }
+
+// Claude Code and Antigravity CLI pipe differently shaped session JSON to the same script, so each
+// field falls back from Claude Code's key to Antigravity CLI's. Antigravity CLI meters Gemini and
+// third-party (3P) models separately, so it alone shows the 3P quotas. Every percentage is what is
+// left, followed by the time until it resets.
+const statusLineScriptContent = String.raw`#!/bin/sh
+input=$(cat)
+cwd=$(printf '%s' "$input" | jq -r '.cwd')
+git_info=""
+if branch=$(git -C "$cwd" symbolic-ref --short HEAD 2>/dev/null || git -C "$cwd" rev-parse --short HEAD 2>/dev/null); then
+  git_info=" on git:$branch"
+fi
+printf '%s' "$input" | jq -j --arg home "$HOME" --arg git "$git_info" '
+  def duration: floor | if . >= 86400 then "\(. / 86400 | floor)d\(. % 86400 / 3600 | floor)h"
+    elif . >= 3600 then "\(. / 3600 | floor)h\(. % 3600 / 60 | floor)m"
+    else "\(. / 60 | floor)m" end;
+  def claudeLimit: if . == null then null else { left: (100 - .used_percentage), resetsAt: .resets_at } end;
+  def antigravityLimit: if . == null then null else { left: (.remaining_fraction * 100), resetsAt: (now + .reset_in_seconds) } end;
+  def limit($label): if . == null then "" else " [\($label) \(.left | round)% \([.resetsAt - now, 0] | max | duration)]" end;
+  (.cwd | if startswith($home) then "~" + .[($home | length):] else . end)
+  + $git
+  + ((.effort.level // .model.effort | if . == null then "" else " · \(.)" end) as $effort
+    | .model.display_name | if . == null then "" else " [\(sub(" \\([^)]*\\)$"; ""))\($effort)]" end)
+  + (.context_window.used_percentage | if . == null then "" else " [ctx \(100 - . | round)%]" end)
+  + ((.rate_limits.five_hour | claudeLimit) // (.quota["gemini-5h"] | antigravityLimit) | limit("5h"))
+  + ((.rate_limits.seven_day | claudeLimit) // (.quota["gemini-weekly"] | antigravityLimit) | limit("wk"))
+  + (.quota["3p-5h"] | antigravityLimit | limit("3P 5h"))
+  + (.quota["3p-weekly"] | antigravityLimit | limit("3P wk"))'
+`;
 
 async function mergeAgentSettings(
   relativePath: string,
