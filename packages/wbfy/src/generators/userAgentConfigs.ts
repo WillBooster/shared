@@ -113,8 +113,7 @@ export async function generateUserAgentConfigs(): Promise<boolean> {
 // Claude Code and Antigravity CLI pipe differently shaped session JSON to the same script, so each
 // part reads whichever agent's keys are present. Antigravity CLI meters Gemini and other models
 // separately, so it shows a Gemini and an Other pair where Claude Code shows one. Every percentage
-// is what is left, followed by the time until it resets; each pair lists the 5-hour limit before
-// the weekly one and keeps a missing limit's position with "-", since only the position tells them apart.
+// is what is left, followed by the time until it resets.
 const statusLineScriptContent = String.raw`#!/bin/sh
 input=$(cat)
 cwd=$(printf '%s' "$input" | jq -r '.cwd')
@@ -128,17 +127,18 @@ printf '%s' "$input" | jq -j --arg home "$HOME" --arg git "$git_info" '
     else "\(. / 60 | floor)m" end;
   def claudeLimit: if . == null then null else { left: (100 - .used_percentage), resetsAt: .resets_at } end;
   def antigravityLimit: if . == null then null else { left: (.remaining_fraction * 100), resetsAt: (now + .reset_in_seconds) } end;
-  def limit: if . == null then "-" else "\(.left | round)% (\([.resetsAt - now, 0] | max | duration))" end;
-  def limits($label; $fiveHour; $weekly): if $fiveHour == null and $weekly == null then ""
-    else " [\($label): \($fiveHour | limit) / \($weekly | limit)]" end;
+  def limit($label): if . == null then empty
+    else "\($label) \(.left | round)% (\([.resetsAt - now, 0] | max | duration))" end;
+  def limits($group; $fiveHour; $weekly): [($fiveHour | limit("5h")), ($weekly | limit("week"))]
+    | if length == 0 then "" else " [\($group)\(join(" | "))]" end;
   (.cwd | if . == $home or startswith($home + "/") then "~" + .[($home | length):] else . end)
   + $git
   + ((.effort.level // .model.effort | if . == null then "" else " (\(.))" end) as $effort
     | .model.display_name | if . == null then "" else " [\(sub(" \\([^)]*\\)$"; ""))\($effort)]" end)
-  + (.context_window.used_percentage | if . == null then "" else " [ctx: \(100 - . | round)%]" end)
-  + limits("5h / week"; .rate_limits.five_hour | claudeLimit; .rate_limits.seven_day | claudeLimit)
-  + limits("Gemini"; .quota["gemini-5h"] | antigravityLimit; .quota["gemini-weekly"] | antigravityLimit)
-  + limits("Other"; .quota["3p-5h"] | antigravityLimit; .quota["3p-weekly"] | antigravityLimit)'
+  + (.context_window.used_percentage | if . == null then "" else " [ctx \(100 - . | round)%]" end)
+  + limits(""; .rate_limits.five_hour | claudeLimit; .rate_limits.seven_day | claudeLimit)
+  + limits("Gemini: "; .quota["gemini-5h"] | antigravityLimit; .quota["gemini-weekly"] | antigravityLimit)
+  + limits("Other: "; .quota["3p-5h"] | antigravityLimit; .quota["3p-weekly"] | antigravityLimit)'
 `;
 
 async function mergeAgentSettings(
