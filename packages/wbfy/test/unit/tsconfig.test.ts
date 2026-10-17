@@ -201,6 +201,9 @@ test('checks framework helpers under their workspace config while retaining plai
       packageJson: { workspaces },
     });
     await generateTsconfig(config);
+    const firstConfig = fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8');
+    await generateTsconfig(config);
+    expect(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')).toBe(firstConfig);
     expect(await check(tempDirPath)).toMatchObject({ exitCode: 0 });
     expect(await check(webDirPath)).toMatchObject({ exitCode: 0 });
     fs.writeFileSync(plainSourcePath, 'export const value: number = "wrong";');
@@ -231,6 +234,18 @@ test('checks framework helpers under their workspace config while retaining plai
     const removedManifest = await check(tempDirPath);
     expect(removedManifest.exitCode).toBe(1);
     expect(removedManifest.output).toContain('apps/web/src/value.ts');
+    const baselineWorkspaces = ['!other/**'];
+    config.packageJson = { workspaces: baselineWorkspaces };
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: baselineWorkspaces }));
+    fs.writeFileSync(path.join(webDirPath, 'package.json'), JSON.stringify({ dependencies: { vinext: '1' } }));
+    await generateTsconfig(config);
+    const baselineFramework = await check(tempDirPath);
+    expect(baselineFramework.exitCode).toBe(0);
+    fs.unlinkSync(path.join(webDirPath, 'package.json'));
+    await generateTsconfig(config);
+    const baselineRemovedManifest = await check(tempDirPath);
+    expect(baselineRemovedManifest.exitCode).toBe(1);
+    expect(baselineRemovedManifest.output).toContain('apps/web/src/value.ts');
     fs.writeFileSync(path.join(webDirPath, 'src/value.ts'), 'export const value: number = 1;');
     fs.mkdirSync(path.join(tempDirPath, 'dist/src'), { recursive: true });
     fs.writeFileSync(path.join(tempDirPath, 'dist/src/stale.ts'), 'export const stale: number = "wrong";');

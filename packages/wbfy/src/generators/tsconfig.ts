@@ -18,6 +18,8 @@ import {
   getWorkspaceSubDirPaths,
 } from '../utils/workspaceUtil.js';
 
+type ManagedTsconfig = TsConfigJson & { wbfyFrameworkExcludes?: string[] };
+
 const subJsonObj = {
   compilerOptions: {
     alwaysStrict: true,
@@ -50,7 +52,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       return;
     }
 
-    let newSettings = (config.isRoot ? buildRootJsonObj(config) : structuredClone(subJsonObj)) as TsConfigJson;
+    let newSettings = (config.isRoot ? buildRootJsonObj(config) : structuredClone(subJsonObj)) as ManagedTsconfig;
     const generatedTypes = getGeneratedTypes(config);
     applyManagedSettings(newSettings, config, generatedTypes);
 
@@ -59,7 +61,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     let originalSettingsJson: string | undefined;
     // A file with no configuration (empty or comment-only) is treated like a missing one, as tsc does.
     if (existingContent !== undefined && !jsoncUtil.isTriviaOnly(existingContent)) {
-      const oldSettings = jsoncUtil.parseObjectIgnoringError<TsConfigJson>(existingContent);
+      const oldSettings = jsoncUtil.parseObjectIgnoringError<ManagedTsconfig>(existingContent);
       // An existing tsconfig.json wbfy cannot parse must be left untouched: writing the
       // generated settings without merging would silently discard the project's configuration.
       if (!oldSettings) {
@@ -111,7 +113,7 @@ function applyManagedSettings(newSettings: TsConfigJson, config: PackageConfig, 
 function mergeExistingSettings(
   config: PackageConfig,
   newSettings: TsConfigJson,
-  oldSettings: TsConfigJson,
+  oldSettings: ManagedTsconfig,
   generatedTypes: string[]
 ): TsConfigJson {
   const existingTypes = normalizeStringArray(oldSettings.compilerOptions?.types);
@@ -157,7 +159,11 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
   const workspacePatterns = config.doesContainSubPackageJsons
     ? getWorkspaceDirPatterns(config)
     : { excludes: [], includes: [] };
-  const settings = structuredClone(subJsonObj) as TsConfigJson;
+  const settings = structuredClone(subJsonObj) as ManagedTsconfig;
+  const frameworkExcludes = getFrameworkWorkspaceExcludes(config).toSorted();
+  // TypeScript ignores custom top-level metadata. Keep provenance so a removed manifest or
+  // workspace cannot leave sources hidden, without guessing which authored exclusions we own.
+  if (frameworkExcludes.length > 0) settings.wbfyFrameworkExcludes = frameworkExcludes;
   settings.exclude = [
     ...new Set([
       ...workspacePatterns.includes.map((workspacePattern) => `${workspacePattern}/test/fixtures`),
@@ -169,7 +175,7 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
       // Framework-owned compiler options (paths, JSX, DOM globals) apply throughout the package,
       // including helpers, tests and tool configs, not just its app directory. The workspace's
       // own typecheck checks those files; checking them again here uses incompatible options.
-      ...getFrameworkWorkspaceExcludes(config),
+      ...frameworkExcludes,
       ...(settings.exclude ?? []),
     ]),
   ].toSorted();
@@ -235,7 +241,7 @@ const managedWorkspaceIncludeSuffixes = ['*.config.ts', 'scripts/**/*', 'src/**/
  */
 function removeStaleManagedWorkspaceEntries(
   config: PackageConfig,
-  oldSettings: TsConfigJson,
+  oldSettings: ManagedTsconfig,
   newSettings: TsConfigJson
 ): void {
   const stalePrefixes = new Set<string>();
@@ -260,6 +266,8 @@ function removeStaleManagedWorkspaceEntries(
       });
     }
   }
+  const previousFrameworkExcludes = new Set(normalizeStringArray(oldSettings.wbfyFrameworkExcludes));
+  delete oldSettings.wbfyFrameworkExcludes;
   if (!Array.isArray(oldSettings.exclude)) return;
   const generatedExclude = new Set(newSettings.exclude);
   const workspaceDirPaths = config.doesContainSubPackageJsons
@@ -267,22 +275,14 @@ function removeStaleManagedWorkspaceEntries(
         path.relative(path.resolve(config.dirPath), workspaceDirPath).replaceAll('\\', '/')
       )
     : [];
-  // Bun seeds these broad layouts from negations; matching them does not establish that an
-  // arbitrary build/dependency directory was workspace-owned, so preserve authored exclusions.
-  const managedWorkspacePatterns = [...stalePrefixes, ...getWorkspaceDirPatterns(config).includes].filter(
-    (pattern) => pattern !== '**' && pattern !== '*/*'
-  );
   oldSettings.exclude = oldSettings.exclude.filter((entry) => {
     if (typeof entry !== 'string' || generatedExclude.has(entry)) return true;
-    return !isWorkspaceOwnedPath(entry, managedWorkspacePatterns) && !coversWorkspaceDir(entry, workspaceDirPaths);
+    if (previousFrameworkExcludes.has(entry)) return false;
+    if (entry.endsWith('/test/fixtures')) {
+      return !stalePrefixes.has(entry.slice(0, -'/test/fixtures'.length));
+    }
+    return !coversWorkspaceDir(entry, workspaceDirPaths);
   });
-}
-
-function isWorkspaceOwnedPath(entry: string, workspacePatterns: string[]): boolean {
-  if (entry.split('/').includes('**')) return false;
-  return workspacePatterns.some(
-    (pattern) => new Bun.Glob(pattern).match(entry) || new Bun.Glob(`${pattern}/**`).match(entry)
-  );
 }
 
 // Whether an exclude entry is a workspace negation (`!apps/excluded`) whose negation is gone: the
