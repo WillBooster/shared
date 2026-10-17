@@ -220,6 +220,17 @@ test('checks framework helpers under their workspace config while retaining plai
     const removedWorkspace = await check(tempDirPath);
     expect(removedWorkspace.exitCode).toBe(1);
     expect(removedWorkspace.output).toContain('apps/web/src/value.ts');
+    const globWorkspaces = ['apps/*', 'apps/web/plugins/plain'];
+    config.packageJson = { workspaces: globWorkspaces };
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: globWorkspaces }));
+    await generateTsconfig(config);
+    const restoredFramework = await check(tempDirPath);
+    expect(restoredFramework.exitCode).toBe(0);
+    fs.unlinkSync(path.join(webDirPath, 'package.json'));
+    await generateTsconfig(config);
+    const removedManifest = await check(tempDirPath);
+    expect(removedManifest.exitCode).toBe(1);
+    expect(removedManifest.output).toContain('apps/web/src/value.ts');
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }

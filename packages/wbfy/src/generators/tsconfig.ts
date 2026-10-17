@@ -267,14 +267,18 @@ function removeStaleManagedWorkspaceEntries(
         path.relative(path.resolve(config.dirPath), workspaceDirPath).replaceAll('\\', '/')
       )
     : [];
+  const managedWorkspacePatterns = [...stalePrefixes, ...getWorkspaceDirPatterns(config).includes];
   oldSettings.exclude = oldSettings.exclude.filter((entry) => {
     if (typeof entry !== 'string' || generatedExclude.has(entry)) return true;
-    if (entry.endsWith('/test/fixtures')) {
-      return !stalePrefixes.has(entry.slice(0, -'/test/fixtures'.length));
-    }
-    if ([...stalePrefixes].some((prefix) => entry === prefix || entry.startsWith(`${prefix}/`))) return false;
-    return !coversWorkspaceDir(entry, workspaceDirPaths);
+    return !isWorkspaceOwnedPath(entry, managedWorkspacePatterns) && !coversWorkspaceDir(entry, workspaceDirPaths);
   });
+}
+
+function isWorkspaceOwnedPath(entry: string, workspacePatterns: string[]): boolean {
+  if (entry.split('/').includes('**')) return false;
+  return workspacePatterns.some(
+    (pattern) => new Bun.Glob(pattern).match(entry) || new Bun.Glob(`${pattern}/**`).match(entry)
+  );
 }
 
 // Whether an exclude entry is a workspace negation (`!apps/excluded`) whose negation is gone: the
