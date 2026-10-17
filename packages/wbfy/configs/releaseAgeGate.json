@@ -71,6 +71,7 @@
     "minimal-promise-pool",
     "one-way-git-sync",
     "slidev-check",
+    "tokzip",
     "vinext-progress",
     "wbfy",
     "yarn-plugin-auto-install"
