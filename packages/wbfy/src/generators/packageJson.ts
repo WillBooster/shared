@@ -186,6 +186,7 @@ function pruneCapabilityDependentCompilerDependencies(config: PackageConfig, jso
 function needsTypeScriptCompiler(config: PackageConfig, jsonObj: WritablePackageJson): boolean {
   return (
     isNextFamily(config) ||
+    !!jsonObj.devDependencies.next ||
     // Deliberately loose (paths, quotes, operators): a false match only keeps `typescript`.
     // mise tasks count because generated scripts may bridge to them (`mise run <name>`).
     [...Object.values(jsonObj.scripts), ...Object.values(config.miseTasks)].some(
