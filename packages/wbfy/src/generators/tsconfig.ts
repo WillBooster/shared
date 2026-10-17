@@ -148,13 +148,10 @@ function mergeExistingSettings(
   return mergedSettings;
 }
 
-/**
- * The monorepo-root tsconfig, whose include/exclude cover every DECLARED workspace layout (e.g.
- * `apps/*` alongside `packages/*`) so type-aware linting run from the root sees all workspace
- * sources, not just the conventional packages/* directory.
- */
 function buildRootJsonObj(config: PackageConfig): TsConfigJson {
-  const workspacePatterns = config.doesContainSubPackageJsons
+  // Roots with src compile independently; workspace packages use their own compiler options.
+  // Root type-aware lint needs workspace includes only when the root has no src.
+  const workspacePatterns = includesWorkspaceSources(config)
     ? getWorkspaceDirPatterns(config)
     : { excludes: [], includes: [] };
   const settings = structuredClone(subJsonObj) as TsConfigJson;
@@ -263,7 +260,9 @@ function removeStaleManagedWorkspaceEntries(
   }
   if (!Array.isArray(oldSettings.exclude)) return;
   const generatedExclude = new Set(newSettings.exclude);
-  const workspaceDirPaths = config.doesContainSubPackageJsons
+  // Workspace exclusions in an independent root project are authored scope boundaries, not
+  // obsolete workspace negations to remove when the declared packages still exist.
+  const workspaceDirPaths = includesWorkspaceSources(config)
     ? getWorkspaceSubDirPaths(config).map((workspaceDirPath) =>
         path.relative(path.resolve(config.dirPath), workspaceDirPath).replaceAll('\\', '/')
       )
@@ -286,6 +285,10 @@ function removeStaleManagedWorkspaceEntries(
     }
     return !coversWorkspaceDir(entry, workspaceDirPaths);
   });
+}
+
+function includesWorkspaceSources(config: PackageConfig): boolean {
+  return config.doesContainSubPackageJsons && !fs.existsSync(path.join(config.dirPath, 'src'));
 }
 
 // Whether an exclude entry is a workspace negation (`!apps/excluded`) whose negation is gone: the

@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -5,7 +6,7 @@ import path from 'node:path';
 import { expect, test } from 'bun:test';
 
 import { generateTsconfig } from '../../src/generators/tsconfig.js';
-import type { PackageConfig } from '../../src/packageConfig.js';
+import { getPackageConfig, type PackageConfig } from '../../src/packageConfig.js';
 
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -250,6 +251,111 @@ test('prunes a stale framework app exclude after its workspace is removed', asyn
   }
 });
 
+test('keeps root and workspace compiler scopes separate while preserving coverage for roots without src', async () => {
+  const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-root-scope-'));
+  try {
+    const write = (filePath: string, content: string): void => {
+      const absolutePath = path.join(dirPath, filePath);
+      fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+      fs.writeFileSync(absolutePath, content);
+    };
+    const packageJson = {
+      name: 'scope-root',
+      private: true,
+      type: 'module',
+      packageManager: `bun@${Bun.version}`,
+      workspaces: ['packages/*'],
+      scripts: { typecheck: 'bun wb typecheck' },
+      devDependencies: { '@willbooster/wb': '*', oxlint: '*', 'oxlint-tsgolint': '*' },
+    } satisfies NonNullable<PackageConfig['packageJson']>;
+    write('package.json', JSON.stringify(packageJson));
+    write('.gitignore', 'node_modules/\n');
+    write('.oxlintrc.json', JSON.stringify({ ignorePatterns: ['node_modules/**'] }));
+    fs.symlinkSync(path.resolve(import.meta.dir, '../../../../node_modules'), path.join(dirPath, 'node_modules'));
+    write('src/root.ts', 'export const root: number = 1;');
+    write('tool.config.ts', 'export const tool: number = 1;');
+    for (const name of ['web', 'cli']) {
+      const alias = name === 'web' ? '@' : '@cli';
+      write(
+        `packages/${name}/package.json`,
+        JSON.stringify({
+          name: `scope-${name}`,
+          type: 'module',
+          scripts: { typecheck: 'bun wb typecheck' },
+          ...(name === 'web' ? { dependencies: { next: '*' } } : {}),
+        })
+      );
+      write(
+        `packages/${name}/src/value.ts`,
+        name === 'web' ? 'export const value = window.location.href;' : 'export const value: number = 1;'
+      );
+      write(`packages/${name}/src/index.ts`, `export { value } from '${alias}/value';`);
+      write(
+        `packages/${name}/tsconfig.json`,
+        JSON.stringify({
+          compilerOptions: {
+            noEmit: true,
+            strict: true,
+            skipLibCheck: true,
+            target: 'ESNext',
+            module: 'Preserve',
+            moduleResolution: 'bundler',
+            lib: name === 'web' ? ['ESNext', 'DOM'] : ['ESNext'],
+            paths: { [`${alias}/*`]: ['./src/*'] },
+          },
+          include: ['src/**/*'],
+        })
+      );
+    }
+    const generateRootConfig = async (): Promise<void> => {
+      const config = await getPackageConfig(dirPath, { isRoot: true });
+      assert.ok(config);
+      await generateTsconfig(config);
+    };
+    await generateRootConfig();
+    expect(await runTypecheck(dirPath)).toMatchObject({ exitCode: 0 });
+
+    write(
+      'tsconfig.json',
+      JSON.stringify({
+        include: ['**/*.ts'],
+        exclude: ['node_modules', 'packages', 'test/fixtures'],
+      })
+    );
+    await generateRootConfig();
+    expect(await runTypecheck(dirPath)).toMatchObject({ exitCode: 0 });
+    write('src/root.ts', 'export const root: number = "wrong";');
+    const brokenRoot = await runTypecheck(dirPath);
+    expect(brokenRoot.exitCode).toBe(1);
+    expect(brokenRoot.output).toContain('src/root.ts');
+    write('src/root.ts', 'export const root: number = 1;');
+    write('packages/cli/src/value.ts', 'export const value: number = "wrong";');
+    const brokenWorkspace = await runTypecheck(dirPath);
+    expect(brokenWorkspace.exitCode).toBe(1);
+    expect(brokenWorkspace.output).toContain('src/value.ts');
+    write('packages/cli/src/value.ts', 'export const value: number = 1;');
+
+    fs.rmSync(path.join(dirPath, 'src'), { recursive: true });
+    write('packages/legacy/package.json', JSON.stringify({ name: 'scope-legacy', type: 'module' }));
+    write('packages/legacy/src/value.ts', 'export const value = Bun.version;');
+    write('packages/legacy/src/index.ts', "export { value } from '@fixture/value';");
+    write(
+      'tsconfig.json',
+      JSON.stringify({
+        compilerOptions: { paths: { '@fixture/*': ['./packages/legacy/src/*'] } },
+      })
+    );
+    await generateRootConfig();
+    expect(await runTypecheck(dirPath)).toMatchObject({ exitCode: 0 });
+    write('packages/legacy/src/value.ts', 'export const value: number = "wrong";');
+    const brokenFallback = await runTypecheck(dirPath);
+    expect(brokenFallback.exitCode).toBe(1);
+    expect(brokenFallback.output).toContain('packages/legacy/src/value.ts');
+  } finally {
+    fs.rmSync(dirPath, { recursive: true, force: true });
+  }
+}, 30_000);
+
 test('keeps a commented Next tsconfig byte-identical when no cleanup is needed', async () => {
   const commentedContent = `{
   "compilerOptions": {
@@ -301,4 +407,15 @@ async function withTempTsconfig<T>(
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }
+}
+
+async function runTypecheck(dirPath: string): Promise<{ exitCode: number; output: string }> {
+  const cliPath = path.resolve(import.meta.dir, '../../../wb/src/index.ts');
+  const child = Bun.spawn(['bun', cliPath, '--working-dir', dirPath, 'typecheck'], { stdout: 'pipe', stderr: 'pipe' });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  return { exitCode, output: stdout + stderr };
 }
