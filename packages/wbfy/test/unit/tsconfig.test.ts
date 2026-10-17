@@ -210,6 +210,23 @@ test('checks framework helpers under their workspace config while retaining plai
     const brokenPlain = await check(tempDirPath);
     expect(brokenPlain.exitCode).toBe(1);
     expect(brokenPlain.output).toContain('apps/web/plugins/plain/src/index.ts');
+    fs.mkdirSync(path.join(webDirPath, 'test/unit'), { recursive: true });
+    const testSourcePath = path.join(webDirPath, 'test/unit/example.test.ts');
+    const toolSourcePath = path.join(webDirPath, 'playwright.config.ts');
+    fs.writeFileSync(testSourcePath, 'export const bad: number = "wrong";');
+    fs.writeFileSync(toolSourcePath, 'export const bad: number = "wrong";');
+    await generateTsconfig(
+      createConfig({
+        dirPath: webDirPath,
+        depending: { ...config.depending, vinext: true },
+      })
+    );
+    const frameworkTools = await check(webDirPath);
+    expect(frameworkTools.exitCode).toBe(1);
+    expect(frameworkTools.output).toContain('test/unit/example.test.ts');
+    expect(frameworkTools.output).toContain('playwright.config.ts');
+    fs.rmSync(testSourcePath);
+    fs.rmSync(toolSourcePath);
     fs.writeFileSync(path.join(webDirPath, 'src/value.ts'), 'export const value: number = "wrong";');
     const brokenWeb = await check(webDirPath);
     expect(brokenWeb.exitCode).toBe(1);
