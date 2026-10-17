@@ -189,9 +189,25 @@ const frameworkDependencyNames = ['blitz', 'next', 'vinext'];
 
 function getFrameworkWorkspaceExcludes(config: PackageConfig): string[] {
   if (!config.doesContainSubPackageJsons) return [];
-  return getWorkspaceSubDirPaths(config)
+  const workspaceDirPaths = getWorkspaceSubDirPaths(config);
+  return workspaceDirPaths
     .filter((workspaceDirPath) => dependsOnFramework(path.resolve(workspaceDirPath, 'package.json')))
-    .map((workspaceDirPath) => path.relative(config.dirPath, workspaceDirPath).replaceAll('\\', '/'));
+    .flatMap((workspaceDirPath) => getPackageOwnedExcludes(workspaceDirPath, workspaceDirPaths))
+    .map((excludedPath) => path.relative(config.dirPath, excludedPath).replaceAll('\\', '/'));
+}
+
+function getPackageOwnedExcludes(dirPath: string, workspaceDirPaths: string[]): string[] {
+  const nestedWorkspaceDirPaths = workspaceDirPaths.filter((workspaceDirPath) =>
+    workspaceDirPath.startsWith(`${dirPath}${path.sep}`)
+  );
+  if (nestedWorkspaceDirPaths.length === 0) return [dirPath];
+  // A directory exclusion also masks explicitly included descendant workspaces. Walk only the
+  // ancestor chain to those workspaces, leaving their own compiler projects visible to the root.
+  return fs.readdirSync(dirPath).flatMap((name) => {
+    const childPath = path.join(dirPath, name);
+    if (nestedWorkspaceDirPaths.includes(childPath)) return [];
+    return getPackageOwnedExcludes(childPath, nestedWorkspaceDirPaths);
+  });
 }
 
 function dependsOnFramework(manifestPath: string): boolean {
@@ -256,7 +272,7 @@ function removeStaleManagedWorkspaceEntries(
     if (entry.endsWith('/test/fixtures')) {
       return !stalePrefixes.has(entry.slice(0, -'/test/fixtures'.length));
     }
-    if (stalePrefixes.has(entry)) return false;
+    if ([...stalePrefixes].some((prefix) => entry === prefix || entry.startsWith(`${prefix}/`))) return false;
     return !coversWorkspaceDir(entry, workspaceDirPaths);
   });
 }

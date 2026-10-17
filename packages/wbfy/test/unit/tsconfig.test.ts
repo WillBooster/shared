@@ -170,10 +170,12 @@ test('keeps a nested workspace in the root project when its ancestor package is 
 test('checks framework helpers under their workspace config while retaining plain workspace checks', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
   try {
-    const workspaces = ['apps/web', 'apps/plain'];
+    fs.mkdirSync(path.join(tempDirPath, 'src'));
+    fs.writeFileSync(path.join(tempDirPath, 'src/index.ts'), 'export {};');
+    const workspaces = ['apps/web', 'apps/web/plugins/plain'];
     fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ private: true, workspaces }));
     fs.symlinkSync(path.resolve(import.meta.dir, '../../node_modules'), path.join(tempDirPath, 'node_modules'));
-    for (const workspace of ['web', 'plain']) {
+    for (const workspace of ['web', 'web/plugins/plain']) {
       fs.mkdirSync(path.join(tempDirPath, 'apps', workspace, 'src'), { recursive: true });
     }
     fs.writeFileSync(path.join(tempDirPath, 'tsconfig.json'), JSON.stringify({ include: ['apps/**/*'] }));
@@ -188,8 +190,8 @@ test('checks framework helpers under their workspace config while retaining plai
         include: ['src/**/*'],
       })
     );
-    const plainSourcePath = path.join(tempDirPath, 'apps/plain/src/index.ts');
-    fs.writeFileSync(path.join(tempDirPath, 'apps/plain/package.json'), '{}');
+    const plainSourcePath = path.join(tempDirPath, 'apps/web/plugins/plain/src/index.ts');
+    fs.writeFileSync(path.join(tempDirPath, 'apps/web/plugins/plain/package.json'), '{}');
     fs.writeFileSync(plainSourcePath, 'export const value: number = 1;');
     const config = createConfig({
       dirPath: tempDirPath,
@@ -204,14 +206,14 @@ test('checks framework helpers under their workspace config while retaining plai
     fs.writeFileSync(plainSourcePath, 'export const value: number = "wrong";');
     const brokenPlain = await check(tempDirPath);
     expect(brokenPlain.exitCode).toBe(1);
-    expect(brokenPlain.output).toContain('apps/plain/src/index.ts');
+    expect(brokenPlain.output).toContain('apps/web/plugins/plain/src/index.ts');
     fs.writeFileSync(path.join(webDirPath, 'src/value.ts'), 'export const value: number = "wrong";');
     const brokenWeb = await check(webDirPath);
     expect(brokenWeb.exitCode).toBe(1);
     // Once the web directory stops being a workspace, the repository's broad include owns it.
     fs.writeFileSync(plainSourcePath, 'export const value: number = 1;');
     fs.writeFileSync(path.join(webDirPath, 'src/helper.ts'), 'export {};');
-    const remainingWorkspaces = ['apps/plain'];
+    const remainingWorkspaces = ['apps/web/plugins/plain'];
     fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: remainingWorkspaces }));
     config.packageJson = { workspaces: remainingWorkspaces };
     await generateTsconfig(config);
