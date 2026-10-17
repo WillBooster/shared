@@ -235,6 +235,14 @@ test('checks framework helpers under their workspace config while retaining plai
     fs.writeFileSync(frameworkConfigPath, commentedFramework);
     await generateTsconfig(createConfig({ dirPath: webDirPath, depending: { ...config.depending, vinext: true } }));
     expect(fs.readFileSync(frameworkConfigPath, 'utf8')).toBe(commentedFramework);
+    normalizedFramework.include = ['**/*.ts', '**/*.tsx', 'scripts/**/*'];
+    const broadFramework = JSON.stringify(normalizedFramework, undefined, 2).replace(
+      '{\n',
+      '{\n  // Preserve the broad-include rationale.\n'
+    );
+    fs.writeFileSync(frameworkConfigPath, broadFramework);
+    await generateTsconfig(createConfig({ dirPath: webDirPath, depending: { ...config.depending, vinext: true } }));
+    expect(fs.readFileSync(frameworkConfigPath, 'utf8')).toBe(broadFramework);
     const frameworkTools = await check(webDirPath);
     expect(frameworkTools.exitCode).toBe(1);
     expect(frameworkTools.output).toContain('test/unit/example.test.ts');
@@ -309,6 +317,16 @@ test('checks framework helpers under their workspace config while retaining plai
     const previousAppExclusion = await check(tempDirPath);
     expect(previousAppExclusion.exitCode).toBe(1);
     expect(previousAppExclusion.output).toContain('apps/web/app/page.ts');
+    const unsupportedWorkspacePath = path.join(webDirPath, 'src/nested');
+    fs.mkdirSync(unsupportedWorkspacePath, { recursive: true });
+    fs.writeFileSync(path.join(unsupportedWorkspacePath, 'package.json'), '{}');
+    fs.writeFileSync(path.join(webDirPath, 'package.json'), JSON.stringify({ dependencies: { vinext: '1' } }));
+    const unsupportedWorkspaces = ['apps/web', 'apps/web/src/nested'];
+    config.packageJson = { workspaces: unsupportedWorkspaces };
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: unsupportedWorkspaces }));
+    const previousRootConfig = fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8');
+    await generateTsconfig(config);
+    expect(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')).toBe(previousRootConfig);
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }
