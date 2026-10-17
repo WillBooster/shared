@@ -54,7 +54,7 @@
     "next": "16.4.1",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
-    "oxlint-tsgolint": "7.0.2003",
+    "oxlint-tsgolint": "7.0.2004",
     "sort-package-json": "4.0.0"
   },
   "peerDependencies": {
