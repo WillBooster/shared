@@ -34,7 +34,7 @@
   "dependencies": {
     "@octokit/core": "7.0.8",
     "@willbooster/tree-sitter-bash": "4.0.2",
-    "@willbooster/web-tree-sitter": "2.0.23",
+    "@willbooster/web-tree-sitter": "2.0.24",
     "deepmerge": "4.3.1",
     "fast-glob": "3.3.3",
     "js-yaml": "5.4.3",
