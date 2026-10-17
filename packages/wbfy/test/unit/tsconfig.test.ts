@@ -252,7 +252,18 @@ test('checks framework helpers under their workspace config while retaining plai
     fs.writeFileSync(path.join(webDirPath, 'src/value.ts'), 'export const value: number = "wrong";');
     const brokenWeb = await check(webDirPath);
     expect(brokenWeb.exitCode).toBe(1);
-    // Once the web directory stops being a workspace, the repository's broad include owns it.
+    const nonNestedWorkspaces = ['apps/web'];
+    config.packageJson = { workspaces: nonNestedWorkspaces };
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: nonNestedWorkspaces }));
+    const supportSourcePath = path.join(webDirPath, 'prisma/seed.ts');
+    fs.mkdirSync(path.dirname(supportSourcePath), { recursive: true });
+    fs.writeFileSync(supportSourcePath, 'export const support: number = "wrong";');
+    const nonNestedFramework = await check(webDirPath);
+    expect(nonNestedFramework.exitCode).toBe(1);
+    expect(nonNestedFramework.output).toContain('prisma/seed.ts');
+    await generateTsconfig(config);
+    expect(await check(tempDirPath)).toMatchObject({ exitCode: 0 });
+    fs.rmSync(supportSourcePath);
     fs.writeFileSync(plainSourcePath, 'export const value: number = 1;');
     fs.writeFileSync(path.join(webDirPath, 'src/helper.ts'), 'export {};');
     const remainingWorkspaces = ['apps/web/plugins/plain'];
