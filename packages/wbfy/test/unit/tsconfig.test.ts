@@ -221,6 +221,16 @@ test('checks framework helpers under their workspace config while retaining plai
         depending: { ...config.depending, vinext: true },
       })
     );
+    const frameworkConfigPath = path.join(webDirPath, 'tsconfig.json');
+    const normalizedFramework = JSON.parse(fs.readFileSync(frameworkConfigPath, 'utf8')) as { include: string[] };
+    normalizedFramework.include = normalizedFramework.include.filter((entry) => entry !== '*.config.mts');
+    const commentedFramework = JSON.stringify(normalizedFramework, undefined, 2).replace(
+      '{\n',
+      '{\n  // Keep the project-specific alias rationale.\n'
+    );
+    fs.writeFileSync(frameworkConfigPath, commentedFramework);
+    await generateTsconfig(createConfig({ dirPath: webDirPath, depending: { ...config.depending, vinext: true } }));
+    expect(fs.readFileSync(frameworkConfigPath, 'utf8')).toBe(commentedFramework);
     const frameworkTools = await check(webDirPath);
     expect(frameworkTools.exitCode).toBe(1);
     expect(frameworkTools.output).toContain('test/unit/example.test.ts');

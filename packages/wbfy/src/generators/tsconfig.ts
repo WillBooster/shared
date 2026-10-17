@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
+import fg from 'fast-glob';
 import type { PackageJson, TsConfigJson } from 'type-fest';
 
 import { logger } from '../logger.js';
@@ -386,7 +387,14 @@ function addIncludesForFrameworkProject(settings: TsConfigJson, config: PackageC
   // "all TS/TSX files" behavior, which already covers scripts.
   if (!settings.include) return;
   const includeCount = settings.include.length;
-  for (const include of subJsonObj.include) addIncludePath(settings, include);
+  for (const include of subJsonObj.include) {
+    const matches = fg.globSync(include, {
+      cwd: config.dirPath,
+      followSymbolicLinks: false,
+      ignore: ['**/node_modules/**'],
+    });
+    if (matches.length > 0) addIncludePath(settings, include);
+  }
   // Include wildcards skip dot directories, so framework globs such as `**/*.ts` never reach `.railway/`.
   if (hasRailwayIac(config)) addIncludePath(settings, '.railway/**/*');
   // Sorting an unchanged include would rewrite an already-clean tsconfig and drop its comments.
