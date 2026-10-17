@@ -274,6 +274,27 @@ test('checks framework helpers under their workspace config while retaining plai
       const ignoredBuildOutput = await check(tempDirPath);
       expect(ignoredBuildOutput).toMatchObject({ exitCode: 0 });
     }
+    fs.mkdirSync(path.join(webDirPath, 'app'), { recursive: true });
+    fs.writeFileSync(path.join(webDirPath, 'app/page.ts'), 'export const page: number = "wrong";');
+    fs.writeFileSync(
+      path.join(tempDirPath, 'tsconfig.json'),
+      JSON.stringify({
+        include: [
+          'apps/**/*',
+          'apps/web/*.config.ts',
+          'apps/web/scripts/**/*',
+          'apps/web/src/**/*',
+          'apps/web/test/**/*',
+        ],
+        exclude: ['apps/web/app', 'node_modules', 'dist'],
+      })
+    );
+    config.packageJson = { workspaces: remainingWorkspaces };
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: remainingWorkspaces }));
+    await generateTsconfig(config);
+    const previousAppExclusion = await check(tempDirPath);
+    expect(previousAppExclusion.exitCode).toBe(1);
+    expect(previousAppExclusion.output).toContain('apps/web/app/page.ts');
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }

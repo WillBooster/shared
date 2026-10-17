@@ -267,6 +267,12 @@ function removeStaleManagedWorkspaceEntries(
     }
   }
   const previousFrameworkExcludes = new Set(normalizeStringArray(oldSettings.wbfyFrameworkExcludes));
+  // Released generators recorded app-only exclusions without metadata. The complete managed
+  // include set above still proves ownership of these two canonical entries after removal.
+  for (const prefix of stalePrefixes) {
+    previousFrameworkExcludes.add(`${prefix}/app`);
+    previousFrameworkExcludes.add(`${prefix}/src/app`);
+  }
   delete oldSettings.wbfyFrameworkExcludes;
   if (!Array.isArray(oldSettings.exclude)) return;
   const generatedExclude = new Set(newSettings.exclude);
