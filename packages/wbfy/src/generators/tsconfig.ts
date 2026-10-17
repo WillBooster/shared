@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
-import fg from 'fast-glob';
 import type { PackageJson, TsConfigJson } from 'type-fest';
 
 import { logger } from '../logger.js';
@@ -193,6 +192,7 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
 }
 
 const frameworkDependencyNames = ['blitz', 'next', 'vinext'];
+const frameworkProjectPaths = ['app', 'scripts', 'src', 'test', '*.config.ts', '*.config.mts'];
 
 function getFrameworkWorkspaceExcludes(config: PackageConfig): string[] {
   if (!config.doesContainSubPackageJsons) return [];
@@ -208,13 +208,21 @@ function getPackageOwnedExcludes(dirPath: string, workspaceDirPaths: string[]): 
     workspaceDirPath.startsWith(`${dirPath}${path.sep}`)
   );
   if (nestedWorkspaceDirPaths.length === 0) return [dirPath];
-  // A directory exclusion also masks explicitly included descendant workspaces. Walk only the
-  // ancestor chain to those workspaces, leaving their own compiler projects visible to the root.
-  return fs.readdirSync(dirPath).flatMap((name) => {
-    const childPath = path.join(dirPath, name);
-    if (nestedWorkspaceDirPaths.includes(childPath)) return [];
-    return getPackageOwnedExcludes(childPath, nestedWorkspaceDirPaths);
-  });
+  // Root discovery reaches these canonical locations even when their files are created later.
+  // Enumerating the package root would also make generated configs depend on .next/node_modules.
+  return frameworkProjectPaths.flatMap((name) =>
+    excludeAroundNestedWorkspaces(path.join(dirPath, name), nestedWorkspaceDirPaths)
+  );
+}
+
+function excludeAroundNestedWorkspaces(dirPath: string, nestedWorkspaceDirPaths: string[]): string[] {
+  if (nestedWorkspaceDirPaths.includes(dirPath)) return [];
+  if (!nestedWorkspaceDirPaths.some((workspaceDirPath) => workspaceDirPath.startsWith(`${dirPath}${path.sep}`))) {
+    return [dirPath];
+  }
+  return fs
+    .readdirSync(dirPath)
+    .flatMap((name) => excludeAroundNestedWorkspaces(path.join(dirPath, name), nestedWorkspaceDirPaths));
 }
 
 function dependsOnFramework(manifestPath: string): boolean {
@@ -387,14 +395,10 @@ function addIncludesForFrameworkProject(settings: TsConfigJson, config: PackageC
   // "all TS/TSX files" behavior, which already covers scripts.
   if (!settings.include) return;
   const includeCount = settings.include.length;
-  for (const include of subJsonObj.include) {
-    const matches = fg.globSync(include, {
-      cwd: config.dirPath,
-      followSymbolicLinks: false,
-      ignore: ['**/node_modules/**'],
-    });
-    if (matches.length > 0) addIncludePath(settings, include);
-  }
+  // Mirror root workspace coverage, including future files. Its tool-config pattern is
+  // *.config.ts; adding *.config.mts here would rewrite otherwise unchanged framework configs
+  // without restoring coverage that the root workspace project previously owned.
+  for (const include of managedWorkspaceIncludeSuffixes) addIncludePath(settings, include);
   // Include wildcards skip dot directories, so framework globs such as `**/*.ts` never reach `.railway/`.
   if (hasRailwayIac(config)) addIncludePath(settings, '.railway/**/*');
   // Sorting an unchanged include would rewrite an already-clean tsconfig and drop its comments.

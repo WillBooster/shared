@@ -201,7 +201,14 @@ test('checks framework helpers under their workspace config while retaining plai
       packageJson: { workspaces },
     });
     await generateTsconfig(config);
+    await generateTsconfig(
+      createConfig({
+        dirPath: webDirPath,
+        depending: { ...config.depending, vinext: true },
+      })
+    );
     const firstConfig = fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8');
+    fs.mkdirSync(path.join(webDirPath, '.next'), { recursive: true });
     await generateTsconfig(config);
     expect(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')).toBe(firstConfig);
     expect(await check(tempDirPath)).toMatchObject({ exitCode: 0 });
@@ -210,17 +217,14 @@ test('checks framework helpers under their workspace config while retaining plai
     const brokenPlain = await check(tempDirPath);
     expect(brokenPlain.exitCode).toBe(1);
     expect(brokenPlain.output).toContain('apps/web/plugins/plain/src/index.ts');
+    fs.writeFileSync(plainSourcePath, 'export const value: number = 1;');
     fs.mkdirSync(path.join(webDirPath, 'test/unit'), { recursive: true });
     const testSourcePath = path.join(webDirPath, 'test/unit/example.test.ts');
     const toolSourcePath = path.join(webDirPath, 'playwright.config.ts');
     fs.writeFileSync(testSourcePath, 'export const bad: number = "wrong";');
     fs.writeFileSync(toolSourcePath, 'export const bad: number = "wrong";');
-    await generateTsconfig(
-      createConfig({
-        dirPath: webDirPath,
-        depending: { ...config.depending, vinext: true },
-      })
-    );
+    const rootAfterNewFrameworkFiles = await check(tempDirPath);
+    expect(rootAfterNewFrameworkFiles).toMatchObject({ exitCode: 0 });
     const frameworkConfigPath = path.join(webDirPath, 'tsconfig.json');
     const normalizedFramework = JSON.parse(fs.readFileSync(frameworkConfigPath, 'utf8')) as { include: string[] };
     normalizedFramework.include = normalizedFramework.include.filter((entry) => entry !== '*.config.mts');
