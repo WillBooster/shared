@@ -18,8 +18,6 @@ import {
   getWorkspaceSubDirPaths,
 } from '../utils/workspaceUtil.js';
 
-type ManagedTsconfig = TsConfigJson & { wbfyFrameworkExcludes?: string[] };
-
 const subJsonObj = {
   compilerOptions: {
     alwaysStrict: true,
@@ -52,7 +50,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       return;
     }
 
-    let newSettings = (config.isRoot ? buildRootJsonObj(config) : structuredClone(subJsonObj)) as ManagedTsconfig;
+    let newSettings = (config.isRoot ? buildRootJsonObj(config) : structuredClone(subJsonObj)) as TsConfigJson;
     const generatedTypes = getGeneratedTypes(config);
     applyManagedSettings(newSettings, config, generatedTypes);
 
@@ -61,7 +59,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     let originalSettingsJson: string | undefined;
     // A file with no configuration (empty or comment-only) is treated like a missing one, as tsc does.
     if (existingContent !== undefined && !jsoncUtil.isTriviaOnly(existingContent)) {
-      const oldSettings = jsoncUtil.parseObjectIgnoringError<ManagedTsconfig>(existingContent);
+      const oldSettings = jsoncUtil.parseObjectIgnoringError<TsConfigJson>(existingContent);
       // An existing tsconfig.json wbfy cannot parse must be left untouched: writing the
       // generated settings without merging would silently discard the project's configuration.
       if (!oldSettings) {
@@ -113,7 +111,7 @@ function applyManagedSettings(newSettings: TsConfigJson, config: PackageConfig, 
 function mergeExistingSettings(
   config: PackageConfig,
   newSettings: TsConfigJson,
-  oldSettings: ManagedTsconfig,
+  oldSettings: TsConfigJson,
   generatedTypes: string[]
 ): TsConfigJson {
   const existingTypes = normalizeStringArray(oldSettings.compilerOptions?.types);
@@ -150,20 +148,13 @@ function mergeExistingSettings(
   return mergedSettings;
 }
 
-/**
- * The monorepo-root tsconfig, whose include/exclude cover every DECLARED workspace layout (e.g.
- * `apps/*` alongside `packages/*`) so type-aware linting run from the root sees all workspace
- * sources, not just the conventional packages/* directory.
- */
 function buildRootJsonObj(config: PackageConfig): TsConfigJson {
-  const workspacePatterns = config.doesContainSubPackageJsons
+  // Roots with src compile independently; workspace packages use their own compiler options.
+  // Root type-aware lint needs workspace includes only when the root has no src.
+  const workspacePatterns = includesWorkspaceSources(config)
     ? getWorkspaceDirPatterns(config)
     : { excludes: [], includes: [] };
-  const settings = structuredClone(subJsonObj) as ManagedTsconfig;
-  const frameworkExcludes = getFrameworkWorkspaceExcludes(config).toSorted();
-  // TypeScript ignores custom top-level metadata. Keep provenance so a removed manifest or
-  // workspace cannot leave sources hidden, without guessing which authored exclusions we own.
-  if (frameworkExcludes.length > 0) settings.wbfyFrameworkExcludes = frameworkExcludes;
+  const settings = structuredClone(subJsonObj) as TsConfigJson;
   settings.exclude = [
     ...new Set([
       ...workspacePatterns.includes.map((workspacePattern) => `${workspacePattern}/test/fixtures`),
@@ -172,10 +163,13 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
       // whose directory is an ancestor of a workspace yields package-owned subpath entries
       // instead of the whole subtree (see getWorkspaceDirPatterns).
       ...workspacePatterns.excludes,
-      // Framework-owned compiler options (paths, JSX, DOM globals) apply throughout the package,
-      // including helpers, tests and tool configs, not just its app directory. The workspace's
-      // own typecheck checks those files; checking them again here uses incompatible options.
-      ...frameworkExcludes,
+      // The managed includes above deliberately omit framework `app/**` directories (see
+      // subJsonObj.include's comment), but a repo-authored broad include such as `e2e/**\/*`
+      // can still drag a framework workspace's app sources into the root project, where they
+      // fail under the root compiler options — their bare `next/*` imports resolve only through
+      // the framework workspace's own tsconfig `paths`. Exclude those app directories so the
+      // root project never type-checks them, no matter how broad the repo's include globs are.
+      ...getFrameworkWorkspaceAppExcludes(config),
       ...(settings.exclude ?? []),
     ]),
   ].toSorted();
@@ -191,37 +185,27 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
   return settings;
 }
 
+// Framework packages own their tsconfig (generateTsconfig skips them) and shim bare imports such as
+// `next/navigation` through package-local `paths`; vinext is the org's Next.js-equivalent framework
+// and behaves the same. Their app sources therefore only type-check under their own config.
 const frameworkDependencyNames = ['blitz', 'next', 'vinext'];
-const frameworkSourceDirs = ['app', 'scripts', 'src', 'test'];
-const frameworkProjectPaths = [...frameworkSourceDirs, '*.config.ts', '*.config.mts'];
 
-function getFrameworkWorkspaceExcludes(config: PackageConfig): string[] {
+// A framework app lives in `app/` or, under the src-directory layout, `src/app/`. The root project
+// includes `<workspace>/src/**/*`, so `src/app` leaks in just as a repo-wide glob can pull in `app`.
+const frameworkAppDirNames = ['app', 'src/app'];
+
+/** Root `exclude` entries (posix, relative to the root) for every framework workspace's app directory. */
+function getFrameworkWorkspaceAppExcludes(config: PackageConfig): string[] {
   if (!config.doesContainSubPackageJsons) return [];
-  const workspaceDirPaths = getWorkspaceSubDirPaths(config);
-  return workspaceDirPaths
-    .filter((workspaceDirPath) => dependsOnFramework(path.resolve(workspaceDirPath, 'package.json')))
-    .flatMap((workspaceDirPath) => getPackageOwnedExcludes(workspaceDirPath, workspaceDirPaths))
-    .map((excludedPath) => path.relative(config.dirPath, excludedPath).replaceAll('\\', '/'));
-}
-
-function getPackageOwnedExcludes(dirPath: string, workspaceDirPaths: string[]): string[] {
-  const nestedWorkspaceDirPaths = workspaceDirPaths.filter((workspaceDirPath) =>
-    workspaceDirPath.startsWith(`${dirPath}${path.sep}`)
-  );
-  if (nestedWorkspaceDirPaths.length === 0) return [dirPath];
-  const conflictingWorkspace = nestedWorkspaceDirPaths.find((workspaceDirPath) =>
-    frameworkSourceDirs.some((name) => {
-      const sourceDirPath = path.join(dirPath, name);
-      return workspaceDirPath === sourceDirPath || workspaceDirPath.startsWith(`${sourceDirPath}${path.sep}`);
-    })
-  );
-  if (conflictingWorkspace) {
-    throw new Error(
-      `Move nested workspace ${conflictingWorkspace} outside the framework workspace's app/src/scripts/test directories.`
-    );
+  const excludes: string[] = [];
+  for (const workspaceDirPath of getWorkspaceSubDirPaths(config)) {
+    if (!dependsOnFramework(path.resolve(workspaceDirPath, 'package.json'))) continue;
+    for (const appDirName of frameworkAppDirNames) {
+      const appDirPath = path.resolve(workspaceDirPath, appDirName);
+      if (fs.existsSync(appDirPath)) excludes.push(path.relative(config.dirPath, appDirPath).replaceAll('\\', '/'));
+    }
   }
-  // These subtrees share the framework compiler options, including files created after wbfy runs.
-  return frameworkProjectPaths.map((name) => path.join(dirPath, name));
+  return excludes;
 }
 
 function dependsOnFramework(manifestPath: string): boolean {
@@ -249,7 +233,7 @@ const managedWorkspaceIncludeSuffixes = ['*.config.ts', 'scripts/**/*', 'src/**/
  */
 function removeStaleManagedWorkspaceEntries(
   config: PackageConfig,
-  oldSettings: ManagedTsconfig,
+  oldSettings: TsConfigJson,
   newSettings: TsConfigJson
 ): void {
   const stalePrefixes = new Set<string>();
@@ -274,29 +258,37 @@ function removeStaleManagedWorkspaceEntries(
       });
     }
   }
-  const previousFrameworkExcludes = new Set(normalizeStringArray(oldSettings.wbfyFrameworkExcludes));
-  // Released generators recorded app-only exclusions without metadata. The complete managed
-  // include set above still proves ownership of these two canonical entries after removal.
-  for (const prefix of stalePrefixes) {
-    previousFrameworkExcludes.add(`${prefix}/app`);
-    previousFrameworkExcludes.add(`${prefix}/src/app`);
-  }
-  delete oldSettings.wbfyFrameworkExcludes;
   if (!Array.isArray(oldSettings.exclude)) return;
   const generatedExclude = new Set(newSettings.exclude);
-  const workspaceDirPaths = config.doesContainSubPackageJsons
+  // Workspace exclusions in an independent root project are authored scope boundaries, not
+  // obsolete workspace negations to remove when the declared packages still exist.
+  const workspaceDirPaths = includesWorkspaceSources(config)
     ? getWorkspaceSubDirPaths(config).map((workspaceDirPath) =>
         path.relative(path.resolve(config.dirPath), workspaceDirPath).replaceAll('\\', '/')
       )
     : [];
   oldSettings.exclude = oldSettings.exclude.filter((entry) => {
     if (typeof entry !== 'string' || generatedExclude.has(entry)) return true;
-    if (previousFrameworkExcludes.has(entry)) return false;
     if (entry.endsWith('/test/fixtures')) {
       return !stalePrefixes.has(entry.slice(0, -'/test/fixtures'.length));
     }
+    // A framework app exclude (`<workspace>/app`, `<workspace>/src/app`) for a still-declared
+    // workspace is pruned by coversWorkspaceDir below when no longer generated; this catches the
+    // remaining case, where the workspace itself was removed and its prefix is therefore stale.
+    // (A wrong suffix strip yields a prefix absent from stalePrefixes, so testing every name is safe.)
+    if (
+      frameworkAppDirNames.some(
+        (appDirName) => entry.endsWith(`/${appDirName}`) && stalePrefixes.has(entry.slice(0, -(appDirName.length + 1)))
+      )
+    ) {
+      return false;
+    }
     return !coversWorkspaceDir(entry, workspaceDirPaths);
   });
+}
+
+function includesWorkspaceSources(config: PackageConfig): boolean {
+  return config.doesContainSubPackageJsons && !fs.existsSync(path.join(config.dirPath, 'src'));
 }
 
 // Whether an exclude entry is a workspace negation (`!apps/excluded`) whose negation is gone: the
@@ -394,16 +386,7 @@ function addIncludesForFrameworkProject(settings: TsConfigJson, config: PackageC
   // "all TS/TSX files" behavior, which already covers scripts.
   if (!settings.include) return;
   const includeCount = settings.include.length;
-  const includes = settings.include;
-  const coversProject =
-    includes.includes('**') ||
-    includes.includes('**/*') ||
-    (includes.includes('**/*.ts') && includes.includes('**/*.tsx'));
-  // Broad framework globs already cover future TypeScript files. Extra equivalent entries would
-  // only trigger JSONC serialization and discard authored comments.
-  if (!coversProject) {
-    for (const include of managedWorkspaceIncludeSuffixes) addIncludePath(settings, include);
-  }
+  addIncludePath(settings, 'scripts/**/*');
   // Include wildcards skip dot directories, so framework globs such as `**/*.ts` never reach `.railway/`.
   if (hasRailwayIac(config)) addIncludePath(settings, '.railway/**/*');
   // Sorting an unchanged include would rewrite an already-clean tsconfig and drop its comments.

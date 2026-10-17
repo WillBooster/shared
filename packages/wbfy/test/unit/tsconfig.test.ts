@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -5,7 +6,7 @@ import path from 'node:path';
 import { expect, test } from 'bun:test';
 
 import { generateTsconfig } from '../../src/generators/tsconfig.js';
-import type { PackageConfig } from '../../src/packageConfig.js';
+import { getPackageConfig, type PackageConfig } from '../../src/packageConfig.js';
 
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -167,181 +168,193 @@ test('keeps a nested workspace in the root project when its ancestor package is 
   }
 });
 
-test('checks framework helpers under their workspace config while retaining plain workspace checks', async () => {
+test('excludes framework workspace app and src/app directories from the root project but not a plain one', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
   try {
-    fs.mkdirSync(path.join(tempDirPath, 'src'));
-    fs.writeFileSync(path.join(tempDirPath, 'src/index.ts'), 'export {};');
-    const workspaces = ['apps/web', 'apps/web/plugins/plain'];
-    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ private: true, workspaces }));
-    fs.symlinkSync(path.resolve(import.meta.dir, '../../node_modules'), path.join(tempDirPath, 'node_modules'));
-    for (const workspace of ['web', 'web/plugins/plain']) {
-      fs.mkdirSync(path.join(tempDirPath, 'apps', workspace, 'src'), { recursive: true });
-    }
-    fs.writeFileSync(path.join(tempDirPath, 'tsconfig.json'), JSON.stringify({ include: ['apps/**/*'] }));
-    const webDirPath = path.join(tempDirPath, 'apps/web');
-    fs.writeFileSync(path.join(webDirPath, 'package.json'), JSON.stringify({ dependencies: { vinext: '1' } }));
-    fs.writeFileSync(path.join(webDirPath, 'src/value.ts'), 'export const value = window.location.href;');
-    fs.writeFileSync(path.join(webDirPath, 'src/helper.ts'), "export { value } from '@/value';");
+    // A framework workspace (here vinext, the org's Next.js-equivalent) shims bare imports such as
+    // `next/navigation` through its own tsconfig paths, so its app sources fail under the root
+    // compiler options. A plain workspace's app directory carries no such requirement and must stay.
+    const workspaces = ['e2e/fixture', 'apps/src-layout', 'packages/plain', 'packages/broken'];
     fs.writeFileSync(
-      path.join(webDirPath, 'tsconfig.json'),
-      JSON.stringify({
-        compilerOptions: { noEmit: true, lib: ['ESNext', 'DOM'], paths: { '@/*': ['./src/*'] } },
-        include: ['src/**/*'],
-      })
+      path.join(tempDirPath, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces })
     );
-    const plainSourcePath = path.join(tempDirPath, 'apps/web/plugins/plain/src/index.ts');
-    fs.writeFileSync(path.join(tempDirPath, 'apps/web/plugins/plain/package.json'), '{}');
-    fs.writeFileSync(plainSourcePath, 'export const value: number = 1;');
+    for (const [workspaceDirName, appDirName, manifest] of [
+      ['e2e/fixture', 'app', JSON.stringify({ dependencies: { vinext: '1.0.0' } })],
+      // The src-directory layout keeps the framework app under src/app, which the root project's
+      // managed `src/**/*` include would otherwise pull in.
+      ['apps/src-layout', 'src/app', JSON.stringify({ dependencies: { next: '15.0.0' } })],
+      ['packages/plain', 'app', JSON.stringify({ dependencies: {} })],
+      // A manifest that parses to a non-object must not crash framework detection.
+      ['packages/broken', 'app', 'null'],
+    ] as const) {
+      const appDirPath = path.join(tempDirPath, workspaceDirName, appDirName);
+      fs.mkdirSync(appDirPath, { recursive: true });
+      fs.writeFileSync(path.join(tempDirPath, workspaceDirName, 'package.json'), manifest);
+      fs.writeFileSync(path.join(appDirPath, 'page.tsx'), 'export default () => null;\n');
+    }
     const config = createConfig({
       dirPath: tempDirPath,
       isRoot: true,
       doesContainSubPackageJsons: true,
       doesContainTypeScript: true,
-      packageJson: { workspaces },
+      packageJson: { name: 'root', workspaces },
     });
     await generateTsconfig(config);
-    await generateTsconfig(
-      createConfig({
-        dirPath: webDirPath,
-        depending: { ...config.depending, vinext: true },
-      })
-    );
-    const firstConfig = fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8');
-    fs.mkdirSync(path.join(webDirPath, '.next'), { recursive: true });
-    await generateTsconfig(config);
-    expect(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')).toBe(firstConfig);
-    expect(await check(tempDirPath)).toMatchObject({ exitCode: 0 });
-    expect(await check(webDirPath)).toMatchObject({ exitCode: 0 });
-    fs.writeFileSync(plainSourcePath, 'export const value: number = "wrong";');
-    const brokenPlain = await check(tempDirPath);
-    expect(brokenPlain.exitCode).toBe(1);
-    expect(brokenPlain.output).toContain('apps/web/plugins/plain/src/index.ts');
-    fs.writeFileSync(plainSourcePath, 'export const value: number = 1;');
-    fs.mkdirSync(path.join(webDirPath, 'test/unit'), { recursive: true });
-    const testSourcePath = path.join(webDirPath, 'test/unit/example.test.ts');
-    const toolSourcePath = path.join(webDirPath, 'playwright.config.ts');
-    fs.writeFileSync(testSourcePath, 'export const bad: number = "wrong";');
-    fs.writeFileSync(toolSourcePath, 'export const bad: number = "wrong";');
-    const rootAfterNewFrameworkFiles = await check(tempDirPath);
-    expect(rootAfterNewFrameworkFiles).toMatchObject({ exitCode: 0 });
-    const frameworkConfigPath = path.join(webDirPath, 'tsconfig.json');
-    const normalizedFramework = JSON.parse(fs.readFileSync(frameworkConfigPath, 'utf8')) as { include: string[] };
-    normalizedFramework.include = normalizedFramework.include.filter((entry) => entry !== '*.config.mts');
-    const commentedFramework = JSON.stringify(normalizedFramework, undefined, 2).replace(
-      '{\n',
-      '{\n  // Keep the project-specific alias rationale.\n'
-    );
-    fs.writeFileSync(frameworkConfigPath, commentedFramework);
-    await generateTsconfig(createConfig({ dirPath: webDirPath, depending: { ...config.depending, vinext: true } }));
-    expect(fs.readFileSync(frameworkConfigPath, 'utf8')).toBe(commentedFramework);
-    normalizedFramework.include = ['**/*.ts', '**/*.tsx', 'scripts/**/*'];
-    const broadFramework = JSON.stringify(normalizedFramework, undefined, 2).replace(
-      '{\n',
-      '{\n  // Preserve the broad-include rationale.\n'
-    );
-    fs.writeFileSync(frameworkConfigPath, broadFramework);
-    await generateTsconfig(createConfig({ dirPath: webDirPath, depending: { ...config.depending, vinext: true } }));
-    expect(fs.readFileSync(frameworkConfigPath, 'utf8')).toBe(broadFramework);
-    const frameworkTools = await check(webDirPath);
-    expect(frameworkTools.exitCode).toBe(1);
-    expect(frameworkTools.output).toContain('test/unit/example.test.ts');
-    expect(frameworkTools.output).toContain('playwright.config.ts');
-    fs.rmSync(testSourcePath);
-    fs.rmSync(toolSourcePath);
-    fs.writeFileSync(path.join(webDirPath, 'src/value.ts'), 'export const value: number = "wrong";');
-    const brokenWeb = await check(webDirPath);
-    expect(brokenWeb.exitCode).toBe(1);
-    const nonNestedWorkspaces = ['apps/web'];
-    config.packageJson = { workspaces: nonNestedWorkspaces };
-    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: nonNestedWorkspaces }));
-    const supportSourcePath = path.join(webDirPath, 'prisma/seed.ts');
-    fs.mkdirSync(path.dirname(supportSourcePath), { recursive: true });
-    fs.writeFileSync(supportSourcePath, 'export const support: number = "wrong";');
-    const nonNestedFramework = await check(webDirPath);
-    expect(nonNestedFramework.exitCode).toBe(1);
-    expect(nonNestedFramework.output).toContain('prisma/seed.ts');
-    await generateTsconfig(config);
-    expect(await check(tempDirPath)).toMatchObject({ exitCode: 0 });
-    fs.rmSync(supportSourcePath);
-    fs.writeFileSync(plainSourcePath, 'export const value: number = 1;');
-    fs.writeFileSync(path.join(webDirPath, 'src/helper.ts'), 'export {};');
-    const remainingWorkspaces = ['apps/web/plugins/plain'];
-    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: remainingWorkspaces }));
-    config.packageJson = { workspaces: remainingWorkspaces };
-    await generateTsconfig(config);
-    const removedWorkspace = await check(tempDirPath);
-    expect(removedWorkspace.exitCode).toBe(1);
-    expect(removedWorkspace.output).toContain('apps/web/src/value.ts');
-    const globWorkspaces = ['apps/*', 'apps/web/plugins/plain'];
-    config.packageJson = { workspaces: globWorkspaces };
-    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: globWorkspaces }));
-    await generateTsconfig(config);
-    const restoredFramework = await check(tempDirPath);
-    expect(restoredFramework.exitCode).toBe(0);
-    fs.unlinkSync(path.join(webDirPath, 'package.json'));
-    await generateTsconfig(config);
-    const removedManifest = await check(tempDirPath);
-    expect(removedManifest.exitCode).toBe(1);
-    expect(removedManifest.output).toContain('apps/web/src/value.ts');
-    const baselineWorkspaces = ['!other/**'];
-    config.packageJson = { workspaces: baselineWorkspaces };
-    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: baselineWorkspaces }));
-    fs.writeFileSync(path.join(webDirPath, 'package.json'), JSON.stringify({ dependencies: { vinext: '1' } }));
-    await generateTsconfig(config);
-    const baselineFramework = await check(tempDirPath);
-    expect(baselineFramework.exitCode).toBe(0);
-    fs.unlinkSync(path.join(webDirPath, 'package.json'));
-    await generateTsconfig(config);
-    const baselineRemovedManifest = await check(tempDirPath);
-    expect(baselineRemovedManifest.exitCode).toBe(1);
-    expect(baselineRemovedManifest.output).toContain('apps/web/src/value.ts');
-    fs.writeFileSync(path.join(webDirPath, 'src/value.ts'), 'export const value: number = 1;');
-    fs.mkdirSync(path.join(tempDirPath, 'dist/src'), { recursive: true });
-    fs.writeFileSync(path.join(tempDirPath, 'dist/src/stale.ts'), 'export const stale: number = "wrong";');
-    fs.writeFileSync(path.join(tempDirPath, 'tsconfig.json'), JSON.stringify({ exclude: ['node_modules', 'dist'] }));
-    for (const layout of [['!apps/**'], ['apps/*']]) {
-      config.packageJson = { workspaces: layout };
-      fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: layout }));
-      await generateTsconfig(config);
-      const ignoredBuildOutput = await check(tempDirPath);
-      expect(ignoredBuildOutput).toMatchObject({ exitCode: 0 });
-    }
-    fs.mkdirSync(path.join(webDirPath, 'app'), { recursive: true });
-    fs.writeFileSync(path.join(webDirPath, 'app/page.ts'), 'export const page: number = "wrong";');
-    fs.writeFileSync(
-      path.join(tempDirPath, 'tsconfig.json'),
-      JSON.stringify({
-        include: [
-          'apps/**/*',
-          'apps/web/*.config.ts',
-          'apps/web/scripts/**/*',
-          'apps/web/src/**/*',
-          'apps/web/test/**/*',
-        ],
-        exclude: ['apps/web/app', 'node_modules', 'dist'],
-      })
-    );
-    config.packageJson = { workspaces: remainingWorkspaces };
-    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: remainingWorkspaces }));
-    await generateTsconfig(config);
-    const previousAppExclusion = await check(tempDirPath);
-    expect(previousAppExclusion.exitCode).toBe(1);
-    expect(previousAppExclusion.output).toContain('apps/web/app/page.ts');
-    const unsupportedWorkspacePath = path.join(webDirPath, 'src/nested');
-    fs.mkdirSync(unsupportedWorkspacePath, { recursive: true });
-    fs.writeFileSync(path.join(unsupportedWorkspacePath, 'package.json'), '{}');
-    fs.writeFileSync(path.join(webDirPath, 'package.json'), JSON.stringify({ dependencies: { vinext: '1' } }));
-    const unsupportedWorkspaces = ['apps/web', 'apps/web/src/nested'];
-    config.packageJson = { workspaces: unsupportedWorkspaces };
-    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: unsupportedWorkspaces }));
-    const previousRootConfig = fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8');
-    await generateTsconfig(config);
-    expect(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')).toBe(previousRootConfig);
+    const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
+      exclude?: string[];
+    };
+    expect(tsconfig.exclude).toContain('e2e/fixture/app');
+    expect(tsconfig.exclude).toContain('apps/src-layout/src/app');
+    expect(tsconfig.exclude).not.toContain('packages/plain/app');
+    expect(tsconfig.exclude).not.toContain('packages/broken/app');
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }
 });
+
+test('prunes a stale framework app exclude after its workspace is removed', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
+  try {
+    const appDirPath = path.join(tempDirPath, 'apps/web/app');
+    fs.mkdirSync(appDirPath, { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'apps/web/package.json'), JSON.stringify({ dependencies: { next: '15' } }));
+    fs.writeFileSync(path.join(appDirPath, 'page.tsx'), 'export default () => null;\n');
+    fs.mkdirSync(path.join(tempDirPath, 'packages/plain/src'), { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'packages/plain/package.json'), JSON.stringify({}));
+
+    const generateWith = async (workspaces: string[]): Promise<string[]> => {
+      fs.writeFileSync(
+        path.join(tempDirPath, 'package.json'),
+        JSON.stringify({ name: 'root', private: true, workspaces })
+      );
+      const config = createConfig({
+        dirPath: tempDirPath,
+        isRoot: true,
+        doesContainSubPackageJsons: true,
+        doesContainTypeScript: true,
+        packageJson: { name: 'root', workspaces },
+      });
+      await generateTsconfig(config);
+      const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
+        exclude?: string[];
+      };
+      return tsconfig.exclude ?? [];
+    };
+
+    expect(await generateWith(['apps/web', 'packages/plain'])).toContain('apps/web/app');
+    // Removing apps/web from the workspaces makes its managed includes stale, so its now-orphaned
+    // app exclude must not survive into the regenerated root tsconfig.
+    expect(await generateWith(['packages/plain'])).not.toContain('apps/web/app');
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('keeps root and workspace compiler scopes separate while preserving coverage for roots without src', async () => {
+  const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-root-scope-'));
+  try {
+    const write = (filePath: string, content: string): void => {
+      const absolutePath = path.join(dirPath, filePath);
+      fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+      fs.writeFileSync(absolutePath, content);
+    };
+    const packageJson = {
+      name: 'scope-root',
+      private: true,
+      type: 'module',
+      packageManager: `bun@${Bun.version}`,
+      workspaces: ['packages/*'],
+      scripts: { typecheck: 'bun wb typecheck' },
+      devDependencies: { '@willbooster/wb': '*', oxlint: '*', 'oxlint-tsgolint': '*' },
+    } satisfies NonNullable<PackageConfig['packageJson']>;
+    write('package.json', JSON.stringify(packageJson));
+    write('.gitignore', 'node_modules/\n');
+    write('.oxlintrc.json', JSON.stringify({ ignorePatterns: ['node_modules/**'] }));
+    fs.symlinkSync(path.resolve(import.meta.dir, '../../../../node_modules'), path.join(dirPath, 'node_modules'));
+    write('src/root.ts', 'export const root: number = 1;');
+    write('tool.config.ts', 'export const tool: number = 1;');
+    for (const name of ['web', 'cli']) {
+      const alias = name === 'web' ? '@' : '@cli';
+      write(
+        `packages/${name}/package.json`,
+        JSON.stringify({
+          name: `scope-${name}`,
+          type: 'module',
+          scripts: { typecheck: 'bun wb typecheck' },
+          ...(name === 'web' ? { dependencies: { next: '*' } } : {}),
+        })
+      );
+      write(
+        `packages/${name}/src/value.ts`,
+        name === 'web' ? 'export const value = window.location.href;' : 'export const value: number = 1;'
+      );
+      write(`packages/${name}/src/index.ts`, `export { value } from '${alias}/value';`);
+      write(
+        `packages/${name}/tsconfig.json`,
+        JSON.stringify({
+          compilerOptions: {
+            noEmit: true,
+            strict: true,
+            skipLibCheck: true,
+            target: 'ESNext',
+            module: 'Preserve',
+            moduleResolution: 'bundler',
+            lib: name === 'web' ? ['ESNext', 'DOM'] : ['ESNext'],
+            paths: { [`${alias}/*`]: ['./src/*'] },
+          },
+          include: ['src/**/*'],
+        })
+      );
+    }
+    const generateRootConfig = async (): Promise<void> => {
+      const config = await getPackageConfig(dirPath, { isRoot: true });
+      assert.ok(config);
+      await generateTsconfig(config);
+    };
+    await generateRootConfig();
+    expect(await runTypecheck(dirPath)).toMatchObject({ exitCode: 0 });
+
+    write(
+      'tsconfig.json',
+      JSON.stringify({
+        include: ['**/*.ts'],
+        exclude: ['node_modules', 'packages', 'test/fixtures'],
+      })
+    );
+    await generateRootConfig();
+    expect(await runTypecheck(dirPath)).toMatchObject({ exitCode: 0 });
+    write('src/root.ts', 'export const root: number = "wrong";');
+    const brokenRoot = await runTypecheck(dirPath);
+    expect(brokenRoot.exitCode).toBe(1);
+    expect(brokenRoot.output).toContain('src/root.ts');
+    write('src/root.ts', 'export const root: number = 1;');
+    write('packages/cli/src/value.ts', 'export const value: number = "wrong";');
+    const brokenWorkspace = await runTypecheck(dirPath);
+    expect(brokenWorkspace.exitCode).toBe(1);
+    expect(brokenWorkspace.output).toContain('src/value.ts');
+    write('packages/cli/src/value.ts', 'export const value: number = 1;');
+
+    fs.rmSync(path.join(dirPath, 'src'), { recursive: true });
+    write('packages/legacy/package.json', JSON.stringify({ name: 'scope-legacy', type: 'module' }));
+    write('packages/legacy/src/value.ts', 'export const value = Bun.version;');
+    write('packages/legacy/src/index.ts', "export { value } from '@fixture/value';");
+    write(
+      'tsconfig.json',
+      JSON.stringify({
+        compilerOptions: { paths: { '@fixture/*': ['./packages/legacy/src/*'] } },
+      })
+    );
+    await generateRootConfig();
+    expect(await runTypecheck(dirPath)).toMatchObject({ exitCode: 0 });
+    write('packages/legacy/src/value.ts', 'export const value: number = "wrong";');
+    const brokenFallback = await runTypecheck(dirPath);
+    expect(brokenFallback.exitCode).toBe(1);
+    expect(brokenFallback.output).toContain('packages/legacy/src/value.ts');
+  } finally {
+    fs.rmSync(dirPath, { recursive: true, force: true });
+  }
+}, 30_000);
 
 test('keeps a commented Next tsconfig byte-identical when no cleanup is needed', async () => {
   const commentedContent = `{
@@ -396,12 +409,13 @@ async function withTempTsconfig<T>(
   }
 }
 
-async function check(project: string): Promise<{ exitCode: number; output: string }> {
-  const process = Bun.spawn(['bun', 'check', '-p', project], { stdout: 'pipe', stderr: 'pipe' });
+async function runTypecheck(dirPath: string): Promise<{ exitCode: number; output: string }> {
+  const cliPath = path.resolve(import.meta.dir, '../../../wb/src/index.ts');
+  const child = Bun.spawn(['bun', cliPath, '--working-dir', dirPath, 'typecheck'], { stdout: 'pipe', stderr: 'pipe' });
   const [exitCode, stdout, stderr] = await Promise.all([
-    process.exited,
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
   ]);
   return { exitCode, output: stdout + stderr };
 }
