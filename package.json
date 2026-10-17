@@ -29,7 +29,7 @@
     "@types/glob": "9.0.0"
   },
   "devDependencies": {
-    "@anolilab/multi-semantic-release": "4.4.21",
+    "@anolilab/multi-semantic-release": "4.4.23",
     "@semantic-release/commit-analyzer": "13.0.1",
     "@semantic-release/release-notes-generator": "14.1.1",
     "@tsconfig/bun": "1.0.11",
@@ -42,7 +42,7 @@
     "@willbooster/shared-lib": "workspace:*",
     "@willbooster/shared-lib-node": "workspace:*",
     "@willbooster/wb": "workspace:*",
-    "conventional-changelog-conventionalcommits": "10.4.0",
+    "conventional-changelog-conventionalcommits": "10.4.1",
     "lefthook": "2.1.16",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
