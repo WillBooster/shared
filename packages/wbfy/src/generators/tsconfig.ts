@@ -267,7 +267,11 @@ function removeStaleManagedWorkspaceEntries(
         path.relative(path.resolve(config.dirPath), workspaceDirPath).replaceAll('\\', '/')
       )
     : [];
-  const managedWorkspacePatterns = [...stalePrefixes, ...getWorkspaceDirPatterns(config).includes];
+  // Bun seeds these broad layouts from negations; matching them does not establish that an
+  // arbitrary build/dependency directory was workspace-owned, so preserve authored exclusions.
+  const managedWorkspacePatterns = [...stalePrefixes, ...getWorkspaceDirPatterns(config).includes].filter(
+    (pattern) => pattern !== '**' && pattern !== '*/*'
+  );
   oldSettings.exclude = oldSettings.exclude.filter((entry) => {
     if (typeof entry !== 'string' || generatedExclude.has(entry)) return true;
     return !isWorkspaceOwnedPath(entry, managedWorkspacePatterns) && !coversWorkspaceDir(entry, workspaceDirPaths);

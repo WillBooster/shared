@@ -231,6 +231,17 @@ test('checks framework helpers under their workspace config while retaining plai
     const removedManifest = await check(tempDirPath);
     expect(removedManifest.exitCode).toBe(1);
     expect(removedManifest.output).toContain('apps/web/src/value.ts');
+    fs.writeFileSync(path.join(webDirPath, 'src/value.ts'), 'export const value: number = 1;');
+    fs.mkdirSync(path.join(tempDirPath, 'dist/src'), { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'dist/src/stale.ts'), 'export const stale: number = "wrong";');
+    fs.writeFileSync(path.join(tempDirPath, 'tsconfig.json'), JSON.stringify({ exclude: ['node_modules', 'dist'] }));
+    for (const layout of [['!apps/**'], ['apps/*']]) {
+      config.packageJson = { workspaces: layout };
+      fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: layout }));
+      await generateTsconfig(config);
+      const ignoredBuildOutput = await check(tempDirPath);
+      expect(ignoredBuildOutput).toMatchObject({ exitCode: 0 });
+    }
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }
