@@ -186,7 +186,6 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
 }
 
 const frameworkDependencyNames = ['blitz', 'next', 'vinext'];
-const frameworkAppDirNames = ['app', 'src/app'];
 
 function getFrameworkWorkspaceExcludes(config: PackageConfig): string[] {
   if (!config.doesContainSubPackageJsons) return [];
@@ -257,17 +256,7 @@ function removeStaleManagedWorkspaceEntries(
     if (entry.endsWith('/test/fixtures')) {
       return !stalePrefixes.has(entry.slice(0, -'/test/fixtures'.length));
     }
-    // A framework app exclude (`<workspace>/app`, `<workspace>/src/app`) for a still-declared
-    // workspace is pruned by coversWorkspaceDir below when no longer generated; this catches the
-    // remaining case, where the workspace itself was removed and its prefix is therefore stale.
-    // (A wrong suffix strip yields a prefix absent from stalePrefixes, so testing every name is safe.)
-    if (
-      frameworkAppDirNames.some(
-        (appDirName) => entry.endsWith(`/${appDirName}`) && stalePrefixes.has(entry.slice(0, -(appDirName.length + 1)))
-      )
-    ) {
-      return false;
-    }
+    if (stalePrefixes.has(entry)) return false;
     return !coversWorkspaceDir(entry, workspaceDirPaths);
   });
 }
