@@ -19,7 +19,8 @@ const antigravityStatusLineScriptPath = path.join(os.homedir(), '.gemini/antigra
 // This content is loaded into every agent session, so it is kept as short as it can be while
 // staying unambiguous: e.g., the excluded organizations are written as shell brace expansion, which
 // the agents read as a path condition without any runtime matching.
-const userAgentInstructionContent = `- Repos live under \`~/ghq/github.com\`; always clone with \`ghq get -p\`, never \`git clone\`.
+const userAgentInstructionContent = `- Be honest in your responses.
+- Repos live under \`~/ghq/github.com\`; always clone with \`ghq get -p\`, never \`git clone\`.
 - LLM/AI agent responses may take 1–2 hours; wait patiently, don't assume failure.
 - No AI attribution (e.g., \`Co-Authored-By\` trailers, "Generated with ..." footers) in commits, issues, or PRs unless explicitly requested. This hides nothing: if asked which AI agent did the work, answer truthfully.
 - Outside \`~/ghq/github.com/{WillBooster,WillBoosterLab}/\`, follow the repository's contribution guide (e.g., CONTRIBUTING.md, \`.github/\`) and issue/PR templates, match its commit and code conventions, and honor its rules on AI-assisted contributions. Write its issues and PRs with only what a reviewer unfamiliar with the work needs to understand and assess it, as concisely as that context allows.
