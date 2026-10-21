@@ -16,6 +16,8 @@ test('uses the repository directory name before the first package.json is genera
     fsUtil.setRootDirPath(dirPath);
     await fs.promises.writeFile(path.join(dirPath, 'CLAUDE.md'), 'old');
     await fs.promises.writeFile(path.join(dirPath, 'GEMINI.md'), 'old');
+    await fs.promises.mkdir(path.join(dirPath, '.cursor/rules'), { recursive: true });
+    await fs.promises.writeFile(path.join(dirPath, '.cursor/rules/general.mdc'), 'old');
     const config = createConfig({ dirPath, isRoot: true, doesContainPackageJson: false, packageJson: {} });
     await generateAgentInstructions(config, [config]);
 
@@ -24,6 +26,7 @@ test('uses the repository directory name before the first package.json is genera
     expect(content).not.toContain('- Name: `unknown`');
     expect(fs.existsSync(path.join(dirPath, 'CLAUDE.md'))).toBe(false);
     expect(fs.existsSync(path.join(dirPath, 'GEMINI.md'))).toBe(false);
+    expect(fs.existsSync(path.join(dirPath, '.cursor/rules/general.mdc'))).toBe(false);
   } finally {
     fsUtil.setRootDirPath(undefined);
     await fs.promises.rm(dirPath, { force: true, recursive: true });

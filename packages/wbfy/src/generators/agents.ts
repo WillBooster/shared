@@ -28,14 +28,14 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     const deployFacts = { ownsGeneratedWorkerTypes: generatedWorkerTypes.includes(true), usesWbDeploy };
 
     const agentsMdPath = path.resolve(rootConfig.dirPath, 'AGENTS.md');
-    const agentsMdContent = generateAgentInstruction(rootConfig, allConfigs, undefined, deployFacts, extraContent);
-    const cursorRulesPath = path.resolve(rootConfig.dirPath, '.cursor/rules/general.mdc');
-    const cursorRulesContent = generateCursorGeneralMdcContent(rootConfig, allConfigs, deployFacts, extraContent);
+    const agentsMdContent = generateAgentInstruction(rootConfig, allConfigs, deployFacts, extraContent);
+    // Cursor reads AGENTS.md itself, and its CLI applies it alongside `.cursor/rules`, so the
+    // former copy in `.cursor/rules/general.mdc` only duplicated these instructions.
     await runAllInPool([
       () => fsUtil.generateFile(agentsMdPath, agentsMdContent),
       () => fsUtil.removeConfined(path.resolve(rootConfig.dirPath, 'CLAUDE.md')),
       () => fsUtil.removeConfined(path.resolve(rootConfig.dirPath, 'GEMINI.md')),
-      () => fsUtil.generateFile(cursorRulesPath, cursorRulesContent),
+      () => fsUtil.removeConfined(path.resolve(rootConfig.dirPath, '.cursor/rules/general.mdc')),
     ]);
   });
 }
@@ -55,17 +55,6 @@ export async function readAgentsExtraContent(rootDirPath: string): Promise<strin
   return agentsExtraContentCache.get(agentsExtraPath);
 }
 
-function generateCursorGeneralMdcContent(
-  config: PackageConfig,
-  allConfigs: PackageConfig[],
-  deployFacts: DeployFacts,
-  extraContent?: string
-): string {
-  const frontmatter = `---\ndescription: General Coding Rules\nglobs:\nalwaysApply: true\n---`;
-  const body = generateAgentInstruction(config, allConfigs, 'Cursor', deployFacts, extraContent);
-  return `${frontmatter}\n\n${body}`;
-}
-
 interface DeployFacts {
   ownsGeneratedWorkerTypes: boolean;
   usesWbDeploy: boolean;
@@ -77,26 +66,21 @@ export const LANGUAGE_BOUND_TEXT_EXCEPTION =
 function generateAgentInstruction(
   rootConfig: PackageConfig,
   allConfigs: PackageConfig[],
-  toolName: string | undefined,
   deployFacts: DeployFacts,
   extraContent?: string
 ): string {
   const packageManager = 'bun';
   const description = rootConfig.packageJson?.description;
-  const coAuthorTrailer = toolName
-    ? `\`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\``
-    : `\`Co-authored-by: WillBooster (AGENT_NAME) <agent@willbooster.com>\` (replacing \`AGENT_NAME\` with your agent name, e.g., \`Codex CLI\`, \`Claude Code\`, \`Antigravity CLI\`, or \`Gemini CLI\`, and keeping the email address \`agent@willbooster.com\` unchanged)`;
   const coAuthorInstruction = rootConfig.isWillBoosterRepo
-    ? `\n  - End your commit message with a blank line followed by ${coAuthorTrailer}, the only AI attribution to add.`
+    ? '\n  - End your commit message with a blank line followed by `Co-authored-by: WillBooster (AGENT_NAME) <agent@willbooster.com>`, replacing only `AGENT_NAME` with your agent name (e.g., `Claude Code`), the only AI attribution to add.'
     : '';
   const prTemplateInstruction = `\n${PULL_REQUEST_BODY_RULES.replaceAll(/^/gm, '  ')}`;
-  const requirementsExemption =
-    " other than the PR body's Requirements section (which states what is currently asked for rather than what the code contains)";
   const issueTemplateInstruction = `\n- When creating an issue:\n${ISSUE_TEMPLATE_RULES.replaceAll(/^/gm, '  ')}`;
   const languageInstruction =
     getDefaultProseLanguage(rootConfig) === 'Japanese'
       ? `\n- Unless instructed otherwise, write issues, PR bodies, review comments, and documentation for people (README, \`docs/\`) in Japanese, and every other artifact (including commit messages, PR titles, identifiers, code comments, JSDoc, and agent instructions) in English, ${LANGUAGE_BOUND_TEXT_EXCEPTION}.`
       : `\n- Write every artifact in English, ${LANGUAGE_BOUND_TEXT_EXCEPTION}.`;
+  const workspaceOption = allConfigs.length > 1 ? '; use `-w packages/example` for a workspace' : '';
   const projectName = rootConfig.packageJson?.name || path.basename(path.resolve(rootConfig.dirPath));
   const baseContent = `
 ## Project Information
@@ -110,17 +94,17 @@ function generateAgentInstruction(
 - Run \`git\` commands one at a time to avoid \`index.lock\` conflicts.${languageInstruction}
 ${TEST_WRITING_RULES}
 - When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
-- After making changes, as a rule, run only what is necessary for the change locally, \`${packageManager} run verify\` (type checking and linting; up to 10 minutes) and the relevant tests, and leave the full test suite (\`${packageManager} run verify-full\`; up to 1 hour) to the PR's CI. If PR CI does not run the full suite, run it locally. Fix errors, including CI failures, and re-run until they pass.
-  - Run relevant tests with \`${packageManager} wb test test/unit/example.test.ts --grep 'case name'\` (omit \`--grep\` for the whole file; use \`-w packages/example\` in a monorepo). \`${packageManager} wb verify --full <test-path> --grep 'case name'\` combines verification with selected tests.
+- After making changes, run locally only \`${packageManager} run verify\` (type checking and linting; up to 10 minutes) and the relevant tests; leave the full suite (\`${packageManager} run verify-full\`; up to 1 hour) to the PR's CI, or run it locally if PR CI does not. Fix errors, including CI failures, and re-run until they pass.
+  - Run relevant tests with \`${packageManager} wb test test/unit/example.test.ts --grep 'case name'\` (omit \`--grep\` for the whole file${workspaceOption}). \`${packageManager} wb verify --full <test-path> --grep 'case name'\` combines verification with selected tests.
   - Wait for it to finish without restarting it: prefer completion notifications, otherwise the longest permitted wait; no output does not mean it has stopped. If the displayed excerpt is insufficient, read the indicated log file before rerunning. If the environment kills long-running commands, run them detached with a saved log and exit status.
   - \`verify\` also prints \`code-gauge\` errors and warnings without failing. In code your change touches, fix every error, and each warning whose fix makes the code easier to read, with behavior-preserving changes (e.g., extract a helper, flatten branching, reuse the code it duplicates). Leave a violation whose only fix moves complexity elsewhere (e.g., splitting a function mechanically), restructures far more code than your change touches, or removes an intentional duplicate (e.g., a file mirroring another by design); list each error left, with the reason, in the PR body's Notes, proposing a \`code-gauge.config.json\` exclusion there for an intentional duplicate. Never edit \`code-gauge.config.json\` to silence a violation unless asked. When a violation measures the code incorrectly (e.g., misparsed syntax, unrelated code reported as duplicated), search the issues of \`WillBooster/code-gauge\` and, if none covers it, create one with a freshly written minimal reproduction, the command, and its output.
-- Once verified, commit and push to the current (non-main) branch, and create a PR via \`gh\` if none exists for the branch.
+- Once verified, commit and push to the current branch, and create a PR via \`gh\` if none exists for the branch.
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
   - Always create new commits; avoid \`--amend\`.${prTemplateInstruction}${issueTemplateInstruction}
-- In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.)${requirementsExemption}, describe only the current implementation: drop any statement naming an identifier, feature, or concept you cannot confirm exists in the final diff or the current codebase (e.g., one added and later removed or renamed along the way). Whenever documentation or comments no longer match the current implementation (removed options, deprecated usage, outdated behavior), delete or rewrite them, even in files you are not otherwise changing. Mention a past state only where it is needed to understand why the current design is as it is, or when explicitly asked; files that record history by design (e.g., a changelog) are exempt.
+- In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.) other than the PR body's Requirements section, describe only the current implementation: drop any statement naming an identifier, feature, or concept you cannot confirm exists in the final diff or the current codebase (e.g., one added and later removed or renamed along the way). Whenever documentation or comments no longer match the current implementation, delete or rewrite them, even in files you are not otherwise changing. Mention a past state only where it is needed to understand why the current design is as it is, or when explicitly asked; files that record history by design (e.g., a changelog) are exempt.
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`, \`gh issue create --body-file -\`).
 - Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.
-- \`AGENTS.md\`, \`.cursor/rules/general.mdc\`, and \`.gemini/styleguide.md\` are generated from \`AGENTS_EXTRA.md\` and overwritten on every \`wbfy\` run; to change agent instructions, edit only \`AGENTS_EXTRA.md\`.${generateStackInstructions(rootConfig, allConfigs, deployFacts, packageManager)}
+- \`AGENTS.md\` and \`.gemini/styleguide.md\` are generated by \`wbfy\`; edit agent instructions only in \`AGENTS_EXTRA.md\`.${generateStackInstructions(rootConfig, allConfigs, deployFacts, packageManager)}
 
 ${generateAgentCodingStyle(rootConfig, allConfigs)}
 `
@@ -144,7 +128,7 @@ function generateStackInstructions(
   packageManager: string
 ): string {
   const fnoxInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
-    ? `\n- Environment variables and secrets live in \`fnox.toml\` (mise + fnox); never create \`.env\`, \`.env.*\`, or \`.dev.vars\` files. Run commands through \`${packageManager} wb ...\` or \`fnox run -P <profile> -- <command>\`. Profile secrets load only when a profile is selected: mode-aware wb commands (e.g. \`wb start\`, \`wb test\`) and \`wb dotenv\` select it themselves (\`wb dotenv\` uses \`WB_ENV\`, else \`FNOX_PROFILE\`, else \`NODE_ENV\`, else the development profile; \`WB_ENV\` accepts only \`development\`/\`test\`/\`staging\`/\`production\`, so use \`FNOX_PROFILE\` for any other profile), while bare \`fnox run\` needs an explicit \`-P <profile>\`.`
+    ? `\n- Environment variables and secrets live in \`fnox.toml\` (mise + fnox); never create \`.env\`, \`.env.*\`, or \`.dev.vars\` files. Run commands through \`${packageManager} wb ...\` or \`fnox run -P <profile> -- <command>\`. Profile secrets load only when a profile is selected: mode-aware wb commands (e.g. \`wb start\`, \`wb test\`) and \`wb dotenv\` select it themselves (\`wb dotenv\` uses \`WB_ENV\`, else \`FNOX_PROFILE\`, else \`NODE_ENV\`, else the development profile; \`WB_ENV\` accepts only \`development\`/\`test\`/\`staging\`/\`production\`, so use \`FNOX_PROFILE\` for any other profile).`
     : '';
   // mise owns the pinned tool versions, so a version mismatch is fixed by editing mise.toml — not
   // by installing a different version globally, which the next `mise install` silently overrides.
@@ -165,9 +149,15 @@ function generateStackInstructions(
   const playwrightTestServerInstruction = hasPlaywrightTestServer(allConfigs)
     ? `\n- Use \`${packageManager} wb start --mode test\` to launch a web server for debugging or testing.`
     : '';
-  const runnerInstruction = rootConfig.isWillBoosterRepo
-    ? '\n- Private repositories use self-hosted CI runners. Keep OS/size constraints in an explicit self-hosted label array; fix missing runner capabilities instead of switching to GitHub-hosted runners. The sole approved exception is the Windows desktop build in WillBooster/cheerlings.'
-    : '';
+  // Mirrors the runner policy in workflowRunnerPolicy.ts, which exempts only cheerlings' Windows build.
+  const runnerException =
+    rootConfig.repository?.toLowerCase() === 'github:willbooster/cheerlings'
+      ? ' The sole approved exception is the Windows desktop build.'
+      : '';
+  const runnerInstruction =
+    rootConfig.isWillBoosterRepo && !rootConfig.isPublicRepo
+      ? `\n- This repository uses self-hosted CI runners. Keep OS/size constraints in an explicit self-hosted label array; fix missing runner capabilities instead of switching to GitHub-hosted runners.${runnerException}`
+      : '';
   return `${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${deployPlatformInstructions}${playwrightTestServerInstruction}${runnerInstruction}`;
 }
 
@@ -224,7 +214,7 @@ export function generateAgentCodingStyle(rootConfig: PackageConfig, allConfigs: 
   const npmApiException = rootConfig.isPublicRepo
     ? ' Exception: the exported API of a package published to npm may carry JSDoc describing what it does and how to call it, because its users read it without the source.'
     : '';
-  const commentInstruction = `- Comments and JSDoc: every reader has the source, so never restate what the code, its names, or its types already say (e.g., \`@param name The name\`). Write one only when a plausible edit would break something without that knowledge and no type check, lint rule, or test would catch it; first encode the knowledge in code (a name, a type, an \`assert\`, a test) and comment only what cannot be encoded: an odd-looking workaround, a dependency on a fact outside the repository, or a rejected alternative and why. Put a contract of the declared symbol in JSDoc and line-specific knowledge in an inline comment. Delete comments that fail this test in files you touch.${npmApiException}`;
+  const commentInstruction = `- Comments and JSDoc: every reader has the source, so write one only when a plausible edit would break something without that knowledge and no type check, lint rule, or test would catch it; first encode the knowledge in code (a name, a type, an \`assert\`, a test) and comment only what cannot be encoded: an odd-looking workaround, a dependency on a fact outside the repository, or a rejected alternative and why. Put a contract of the declared symbol in JSDoc and line-specific knowledge in an inline comment. Delete comments that fail this test in files you touch.${npmApiException}`;
   const osCompatibilityInstruction = isGeneralPublicOss
     ? ''
     : hasDesktopApp

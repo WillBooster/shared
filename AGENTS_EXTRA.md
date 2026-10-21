@@ -1,5 +1,4 @@
 - Use `project.env` instead of `process.env` in the `wb` package.
-- Always drop any Windows support.
 - `wbfy` targets WillBooster / WillBoosterLab repositories; others are best-effort.
 - Simplify implementation to the extreme:
   - Whenever a problem can be solved either by code or by an operational rule (a constraint on developers or target repositories), choose the rule.
