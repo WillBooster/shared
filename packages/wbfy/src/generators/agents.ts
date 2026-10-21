@@ -155,7 +155,7 @@ function generateStackInstructions(
       ? ' The sole approved exception is the Windows desktop build.'
       : '';
   const runnerInstruction =
-    rootConfig.isWillBoosterRepo && !rootConfig.isPublicRepo
+    rootConfig.isWillBoosterRepo && rootConfig.isRepoVisibilityKnown && !rootConfig.isPublicRepo
       ? `\n- This repository uses self-hosted CI runners. Keep OS/size constraints in an explicit self-hosted label array; fix missing runner capabilities instead of switching to GitHub-hosted runners.${runnerException}`
       : '';
   return `${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${deployPlatformInstructions}${playwrightTestServerInstruction}${runnerInstruction}`;
