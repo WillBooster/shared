@@ -31,8 +31,8 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
   }
 }
 
-function miseToml(bun: string, fnoxLine: string): string {
-  return `# Toolchain\n[tools]\nnode = "22.0.0"\nbun = "${bun}" # inline\npython = "3.12.0"\n${fnoxLine}\n# Tasks\n[tasks.hello]\n# Multi-line on purpose.\nrun = """\necho hello\n"""\n`;
+function miseToml(node: string, bun: string, fnoxLine: string): string {
+  return `# Toolchain\n[tools]\nnode = "${node}"\nbun = "${bun}" # inline\npython = "3.12.0"\n${fnoxLine}\n# Tasks\n[tasks.hello]\n# Multi-line on purpose.\nrun = """\necho hello\n"""\n`;
 }
 
 test('pins the concrete version behind an lts/* mise selector and adds a concrete Bun pin', async () => {
@@ -43,23 +43,26 @@ test('pins the concrete version behind an lts/* mise selector and adds a concret
   expect(content).toMatch(/bun = "\d+\.\d+\.\d+"/u);
 }, 60_000);
 
-test('updates Bun and fnox without downgrading newer pins or rewriting the rest of the file', async () => {
+test('updates Node.js within its major, Bun, and fnox without downgrading newer pins or rewriting the rest of the file', async () => {
   // Require successful live lookups: accepting original pins would let a broken updater pass.
+  const { stdout: latestNode22Output } = await spawnAsync('mise', ['--no-config', 'latest', 'node@22']);
   const { stdout: latestBunOutput } = await spawnAsync('mise', ['--no-config', 'latest', 'bun']);
   const { stdout: latestFnoxOutput } = await spawnAsync('mise', ['--no-config', 'latest', 'fnox']);
+  const latestNode22 = latestNode22Output.trim();
   const latestBun = latestBunOutput.trim();
   const latestFnox = latestFnoxOutput.trim();
-  const content = await generateFrom({ 'mise.toml': miseToml('0.1.0', ''), 'fnox.toml': '' });
+  const content = await generateFrom({ 'mise.toml': miseToml('22.0.0', '0.1.0', ''), 'fnox.toml': '' });
 
-  expect(content).toBe(miseToml(latestBun, `fnox = "${latestFnox}"\n`));
+  expect(content).toBe(miseToml(latestNode22, latestBun, `fnox = "${latestFnox}"\n`));
 
+  const newerNode22 = semver.inc(latestNode22, 'patch');
   const newerBun = semver.inc(latestBun, 'patch');
   const newerFnox = semver.inc(latestFnox, 'patch');
   const newerContent = await generateFrom({
-    'mise.toml': `[tools]\nnode = "22.0.0"\nbun = "${newerBun}"\nfnox = "${newerFnox}"\n`,
+    'mise.toml': `[tools]\nnode = "${newerNode22}"\nbun = "${newerBun}"\nfnox = "${newerFnox}"\n`,
     'fnox.toml': '',
   });
   expect(Bun.TOML.parse(newerContent)).toEqual({
-    tools: { node: '22.0.0', bun: newerBun, fnox: newerFnox },
+    tools: { node: newerNode22, bun: newerBun, fnox: newerFnox },
   });
 }, 60_000);

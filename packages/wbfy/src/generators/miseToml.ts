@@ -31,11 +31,10 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
     const pins: Record<string, unknown> = {
       // Ensure Node.js is always pinned: generated hooks and CI run `mise install`, and an unpinned
       // Node would come from whatever happens to be on PATH.
-      // Lift-then-pin: the lift only touches exact pins and the pin only touches selectors, so
-      // ordering the lift first avoids resolving `mise latest node@lts` twice for unpinned repos.
+      // The lift only touches exact pins and the pin only touches selectors, so they never both resolve.
       node: await pinConcreteToolVersion(
         'node',
-        await liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
+        await liftOutdatedToolVersionWithinMajor('node', tools.node, config.dirPath),
         config.dirPath
       ),
       bun: await pinLatestToolVersion('bun', tools.bun, config.dirPath),
@@ -96,21 +95,20 @@ async function pinLatestToolVersion(tool: string, version: unknown, cwd: string)
 }
 
 /**
- * Lifts an exact tool pin below the latest resolvable version — within the SAME major — to that
- * version (Node.js resolves against the latest LTS): the repository-structure standard tracks the
- * current toolchain across repositories and Renovate does not manage mise.toml pins, so
- * patch/minor drift (e.g. node 24.16.0 vs 24.18.0) never self-heals. A pin
- * on an older major is a deliberate compatibility choice and is kept, as are non-exact and
- * non-string forms. When mise cannot resolve the selector (e.g. offline), the pin is kept.
+ * Lifts an exact tool pin to the latest release of its own major (e.g. node 22.20.0 to 22.23.4):
+ * Renovate does not manage mise.toml pins, so without this a repository keeps running a release
+ * line's patch versions that security releases have superseded. The major stays as pinned because
+ * it is a deliberate compatibility choice. Non-exact and non-string forms are kept, as is the pin
+ * when mise cannot resolve the major (e.g. offline).
  */
-async function liftOutdatedToolVersionWithinMajor(selector: string, version: unknown, cwd: string): Promise<unknown> {
+async function liftOutdatedToolVersionWithinMajor(tool: string, version: unknown, cwd: string): Promise<unknown> {
   if (typeof version !== 'string' || !semver.valid(version)) return version;
-  const latestVersion = await spawnAndReturnStdout('mise', ['--no-config', 'latest', selector], cwd);
-  return semver.valid(latestVersion) &&
-    semver.major(latestVersion) === semver.major(version) &&
-    semver.lt(version, latestVersion)
-    ? latestVersion
-    : version;
+  const latestVersion = await spawnAndReturnStdout(
+    'mise',
+    ['--no-config', 'latest', `${tool}@${semver.major(version)}`],
+    cwd
+  );
+  return semver.valid(latestVersion) && semver.lt(version, latestVersion) ? latestVersion : version;
 }
 
 /**
