@@ -60,7 +60,7 @@ function getConfigContent(config: PackageConfig): string {
 // oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids ESM package loading issues.
 const oxlintBaseConfig = require('${oxlintBaseConfigModule}');
 
-${getResolvedConfigContent('oxlintBaseConfig.default ?? oxlintBaseConfig', isRootConfig)}`
+${getResolvedConfigContent('oxlintBaseConfig.default ?? oxlintBaseConfig', isRootConfig) + getSlidevOverrides(config)}`
     )}
 
 ${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;')}
@@ -73,7 +73,7 @@ ${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;
 
 import oxlintBaseConfig from '${oxlintBaseConfigModule}';
 
-${getResolvedConfigContent('oxlintBaseConfig', isRootConfig)}`
+${getResolvedConfigContent('oxlintBaseConfig', isRootConfig) + getSlidevOverrides(config)}`
   )}
 
 ${managedConfigBlocks.getBlock('export', 'export default oxlintResolvedConfig;')}
@@ -93,4 +93,19 @@ oxlintResolvedConfig.options = { ...oxlintResolvedConfig.options, typeAware: tru
 
   return `const oxlintResolvedConfig: OxlintConfig = structuredClone(${baseConfigName});
 delete oxlintResolvedConfig.options;`;
+}
+
+function getSlidevOverrides(config: PackageConfig): string {
+  if (!config.depending.slidev) return '';
+  // Slidev discovers these entry points by their exact kebab-case names. Renaming them to
+  // satisfy filename-case silently disables the components or setup, and this path-based
+  // rule cannot be suppressed with an inline directive.
+  return `
+oxlintResolvedConfig.overrides = [
+  ...(oxlintResolvedConfig.overrides ?? []),
+  {
+    files: ['global-{top,bottom}.vue', 'slide-{top,bottom}.vue', 'setup/vite-plugins.ts'],
+    rules: { 'unicorn/filename-case': 'off' },
+  },
+];`;
 }
