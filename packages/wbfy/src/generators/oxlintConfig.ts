@@ -97,14 +97,21 @@ delete oxlintResolvedConfig.options;`;
 
 function getSlidevOverrides(config: PackageConfig): string {
   if (!config.depending.slidev) return '';
-  // Slidev discovers these entry points by their exact kebab-case names. Renaming them to
-  // satisfy filename-case silently disables the components or setup, and this path-based
-  // rule cannot be suppressed with an inline directive.
+  // Slidev discovers setup hooks by fixed names and layouts by their frontmatter names.
+  // Renaming them breaks discovery or existing decks. Keep its documented component names
+  // too; filename-case is path-based and cannot be suppressed with inline directives.
   return `
 oxlintResolvedConfig.overrides = [
   ...(oxlintResolvedConfig.overrides ?? []),
   {
-    files: ['global-{top,bottom}.vue', 'slide-{top,bottom}.vue', 'setup/vite-plugins.ts'],
+    files: [
+      'global-{top,bottom}.vue',
+      'slide-{top,bottom}.vue',
+      'custom-nav-controls.vue',
+      'setup/vite-plugins.ts',
+      'setup/{code-runners,context-menu,mermaid-renderer}.{ts,js,mts,mjs}',
+      'layouts/*.vue',
+    ],
     rules: { 'unicorn/filename-case': 'off' },
   },
 ];`;
