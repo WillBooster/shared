@@ -4,6 +4,8 @@
 .prettierignore -text
 
 *.lockb binary diff=lockb
+*.bat text eol=crlf
+*.cmd text eol=crlf
 *.vcproj text eol=crlf
 
 *.cjs text eol=lf

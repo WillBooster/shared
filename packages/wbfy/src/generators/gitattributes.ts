@@ -17,6 +17,8 @@ const newContent = `* text=auto
 .prettierignore -text
 
 *.lockb binary diff=lockb
+*.bat text eol=crlf
+*.cmd text eol=crlf
 *.vcproj text eol=crlf
 
 ${[...extensions.codeWith2IndentSize, ...extensions.codeWith4IndentSize, ...extensions.markdownLike]
