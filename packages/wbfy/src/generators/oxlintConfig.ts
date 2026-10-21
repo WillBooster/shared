@@ -60,7 +60,7 @@ function getConfigContent(config: PackageConfig): string {
 // oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids ESM package loading issues.
 const oxlintBaseConfig = require('${oxlintBaseConfigModule}');
 
-${getResolvedConfigContent('oxlintBaseConfig.default ?? oxlintBaseConfig', isRootConfig)}`
+${getResolvedConfigContent('oxlintBaseConfig.default ?? oxlintBaseConfig', isRootConfig) + getSlidevOverrides(config)}`
     )}
 
 ${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;')}
@@ -73,7 +73,7 @@ ${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;
 
 import oxlintBaseConfig from '${oxlintBaseConfigModule}';
 
-${getResolvedConfigContent('oxlintBaseConfig', isRootConfig)}`
+${getResolvedConfigContent('oxlintBaseConfig', isRootConfig) + getSlidevOverrides(config)}`
   )}
 
 ${managedConfigBlocks.getBlock('export', 'export default oxlintResolvedConfig;')}
@@ -93,4 +93,26 @@ oxlintResolvedConfig.options = { ...oxlintResolvedConfig.options, typeAware: tru
 
   return `const oxlintResolvedConfig: OxlintConfig = structuredClone(${baseConfigName});
 delete oxlintResolvedConfig.options;`;
+}
+
+function getSlidevOverrides(config: PackageConfig): string {
+  if (!config.depending.slidev) return '';
+  // Slidev discovers setup hooks by fixed names and layouts by their frontmatter names.
+  // Renaming them breaks discovery or existing decks. Keep its documented component names
+  // too; filename-case is path-based and cannot be suppressed with inline directives.
+  return `
+oxlintResolvedConfig.overrides = [
+  ...(oxlintResolvedConfig.overrides ?? []),
+  {
+    files: [
+      '**/global-{top,bottom}.{ts,js,vue}',
+      '**/slide-{top,bottom}.{ts,js,vue}',
+      '**/custom-nav-controls.vue',
+      '**/setup/vite-plugins.ts',
+      '**/setup/{code-runners,context-menu,mermaid-renderer}.{ts,js,mts,mjs}',
+      '**/layouts/**/*.{vue,js,mjs,ts,mts}',
+    ],
+    rules: { 'unicorn/filename-case': 'off' },
+  },
+];`;
 }
