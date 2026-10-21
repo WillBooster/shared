@@ -105,12 +105,12 @@ oxlintResolvedConfig.overrides = [
   ...(oxlintResolvedConfig.overrides ?? []),
   {
     files: [
-      'global-{top,bottom}.vue',
-      'slide-{top,bottom}.vue',
-      'custom-nav-controls.vue',
-      'setup/vite-plugins.ts',
-      'setup/{code-runners,context-menu,mermaid-renderer}.{ts,js,mts,mjs}',
-      'layouts/*.vue',
+      '**/global-{top,bottom}.vue',
+      '**/slide-{top,bottom}.vue',
+      '**/custom-nav-controls.vue',
+      '**/setup/vite-plugins.ts',
+      '**/setup/{code-runners,context-menu,mermaid-renderer}.{ts,js,mts,mjs}',
+      '**/layouts/*.vue',
     ],
     rules: { 'unicorn/filename-case': 'off' },
   },
