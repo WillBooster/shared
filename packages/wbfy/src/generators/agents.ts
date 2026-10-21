@@ -85,7 +85,7 @@ function generateAgentInstruction(
   const description = rootConfig.packageJson?.description;
   const coAuthorTrailer = toolName
     ? `\`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\``
-    : `\`Co-authored-by: WillBooster (<agent>) <agent@willbooster.com>\` (replacing \`<agent>\` with your agent name, e.g., \`Codex CLI\`, \`Claude Code\`, \`Antigravity CLI\`, or \`Gemini CLI\`)`;
+    : `\`Co-authored-by: WillBooster (AGENT_NAME) <agent@willbooster.com>\` (replacing \`AGENT_NAME\` with your agent name, e.g., \`Codex CLI\`, \`Claude Code\`, \`Antigravity CLI\`, or \`Gemini CLI\`, and keeping the email address \`agent@willbooster.com\` unchanged)`;
   const coAuthorInstruction = rootConfig.isWillBoosterRepo
     ? `\n  - End your commit message with a blank line followed by ${coAuthorTrailer}, the only AI attribution to add.`
     : '';
