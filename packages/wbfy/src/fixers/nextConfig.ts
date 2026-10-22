@@ -27,7 +27,12 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
     if (!filePath) return;
 
     const extracted = await getNextConfigObjectLiteral(filePath);
-    if (!extracted) return;
+    if (!extracted) {
+      console.warn(
+        `Skipped updating ${filePath} because it exports neither an object literal nor a function returning one.`
+      );
+      return;
+    }
     const { source, objectLiteral } = extracted;
 
     // vinext ignores `reactCompiler`; fixers/viteConfig.ts enables the compiler in vite.config.ts instead.
@@ -65,32 +70,30 @@ async function getNextConfigObjectLiteral(
   const variableObjectLiterals = new Map<string, ast.ObjectLiteralExpression>();
   const typedConfigObjectLiterals: ast.ObjectLiteralExpression[] = [];
 
+  const recordExport = (expression: ast.Expression): void => {
+    const objectLiteral = unwrapObjectLiteral(expression);
+    if (objectLiteral) {
+      directObjectLiteral ??= objectLiteral;
+    } else if (ast.isIdentifier(expression)) {
+      exportedIdentifier ??= expression.getText(source);
+    }
+  };
   const visit = (node: ast.Node): void => {
-    if (ast.isExportAssignment(node)) {
-      const objectLiteral = unwrapObjectLiteral(node.expression);
-      if (objectLiteral) {
-        directObjectLiteral ??= objectLiteral;
-      } else if (ast.isIdentifier(node.expression)) {
-        exportedIdentifier ??= node.expression.getText(source);
-      }
+    if (ast.isFunctionDeclaration(node) && isDefaultExport(node)) {
+      directObjectLiteral ??= getReturnedObjectLiteral(node);
+    } else if (ast.isExportAssignment(node)) {
+      recordExport(node.expression);
     } else if (
       ast.isBinaryExpression(node) &&
       node.operatorToken.kind === ast.SyntaxKind.EqualsToken &&
       node.left.getText(source) === 'module.exports'
     ) {
-      const objectLiteral = unwrapObjectLiteral(node.right);
-      if (objectLiteral) {
-        directObjectLiteral ??= objectLiteral;
-      } else if (ast.isIdentifier(node.right)) {
-        exportedIdentifier ??= node.right.getText(source);
-      }
+      recordExport(node.right);
     } else if (ast.isVariableDeclaration(node) && node.initializer) {
       const objectLiteral = unwrapObjectLiteral(node.initializer);
       if (objectLiteral && ast.isIdentifier(node.name)) {
         variableObjectLiterals.set(node.name.getText(source), objectLiteral);
-        // The `: NextConfig` annotation wbfy writes marks the canonical config object (accepting
-        // qualified names such as `import('next').NextConfig`).
-        const annotationType = node.type?.getText(source);
+        const annotationType = getConfigTypeAnnotation(node, node.initializer)?.getText(source);
         if (annotationType !== undefined && isNextConfigType(annotationType)) {
           typedConfigObjectLiterals.push(objectLiteral);
         }
@@ -108,9 +111,47 @@ async function getNextConfigObjectLiteral(
   return objectLiteral ? { source, objectLiteral } : undefined;
 }
 
+/** Returns the object literal that `node` is, or that a phase function `node` returns (`(phase) => ({ ... })`). */
 function unwrapObjectLiteral(node: ast.Expression): ast.ObjectLiteralExpression | undefined {
   const current = unwrapParentheses(node);
-  return ast.isObjectLiteralExpression(current) ? current : undefined;
+  if (ast.isObjectLiteralExpression(current)) return current;
+  if (ast.isArrowFunction(current) || ast.isFunctionExpression(current)) return getReturnedObjectLiteral(current);
+  return undefined;
+}
+
+function getReturnedObjectLiteral(
+  fn: ast.ArrowFunction | ast.FunctionExpression | ast.FunctionDeclaration
+): ast.ObjectLiteralExpression | undefined {
+  const { body } = fn;
+  const [statement, ...rest] = body && ast.isBlock(body) ? body.statements : [];
+  const returned =
+    body && !ast.isBlock(body)
+      ? body
+      : rest.length === 0 && statement && ast.isReturnStatement(statement)
+        ? statement.expression
+        : undefined;
+  const expression = returned && unwrapParentheses(returned);
+  return expression && ast.isObjectLiteralExpression(expression) ? expression : undefined;
+}
+
+/**
+ * The `: NextConfig` annotation wbfy writes marks the canonical config object, whether it annotates the
+ * variable or the return type of a phase function.
+ */
+function getConfigTypeAnnotation(
+  declaration: ast.VariableDeclaration,
+  initializer: ast.Expression
+): ast.TypeNode | undefined {
+  const value = unwrapParentheses(initializer);
+  return ast.isArrowFunction(value) || ast.isFunctionExpression(value) ? value.type : declaration.type;
+}
+
+function isDefaultExport(node: ast.FunctionDeclaration): boolean {
+  const modifiers = node.modifiers ?? [];
+  return (
+    modifiers.some((m) => m.kind === ast.SyntaxKind.ExportKeyword) &&
+    modifiers.some((m) => m.kind === ast.SyntaxKind.DefaultKeyword)
+  );
 }
 
 function unwrapParentheses(node: ast.Expression): ast.Expression {
