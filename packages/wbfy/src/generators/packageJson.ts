@@ -299,7 +299,7 @@ async function applyPackageJsonConventions(
     applyRootPackageJsonConventions(config, rootConfig, jsonObj, updates);
   }
 
-  // fixers/nextConfig.ts enables `reactCompiler: true` for every Next.js project, and Next.js
+  // fixers/nextConfig.ts enables `reactCompiler: true` for every Next.js project outside vinext, and Next.js
   // resolves `babel-plugin-react-compiler` at build time when React Compiler is on. Add it here so
   // the managed next.config never breaks `next build` with an unresolved-package error.
   if (config.depending.next && !config.depending.vinext) {

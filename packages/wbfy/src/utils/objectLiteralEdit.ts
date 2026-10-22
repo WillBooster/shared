@@ -64,7 +64,7 @@ export function insertPropertiesEdit(
  * property thus leaves a trailing comma behind the remaining ones, which the formatter drops.
  */
 export function removePropertyEdit(source: ast.SourceFile, property: ast.ObjectLiteralElementLike): TextEdit {
-  const following = /^(?:\s|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*,/u.exec(source.text.slice(property.getEnd()));
+  const following = /^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*,/u.exec(source.text.slice(property.getEnd()));
   return { start: property.getFullStart(), end: property.getEnd() + (following?.[0].length ?? 0), text: '' };
 }
 

@@ -69,7 +69,7 @@ test('removes reactCompiler from next.config.ts in a vinext package', async () =
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   typescript: { ignoreBuildErrors: true },
-  reactCompiler: true
+  reactCompiler: true // enabled for now, but a, b
 };
 
 export default nextConfig;
@@ -80,7 +80,7 @@ export default nextConfig;
 
       const content = fs.readFileSync(path.join(dirPath, 'next.config.ts'), 'utf8');
       expect(content).not.toContain('reactCompiler');
-      expect(content).toContain('typescript: { ignoreBuildErrors: true },\n};');
+      expect(content).toContain('typescript: { ignoreBuildErrors: true }, // enabled for now, but a, b\n};');
     }
   );
 });
