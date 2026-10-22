@@ -80,11 +80,7 @@ async function getNextConfigObjectLiteral(
   };
   const visit = (node: ast.Node): void => {
     if (ast.isFunctionDeclaration(node) && isDefaultExport(node)) {
-      const objectLiteral = getReturnedObjectLiteral(node);
-      directObjectLiteral ??= objectLiteral;
-      if (objectLiteral && node.type && isNextConfigType(node.type.getText(source))) {
-        typedConfigObjectLiterals.push(objectLiteral);
-      }
+      directObjectLiteral ??= getReturnedObjectLiteral(node);
     } else if (ast.isExportAssignment(node)) {
       recordExport(node.expression);
     } else if (
