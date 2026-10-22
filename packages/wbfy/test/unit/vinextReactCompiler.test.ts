@@ -88,7 +88,10 @@ export default nextConfig;
 test.each([
   [
     'an arrow function',
-    `const nextConfig = (phase: string): NextConfig => ({
+    `const images: NextConfig = { images: { unoptimized: true } };
+
+const nextConfig = (phase: string): NextConfig => ({
+  ...images,
   reactCompiler: true,
   reactStrictMode: phase !== 'test',
   typescript: { ignoreBuildErrors: true },

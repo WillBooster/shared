@@ -82,9 +82,8 @@ async function getNextConfigObjectLiteral(
     if (ast.isFunctionDeclaration(node) && isDefaultExport(node)) {
       const objectLiteral = getReturnedObjectLiteral(node);
       directObjectLiteral ??= objectLiteral;
-      // Both exported and typed, so it outranks any other `NextConfig` object in the file.
       if (objectLiteral && node.type && isNextConfigType(node.type.getText(source))) {
-        typedConfigObjectLiterals.unshift(objectLiteral);
+        typedConfigObjectLiterals.push(objectLiteral);
       }
     } else if (ast.isExportAssignment(node)) {
       recordExport(node.expression);
@@ -108,12 +107,21 @@ async function getNextConfigObjectLiteral(
   };
   source.forEachChild(visit);
 
+  const exportedObjectLiteral =
+    directObjectLiteral ?? (exportedIdentifier ? variableObjectLiterals.get(exportedIdentifier) : undefined);
   const objectLiteral =
-    typedConfigObjectLiterals[0] ??
-    directObjectLiteral ??
-    (exportedIdentifier ? variableObjectLiterals.get(exportedIdentifier) : undefined) ??
+    selectTypedConfig(exportedObjectLiteral, typedConfigObjectLiterals) ??
+    exportedObjectLiteral ??
     variableObjectLiterals.get('nextConfig');
   return objectLiteral ? { source, objectLiteral } : undefined;
+}
+
+/** An exported typed config outranks any other `NextConfig` object (e.g. a helper spread into it). */
+function selectTypedConfig(
+  exported: ast.ObjectLiteralExpression | undefined,
+  typed: ast.ObjectLiteralExpression[]
+): ast.ObjectLiteralExpression | undefined {
+  return exported && typed.includes(exported) ? exported : typed[0];
 }
 
 /** Returns the object literal that `node` is, or that a phase function `node` returns (`(phase) => ({ ... })`). */
