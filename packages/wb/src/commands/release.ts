@@ -609,7 +609,11 @@ async function runSemanticRelease(
 
   // multi-semantic-release tags each package separately, so a failure leaves tags that may be fully released, and
   // the release plugin publishes in `prepare`, before semantic-release pushes the tag.
-  const rollsBack = !releasePackageName && !configuresReleasePlugin(project);
+  // Forwarded options other than these may override the configuration that the rollback reads.
+  const rollsBack =
+    !releasePackageName &&
+    !configuresReleasePlugin(project) &&
+    forwardedArgs.every((arg) => arg === '--debug' || arg === '--no-ci');
   const refsBefore = rollsBack ? await listRemoteReleaseRefs(project.dirPath) : undefined;
   if (rollsBack && !refsBefore) {
     // Without the snapshot, a tag that a failed publish leaves behind could not be rolled back.
