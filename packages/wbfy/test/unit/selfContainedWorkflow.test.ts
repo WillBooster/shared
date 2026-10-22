@@ -378,38 +378,23 @@ test('keeps the newest action ref of a regenerated workflow and raises an older 
   });
 });
 
-test.each([
-  ['the first', 0],
-  ['the second', 1],
-])('keeps a commit SHA pinned on %s of two steps using an action', async (_, pinnedIndex) => {
-  const sha = 'ea165f8d65b6e75b540449e92b4886f43607fa02';
+test('replaces a commit SHA, which loses its version comment on regeneration, with the version tag wbfy pins', async () => {
   await withTempRepo(async (dirPath) => {
     const config = createConfig({
       dirPath,
       isRoot: true,
       isWillBoosterRepo: false,
       repository: 'github:someone/example',
-      depending: { ...createConfig().depending, playwrightTest: true },
     });
     const testWorkflowPath = path.join(dirPath, '.github', 'workflows', 'test.yml');
     await generateSelfContainedWorkflows(config);
     const generated = await fs.readFile(testWorkflowPath, 'utf8');
-    const generatedRefs = [...(generated.match(/actions\/upload-artifact@\S+/gu) ?? [])];
-    expect(generatedRefs).toHaveLength(2);
-    let index = 0;
-    await fs.writeFile(
-      testWorkflowPath,
-      generated.replaceAll(/actions\/upload-artifact@\S+/gu, (uses) =>
-        index++ === pinnedIndex ? `actions/upload-artifact@${sha}` : uses
-      )
-    );
+    const shaPin = 'actions/checkout@ea165f8d65b6e75b540449e92b4886f43607fa02';
+    await fs.writeFile(testWorkflowPath, generated.replaceAll(/actions\/checkout@\S+/gu, `${shaPin} # v99.0.0`));
 
     await generateSelfContainedWorkflows(config);
 
-    const regenerated = await fs.readFile(testWorkflowPath, 'utf8');
-    expect([...(regenerated.match(/actions\/upload-artifact@\S+/gu) ?? [])]).toEqual(
-      generatedRefs.map((uses, i) => (i === pinnedIndex ? `actions/upload-artifact@${sha}` : uses))
-    );
+    expect(await fs.readFile(testWorkflowPath, 'utf8')).toBe(generated);
   });
 });
 
