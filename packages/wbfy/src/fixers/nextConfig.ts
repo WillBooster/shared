@@ -156,7 +156,7 @@ function getConfigTypeAnnotation(
   initializer: ast.Expression
 ): ast.TypeNode | undefined {
   const value = unwrapParentheses(initializer);
-  return ast.isArrowFunction(value) || ast.isFunctionExpression(value) ? value.type : declaration.type;
+  return (ast.isArrowFunction(value) || ast.isFunctionExpression(value) ? value.type : undefined) ?? declaration.type;
 }
 
 function isDefaultExport(node: ast.FunctionDeclaration): boolean {

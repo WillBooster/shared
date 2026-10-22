@@ -101,6 +101,20 @@ export default nextConfig;
 `,
   ],
   [
+    'an arrow function typed through its variable',
+    `const images: NextConfig = { images: { unoptimized: true } };
+
+const nextConfig: NextConfig = (phase: string) => ({
+  ...images,
+  reactCompiler: true,
+  reactStrictMode: phase !== 'test',
+  typescript: { ignoreBuildErrors: true },
+});
+
+export default nextConfig;
+`,
+  ],
+  [
     'a function declaration',
     `const images: NextConfig = { images: { unoptimized: true } };
 
