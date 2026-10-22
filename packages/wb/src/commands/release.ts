@@ -111,7 +111,7 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
         throw new Error(`Aborted by ${receivedSignal} before running the release.`);
       }
       // A cancelled publish may have reached the registry, so its tag is kept.
-      exitCode = await runSemanticRelease(project, argv, activeChild, () => !receivedSignal);
+      exitCode = await runSemanticRelease(project, argv, activeChild, () => !!receivedSignal);
       // Recorded separately from receivedSignal: a signal arriving AFTER a successful publish must
       // not demote the restore to byte-for-byte (that would revert the published version bumps).
       releaseRanSuccessfully = exitCode === 0;
@@ -581,7 +581,7 @@ async function runSemanticRelease(
   project: Project,
   argv: ReleaseArgv,
   activeChild: ActiveChildRef,
-  canRollBack: () => boolean
+  isCancelled: () => boolean
 ): Promise<number> {
   const forwardedArgs = getForwardedArgs(argv);
   // The PACKAGE name (for `bunx`/`yarn dlx`, which fetch a package) and the BIN name (for the
@@ -607,12 +607,18 @@ async function runSemanticRelease(
   console.info(chalk.cyan(`Running: ${command.join(' ')}`));
   if (argv.dryRun) return 0;
 
-  // multi-semantic-release tags each package separately, so a failure leaves tags that may be fully released.
-  const refsBefore = releasePackageName ? undefined : await listRemoteReleaseRefs(project.dirPath);
-  if (!releasePackageName && !refsBefore) {
+  // multi-semantic-release tags each package separately, so a failure leaves tags that may be fully released, and
+  // the release plugin publishes in `prepare`, before semantic-release pushes the tag.
+  const rollsBack = !releasePackageName && !configuresReleasePlugin(project);
+  const refsBefore = rollsBack ? await listRemoteReleaseRefs(project.dirPath) : undefined;
+  if (rollsBack && !refsBefore) {
     // Without the snapshot, a tag that a failed publish leaves behind could not be rolled back.
     throw new Error('Could not read the remote tags before the release. Nothing has been released, so re-run the job.');
   }
+  // A signal may have arrived during the lookup, when no child was running to forward it to.
+  if (isCancelled()) throw new Error('Aborted before running the release.');
+  // semantic-release tags this commit even when a prepare plugin (e.g. @semantic-release/git) commits on top of it.
+  const { stdout: releasedCommit } = await spawnAsync('git', ['rev-parse', 'HEAD'], { cwd: project.dirPath });
   let output = '';
   const exitCode = await spawnAndWait(
     activeChild,
@@ -624,8 +630,18 @@ async function runSemanticRelease(
       output += chunk.toString();
     }
   );
-  if (exitCode !== 0 && refsBefore && canRollBack()) await rollBackUnpublishedTags(project, refsBefore, output);
+  if (exitCode !== 0 && refsBefore && !isCancelled()) {
+    await rollBackUnpublishedTags(project, refsBefore, releasedCommit.trim(), output);
+  }
   return exitCode;
+}
+
+function configuresReleasePlugin(project: Project): boolean {
+  const plugins = readExplicitSemanticReleasePlugins(project.dirPath, project.packageJson);
+  return (
+    Array.isArray(plugins) &&
+    plugins.some((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === releasePluginName)
+  );
 }
 
 /**
@@ -636,6 +652,7 @@ async function runSemanticRelease(
 async function rollBackUnpublishedTags(
   project: Project,
   refsBefore: Map<string, string>,
+  releasedCommit: string,
   output: string
 ): Promise<void> {
   const refsAfter = await listRemoteReleaseRefs(project.dirPath);
@@ -647,10 +664,9 @@ async function rollBackUnpublishedTags(
     );
     return;
   }
-  // semantic-release tags the checked-out commit, so a new tag elsewhere belongs to another release.
-  const { stdout: head } = await spawnAsync('git', ['rev-parse', 'HEAD'], { cwd: project.dirPath });
+  // A new tag at another commit belongs to another release.
   const newTags = [...refsAfter]
-    .filter(([ref, commit]) => ref.startsWith('refs/tags/') && !refsBefore.has(ref) && commit === head.trim())
+    .filter(([ref, commit]) => ref.startsWith('refs/tags/') && !refsBefore.has(ref) && commit === releasedCommit)
     .map(([ref]) => ref.slice('refs/tags/'.length));
   if (newTags.length === 0) return;
 
@@ -674,22 +690,8 @@ async function rollBackUnpublishedTags(
       return;
     }
   }
-  const github = createGitHubClient(project.env);
-  const remainingRefs: string[] = [];
-  for (const tag of newTags) {
-    for (const ref of [`refs/tags/${tag}`, `refs/notes/semantic-release-${tag}`]) {
-      if (refsAfter.has(ref)) {
-        try {
-          await github('DELETE', `git/${ref}`);
-        } catch (error) {
-          console.error(chalk.red(getErrorMessage(error)));
-          remainingRefs.push(ref);
-        }
-      }
-      // semantic-release pushes every local tag, so a re-run in this checkout would push the tag again.
-      await spawnAsync('git', ['update-ref', '-d', ref], { cwd: project.dirPath });
-    }
-  }
+  const releaseRefs = newTags.flatMap((tag) => [`refs/tags/${tag}`, `refs/notes/semantic-release-${tag}`]);
+  const remainingRefs = await deleteRefs(project, releaseRefs, refsAfter);
   console.error(
     chalk.red(
       remainingRefs.length > 0
@@ -697,6 +699,25 @@ async function rollBackUnpublishedTags(
         : `Deleted ${tagList} and its semantic-release note, which no publish step released, so a re-run releases it again.`
     )
   );
+}
+
+/** Deletes the refs locally and, where present, from the remote, and returns the refs left on the remote. */
+async function deleteRefs(project: Project, refs: string[], remoteRefs: Map<string, string>): Promise<string[]> {
+  const github = createGitHubClient(project.env);
+  const remainingRefs: string[] = [];
+  for (const ref of refs) {
+    if (remoteRefs.has(ref)) {
+      try {
+        await github('DELETE', `git/${ref}`);
+      } catch (error) {
+        console.error(chalk.red(getErrorMessage(error)));
+        remainingRefs.push(ref);
+      }
+    }
+    // semantic-release pushes every local tag, so a re-run in this checkout would push the tag again.
+    await spawnAsync('git', ['update-ref', '-d', ref], { cwd: project.dirPath });
+  }
+  return remainingRefs;
 }
 
 /**
