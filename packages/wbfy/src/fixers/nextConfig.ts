@@ -29,7 +29,7 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
     const extracted = await getNextConfigObjectLiteral(filePath);
     if (!extracted) {
       console.warn(
-        `Skipped updating ${filePath} because wbfy found no config object to edit; export an object literal (without \`satisfies\` or \`as\`), a phase function whose body is one or a single \`return\` of one, or a variable holding either, or annotate the config variable with \`NextConfig\`.`
+        `Skipped updating ${filePath} because wbfy found no config object to edit; export an object literal, a phase function whose body is one or a single \`return\` of one, or a variable holding either, or annotate the config variable with \`NextConfig\`.`
       );
       return;
     }
@@ -97,7 +97,7 @@ async function getNextConfigObjectLiteral(
         // qualified names such as `import('next').NextConfig`). A phase function counts only as the
         // export itself, so a typed helper function never stands in for a wrapped export.
         const annotationType = node.type?.getText(source);
-        const isPlainObject = ast.isObjectLiteralExpression(unwrapParentheses(node.initializer));
+        const isPlainObject = ast.isObjectLiteralExpression(unwrapExpression(node.initializer));
         if (isPlainObject && annotationType !== undefined && isNextConfigType(annotationType)) {
           typedConfigObjectLiterals.push(objectLiteral);
         }
@@ -118,7 +118,7 @@ async function getNextConfigObjectLiteral(
 
 /** Returns the object literal that `node` is, or that a phase function `node` returns (`(phase) => ({ ... })`). */
 function unwrapObjectLiteral(node: ast.Expression): ast.ObjectLiteralExpression | undefined {
-  const current = unwrapParentheses(node);
+  const current = unwrapExpression(node);
   if (ast.isObjectLiteralExpression(current)) return current;
   if (ast.isArrowFunction(current) || ast.isFunctionExpression(current)) return getReturnedObjectLiteral(current);
   return undefined;
@@ -135,7 +135,7 @@ function getReturnedObjectLiteral(
       : rest.length === 0 && statement && ast.isReturnStatement(statement)
         ? statement.expression
         : undefined;
-  const expression = returned && unwrapParentheses(returned);
+  const expression = returned && unwrapExpression(returned);
   return expression && ast.isObjectLiteralExpression(expression) ? expression : undefined;
 }
 
@@ -147,9 +147,10 @@ function isDefaultExport(node: ast.FunctionDeclaration): boolean {
   );
 }
 
-function unwrapParentheses(node: ast.Expression): ast.Expression {
+/** Looks through parentheses and type assertions such as `{ ... } satisfies NextConfig`. */
+function unwrapExpression(node: ast.Expression): ast.Expression {
   let current = node;
-  while (ast.isParenthesizedExpression(current)) {
+  while (ast.isParenthesizedExpression(current) || ast.isSatisfiesExpression(current) || ast.isAsExpression(current)) {
     current = current.expression;
   }
   return current;

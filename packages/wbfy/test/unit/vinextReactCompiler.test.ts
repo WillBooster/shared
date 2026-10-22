@@ -132,6 +132,20 @@ export default withPlugins(nextConfig);
 `,
   ],
   [
+    'a satisfies-checked object behind a wrapper call',
+    `const withPlugins = (config: NextConfig): NextConfig => config;
+const phase = process.env.NODE_ENV;
+
+const nextConfig = {
+  reactCompiler: true,
+  reactStrictMode: phase !== 'test',
+  typescript: { ignoreBuildErrors: true },
+} satisfies NextConfig;
+
+export default withPlugins(nextConfig);
+`,
+  ],
+  [
     'a function declaration',
     `const images: NextConfig = { images: { unoptimized: true } };
 
