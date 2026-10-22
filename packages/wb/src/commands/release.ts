@@ -694,7 +694,7 @@ async function rollBackUnpublishedTags(
   console.error(
     chalk.red(
       remainingRefs.length > 0
-        ? `No publish step released ${tagList}, but deleting ${remainingRefs.join(', ')} from the remote failed. Delete them manually before re-running, or a re-run releases nothing (an orphaned note fails the next release).`
+        ? `No publish step released ${tagList}, but deleting ${remainingRefs.join(', ')} failed. Delete them manually before re-running, or a re-run releases nothing (an orphaned note fails the next release).`
         : `Deleted ${tagList} and its semantic-release note, which no publish step released, so a re-run releases it again.`
     )
   );
@@ -747,15 +747,18 @@ function resolvePluginOptions(project: Project, pluginName: string): Record<stri
   const plugins: unknown[] = Array.isArray(config?.plugins) ? config.plugins : ['@semantic-release/npm'];
   const optionsList: Record<string, unknown>[] = [];
   for (const plugin of plugins) {
-    if ((Array.isArray(plugin) ? plugin[0] : plugin) !== pluginName) continue;
-    const ownOptions: unknown = Array.isArray(plugin) ? plugin[1] : undefined;
+    // semantic-release also accepts `{ path, ...options }` entries.
+    const objectEntry = z.object({ path: z.string() }).loose().safeParse(plugin).data;
+    const name: unknown = objectEntry?.path ?? (Array.isArray(plugin) ? plugin[0] : plugin);
+    if (name !== pluginName) continue;
+    const ownOptions: unknown = objectEntry ?? (Array.isArray(plugin) ? plugin[1] : undefined);
     if (ownOptions !== undefined && (typeof ownOptions !== 'object' || ownOptions === null)) return;
     optionsList.push({ ...config, ...(ownOptions as object | undefined) });
   }
   return optionsList;
 }
 
-/** Deletes the refs locally and, where present, from the remote, and returns the refs left on the remote. */
+/** Deletes the refs locally and, where present, from the remote, and returns the refs left behind. */
 async function deleteRefs(project: Project, refs: string[], remoteRefs: Map<string, string>): Promise<string[]> {
   const github = createGitHubClient(project.env);
   const remainingRefs: string[] = [];
@@ -769,7 +772,8 @@ async function deleteRefs(project: Project, refs: string[], remoteRefs: Map<stri
       }
     }
     // semantic-release pushes every local tag, so a re-run in this checkout would push the tag again.
-    await spawnAsync('git', ['update-ref', '-d', ref], { cwd: project.dirPath });
+    const { status } = await spawnAsync('git', ['update-ref', '-d', ref], { cwd: project.dirPath });
+    if (status !== 0) remainingRefs.push(`${ref} (local)`);
   }
   return remainingRefs;
 }
