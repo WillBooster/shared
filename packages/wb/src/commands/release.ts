@@ -32,7 +32,7 @@ export const releaseCommand: CommandModule = {
     "reinstall with the hoisted linker (npm cannot walk Bun's isolated node_modules layout), " +
     'rewrite `workspace:` ranges npm cannot parse, run the release, then restore the modified files. ' +
     'Extra arguments (e.g. `--debug`, after `--`) are forwarded to the release command. ' +
-    'When semantic-release fails after pushing the version tag and before any publish step completes, delete the tag and its note so that a re-run releases the version again. ' +
+    'When semantic-release fails after pushing the version tag and nothing was published (no publish step started, or only that of @semantic-release/npm, and npm lacks the version), delete the tag and its note so that a re-run releases the version again. ' +
     `With the ${releasePluginName} semantic-release plugin, first complete a release that a failed run left pending.`,
   builder: (yargs: Argv<unknown>) => yargs.parserConfiguration({ 'populate--': true }),
   async handler(argv) {
@@ -615,10 +615,10 @@ async function runSemanticRelease(
     // Without the snapshot, a tag that a failed publish leaves behind could not be rolled back.
     throw new Error('Could not read the remote tags before the release. Nothing has been released, so re-run the job.');
   }
-  // A signal may have arrived during the lookup, when no child was running to forward it to.
-  if (isCancelled()) throw new Error('Aborted before running the release.');
   // semantic-release tags this commit even when a prepare plugin (e.g. @semantic-release/git) commits on top of it.
   const { stdout: releasedCommit } = await spawnAsync('git', ['rev-parse', 'HEAD'], { cwd: project.dirPath });
+  // A signal may have arrived during the lookups, when no child was running to forward it to.
+  if (isCancelled()) throw new Error('Aborted before running the release.');
   let output = '';
   const exitCode = await spawnAndWait(
     activeChild,
@@ -670,26 +670,19 @@ async function rollBackUnpublishedTags(
     .map(([ref]) => ref.slice('refs/tags/'.length));
   if (newTags.length === 0) return;
 
-  const tagList = newTags.join(', ');
-  // semantic-release logs this line after each publish plugin that returned, whether or not it published anything.
-  if (stripVTControlCharacters(output).includes('Completed step "publish"')) {
-    console.error(
-      chalk.red(
-        `The release failed after pushing ${tagList} and completing a publish step, so a re-run will not release it again. Complete the remaining publish steps manually.`
-      )
-    );
-    return;
-  }
+  const log = stripVTControlCharacters(output);
   for (const tag of newTags) {
-    if (await npmMayHoldVersion(project, tag)) {
+    const possiblePublish = await findPossiblePublish(project, tag, log);
+    if (possiblePublish) {
       console.error(
         chalk.red(
-          `The release failed after pushing ${tag}, and npm may hold its version (npm publish can fail after the upload, e.g. in postpublish), so the tag is kept. If the registry holds the version, complete the remaining publish steps manually; otherwise delete the tag and its semantic-release note before re-running.`
+          `The release failed after pushing ${tag}, but ${possiblePublish}, so the tag is kept and a re-run will not release it again. If the version was published, complete the remaining publish steps manually; otherwise delete the tag and its semantic-release note before re-running.`
         )
       );
       return;
     }
   }
+  const tagList = newTags.join(', ');
   const releaseRefs = newTags.flatMap((tag) => [`refs/tags/${tag}`, `refs/notes/semantic-release-${tag}`]);
   const remainingRefs = await deleteRefs(project, releaseRefs, refsAfter);
   console.error(
@@ -699,6 +692,19 @@ async function rollBackUnpublishedTags(
         : `Deleted ${tagList} and its semantic-release note, which no publish step released, so a re-run releases it again.`
     )
   );
+}
+
+/**
+ * Returns why a publish step may have released `tag`, or `undefined` when none did. semantic-release logs these lines
+ * around each publish plugin; only @semantic-release/npm's outcome can be checked afterwards, since `npm publish` can
+ * fail after the upload (e.g., in `postpublish`).
+ */
+async function findPossiblePublish(project: Project, tag: string, log: string): Promise<string | undefined> {
+  if (log.includes('Completed step "publish"')) return 'a publish step completed';
+  const startedPlugins = [...log.matchAll(/Start step "publish" of plugin "([^"]+)"/gu)].map((match) => match[1]);
+  const uncheckablePlugin = startedPlugins.find((plugin) => plugin !== '@semantic-release/npm');
+  if (uncheckablePlugin) return `the publish step of ${uncheckablePlugin} started and its outcome cannot be checked`;
+  if (startedPlugins.length > 0 && (await npmMayHoldVersion(project, tag))) return 'npm may hold its version';
 }
 
 /** Deletes the refs locally and, where present, from the remote, and returns the refs left on the remote. */
@@ -731,7 +737,7 @@ async function npmMayHoldVersion(project: Project, tag: string): Promise<boolean
   const npmPlugin = (plugins ?? ['@semantic-release/npm']).find(
     (plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === '@semantic-release/npm'
   );
-  if (npmPlugin === undefined) return false;
+  if (npmPlugin === undefined) return true;
   const options = z
     .object({ npmPublish: z.boolean().optional(), pkgRoot: z.string().optional() })
     .safeParse((Array.isArray(npmPlugin) ? npmPlugin[1] : undefined) ?? {}).data;

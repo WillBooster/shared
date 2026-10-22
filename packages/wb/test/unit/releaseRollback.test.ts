@@ -36,8 +36,26 @@ export function publish({ fail }) {
 }
 `;
 
+// Stands for npm: \`npm publish\` fails, and \`npm view\` reports the version held when RELEASE_TEST_NPM_HOLDS is set.
+const fakeNpm = `#!/bin/sh
+case "$1" in
+  publish) exit 1 ;;
+  view) if [ -n "$RELEASE_TEST_NPM_HOLDS" ]; then echo 1.0.0; else echo 'npm error code E404' >&2; exit 1; fi ;;
+esac
+`;
+
+const npmPlugin = ['@semantic-release/npm', { pkgRoot: 'pkg' }];
+
+interface RunResult {
+  status: number | null;
+  output: string;
+  remoteRefs: string[];
+}
+
 interface Repo {
-  run: (failingPublishes: boolean[]) => Promise<{ status: number | null; output: string; remoteRefs: string[] }>;
+  run: (plugins: unknown[], env?: Record<string, string>) => Promise<RunResult>;
+  /** Makes the remote reject pushes of semantic-release notes, which fail a release after its tag push. */
+  rejectNotePushes: (reject: boolean) => void;
   dispose: () => void;
 }
 
@@ -45,6 +63,7 @@ async function createRepo(): Promise<Repo> {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-release-rollback-test-'));
   const repoDirPath = path.join(dirPath, 'repo');
   const remoteDirPath = path.join(dirPath, 'remote.git');
+  const binDirPath = path.join(dirPath, 'bin');
   const gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
   const git = async (cwd: string, ...args: string[]): Promise<string> => {
     const result = await spawnAsync('git', args, { cwd, env: gitEnv });
@@ -55,32 +74,44 @@ async function createRepo(): Promise<Repo> {
   fs.mkdirSync(path.join(repoDirPath, 'node_modules', '.bin'), { recursive: true });
   fs.symlinkSync(semanticReleaseBinPath, path.join(repoDirPath, 'node_modules', '.bin', 'semantic-release'));
   fs.writeFileSync(path.join(repoDirPath, 'package.json'), JSON.stringify({ name: 'release-test', private: true }));
+  fs.mkdirSync(path.join(repoDirPath, 'pkg'));
+  fs.writeFileSync(path.join(repoDirPath, 'pkg', 'package.json'), JSON.stringify({ name: 'release-test-pkg' }));
   fs.writeFileSync(path.join(repoDirPath, 'publishPlugin.mjs'), publishPlugin);
   fs.writeFileSync(path.join(repoDirPath, '.gitignore'), 'node_modules\n');
+  // wb removes NPM_* variables, so @semantic-release/npm authenticates from .npmrc as on CI.
+  fs.writeFileSync(path.join(repoDirPath, '.npmrc'), '//registry.npmjs.org/:_authToken=fake\n');
   fs.writeFileSync(path.join(dirPath, 'fakeApi.mjs'), fakeApi);
+  fs.mkdirSync(binDirPath);
+  fs.writeFileSync(path.join(binDirPath, 'npm'), fakeNpm, { mode: 0o755 });
   await git(dirPath, 'init', '--quiet', '--bare', '--initial-branch=main', remoteDirPath);
   await git(repoDirPath, 'init', '--quiet', '--initial-branch=main');
   await git(repoDirPath, 'remote', 'add', 'origin', `file://${remoteDirPath}`);
 
   return {
-    async run(failingPublishes) {
+    async run(plugins, env = {}) {
       fs.writeFileSync(
         path.join(repoDirPath, '.releaserc.json'),
-        JSON.stringify({
-          branches: ['main'],
-          plugins: [
-            '@semantic-release/commit-analyzer',
-            ...failingPublishes.map((fail) => ['./publishPlugin.mjs', { fail }]),
-          ],
-        })
+        JSON.stringify({ branches: ['main'], plugins: ['@semantic-release/commit-analyzer', ...plugins] })
       );
       await git(repoDirPath, 'add', '.');
-      await git(repoDirPath, '-c', 'user.name=test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'fix: test');
+      await git(
+        repoDirPath,
+        '-c',
+        'user.name=test',
+        '-c',
+        'user.email=test@example.com',
+        'commit',
+        '--allow-empty',
+        '-qm',
+        'fix: test'
+      );
       await git(repoDirPath, 'push', '--quiet', 'origin', 'main');
       const result = await spawnAsync(nodePath as string, [path.join(wbDirPath, 'bin', 'index.js'), 'release'], {
         cwd: repoDirPath,
         env: {
           ...gitEnv,
+          ...env,
+          PATH: `${binDirPath}${path.delimiter}${process.env.PATH}`,
           HOME: dirPath,
           CI: 'true',
           GITHUB_ACTIONS: '',
@@ -97,41 +128,74 @@ async function createRepo(): Promise<Repo> {
       const remoteRefs = refList.split('\n').filter(Boolean);
       return { status: result.status, output: result.stdout + result.stderr, remoteRefs };
     },
+    rejectNotePushes(reject) {
+      const hookPath = path.join(remoteDirPath, 'hooks', 'pre-receive');
+      if (reject) fs.writeFileSync(hookPath, '#!/bin/sh\n! grep -q refs/notes/\n', { mode: 0o755 });
+      else fs.rmSync(hookPath, { force: true });
+    },
     dispose: () => fs.rmSync(dirPath, { recursive: true, force: true }),
   };
 }
 
-test(
-  'deletes the tag and note of a release whose publish failed, so that the next run releases the version',
-  async () => {
-    const repo = await createRepo();
-    try {
-      const failed = await repo.run([true]);
-      expect(failed.status, failed.output).not.toBe(0);
-      expect(failed.remoteRefs).toEqual([]);
+const releasedRefs = ['refs/notes/semantic-release-v1.0.0', 'refs/tags/v1.0.0'];
 
-      const retried = await repo.run([false]);
+async function withRepo(callback: (repo: Repo) => Promise<void>): Promise<void> {
+  const repo = await createRepo();
+  try {
+    await callback(repo);
+  } finally {
+    repo.dispose();
+  }
+}
+
+test(
+  'deletes the tag of a release that failed before publishing, so that the next run releases it',
+  () =>
+    withRepo(async (repo) => {
+      repo.rejectNotePushes(true);
+      const failed = await repo.run([['./publishPlugin.mjs', { fail: false }]]);
+      expect(failed.status, failed.output).not.toBe(0);
+      expect(failed.remoteRefs, failed.output).toEqual([]);
+
+      repo.rejectNotePushes(false);
+      const retried = await repo.run([['./publishPlugin.mjs', { fail: false }]]);
       expect(retried.status, retried.output).toBe(0);
-      expect(retried.remoteRefs).toEqual(['refs/notes/semantic-release-v1.0.0', 'refs/tags/v1.0.0']);
-    } finally {
-      repo.dispose();
-    }
-  },
+      expect(retried.remoteRefs).toEqual(releasedRefs);
+    }),
   timeout
 );
 
 test(
-  'keeps the tag of a release that failed after a publish step completed',
-  async () => {
-    const repo = await createRepo();
-    try {
-      const failed = await repo.run([false, true]);
+  'deletes the tag of a release whose npm publish failed when npm lacks the version',
+  () =>
+    withRepo(async (repo) => {
+      const failed = await repo.run([npmPlugin]);
       expect(failed.status, failed.output).not.toBe(0);
-      expect(failed.remoteRefs).toEqual(['refs/notes/semantic-release-v1.0.0', 'refs/tags/v1.0.0']);
-      expect(failed.output).toContain('Complete the remaining publish steps manually.');
-    } finally {
-      repo.dispose();
-    }
-  },
+      expect(failed.output).toContain('Start step "publish" of plugin "@semantic-release/npm"');
+      expect(failed.remoteRefs, failed.output).toEqual([]);
+    }),
+  timeout
+);
+
+test.each([
+  ['npm holds the version', [npmPlugin], { RELEASE_TEST_NPM_HOLDS: '1' }],
+  ['another publish plugin started', [['./publishPlugin.mjs', { fail: true }]], {}],
+  [
+    'a publish step completed',
+    [
+      ['./publishPlugin.mjs', { fail: false }],
+      ['./publishPlugin.mjs', { fail: true }],
+    ],
+    {},
+  ],
+] as const)(
+  'keeps the tag of a failed release when %s',
+  (_case, plugins, env) =>
+    withRepo(async (repo) => {
+      const failed = await repo.run([...plugins], env);
+      expect(failed.status, failed.output).not.toBe(0);
+      expect(failed.remoteRefs, failed.output).toEqual(releasedRefs);
+      expect(failed.output).toContain('so the tag is kept');
+    }),
   timeout
 );
