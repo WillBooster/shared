@@ -161,34 +161,62 @@ async function writeSelfContainedWorkflow(filePath: string, workflow: Workflow):
 
 /** Keeps each action ref of the existing file unless wbfy pins a newer version, so that Renovate's updates survive. */
 function keepExistingActionRefs(workflow: Workflow, oldContent: string): void {
-  const existingRefByAction = readNewestActionRefs(oldContent);
-  for (const step of Object.values(workflow.jobs).flatMap((job) => job.steps)) {
-    const [action, ref] = step.uses?.split('@') ?? [];
-    const existingRef = action && existingRefByAction.get(action);
-    if (!ref || !existingRef || isNewerVersionRef(ref, existingRef)) continue;
-    step.uses = `${action}@${existingRef}`;
+  const existing = readExistingActionRefs(oldContent);
+  for (const { key, step, action, ref } of listActionOccurrences(workflow.jobs)) {
+    const occurrenceRef = existing.refByOccurrence.get(key);
+    step.uses = `${action}@${chooseActionRef(ref, occurrenceRef, existing.newestVersionRefByAction.get(action))}`;
   }
 }
 
-function readNewestActionRefs(content: string): Map<string, string> {
-  const refByAction = new Map<string, string>();
+interface ExistingActionRefs {
+  /** Keyed as in {@link listActionOccurrences}, since Renovate may pin only some steps of an action to a commit SHA. */
+  refByOccurrence: Map<string, string>;
+  /** The newest version tag of each action, since Renovate may have updated only some of its steps. */
+  newestVersionRefByAction: Map<string, string>;
+}
+
+function readExistingActionRefs(content: string): ExistingActionRefs {
+  const refs: ExistingActionRefs = { refByOccurrence: new Map(), newestVersionRefByAction: new Map() };
   let workflow: unknown;
   try {
     workflow = yaml.load(content);
   } catch {
     // A broken generated file (e.g. a merge conflict) has no refs to keep and is regenerated.
-    return refByAction;
+    return refs;
   }
   const parsed = actionRefsSchema.safeParse(workflow);
-  const steps = parsed.success ? Object.values(parsed.data.jobs).flatMap((job) => job.steps ?? []) : [];
-  for (const { uses } of steps) {
-    const [action, ref] = uses?.split('@') ?? [];
-    if (!action || !ref) continue;
-    // Renovate may have updated only some occurrences of an action, so keep the newest one.
-    const existingRef = refByAction.get(action);
-    if (!existingRef || isNewerVersionRef(ref, existingRef)) refByAction.set(action, ref);
+  if (!parsed.success) return refs;
+  for (const { key, action, ref } of listActionOccurrences(parsed.data.jobs)) {
+    refs.refByOccurrence.set(key, ref);
+    const newestRef = refs.newestVersionRefByAction.get(action);
+    if (toVersion(ref) && (!newestRef || isNewerVersionRef(ref, newestRef))) {
+      refs.newestVersionRefByAction.set(action, ref);
+    }
   }
-  return refByAction;
+  return refs;
+}
+
+/** Lists the steps that use an action, keyed by job, action, and the step's position among that action's steps. */
+function listActionOccurrences<S extends { uses?: string }>(
+  jobs: Record<string, { steps?: S[] }>
+): { key: string; step: S; action: string; ref: string }[] {
+  return Object.entries(jobs).flatMap(([jobId, job]) => {
+    const counts = new Map<string, number>();
+    return (job.steps ?? []).flatMap((step) => {
+      const [action, ref] = step.uses?.split('@') ?? [];
+      if (!action || !ref) return [];
+      const index = counts.get(action) ?? 0;
+      counts.set(action, index + 1);
+      return [{ key: `${jobId}\0${action}\0${index}`, step, action, ref }];
+    });
+  });
+}
+
+/** An existing commit SHA wins; otherwise the newest version tag among wbfy's and the existing ones wins. */
+function chooseActionRef(ref: string, occurrenceRef: string | undefined, newestVersionRef: string | undefined): string {
+  if (occurrenceRef && !toVersion(occurrenceRef)) return occurrenceRef;
+  if (!toVersion(ref)) return occurrenceRef ?? ref;
+  return newestVersionRef && isNewerVersionRef(newestVersionRef, ref) ? newestVersionRef : ref;
 }
 
 /** Whether both refs are version tags (e.g. `v4.2.3`) and `ref` is the newer one; a commit SHA is never newer. */
