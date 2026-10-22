@@ -628,7 +628,11 @@ async function runSemanticRelease(
  * the tag behind and a re-run finds no commits to release. When no publish step completed, nothing was released, so the
  * tag and its note are deleted for a re-run to release the version again; otherwise the run reports the tag instead.
  */
-async function rollBackUnpublishedTags(project: Project, refsBefore: Set<string>, output: string): Promise<void> {
+async function rollBackUnpublishedTags(
+  project: Project,
+  refsBefore: Map<string, string>,
+  output: string
+): Promise<void> {
   const refsAfter = await listRemoteReleaseRefs(project.dirPath);
   if (!refsAfter) {
     console.error(
@@ -638,9 +642,11 @@ async function rollBackUnpublishedTags(project: Project, refsBefore: Set<string>
     );
     return;
   }
+  // semantic-release tags the checked-out commit, so a new tag elsewhere belongs to another release.
+  const { stdout: head } = await spawnAsync('git', ['rev-parse', 'HEAD'], { cwd: project.dirPath });
   const newTags = [...refsAfter]
-    .filter((ref) => ref.startsWith('refs/tags/') && !refsBefore.has(ref))
-    .map((ref) => ref.slice('refs/tags/'.length));
+    .filter(([ref, commit]) => ref.startsWith('refs/tags/') && !refsBefore.has(ref) && commit === head.trim())
+    .map(([ref]) => ref.slice('refs/tags/'.length));
   if (newTags.length === 0) return;
 
   const tagList = newTags.join(', ');
@@ -654,28 +660,40 @@ async function rollBackUnpublishedTags(project: Project, refsBefore: Set<string>
     return;
   }
   const github = createGitHubClient(project.env);
+  const remainingRefs: string[] = [];
   for (const tag of newTags) {
     for (const ref of [`refs/tags/${tag}`, `refs/notes/semantic-release-${tag}`]) {
-      if (refsAfter.has(ref)) await github('DELETE', `git/${ref}`);
+      if (refsAfter.has(ref)) {
+        try {
+          await github('DELETE', `git/${ref}`);
+        } catch (error) {
+          console.error(chalk.red(getErrorMessage(error)));
+          remainingRefs.push(ref);
+        }
+      }
       // semantic-release pushes every local tag, so a re-run in this checkout would push the tag again.
       await spawnAsync('git', ['update-ref', '-d', ref], { cwd: project.dirPath });
     }
   }
   console.error(
     chalk.red(
-      `Deleted ${tagList} and its semantic-release note, which no publish step released, so a re-run releases it again.`
+      remainingRefs.length > 0
+        ? `No publish step released ${tagList}, but deleting ${remainingRefs.join(', ')} from the remote failed. Delete them manually before re-running, or a re-run releases nothing (an orphaned note fails the next release).`
+        : `Deleted ${tagList} and its semantic-release note, which no publish step released, so a re-run releases it again.`
     )
   );
 }
 
-/** Returns the remote tags and notes, or `undefined` when the remote cannot be read. */
-async function listRemoteReleaseRefs(cwd: string): Promise<Set<string> | undefined> {
+/** Returns the commit of each remote tag and note, or `undefined` when the remote cannot be read. */
+async function listRemoteReleaseRefs(cwd: string): Promise<Map<string, string> | undefined> {
   const { status, stdout } = await spawnAsync('git', ['ls-remote', 'origin', 'refs/tags/*', 'refs/notes/*'], { cwd });
   if (status !== 0) return;
-  return new Set(
-    stdout
-      .split('\n')
-      .map((line) => line.split('\t')[1])
-      .filter((ref): ref is string => !!ref && !ref.endsWith('^{}'))
-  );
+  const refs = new Map<string, string>();
+  for (const line of stdout.split('\n')) {
+    const [commit, ref] = line.split('\t');
+    if (!commit || !ref) continue;
+    // An annotated tag is listed again with `^{}` and the commit it points at.
+    refs.set(ref.replace(/\^\{\}$/u, ''), commit);
+  }
+  return refs;
 }
