@@ -115,6 +115,23 @@ export default nextConfig;
 `,
   ],
   [
+    'a wrapped variable next to a typed helper function',
+    `const buildImages = (): NextConfig => ({ images: { unoptimized: true } });
+const withPlugins = (config: NextConfig): NextConfig => config;
+
+const phase = process.env.NODE_ENV;
+
+const nextConfig: NextConfig = {
+  ...buildImages(),
+  reactCompiler: true,
+  reactStrictMode: phase !== 'test',
+  typescript: { ignoreBuildErrors: true },
+};
+
+export default withPlugins(nextConfig);
+`,
+  ],
+  [
     'a function declaration',
     `const images: NextConfig = { images: { unoptimized: true } };
 

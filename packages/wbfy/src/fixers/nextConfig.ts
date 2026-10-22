@@ -93,8 +93,12 @@ async function getNextConfigObjectLiteral(
       const objectLiteral = unwrapObjectLiteral(node.initializer);
       if (objectLiteral && ast.isIdentifier(node.name)) {
         variableObjectLiterals.set(node.name.getText(source), objectLiteral);
-        const annotationType = getConfigTypeAnnotation(node, node.initializer)?.getText(source);
-        if (annotationType !== undefined && isNextConfigType(annotationType)) {
+        // The `: NextConfig` annotation wbfy writes marks the canonical config object (accepting
+        // qualified names such as `import('next').NextConfig`). A phase function counts only as the
+        // export itself, so a typed helper function never stands in for a wrapped export.
+        const annotationType = node.type?.getText(source);
+        const isPlainObject = ast.isObjectLiteralExpression(unwrapParentheses(node.initializer));
+        if (isPlainObject && annotationType !== undefined && isNextConfigType(annotationType)) {
           typedConfigObjectLiterals.push(objectLiteral);
         }
       }
@@ -133,18 +137,6 @@ function getReturnedObjectLiteral(
         : undefined;
   const expression = returned && unwrapParentheses(returned);
   return expression && ast.isObjectLiteralExpression(expression) ? expression : undefined;
-}
-
-/**
- * The `: NextConfig` annotation wbfy writes marks the canonical config object, whether it annotates the
- * variable or the return type of a phase function.
- */
-function getConfigTypeAnnotation(
-  declaration: ast.VariableDeclaration,
-  initializer: ast.Expression
-): ast.TypeNode | undefined {
-  const value = unwrapParentheses(initializer);
-  return (ast.isArrowFunction(value) || ast.isFunctionExpression(value) ? value.type : undefined) ?? declaration.type;
 }
 
 function isDefaultExport(node: ast.FunctionDeclaration): boolean {
