@@ -67,6 +67,8 @@ import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
 const applyReleaseAgeGateCommand = 'apply-release-age-gate';
 /** Same naming rationale as applyReleaseAgeGateCommand. */
 const generateUserAgentConfigsCommand = 'generate-user-agent-configs';
+// wbfy may process several repositories in one run, and each must start from the caller's PATH.
+const callerPath = process.env.PATH ?? '';
 
 async function main(): Promise<void> {
   const argv = await yargs(process.argv.slice(2))
@@ -283,10 +285,9 @@ async function setUpMiseTools(rootDirPath: string): Promise<boolean> {
 /** Returns whether mise resolved the pinned Bun. */
 async function preferPinnedBun(rootDirPath: string): Promise<boolean> {
   const bunPath = await spawnAndReturnStdout('mise', ['which', 'bun'], rootDirPath);
-  if (!bunPath) return false;
   // The spawn helpers pass process.env to every child, so `bun` and `bunx` resolve to this directory.
-  process.env.PATH = `${path.dirname(bunPath)}${path.delimiter}${process.env.PATH ?? ''}`;
-  return true;
+  process.env.PATH = bunPath ? `${path.dirname(bunPath)}${path.delimiter}${callerPath}` : callerPath;
+  return !!bunPath;
 }
 
 function findUnknownVisibilityError(rootConfig: PackageConfig): string | undefined {
