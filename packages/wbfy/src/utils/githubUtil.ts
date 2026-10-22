@@ -50,9 +50,8 @@ function getGitHubToken(owner?: string): string | undefined {
   // Read only the environment, never a CLI session (`gh auth token`): the caller exports the token,
   // which keeps credential lookups out of this published package.
   // Case-insensitive on purpose: a noncanonically cased remote (e.g. github.com/willboosterlab/…)
-  // must still select the organization's own PAT — falling through to the generic branch would
-  // prefer the OTHER organization's PAT, which cannot read this organization's private
-  // repositories.
+  // must still select the organization's own PAT instead of the generic GH_TOKEN / GITHUB_TOKEN
+  // that any other owner gets.
   const normalizedOwner = owner?.toLowerCase();
   if (normalizedOwner === 'willbooster') {
     return process.env.GH_BOT_PAT_FOR_WILLBOOSTER || process.env.GH_TOKEN || process.env.GITHUB_TOKEN;

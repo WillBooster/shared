@@ -273,9 +273,9 @@ async function setUpMiseTools(rootDirPath: string): Promise<boolean> {
   // bun.lock layout, so install the pinned tools and run every later `bun` through the pinned one.
   // A failed install (e.g. of an unrelated global tool, or an unparsable mise.toml that wbfy leaves
   // untouched) does not abort the run, and an installed Bun pin still applies.
-  const installStatus = await spawnAndReturnStatus('mise', ['install'], rootDirPath);
-  if (!(await preferPinnedBun(rootDirPath)) && installStatus !== 0) {
-    console.warn(`mise install failed in ${rootDirPath}, so bun commands run with the Bun on PATH.`);
+  await spawnAndReturnStatus('mise', ['install'], rootDirPath);
+  if (!(await preferPinnedBun(rootDirPath))) {
+    console.warn(`mise could not resolve the Bun pinned in ${rootDirPath}, so bun commands run with the Bun on PATH.`);
   }
   return true;
 }
