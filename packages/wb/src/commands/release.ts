@@ -1,17 +1,19 @@
 import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 
 import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { escapeRegExp, getErrorMessage } from '@willbooster/shared-lib/src';
-import { treeKill } from '@willbooster/shared-lib-node/src';
+import { spawnAsync, treeKill } from '@willbooster/shared-lib-node/src';
 
 import type { Project } from '../project.js';
 import { findRootAndSelfProjects, findWorkspacePackageDirs } from '../project.js';
 import { releasePluginConfigSchema, releasePluginName } from '../release/draftRelease.js';
+import { createGitHubClient } from '../release/http.js';
 import { handlePendingReleases } from '../release/pendingRelease.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { prependNodeModulesBinToPath } from '../utils/binPath.js';
@@ -29,6 +31,7 @@ export const releaseCommand: CommandModule = {
     "reinstall with the hoisted linker (npm cannot walk Bun's isolated node_modules layout), " +
     'rewrite `workspace:` ranges npm cannot parse, run the release, then restore the modified files. ' +
     'Extra arguments (e.g. `--debug`, after `--`) are forwarded to the release command. ' +
+    'When semantic-release fails after pushing the version tag and before any publish step completes, delete the tag and its note so that a re-run releases the version again. ' +
     `With the ${releasePluginName} semantic-release plugin, first complete a release that a failed run left pending.`,
   builder: (yargs: Argv<unknown>) => yargs.parserConfiguration({ 'populate--': true }),
   async handler(argv) {
@@ -106,7 +109,8 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
       if (receivedSignal) {
         throw new Error(`Aborted by ${receivedSignal} before running the release.`);
       }
-      exitCode = await runSemanticRelease(project, argv, activeChild);
+      // A cancelled publish may have reached the registry, so its tag is kept.
+      exitCode = await runSemanticRelease(project, argv, activeChild, () => !receivedSignal);
       // Recorded separately from receivedSignal: a signal arriving AFTER a successful publish must
       // not demote the restore to byte-for-byte (that would revert the published version bumps).
       releaseRanSuccessfully = exitCode === 0;
@@ -195,11 +199,13 @@ async function spawnAndWait(
   activeChild: ActiveChildRef,
   command: string,
   args: string[],
-  options: child_process.SpawnOptions
+  options: child_process.SpawnOptions,
+  onStdout?: (chunk: Buffer) => void
 ): Promise<number> {
   return await new Promise<number>((resolve) => {
     const child = child_process.spawn(command, args, options);
     activeChild.current = child;
+    if (onStdout) child.stdout?.on('data', onStdout);
     child.on('error', (error) => {
       activeChild.current = undefined;
       console.error(chalk.red(String(error)));
@@ -570,7 +576,12 @@ function collectWorkspaceDependencies(
   return dependencies;
 }
 
-async function runSemanticRelease(project: Project, argv: ReleaseArgv, activeChild: ActiveChildRef): Promise<number> {
+async function runSemanticRelease(
+  project: Project,
+  argv: ReleaseArgv,
+  activeChild: ActiveChildRef,
+  canRollBack: () => boolean
+): Promise<number> {
   const forwardedArgs = getForwardedArgs(argv);
   // The PACKAGE name (for `bunx`/`yarn dlx`, which fetch a package) and the BIN name (for the
   // local node_modules/.bin lookup) differ for the scoped forks: `bunx multi-semantic-release`
@@ -595,9 +606,68 @@ async function runSemanticRelease(project: Project, argv: ReleaseArgv, activeChi
   console.info(chalk.cyan(`Running: ${command.join(' ')}`));
   if (argv.dryRun) return 0;
 
-  return await spawnAndWait(activeChild, command[0]!, command.slice(1), {
-    cwd: project.dirPath,
-    env,
-    stdio: 'inherit',
-  });
+  // multi-semantic-release tags each package separately, so a failure leaves tags that may be fully released.
+  const refsBefore = releasePackageName ? undefined : await listRemoteReleaseRefs(project.dirPath);
+  let output = '';
+  const exitCode = await spawnAndWait(
+    activeChild,
+    command[0]!,
+    command.slice(1),
+    { cwd: project.dirPath, env, stdio: refsBefore ? ['inherit', 'pipe', 'inherit'] : 'inherit' },
+    (chunk) => {
+      process.stdout.write(chunk);
+      output += chunk.toString();
+    }
+  );
+  if (exitCode !== 0 && refsBefore && canRollBack()) await rollBackUnpublishedTags(project, refsBefore, output);
+  return exitCode;
+}
+
+/**
+ * semantic-release pushes the version tag (and its note) before running the publish plugins, so a failed publish leaves
+ * the tag behind and a re-run finds no commits to release. When no publish step completed, nothing was released, so the
+ * tag and its note are deleted for a re-run to release the version again; otherwise the run reports the tag instead.
+ */
+async function rollBackUnpublishedTags(project: Project, refsBefore: Set<string>, output: string): Promise<void> {
+  const refsAfter = await listRemoteReleaseRefs(project.dirPath);
+  const newTags = [...(refsAfter ?? [])]
+    .filter((ref) => ref.startsWith('refs/tags/') && !refsBefore.has(ref))
+    .map((ref) => ref.slice('refs/tags/'.length));
+  if (newTags.length === 0) return;
+
+  const tagList = newTags.join(', ');
+  // semantic-release logs this line after each publish plugin that returned, whether or not it published anything.
+  if (stripVTControlCharacters(output).includes('Completed step "publish"')) {
+    console.error(
+      chalk.red(
+        `The release failed after pushing ${tagList} and completing a publish step, so a re-run will not release it again. Complete the remaining publish steps manually.`
+      )
+    );
+    return;
+  }
+  const github = createGitHubClient(project.env);
+  for (const tag of newTags) {
+    for (const ref of [`refs/tags/${tag}`, `refs/notes/semantic-release-${tag}`]) {
+      if (refsAfter?.has(ref)) await github('DELETE', `git/${ref}`);
+      // semantic-release pushes every local tag, so a re-run in this checkout would push the tag again.
+      await spawnAsync('git', ['update-ref', '-d', ref], { cwd: project.dirPath });
+    }
+  }
+  console.error(
+    chalk.red(
+      `Deleted ${tagList} and its semantic-release note, which no publish step released, so a re-run releases it again.`
+    )
+  );
+}
+
+/** Returns the remote tags and notes, or `undefined` when the remote cannot be read. */
+async function listRemoteReleaseRefs(cwd: string): Promise<Set<string> | undefined> {
+  const { status, stdout } = await spawnAsync('git', ['ls-remote', 'origin', 'refs/tags/*', 'refs/notes/*'], { cwd });
+  if (status !== 0) return;
+  return new Set(
+    stdout
+      .split('\n')
+      .map((line) => line.split('\t')[1])
+      .filter((ref): ref is string => !!ref && !ref.endsWith('^{}'))
+  );
 }
