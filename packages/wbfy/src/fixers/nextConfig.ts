@@ -109,19 +109,11 @@ async function getNextConfigObjectLiteral(
 
   const exportedObjectLiteral =
     directObjectLiteral ?? (exportedIdentifier ? variableObjectLiterals.get(exportedIdentifier) : undefined);
+  // The exported object is the config whenever it resolves; a typed object stands in for a wrapped
+  // export such as `withSentryConfig(nextConfig)`.
   const objectLiteral =
-    selectTypedConfig(exportedObjectLiteral, typedConfigObjectLiterals) ??
-    exportedObjectLiteral ??
-    variableObjectLiterals.get('nextConfig');
+    exportedObjectLiteral ?? typedConfigObjectLiterals[0] ?? variableObjectLiterals.get('nextConfig');
   return objectLiteral ? { source, objectLiteral } : undefined;
-}
-
-/** An exported typed config outranks any other `NextConfig` object (e.g. a helper spread into it). */
-function selectTypedConfig(
-  exported: ast.ObjectLiteralExpression | undefined,
-  typed: ast.ObjectLiteralExpression[]
-): ast.ObjectLiteralExpression | undefined {
-  return exported && typed.includes(exported) ? exported : typed[0];
 }
 
 /** Returns the object literal that `node` is, or that a phase function `node` returns (`(phase) => ({ ... })`). */
