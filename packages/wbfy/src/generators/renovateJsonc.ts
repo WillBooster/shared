@@ -12,6 +12,10 @@ import { overwriteMerge } from '../utils/mergeUtil.js';
 import { getOxcTransformReactPeerRange, oxcTransformReactDependency } from '../utils/vitePluginReact.js';
 
 const sharedPreset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
+// The preset without the private-registry hostRules of `sharedPreset`, which repositories outside the
+// WillBooster organizations cannot resolve.
+const baseSharedPreset = 'github>WillBooster/willbooster-configs:renovate-base.jsonc';
+const sharedPresets = new Set([sharedPreset, baseSharedPreset]);
 const generatedSettings = {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [sharedPreset],
@@ -99,7 +103,7 @@ export async function generateRenovateJsonc(
       return;
     }
     const removedPreset = oldSettings?.extends?.find(
-      (preset) => preset.startsWith('github>WillBooster/willbooster-configs:') && preset !== sharedPreset
+      (preset) => preset.startsWith('github>WillBooster/willbooster-configs:') && !sharedPresets.has(preset)
     );
     if (removedPreset) {
       console.warn(`Skipped generating ${filePath} because "${removedPreset}" no longer exists; remove it manually.`);
@@ -146,9 +150,9 @@ function buildSettings(
   const existingExtends = oldSettings?.extends ?? [];
   settings.extends = config.isWillBoosterConfigs
     ? existingExtends.filter((preset) => preset !== sharedPreset)
-    : existingExtends.includes(sharedPreset)
+    : existingExtends.some((preset) => sharedPresets.has(preset))
       ? existingExtends
-      : [sharedPreset, ...existingExtends];
+      : [config.repository && !config.isWillBoosterRepo ? baseSharedPreset : sharedPreset, ...existingExtends];
   settings.packageRules = settings.packageRules?.filter(
     (rule) => rule.description === undefined || !managedRuleDescriptions.has(rule.description)
   );

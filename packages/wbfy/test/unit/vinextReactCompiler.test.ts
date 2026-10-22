@@ -85,6 +85,93 @@ export default nextConfig;
   );
 });
 
+test.each([
+  [
+    'an arrow function',
+    `const images: NextConfig = { images: { unoptimized: true } };
+
+const nextConfig = (phase: string): NextConfig => ({
+  ...images,
+  reactCompiler: true,
+  reactStrictMode: phase !== 'test',
+  typescript: { ignoreBuildErrors: true },
+});
+
+export default nextConfig;
+`,
+  ],
+  [
+    'an untyped variable next to a typed helper function',
+    `const buildImages = (): NextConfig => ({ images: { unoptimized: true } });
+
+const nextConfig = (phase: string) => ({
+  ...buildImages(),
+  reactCompiler: true,
+  reactStrictMode: phase !== 'test',
+  typescript: { ignoreBuildErrors: true },
+});
+
+export default nextConfig;
+`,
+  ],
+  [
+    'a wrapped variable next to a typed helper function',
+    `const buildImages = (): NextConfig => ({ images: { unoptimized: true } });
+const withPlugins = (config: NextConfig): NextConfig => config;
+
+const phase = process.env.NODE_ENV;
+
+const nextConfig: NextConfig = {
+  ...buildImages(),
+  reactCompiler: true,
+  reactStrictMode: phase !== 'test',
+  typescript: { ignoreBuildErrors: true },
+};
+
+export default withPlugins(nextConfig);
+`,
+  ],
+  [
+    'a satisfies-checked object behind a wrapper call',
+    `const withPlugins = (config: NextConfig): NextConfig => config;
+const phase = process.env.NODE_ENV;
+
+const nextConfig = {
+  reactCompiler: true,
+  reactStrictMode: phase !== 'test',
+  typescript: { ignoreBuildErrors: true },
+} satisfies NextConfig;
+
+export default withPlugins(nextConfig);
+`,
+  ],
+  [
+    'a function declaration',
+    `const images: NextConfig = { images: { unoptimized: true } };
+
+export default function nextConfig(phase: string): NextConfig {
+  return {
+    ...images,
+    reactCompiler: true,
+    reactStrictMode: phase !== 'test',
+    typescript: { ignoreBuildErrors: true },
+  };
+}
+`,
+  ],
+])('removes reactCompiler from a next.config.ts exporting %s of the phase in a vinext package', async (_, body) => {
+  await withVinextPackage(
+    { 'next.config.ts': `import type { NextConfig } from 'next';\n\n${body}` },
+    async (dirPath) => {
+      await fixNextConfigJson(createVinextConfig(dirPath));
+
+      const content = fs.readFileSync(path.join(dirPath, 'next.config.ts'), 'utf8');
+      expect(content).not.toContain('reactCompiler');
+      expect(content).toContain("reactStrictMode: phase !== 'test'");
+    }
+  );
+});
+
 test('groups the React Compiler packages in Renovate while keeping custom rules', async () => {
   const customPin = { matchPackageNames: ['oxc-transform-react'], allowedVersions: '~0.152.0' };
   await withVinextPackage(
