@@ -323,6 +323,35 @@ test('never overwrites a hand-written workflow and regenerates a marked one', as
   });
 });
 
+test('keeps a newer action ref of a regenerated workflow and raises an older one', async () => {
+  await withTempRepo(async (dirPath) => {
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+      isWillBoosterRepo: false,
+      repository: 'github:someone/example',
+    });
+    const testWorkflowPath = path.join(dirPath, '.github', 'workflows', 'test.yml');
+    await generateSelfContainedWorkflows(config);
+    const generated = await fs.readFile(testWorkflowPath, 'utf8');
+    const generatedCheckout = /actions\/checkout@\S+/u.exec(generated)?.[0] ?? '';
+    expect(generatedCheckout).toStartWith('actions/checkout@v');
+    await fs.writeFile(
+      testWorkflowPath,
+      generated
+        .replaceAll(/jdx\/mise-action@\S+/gu, 'jdx/mise-action@v99.0.0')
+        .replaceAll(/actions\/checkout@\S+/gu, 'actions/checkout@v1.0.0')
+    );
+
+    await generateSelfContainedWorkflows(config);
+
+    const regenerated = await fs.readFile(testWorkflowPath, 'utf8');
+    expect(regenerated).toContain('jdx/mise-action@v99.0.0');
+    expect(regenerated).not.toContain('actions/checkout@v1.0.0');
+    expect(regenerated).toContain(generatedCheckout);
+  });
+});
+
 test('hardens every install with the Takumi Guard proxy without exposing the token to lifecycle scripts', async () => {
   await withTempRepo(async (dirPath) => {
     const config = createConfig({

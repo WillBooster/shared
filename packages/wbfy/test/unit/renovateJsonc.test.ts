@@ -8,6 +8,7 @@ import { generateRenovateJsonc } from '../../src/generators/renovateJsonc.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 const sharedPreset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
+const basePreset = 'github>WillBooster/willbooster-configs:renovate-base.jsonc';
 
 test('updates the canonical config without rewriting its unrelated content', async () => {
   await withRepository(
@@ -56,6 +57,23 @@ test('leaves an unparsable canonical config untouched', async () => {
     await generateRenovateJsonc(createConfig({ dirPath }));
 
     expect(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')).toBe(oldContent);
+  });
+});
+
+test.each([
+  ['without a Renovate config', {}],
+  ['extending renovate-base.jsonc', { 'renovate.jsonc': JSON.stringify({ extends: [basePreset] }) }],
+])('extends renovate-base.jsonc alone in a repository outside the WillBooster organizations %s', async (_, files) => {
+  await withRepository(files, async (dirPath) => {
+    await generateRenovateJsonc(
+      createConfig({ dirPath, repository: 'github:someone/example', isWillBoosterRepo: false })
+    );
+
+    const settings = JSON.parse(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')) as {
+      $schema?: string;
+      extends: string[];
+    };
+    expect(settings).toEqual({ $schema: 'https://docs.renovatebot.com/renovate-schema.json', extends: [basePreset] });
   });
 });
 
