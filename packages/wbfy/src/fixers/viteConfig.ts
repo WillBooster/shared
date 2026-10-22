@@ -66,7 +66,7 @@ async function planReactCompiler(config: PackageConfig): Promise<ReactCompilerPl
   if (!edit) {
     return {
       kind: 'unsupported',
-      reason: `the options of vinext() in vite.config.ts are not an object literal whose \`${reactCompilerOptionPath.join('.')}\` wbfy can set; set it to true manually`,
+      reason: `the \`${reactCompilerOptionPath.join('.')}\` path of the vinext() options in vite.config.ts goes through a spread, a duplicate key, a \`false\` opt-out, or a non-literal value; enable the compiler with \`reportDiagnostics: true\` on the @vitejs/plugin-react this app uses`,
     };
   }
   return edit === 'enabled'
