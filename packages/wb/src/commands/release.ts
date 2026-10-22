@@ -766,17 +766,18 @@ async function deleteRefs(project: Project, refs: string[], remoteRefs: Map<stri
  * publish step can still fail. Only a registry that answers that it lacks the version rules it out.
  */
 async function npmMayHoldVersion(project: Project, tag: string): Promise<boolean> {
-  const plugins = readExplicitSemanticReleasePlugins(project.dirPath, project.packageJson);
-  if (plugins === 'unknown') return true;
+  const config = readSemanticReleaseConfig(project.dirPath, project.packageJson);
+  // A preset may set the options of the npm plugin.
+  if (config === 'unknown' || config?.extends !== undefined) return true;
   // semantic-release's default plugin list includes @semantic-release/npm without options.
-  const npmPlugin = (plugins ?? ['@semantic-release/npm']).find(
-    (plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === '@semantic-release/npm'
-  );
+  const plugins: unknown[] = Array.isArray(config?.plugins) ? config.plugins : ['@semantic-release/npm'];
+  const npmPlugin = plugins.find((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === '@semantic-release/npm');
   if (npmPlugin === undefined) return true;
   // Its publish step fails only after attempting an upload: with `npmPublish: false` or a private package it returns.
+  // semantic-release passes the top-level options to every plugin, under the plugin's own.
   const options = z
     .object({ pkgRoot: z.string().optional() })
-    .safeParse((Array.isArray(npmPlugin) ? npmPlugin[1] : undefined) ?? {}).data;
+    .safeParse({ ...config, ...(Array.isArray(npmPlugin) ? npmPlugin[1] : undefined) }).data;
   if (!options) return true;
 
   let manifestJson: unknown;

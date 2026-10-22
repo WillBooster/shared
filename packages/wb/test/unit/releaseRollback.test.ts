@@ -41,11 +41,11 @@ const preparePlugin = `
 export function prepare() {}
 `;
 
-// Stands for npm: \`npm publish\` fails, and \`npm view\` reports the version held when RELEASE_TEST_NPM_HOLDS is set.
+// Stands for npm: \`npm publish\` fails, and \`npm view\` reports the version of pkg/ held when RELEASE_TEST_NPM_HOLDS is set.
 const fakeNpm = `#!/bin/sh
 case "$1" in
   publish) exit 1 ;;
-  view) if [ -n "$RELEASE_TEST_NPM_HOLDS" ]; then echo 1.0.0; else echo 'npm error code E404' >&2; exit 1; fi ;;
+  view) if [ -n "$RELEASE_TEST_NPM_HOLDS" ] && [ "$2" = release-test-pkg@1.0.0 ]; then echo 1.0.0; else echo 'npm error code E404' >&2; exit 1; fi ;;
 esac
 `;
 
@@ -58,7 +58,7 @@ interface RunResult {
 }
 
 interface Repo {
-  run: (plugins: unknown[], env?: Record<string, string>) => Promise<RunResult>;
+  run: (plugins: unknown[], env?: Record<string, string>, options?: Record<string, unknown>) => Promise<RunResult>;
   /** Makes the remote reject pushes of semantic-release notes, which fail a release after its tag push. */
   rejectNotePushes: (reject: boolean) => void;
   dispose: () => void;
@@ -94,10 +94,10 @@ async function createRepo(): Promise<Repo> {
   await git(repoDirPath, 'remote', 'add', 'origin', `file://${remoteDirPath}`);
 
   return {
-    async run(plugins, env = {}) {
+    async run(plugins, env = {}, options = {}) {
       fs.writeFileSync(
         path.join(repoDirPath, '.releaserc.json'),
-        JSON.stringify({ branches: ['main'], plugins: ['@semantic-release/commit-analyzer', ...plugins] })
+        JSON.stringify({ branches: ['main'], ...options, plugins: ['@semantic-release/commit-analyzer', ...plugins] })
       );
       await git(repoDirPath, 'add', '.');
       await git(
@@ -197,8 +197,14 @@ test(
 );
 
 test.each([
-  ['npm holds the version', [npmPlugin], { RELEASE_TEST_NPM_HOLDS: '1' }],
-  ['another publish plugin started', [['./publishPlugin.mjs', { fail: true }]], {}],
+  ['npm holds the version', [npmPlugin], { RELEASE_TEST_NPM_HOLDS: '1' }, {}],
+  [
+    'npm holds the version of a top-level pkgRoot',
+    ['@semantic-release/npm'],
+    { RELEASE_TEST_NPM_HOLDS: '1' },
+    { pkgRoot: 'pkg' },
+  ],
+  ['another publish plugin started', [['./publishPlugin.mjs', { fail: true }]], {}, {}],
   [
     'a publish step completed',
     [
@@ -206,12 +212,13 @@ test.each([
       ['./publishPlugin.mjs', { fail: true }],
     ],
     {},
+    {},
   ],
 ] as const)(
   'keeps the tag of a failed release when %s',
-  (_case, plugins, env) =>
+  (_case, plugins, env, options) =>
     withRepo(async (repo) => {
-      const failed = await repo.run([...plugins], env);
+      const failed = await repo.run([...plugins], env, options);
       expect(failed.status, failed.output).not.toBe(0);
       expect(failed.remoteRefs, failed.output).toEqual(releasedRefs);
       expect(failed.output).toContain('so the tag is kept');
