@@ -20,7 +20,15 @@ export function findProperty(
   key: string,
   source: ast.SourceFile
 ): ast.ObjectLiteralElementLike | undefined {
-  return objectLiteral.properties.find(
+  return findProperties(objectLiteral, key, source)[0];
+}
+
+export function findProperties(
+  objectLiteral: ast.ObjectLiteralExpression,
+  key: string,
+  source: ast.SourceFile
+): ast.ObjectLiteralElementLike[] {
+  return objectLiteral.properties.filter(
     (property) => 'name' in property && property.name && getPropertyKey(property.name, source) === key
   );
 }

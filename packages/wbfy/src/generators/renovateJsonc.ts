@@ -26,6 +26,7 @@ type Settings = Partial<typeof generatedSettings> & {
     groupName?: string;
     groupSlug?: string;
     automerge?: boolean;
+    prBodyNotes?: string[];
   }[];
 };
 
@@ -158,6 +159,10 @@ function buildSettings(
       groupSlug: 'react-compiler',
       matchPackageNames: ['@vitejs/plugin-react', oxcTransformReactDependency],
       automerge: false,
+      // The pin below holds oxc-transform-react back when @vitejs/plugin-react moves to a new peer range.
+      prBodyNotes: [
+        'Update `oxc-transform-react` and its `allowedVersions` in `renovate.jsonc` to the range the new `@vitejs/plugin-react` declares in `peerDependencies`.',
+      ],
     });
     const peerRange = vinextConfigs
       .map((packageConfig) => getOxcTransformReactPeerRange(packageConfig.dirPath))

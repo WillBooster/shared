@@ -6,7 +6,7 @@ import * as ast from 'typescript/unstable/ast';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { applyTextEdits, findProperty, insertPropertiesEdit, type TextEdit } from '../utils/objectLiteralEdit.js';
+import { applyTextEdits, findProperties, insertPropertiesEdit, type TextEdit } from '../utils/objectLiteralEdit.js';
 import { promisePool } from '../utils/promisePool.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 import { getOxcTransformReactPeerRange } from '../utils/vitePluginReact.js';
@@ -104,21 +104,21 @@ function planObjectLiteral(
 ): TextEdit | 'enabled' | undefined {
   const [key, ...restKeys] = keys;
   if (!key) return undefined;
-  const property = findProperty(objectLiteral, key, source);
-  if (!property) {
-    // A spread may already define the key, which an appended property would silently override.
-    if (objectLiteral.properties.some(ast.isSpreadAssignment)) return undefined;
-    return insertPropertiesEdit(source, objectLiteral, [`${key}: ${buildValueText(restKeys)}`]);
-  }
-  if (!ast.isPropertyAssignment(property)) return undefined;
+  // A spread or a duplicate key may override the property this edit reads or writes.
+  if (objectLiteral.properties.some(ast.isSpreadAssignment)) return undefined;
+  const properties = findProperties(objectLiteral, key, source);
+  const [property] = properties;
+  if (!property) return insertPropertiesEdit(source, objectLiteral, [`${key}: ${buildValueText(restKeys)}`]);
+  if (properties.length > 1 || !ast.isPropertyAssignment(property)) return undefined;
   const { initializer } = property;
   if (restKeys.length === 0) {
     if (initializer.kind === ast.SyntaxKind.TrueKeyword) return 'enabled';
     return replaceNodeEdit(source, initializer, 'true');
   }
   if (ast.isObjectLiteralExpression(initializer)) return planObjectLiteral(source, initializer, restKeys);
-  // `compiler: true` enables the compiler with default options, so it is upgraded to the options object.
-  if (initializer.kind === ast.SyntaxKind.TrueKeyword || initializer.kind === ast.SyntaxKind.FalseKeyword) {
+  // `true` selects the default options, so it is upgraded to the options object. `false` is a
+  // deliberate opt-out (e.g. `react: false` for an app registering @vitejs/plugin-react itself).
+  if (initializer.kind === ast.SyntaxKind.TrueKeyword) {
     return replaceNodeEdit(source, initializer, buildValueText(restKeys));
   }
   return undefined;

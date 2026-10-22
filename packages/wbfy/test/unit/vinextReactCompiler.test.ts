@@ -48,8 +48,12 @@ test.each([
   );
 });
 
-test('leaves vinext options it cannot edit safely untouched', async () => {
-  const content = `${viteConfigHeader}const options = {};\nexport default defineConfig({ plugins: [vinext({ ...options })] });\n`;
+test.each([
+  ['a spread', 'vinext({ react: { compiler: true }, ...options })'],
+  ['a duplicate key', 'vinext({ react: { compiler: true }, react: { compiler: false } })'],
+  ['an opted-out react plugin', 'vinext({ react: false })'],
+])('leaves vinext options with %s untouched', async (_, call) => {
+  const content = `${viteConfigHeader}const options = {};\nexport default defineConfig({ plugins: [${call}] });\n`;
   await withVinextPackage({ 'vite.config.ts': content }, async (dirPath) => {
     await fixViteConfig(createVinextConfig(dirPath));
 
