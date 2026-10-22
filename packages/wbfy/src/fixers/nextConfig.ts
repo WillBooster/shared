@@ -80,7 +80,12 @@ async function getNextConfigObjectLiteral(
   };
   const visit = (node: ast.Node): void => {
     if (ast.isFunctionDeclaration(node) && isDefaultExport(node)) {
-      directObjectLiteral ??= getReturnedObjectLiteral(node);
+      const objectLiteral = getReturnedObjectLiteral(node);
+      directObjectLiteral ??= objectLiteral;
+      // Both exported and typed, so it outranks any other `NextConfig` object in the file.
+      if (objectLiteral && node.type && isNextConfigType(node.type.getText(source))) {
+        typedConfigObjectLiterals.unshift(objectLiteral);
+      }
     } else if (ast.isExportAssignment(node)) {
       recordExport(node.expression);
     } else if (

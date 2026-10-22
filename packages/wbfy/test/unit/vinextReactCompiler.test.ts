@@ -99,8 +99,11 @@ export default nextConfig;
   ],
   [
     'a function declaration',
-    `export default function nextConfig(phase: string): NextConfig {
+    `const images: NextConfig = { images: { unoptimized: true } };
+
+export default function nextConfig(phase: string): NextConfig {
   return {
+    ...images,
     reactCompiler: true,
     reactStrictMode: phase !== 'test',
     typescript: { ignoreBuildErrors: true },
