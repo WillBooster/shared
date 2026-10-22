@@ -773,11 +773,11 @@ async function npmMayHoldVersion(project: Project, tag: string): Promise<boolean
     (plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === '@semantic-release/npm'
   );
   if (npmPlugin === undefined) return true;
+  // Its publish step fails only after attempting an upload: with `npmPublish: false` or a private package it returns.
   const options = z
-    .object({ npmPublish: z.boolean().optional(), pkgRoot: z.string().optional() })
+    .object({ pkgRoot: z.string().optional() })
     .safeParse((Array.isArray(npmPlugin) ? npmPlugin[1] : undefined) ?? {}).data;
   if (!options) return true;
-  if (options.npmPublish === false) return false;
 
   let manifestJson: unknown;
   try {
@@ -790,11 +790,9 @@ async function npmMayHoldVersion(project: Project, tag: string): Promise<boolean
   const manifest = z
     .object({
       name: z.string().optional(),
-      private: z.boolean().optional(),
       publishConfig: z.object({ registry: z.string().optional() }).optional(),
     })
     .safeParse(manifestJson).data;
-  if (manifest?.private) return false;
   const name = manifest?.name;
   const version = /^v?(\d+\.\d+\.\d+\S*)$/u.exec(tag)?.[1];
   if (!name || !version) return true;
