@@ -630,7 +630,15 @@ async function runSemanticRelease(
  */
 async function rollBackUnpublishedTags(project: Project, refsBefore: Set<string>, output: string): Promise<void> {
   const refsAfter = await listRemoteReleaseRefs(project.dirPath);
-  const newTags = [...(refsAfter ?? [])]
+  if (!refsAfter) {
+    console.error(
+      chalk.red(
+        'Could not read the remote tags after the failed release, so a tag it may have pushed is not rolled back. Check the remote: a tag that no publish step released makes a re-run release nothing until the tag and its semantic-release note are deleted.'
+      )
+    );
+    return;
+  }
+  const newTags = [...refsAfter]
     .filter((ref) => ref.startsWith('refs/tags/') && !refsBefore.has(ref))
     .map((ref) => ref.slice('refs/tags/'.length));
   if (newTags.length === 0) return;
@@ -648,7 +656,7 @@ async function rollBackUnpublishedTags(project: Project, refsBefore: Set<string>
   const github = createGitHubClient(project.env);
   for (const tag of newTags) {
     for (const ref of [`refs/tags/${tag}`, `refs/notes/semantic-release-${tag}`]) {
-      if (refsAfter?.has(ref)) await github('DELETE', `git/${ref}`);
+      if (refsAfter.has(ref)) await github('DELETE', `git/${ref}`);
       // semantic-release pushes every local tag, so a re-run in this checkout would push the tag again.
       await spawnAsync('git', ['update-ref', '-d', ref], { cwd: project.dirPath });
     }
