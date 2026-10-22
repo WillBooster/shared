@@ -165,7 +165,7 @@ async function handlePendingReleasesIfConfigured(
 ): Promise<boolean> {
   const config = readSemanticReleaseConfig(project.dirPath, project.packageJson);
   if (typeof config !== 'object' || !Array.isArray(config.plugins)) return true;
-  const plugin = config.plugins.find((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === releasePluginName);
+  const plugin = config.plugins.map(parsePluginEntry).find(({ name }) => name === releasePluginName);
   if (plugin === undefined) return true;
   // The pre-step reads `branches` and `tagFormat` from this configuration alone.
   if (config.extends !== undefined) {
@@ -173,7 +173,7 @@ async function handlePendingReleasesIfConfigured(
   }
 
   return await handlePendingReleases({
-    config: releasePluginConfigSchema.parse(Array.isArray(plugin) ? plugin[1] : {}),
+    config: releasePluginConfigSchema.parse(plugin.options ?? {}),
     cwd: project.dirPath,
     env: project.env,
     releaseBranches: config.branches,
@@ -243,7 +243,7 @@ export async function releasePublishesToNpm(
 }
 
 function pluginsIncludeNpm(plugins: readonly unknown[]): boolean {
-  return plugins.some((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === '@semantic-release/npm');
+  return plugins.some((plugin) => parsePluginEntry(plugin).name === '@semantic-release/npm');
 }
 
 /**
@@ -322,6 +322,13 @@ function readSemanticReleaseConfig(
     }
   }
   return config && typeof config === 'object' ? config : undefined;
+}
+
+/** Reads a `plugins` entry, which semantic-release accepts as a name, `[name, options]`, or `{ path, ...options }`. */
+function parsePluginEntry(plugin: unknown): { name: unknown; options: unknown } {
+  if (Array.isArray(plugin)) return { name: plugin[0], options: plugin[1] };
+  const objectEntry = z.object({ path: z.string() }).loose().safeParse(plugin).data;
+  return objectEntry ? { name: objectEntry.path, options: objectEntry } : { name: plugin, options: undefined };
 }
 
 /**
@@ -647,10 +654,7 @@ function buildReleaseCommand(
 
 function configuresReleasePlugin(project: Project): boolean {
   const plugins = readExplicitSemanticReleasePlugins(project.dirPath, project.packageJson);
-  return (
-    Array.isArray(plugins) &&
-    plugins.some((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === releasePluginName)
-  );
+  return Array.isArray(plugins) && plugins.some((plugin) => parsePluginEntry(plugin).name === releasePluginName);
 }
 
 /**
@@ -675,7 +679,7 @@ async function rollBackUnpublishedTags(
     );
     return;
   }
-  const { newTags, branchMoved } = await findNewReleaseTags(project, refsBefore, refsAfter, releasedCommit);
+  const { newTags, tagsPreparedCommit } = await findNewReleaseTags(project, refsBefore, refsAfter, releasedCommit);
   if (newTags.length === 0) return;
 
   for (const tag of newTags) {
@@ -699,8 +703,8 @@ async function rollBackUnpublishedTags(
     chalk.red(
       remainingRefs.length > 0
         ? `No publish step released ${tagList}, but deleting ${remainingRefs.join(', ')} failed. Delete them manually before re-running, or a re-run releases nothing (an orphaned note fails the next release).`
-        : branchMoved
-          ? `Deleted ${tagList} and its semantic-release note, which no publish step released. The branch already holds the release commit, so a re-run of this job (behind the branch) releases nothing: run the release on the branch head instead.`
+        : tagsPreparedCommit
+          ? `Deleted ${tagList} and its semantic-release note, which no publish step released. The tag pointed at a commit a prepare plugin made; if that plugin pushed it to the branch, a re-run of this job (then behind the branch) releases nothing, so run the release on the branch head instead.`
           : `Deleted ${tagList} and its semantic-release note, which no publish step released, so a re-run releases it again.`
     )
   );
@@ -708,17 +712,17 @@ async function rollBackUnpublishedTags(
 
 /**
  * Returns the new remote tags of this release and whether one of them points past the released commit. semantic-release
- * tags the released commit or the commit a prepare plugin (e.g. @semantic-release/git) made on top of it and pushed to
- * the branch; a new tag elsewhere belongs to another release.
+ * tags the released commit or the commit a prepare plugin (e.g. @semantic-release/git) made on top of it; a new tag
+ * elsewhere belongs to another release.
  */
 async function findNewReleaseTags(
   project: Project,
   refsBefore: Map<string, string>,
   refsAfter: Map<string, string>,
   releasedCommit: string
-): Promise<{ newTags: string[]; branchMoved: boolean }> {
+): Promise<{ newTags: string[]; tagsPreparedCommit: boolean }> {
   const newTags: string[] = [];
-  let branchMoved = false;
+  let tagsPreparedCommit = false;
   for (const [ref, commit] of refsAfter) {
     if (!ref.startsWith('refs/tags/') || refsBefore.has(ref)) continue;
     const { status } = await spawnAsync('git', ['merge-base', '--is-ancestor', releasedCommit, commit], {
@@ -726,9 +730,9 @@ async function findNewReleaseTags(
     });
     if (status !== 0) continue;
     newTags.push(ref.slice('refs/tags/'.length));
-    if (commit !== releasedCommit) branchMoved = true;
+    if (commit !== releasedCommit) tagsPreparedCommit = true;
   }
-  return { newTags, branchMoved };
+  return { newTags, tagsPreparedCommit };
 }
 
 // Plugins whose prepare step only edits or commits the checkout and publishes nothing.
@@ -793,11 +797,8 @@ function resolvePluginOptions(project: Project, pluginName: string): Record<stri
   const plugins: unknown[] = Array.isArray(config?.plugins) ? config.plugins : ['@semantic-release/npm'];
   const optionsList: Record<string, unknown>[] = [];
   for (const plugin of plugins) {
-    // semantic-release also accepts `{ path, ...options }` entries.
-    const objectEntry = z.object({ path: z.string() }).loose().safeParse(plugin).data;
-    const name: unknown = objectEntry?.path ?? (Array.isArray(plugin) ? plugin[0] : plugin);
+    const { name, options: ownOptions } = parsePluginEntry(plugin);
     if (name !== pluginName) continue;
-    const ownOptions: unknown = objectEntry ?? (Array.isArray(plugin) ? plugin[1] : undefined);
     if (ownOptions !== undefined && (typeof ownOptions !== 'object' || ownOptions === null)) return;
     optionsList.push({ ...config, ...(ownOptions as object | undefined) });
   }
