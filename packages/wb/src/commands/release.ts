@@ -6,6 +6,7 @@ import { stripVTControlCharacters } from 'node:util';
 import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
+import { z } from 'zod';
 
 import { escapeRegExp, getErrorMessage } from '@willbooster/shared-lib/src';
 import { spawnAsync, treeKill } from '@willbooster/shared-lib-node/src';
@@ -608,6 +609,10 @@ async function runSemanticRelease(
 
   // multi-semantic-release tags each package separately, so a failure leaves tags that may be fully released.
   const refsBefore = releasePackageName ? undefined : await listRemoteReleaseRefs(project.dirPath);
+  if (!releasePackageName && !refsBefore) {
+    // Without the snapshot, a tag that a failed publish leaves behind could not be rolled back.
+    throw new Error('Could not read the remote tags before the release. Nothing has been released, so re-run the job.');
+  }
   let output = '';
   const exitCode = await spawnAndWait(
     activeChild,
@@ -659,6 +664,16 @@ async function rollBackUnpublishedTags(
     );
     return;
   }
+  for (const tag of newTags) {
+    if (await npmMayHoldVersion(project, tag)) {
+      console.error(
+        chalk.red(
+          `The release failed after pushing ${tag}, and npm may hold its version (npm publish can fail after the upload, e.g. in postpublish), so the tag is kept. If the registry holds the version, complete the remaining publish steps manually; otherwise delete the tag and its semantic-release note before re-running.`
+        )
+      );
+      return;
+    }
+  }
   const github = createGitHubClient(project.env);
   const remainingRefs: string[] = [];
   for (const tag of newTags) {
@@ -682,6 +697,54 @@ async function rollBackUnpublishedTags(
         : `Deleted ${tagList} and its semantic-release note, which no publish step released, so a re-run releases it again.`
     )
   );
+}
+
+/**
+ * Returns whether the npm registry may hold the version of `tag`, which @semantic-release/npm publishes before its
+ * publish step can still fail. Only a registry that answers that it lacks the version rules it out.
+ */
+async function npmMayHoldVersion(project: Project, tag: string): Promise<boolean> {
+  const plugins = readExplicitSemanticReleasePlugins(project.dirPath, project.packageJson);
+  if (plugins === 'unknown') return true;
+  // semantic-release's default plugin list includes @semantic-release/npm without options.
+  const npmPlugin = (plugins ?? ['@semantic-release/npm']).find(
+    (plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === '@semantic-release/npm'
+  );
+  if (npmPlugin === undefined) return false;
+  const { npmPublish, pkgRoot = '.' } = z
+    .object({ npmPublish: z.boolean().optional(), pkgRoot: z.string().optional() })
+    .parse((Array.isArray(npmPlugin) ? npmPlugin[1] : undefined) ?? {});
+  if (npmPublish === false) return false;
+
+  const pkgDirPath = path.resolve(project.dirPath, pkgRoot);
+  const {
+    name,
+    private: isPrivate,
+    publishConfig,
+  } = z
+    .object({
+      name: z.string(),
+      private: z.boolean().optional(),
+      publishConfig: z.object({ registry: z.string().optional() }).optional(),
+    })
+    .parse(JSON.parse(fs.readFileSync(path.join(pkgDirPath, 'package.json'), 'utf8')));
+  if (isPrivate) return false;
+  const version = /^v(\d+\.\d+\.\d+\S*)$/u.exec(tag)?.[1];
+  if (!version) return true;
+  // From the repository root, whose .npmrc maps scopes to registries (npm ignores a workspace package's .npmrc), and
+  // with the registry the package publishes to; a lookup in the wrong registry would wrongly report the version absent.
+  const registryArgs = publishConfig?.registry ? ['--registry', publishConfig.registry] : [];
+  const { status, stdout, stderr } = await spawnAsync(
+    'npm',
+    ['view', `${name}@${version}`, 'version', ...registryArgs],
+    {
+      cwd: project.dirPath,
+      env: project.env,
+    }
+  );
+  // npm view prints nothing for a missing version of an existing package and fails with E404 for a missing package.
+  const isAbsent = status === 0 ? stdout.trim() === '' : stderr.includes('E404');
+  return !isAbsent;
 }
 
 /** Returns the commit of each remote tag and note, or `undefined` when the remote cannot be read. */
