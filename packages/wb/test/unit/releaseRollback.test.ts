@@ -29,8 +29,13 @@ globalThis.fetch = async (url, init = {}) => {
 };
 `;
 
-// A publish plugin that fails when its `fail` option is set.
+// A publish plugin that fails when its `fail` option is set, and commits in prepare (as @semantic-release/git does)
+// when its `commit` option is set.
 const publishPlugin = `
+import { execFileSync } from 'node:child_process';
+export function prepare({ commit }, { cwd }) {
+  if (commit) execFileSync('git', ['-c', 'user.name=test', '-c', 'user.email=test@example.com', 'commit', '--allow-empty', '-qm', 'chore(release)'], { cwd });
+}
 export function publish({ fail }) {
   if (fail) throw new Error('publish failed');
 }
@@ -148,12 +153,15 @@ async function withRepo(callback: (repo: Repo) => Promise<void>): Promise<void> 
   }
 }
 
-test(
-  'deletes the tag of a release that failed before publishing, so that the next run releases it',
-  () =>
+test.each([
+  ['', false],
+  [' after a prepare plugin committed', true],
+])(
+  'deletes the tag of a release that failed before publishing%s, so that the next run releases it',
+  (_case, commit) =>
     withRepo(async (repo) => {
       repo.rejectNotePushes(true);
-      const failed = await repo.run([['./publishPlugin.mjs', { fail: false }]]);
+      const failed = await repo.run([['./publishPlugin.mjs', { fail: false, commit }]]);
       expect(failed.status, failed.output).not.toBe(0);
       expect(failed.remoteRefs, failed.output).toEqual([]);
 

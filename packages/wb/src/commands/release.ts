@@ -615,7 +615,6 @@ async function runSemanticRelease(
     // Without the snapshot, a tag that a failed publish leaves behind could not be rolled back.
     throw new Error('Could not read the remote tags before the release. Nothing has been released, so re-run the job.');
   }
-  // semantic-release tags this commit even when a prepare plugin (e.g. @semantic-release/git) commits on top of it.
   const { stdout: releasedCommit } = await spawnAsync('git', ['rev-parse', 'HEAD'], { cwd: project.dirPath });
   // A signal may have arrived during the lookups, when no child was running to forward it to.
   if (isCancelled()) throw new Error('Aborted before running the release.');
@@ -664,10 +663,16 @@ async function rollBackUnpublishedTags(
     );
     return;
   }
-  // A new tag at another commit belongs to another release.
-  const newTags = [...refsAfter]
-    .filter(([ref, commit]) => ref.startsWith('refs/tags/') && !refsBefore.has(ref) && commit === releasedCommit)
-    .map(([ref]) => ref.slice('refs/tags/'.length));
+  const newTags: string[] = [];
+  for (const [ref, commit] of refsAfter) {
+    if (!ref.startsWith('refs/tags/') || refsBefore.has(ref)) continue;
+    // semantic-release tags the released commit or the commit a prepare plugin (e.g. @semantic-release/git) made on
+    // top of it; a new tag elsewhere belongs to another release.
+    const { status } = await spawnAsync('git', ['merge-base', '--is-ancestor', releasedCommit, commit], {
+      cwd: project.dirPath,
+    });
+    if (status === 0) newTags.push(ref.slice('refs/tags/'.length));
+  }
   if (newTags.length === 0) return;
 
   const log = stripVTControlCharacters(output);
