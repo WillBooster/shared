@@ -32,7 +32,7 @@ export const releaseCommand: CommandModule = {
     "reinstall with the hoisted linker (npm cannot walk Bun's isolated node_modules layout), " +
     'rewrite `workspace:` ranges npm cannot parse, run the release, then restore the modified files. ' +
     'Extra arguments (e.g. `--debug`, after `--`) are forwarded to the release command. ' +
-    'When semantic-release fails after pushing the version tag and nothing was published (no publish step started, or only that of @semantic-release/npm, and npm lacks the version), delete the tag and its note so that a re-run releases the version again. ' +
+    'When semantic-release fails after pushing the version tag and nothing can have been published (no prepare step that may publish ran, and no publish step started or only that of @semantic-release/npm with npm lacking the version), delete the tag and its note so that a re-run releases the version again. ' +
     `With the ${releasePluginName} semantic-release plugin, first complete a release that a failed run left pending.`,
   builder: (yargs: Argv<unknown>) => yargs.parserConfiguration({ 'populate--': true }),
   async handler(argv) {
@@ -700,17 +700,46 @@ async function rollBackUnpublishedTags(
   );
 }
 
+// Plugins whose prepare step only edits or commits the checkout and publishes nothing.
+const nonPublishingPreparePlugins = new Set([
+  '@semantic-release/changelog',
+  '@semantic-release/git',
+  '@semantic-release/npm',
+]);
+
 /**
- * Returns why a publish step may have released `tag`, or `undefined` when none did. semantic-release logs these lines
- * around each publish plugin; only @semantic-release/npm's outcome can be checked afterwards, since `npm publish` can
+ * Returns why `tag` may have been released, or `undefined` when nothing can have been published. semantic-release logs
+ * these lines around each plugin step: a prepare step runs before the tag push and may publish (e.g., an exec
+ * `prepareCmd`), and only @semantic-release/npm's publish outcome can be checked afterwards, since `npm publish` can
  * fail after the upload (e.g., in `postpublish`).
  */
 async function findPossiblePublish(project: Project, tag: string, log: string): Promise<string | undefined> {
+  const publishingPreparePlugin = startedPlugins(log, 'prepare').find(
+    (plugin) =>
+      !nonPublishingPreparePlugins.has(plugin) && (plugin !== '@semantic-release/exec' || execRunsPrepareCmd(project))
+  );
+  if (publishingPreparePlugin) return `the prepare step of ${publishingPreparePlugin} ran and may have published`;
   if (log.includes('Completed step "publish"')) return 'a publish step completed';
-  const startedPlugins = [...log.matchAll(/Start step "publish" of plugin "([^"]+)"/gu)].map((match) => match[1]);
-  const uncheckablePlugin = startedPlugins.find((plugin) => plugin !== '@semantic-release/npm');
+  const publishPlugins = startedPlugins(log, 'publish');
+  const uncheckablePlugin = publishPlugins.find((plugin) => plugin !== '@semantic-release/npm');
   if (uncheckablePlugin) return `the publish step of ${uncheckablePlugin} started and its outcome cannot be checked`;
-  if (startedPlugins.length > 0 && (await npmMayHoldVersion(project, tag))) return 'npm may hold its version';
+  if (publishPlugins.length > 0 && (await npmMayHoldVersion(project, tag))) return 'npm may hold its version';
+}
+
+function startedPlugins(log: string, step: 'prepare' | 'publish'): string[] {
+  return [...log.matchAll(new RegExp(`Start step "${step}" of plugin "([^"]+)"`, 'gu'))].map((match) => match[1]!);
+}
+
+/** semantic-release logs @semantic-release/exec's prepare step even when no `prepareCmd` is configured. */
+function execRunsPrepareCmd(project: Project): boolean {
+  const plugins = readExplicitSemanticReleasePlugins(project.dirPath, project.packageJson);
+  if (!Array.isArray(plugins)) return true;
+  return plugins.some(
+    (plugin) =>
+      Array.isArray(plugin) &&
+      plugin[0] === '@semantic-release/exec' &&
+      z.object({ prepareCmd: z.string().optional() }).safeParse(plugin[1]).data?.prepareCmd !== undefined
+  );
 }
 
 /** Deletes the refs locally and, where present, from the remote, and returns the refs left on the remote. */

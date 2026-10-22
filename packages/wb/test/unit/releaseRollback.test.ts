@@ -29,16 +29,16 @@ globalThis.fetch = async (url, init = {}) => {
 };
 `;
 
-// A publish plugin that fails when its `fail` option is set, and commits in prepare (as @semantic-release/git does)
-// when its `commit` option is set.
+// A publish plugin that fails when its `fail` option is set.
 const publishPlugin = `
-import { execFileSync } from 'node:child_process';
-export function prepare({ commit }, { cwd }) {
-  if (commit) execFileSync('git', ['-c', 'user.name=test', '-c', 'user.email=test@example.com', 'commit', '--allow-empty', '-qm', 'chore(release)'], { cwd });
-}
 export function publish({ fail }) {
   if (fail) throw new Error('publish failed');
 }
+`;
+
+// A plugin whose prepare step could publish, as an exec \`prepareCmd\` can.
+const preparePlugin = `
+export function prepare() {}
 `;
 
 // Stands for npm: \`npm publish\` fails, and \`npm view\` reports the version held when RELEASE_TEST_NPM_HOLDS is set.
@@ -82,6 +82,7 @@ async function createRepo(): Promise<Repo> {
   fs.mkdirSync(path.join(repoDirPath, 'pkg'));
   fs.writeFileSync(path.join(repoDirPath, 'pkg', 'package.json'), JSON.stringify({ name: 'release-test-pkg' }));
   fs.writeFileSync(path.join(repoDirPath, 'publishPlugin.mjs'), publishPlugin);
+  fs.writeFileSync(path.join(repoDirPath, 'preparePlugin.mjs'), preparePlugin);
   fs.writeFileSync(path.join(repoDirPath, '.gitignore'), 'node_modules\n');
   // wb removes NPM_* variables, so @semantic-release/npm authenticates from .npmrc as on CI.
   fs.writeFileSync(path.join(repoDirPath, '.npmrc'), '//registry.npmjs.org/:_authToken=fake\n');
@@ -153,15 +154,12 @@ async function withRepo(callback: (repo: Repo) => Promise<void>): Promise<void> 
   }
 }
 
-test.each([
-  ['', false],
-  [' after a prepare plugin committed', true],
-])(
-  'deletes the tag of a release that failed before publishing%s, so that the next run releases it',
-  (_case, commit) =>
+test(
+  'deletes the tag of a release that failed before publishing, so that the next run releases it',
+  () =>
     withRepo(async (repo) => {
       repo.rejectNotePushes(true);
-      const failed = await repo.run([['./publishPlugin.mjs', { fail: false, commit }]]);
+      const failed = await repo.run([['./publishPlugin.mjs', { fail: false }]]);
       expect(failed.status, failed.output).not.toBe(0);
       expect(failed.remoteRefs, failed.output).toEqual([]);
 
@@ -169,6 +167,19 @@ test.each([
       const retried = await repo.run([['./publishPlugin.mjs', { fail: false }]]);
       expect(retried.status, retried.output).toBe(0);
       expect(retried.remoteRefs).toEqual(releasedRefs);
+    }),
+  timeout
+);
+
+test(
+  'keeps the tag of a release that failed after a prepare step that may have published',
+  () =>
+    withRepo(async (repo) => {
+      repo.rejectNotePushes(true);
+      const failed = await repo.run(['./preparePlugin.mjs']);
+      expect(failed.status, failed.output).not.toBe(0);
+      expect(failed.remoteRefs, failed.output).toEqual(['refs/tags/v1.0.0']);
+      expect(failed.output).toContain('so the tag is kept');
     }),
   timeout
 );
