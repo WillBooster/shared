@@ -294,7 +294,7 @@ function warnIfGitHubTokenIsMissing(rootConfig: PackageConfig): void {
   if (!rootConfig.repoAuthor || hasGitHubToken(rootConfig.repoAuthor)) return;
   const skipped = rootConfig.isWillBoosterRepo
     ? 'repository settings, labels, and (where wbfy manages them) rulesets are'
-    : 'the `t:` labels that the issue templates name are';
+    : 'the `t:` type labels are';
   console.warn(
     `No GitHub token for ${rootConfig.repoAuthor}, so ${skipped} skipped. Set GH_TOKEN to a GitHub token with administration permission on the repository and re-run with --force to apply them.`
   );
