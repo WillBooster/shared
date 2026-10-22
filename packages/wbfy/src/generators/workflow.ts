@@ -13,7 +13,7 @@ import { fsUtil } from '../utils/fsUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
-import { repoResolvesPrivatePackages } from '../utils/privatePackages.js';
+import { repoPublishesPrivatePackages, repoResolvesPrivatePackages } from '../utils/privatePackages.js';
 import { isSkippedReleaseCaller, parseOrgReusableWorkflowCall } from '../utils/orgReusableWorkflowCall.js';
 import { runAllInPool } from '../utils/promisePool.js';
 import { parseShellCommands } from '../utils/shellParser.js';
@@ -785,6 +785,13 @@ function setCalleeSecrets(
     secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
   } else {
     delete secrets.VERDACCIO_TOKEN;
+  }
+  // VERDACCIO_TOKEN is read-only; only release.yml publishes, so only its callers in publishing
+  // repositories receive the publish-capable token.
+  if (calledReusableWorkflow === 'release' && repoPublishesPrivatePackages(config)) {
+    secrets.VERDACCIO_PUBLISH_TOKEN = '${{ secrets.VERDACCIO_PUBLISH_TOKEN }}';
+  } else {
+    delete secrets.VERDACCIO_PUBLISH_TOKEN;
   }
   if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
     // Public repositories commit world-readable ciphertexts, so they decrypt with a dedicated

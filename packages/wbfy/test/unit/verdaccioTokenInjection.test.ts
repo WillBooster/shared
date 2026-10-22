@@ -48,3 +48,26 @@ test('passes VERDACCIO_TOKEN when a private package is depended upon', async () 
     expect(job.secrets?.TAKUMI_GUARD_TOKEN).toBe('${{ secrets.TAKUMI_GUARD_TOKEN }}');
   });
 });
+
+test('passes VERDACCIO_PUBLISH_TOKEN only to the release caller of a repository publishing to Verdaccio', async () => {
+  await withTempWorkflowsRepo('wbfy-verdaccio-injection-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: '@willbooster-private/example' }));
+    const config = createConfig({ dirPath, isRoot: true });
+    config.depending.semanticRelease = true;
+    config.release.branches = ['main'];
+    await generateWorkflows(config);
+
+    expect(readCallerJob(workflowsPath, 'release.yml').secrets?.VERDACCIO_PUBLISH_TOKEN).toBe(
+      '${{ secrets.VERDACCIO_PUBLISH_TOKEN }}'
+    );
+    expect(readCallerJob(workflowsPath).secrets?.VERDACCIO_PUBLISH_TOKEN).toBeUndefined();
+
+    fs.writeFileSync(
+      path.join(dirPath, 'package.json'),
+      JSON.stringify({ name: '@willbooster-private/example', private: true })
+    );
+    await generateWorkflows(config);
+
+    expect(readCallerJob(workflowsPath, 'release.yml').secrets?.VERDACCIO_PUBLISH_TOKEN).toBeUndefined();
+  });
+});
