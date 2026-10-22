@@ -356,21 +356,24 @@ test('keeps the newest action ref of a regenerated workflow and raises an older 
     await fs.writeFile(
       testWorkflowPath,
       generated
-        .replace(/jdx\/mise-action@\S+/u, 'jdx/mise-action@v99.0.0')
+        .replace(/jdx\/mise-action@\S+/u, 'jdx/mise-action@v99.0.0-rc.1')
         // Only the first of the two upload steps, as when Renovate updated one of them.
         .replace(/actions\/upload-artifact@\S+/u, 'actions/upload-artifact@v99.0.0')
         .replaceAll(/actions\/checkout@\S+/gu, 'actions/checkout@v1.0.0')
+        .replaceAll(/actions\/cache@\S+/gu, 'actions/cache@main')
     );
 
     await generateSelfContainedWorkflows(config);
 
     const regenerated = await fs.readFile(testWorkflowPath, 'utf8');
-    expect(regenerated).toContain('jdx/mise-action@v99.0.0');
+    expect(regenerated).toContain('jdx/mise-action@v99.0.0-rc.1');
     expect(regenerated.match(/actions\/upload-artifact@\S+/gu)).toEqual([
       'actions/upload-artifact@v99.0.0',
       'actions/upload-artifact@v99.0.0',
     ]);
     expect(regenerated).not.toContain('actions/checkout@v1.0.0');
+    expect(regenerated).toContain('actions/cache@v');
+    expect(regenerated).not.toContain('actions/cache@main');
     expect(regenerated).toContain(generatedCheckout);
   });
 });

@@ -209,23 +209,26 @@ function listActionOccurrences<S extends { uses?: string }>(
 
 /**
  * wbfy's own commit SHA pin wins, since the generated YAML carries no version comment and Renovate
- * leaves a bare digest alone. Otherwise an existing commit SHA wins, and then the newest version tag.
+ * leaves a bare digest alone. Otherwise an existing commit SHA wins, and then the newest version tag; any
+ * other existing ref (e.g. a branch) is replaced.
  */
 function chooseActionRef(ref: string, occurrenceRef: string | undefined, newestVersionRef: string | undefined): string {
   if (!toVersion(ref)) return ref;
-  if (occurrenceRef && !toVersion(occurrenceRef)) return occurrenceRef;
+  if (occurrenceRef && /^[\da-f]{40}$/u.test(occurrenceRef)) return occurrenceRef;
   return newestVersionRef && isNewerVersionRef(newestVersionRef, ref) ? newestVersionRef : ref;
 }
 
-/** Whether both refs are version tags (e.g. `v4.2.3`) and `ref` is the newer one; a commit SHA is never newer. */
+/** Whether both refs are version tags and `ref` is the newer one. */
 function isNewerVersionRef(ref: string, existingRef: string): boolean {
   const version = toVersion(ref);
   const existingVersion = toVersion(existingRef);
   return !!version && !!existingVersion && semver.gt(version, existingVersion);
 }
 
+/** Parses a version tag such as `v4`, `v4.2.3`, or `v5.0.0-rc.1`; a branch name or commit SHA is not one. */
 function toVersion(ref: string): string | undefined {
-  return /^v?\d+(?:\.\d+){0,2}$/u.test(ref) ? semver.coerce(ref)?.version : undefined;
+  const version = ref.replace(/^v/u, '');
+  return semver.valid(version) ?? (/^\d+(?:\.\d+)?$/u.test(version) ? semver.coerce(version)?.version : undefined);
 }
 
 /** A broken generated file (e.g. after a merge conflict) holds nothing to keep and is regenerated. */
