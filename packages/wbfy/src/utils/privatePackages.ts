@@ -3,16 +3,12 @@ import path from 'node:path';
 
 import type { PackageJson } from 'type-fest';
 
-import type { PackageConfig } from '../packageConfig.js';
-
-import { getWorkspacePackageJsonPaths } from './workspaceUtil.js';
+import { getWorkspacePackageJsonPaths, type WorkspaceRootLike } from './workspaceUtil.js';
 
 const PRIVATE_SCOPE = '@willbooster-private/';
 
 const privateRegistryHost = 'verdaccio-production-e389.up.railway.app';
 export const privateRegistryScopeMapping = `@willbooster-private:registry=https://${privateRegistryHost}/`;
-
-type ManifestConfig = Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson'>;
 
 /**
  * Whether this repository deals with `@willbooster-private/*` packages — by convention that scope
@@ -24,7 +20,7 @@ type ManifestConfig = Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJson
  * scanned: lockfiles only mirror the declared dependencies, and bunfig.toml's
  * `minimumReleaseAgeExcludes` mentions the scope even in repositories that do not depend on it.
  */
-export function repoResolvesPrivatePackages(config: ManifestConfig): boolean {
+export function repoResolvesPrivatePackages(config: WorkspaceRootLike): boolean {
   return readWorkspaceManifests(config).some((manifest) => {
     if (manifest.name?.startsWith(PRIVATE_SCOPE)) return true;
     return [
@@ -40,13 +36,13 @@ export function repoResolvesPrivatePackages(config: ManifestConfig): boolean {
  * Whether any workspace package publishes to Verdaccio (named in the private scope and not marked
  * `private`), so its release caller needs the VERDACCIO_PUBLISH_TOKEN pass-through.
  */
-export function repoPublishesPrivatePackages(config: ManifestConfig): boolean {
+export function repoPublishesPrivatePackages(config: WorkspaceRootLike): boolean {
   return readWorkspaceManifests(config).some(
     (manifest) => manifest.name?.startsWith(PRIVATE_SCOPE) === true && manifest.private !== true
   );
 }
 
-function readWorkspaceManifests(config: ManifestConfig): PackageJson[] {
+function readWorkspaceManifests(config: WorkspaceRootLike): PackageJson[] {
   const manifestRelPaths = new Set(['package.json', ...getWorkspacePackageJsonPaths(config)]);
   return [...manifestRelPaths]
     .map((relPath) => readPackageJsonIfExists(path.resolve(config.dirPath, relPath)))
