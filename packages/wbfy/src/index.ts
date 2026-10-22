@@ -271,7 +271,11 @@ async function setUpMiseTools(rootDirPath: string): Promise<boolean> {
   }
   // generateMiseToml may have raised the Bun pin, and a Bun of another version writes a different
   // bun.lock layout, so install the pinned tools and run every later `bun` through the pinned one.
-  if ((await spawnAndReturnStatus('mise', ['install'], rootDirPath)) !== 0) return false;
+  // A failed install (e.g. an unparsable mise.toml, which wbfy leaves untouched) does not abort the run.
+  if ((await spawnAndReturnStatus('mise', ['install'], rootDirPath)) !== 0) {
+    console.warn(`mise install failed in ${rootDirPath}, so bun commands run with the Bun on PATH.`);
+    return true;
+  }
   await preferPinnedBun(rootDirPath);
   return true;
 }
