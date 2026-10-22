@@ -77,7 +77,12 @@ async function planReactCompiler(config: PackageConfig): Promise<ReactCompilerPl
 function findVinextCalls(source: ast.SourceFile): ast.CallExpression[] {
   const vinextName = source.statements
     .filter(ast.isImportDeclaration)
-    .find((statement) => ast.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text === 'vinext')
+    .find(
+      (statement) =>
+        ast.isStringLiteral(statement.moduleSpecifier) &&
+        statement.moduleSpecifier.text === 'vinext' &&
+        statement.importClause?.name
+    )
     ?.importClause?.name?.getText(source);
   if (!vinextName) return [];
 
