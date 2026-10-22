@@ -305,7 +305,8 @@ test('never overwrites a hand-written workflow and regenerates a marked one', as
     await fs.writeFile(path.join(workflowsPath, 'test.yml'), handWritten);
     await fs.writeFile(
       path.join(workflowsPath, 'semantic-pr.yml'),
-      `${selfContainedWorkflowMarker} stale header\nname: Stale\njobs: {}\n`
+      // Unparsable, as after a merge conflict.
+      `${selfContainedWorkflowMarker} stale header\nname: Stale\njobs: [\n`
     );
 
     const config = createConfig({

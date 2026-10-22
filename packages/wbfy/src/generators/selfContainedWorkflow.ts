@@ -161,7 +161,14 @@ async function writeSelfContainedWorkflow(filePath: string, workflow: Workflow):
 
 /** Keeps each action ref of the existing file unless wbfy pins a newer version, so that Renovate's updates survive. */
 function keepExistingActionRefs(workflow: Workflow, oldContent: string): void {
-  const parsed = actionRefsSchema.safeParse(yaml.load(oldContent));
+  let oldWorkflow: unknown;
+  try {
+    oldWorkflow = yaml.load(oldContent);
+  } catch {
+    // A broken generated file (e.g. a merge conflict) has no refs to keep and is regenerated.
+    return;
+  }
+  const parsed = actionRefsSchema.safeParse(oldWorkflow);
   if (!parsed.success) return;
   const existingRefByAction = new Map<string, string>();
   for (const job of Object.values(parsed.data.jobs)) {
