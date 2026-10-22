@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import merge from 'deepmerge';
 
+import { enablesViteReactCompiler } from '../fixers/viteConfig.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -105,7 +106,12 @@ export async function generateRenovateJsonc(
       return;
     }
 
-    const newSettings = buildSettings(config, allPackageConfigs, oldSettings);
+    const newSettings = buildSettings(
+      config,
+      allPackageConfigs,
+      await getReactCompilerPeerRange(allPackageConfigs),
+      oldSettings
+    );
     const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(
       oldContent,
       newSettings as Record<string, unknown>
@@ -119,9 +125,17 @@ export async function generateRenovateJsonc(
   });
 }
 
+async function getReactCompilerPeerRange(allPackageConfigs: PackageConfig[]): Promise<string | undefined> {
+  const vinextConfigs = allPackageConfigs.filter((packageConfig) => packageConfig.depending.vinext);
+  const enabled = await Promise.all(vinextConfigs.map((packageConfig) => enablesViteReactCompiler(packageConfig)));
+  const reactCompilerConfig = vinextConfigs.find((_, index) => enabled[index]);
+  return reactCompilerConfig && getOxcTransformReactPeerRange(reactCompilerConfig.dirPath);
+}
+
 function buildSettings(
   config: PackageConfig,
   allPackageConfigs: PackageConfig[],
+  reactCompilerPeerRange: string | undefined,
   oldSettings: Settings | undefined
 ): Settings {
   const settings: Settings = oldSettings
@@ -150,8 +164,7 @@ function buildSettings(
       allowedVersions: '15.x',
     });
   }
-  const vinextConfigs = allPackageConfigs.filter((packageConfig) => packageConfig.depending.vinext);
-  if (vinextConfigs.length > 0) {
+  if (reactCompilerPeerRange) {
     settings.packageRules ??= [];
     settings.packageRules.push({
       description: reactCompilerGroupRuleDescription,
@@ -164,16 +177,11 @@ function buildSettings(
         'Update `oxc-transform-react` and its `allowedVersions` in `renovate.jsonc` to the range the new `@vitejs/plugin-react` declares in `peerDependencies`.',
       ],
     });
-    const peerRange = vinextConfigs
-      .map((packageConfig) => getOxcTransformReactPeerRange(packageConfig.dirPath))
-      .find((range) => range !== undefined);
-    if (peerRange) {
-      settings.packageRules.push({
-        description: oxcTransformReactPinRuleDescription,
-        matchPackageNames: [oxcTransformReactDependency],
-        allowedVersions: peerRange,
-      });
-    }
+    settings.packageRules.push({
+      description: oxcTransformReactPinRuleDescription,
+      matchPackageNames: [oxcTransformReactDependency],
+      allowedVersions: reactCompilerPeerRange,
+    });
   }
   return settings;
 }

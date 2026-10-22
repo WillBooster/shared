@@ -11,6 +11,7 @@ import { sortPackageJson } from 'sort-package-json';
 import * as ast from 'typescript/unstable/ast';
 import type { PackageJson, SetRequired } from 'type-fest';
 
+import { enablesViteReactCompiler } from '../fixers/viteConfig.js';
 import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
 import { generatesWorkerTypes, getWorkerTypesScriptError, type PackageConfig } from '../packageConfig.js';
@@ -213,7 +214,7 @@ async function applyVinextReactCompilerDependencies(
   delete jsonObj.dependencies[babelReactCompilerDependency];
   delete jsonObj.devDependencies[babelReactCompilerDependency];
   const peerRange = getOxcTransformReactPeerRange(config.dirPath);
-  if (!peerRange) return;
+  if (!peerRange || !(await enablesViteReactCompiler(config))) return;
 
   const currentVersion = jsonObj.devDependencies[oxcTransformReactDependency];
   if (currentVersion && semver.valid(currentVersion) && semver.satisfies(currentVersion, peerRange)) return;

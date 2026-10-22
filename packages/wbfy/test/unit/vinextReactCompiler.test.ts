@@ -87,24 +87,45 @@ export default nextConfig;
 
 test('groups the React Compiler packages in Renovate while keeping custom rules', async () => {
   const customPin = { matchPackageNames: ['oxc-transform-react'], allowedVersions: '~0.152.0' };
-  await withVinextPackage({ 'renovate.jsonc': JSON.stringify({ packageRules: [customPin] }) }, async (dirPath) => {
-    const config = createVinextConfig(dirPath);
-    await generateRenovateJsonc(config);
-    await generateRenovateJsonc(config);
+  await withVinextPackage(
+    {
+      'renovate.jsonc': JSON.stringify({ packageRules: [customPin] }),
+      'vite.config.ts': `${viteConfigHeader}export default defineConfig({ plugins: [vinext()] });\n`,
+    },
+    async (dirPath) => {
+      const config = createVinextConfig(dirPath);
+      await generateRenovateJsonc(config);
+      await generateRenovateJsonc(config);
 
-    const settings = JSON.parse(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')) as {
-      packageRules: Record<string, unknown>[];
-    };
-    expect(settings.packageRules).toEqual([
-      customPin,
-      expect.objectContaining({
-        matchPackageNames: ['@vitejs/plugin-react', 'oxc-transform-react'],
-        automerge: false,
-      }),
-      expect.objectContaining({ matchPackageNames: ['oxc-transform-react'], allowedVersions: '^0.152.0' }),
-    ]);
-  });
+      expect(readRenovatePackageRules(dirPath)).toEqual([
+        customPin,
+        expect.objectContaining({
+          matchPackageNames: ['@vitejs/plugin-react', 'oxc-transform-react'],
+          automerge: false,
+        }),
+        expect.objectContaining({ matchPackageNames: ['oxc-transform-react'], allowedVersions: '^0.152.0' }),
+      ]);
+    }
+  );
 });
+
+test('omits the React Compiler Renovate rules from a vinext package that opts out of the compiler', async () => {
+  await withVinextPackage(
+    { 'vite.config.ts': `${viteConfigHeader}export default defineConfig({ plugins: [vinext({ react: false })] });\n` },
+    async (dirPath) => {
+      await generateRenovateJsonc(createVinextConfig(dirPath));
+
+      expect(readRenovatePackageRules(dirPath)).toEqual([]);
+    }
+  );
+});
+
+function readRenovatePackageRules(dirPath: string): Record<string, unknown>[] {
+  const settings = JSON.parse(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')) as {
+    packageRules?: Record<string, unknown>[];
+  };
+  return settings.packageRules ?? [];
+}
 
 function removeWhitespace(text: string): string {
   return text.replaceAll(/\s/gu, '');
