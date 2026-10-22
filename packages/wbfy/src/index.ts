@@ -271,20 +271,22 @@ async function setUpMiseTools(rootDirPath: string): Promise<boolean> {
   }
   // generateMiseToml may have raised the Bun pin, and a Bun of another version writes a different
   // bun.lock layout, so install the pinned tools and run every later `bun` through the pinned one.
-  // A failed install (e.g. an unparsable mise.toml, which wbfy leaves untouched) does not abort the run.
-  if ((await spawnAndReturnStatus('mise', ['install'], rootDirPath)) !== 0) {
+  // A failed install (e.g. of an unrelated global tool, or an unparsable mise.toml that wbfy leaves
+  // untouched) does not abort the run, and an installed Bun pin still applies.
+  const installStatus = await spawnAndReturnStatus('mise', ['install'], rootDirPath);
+  if (!(await preferPinnedBun(rootDirPath)) && installStatus !== 0) {
     console.warn(`mise install failed in ${rootDirPath}, so bun commands run with the Bun on PATH.`);
-    return true;
   }
-  await preferPinnedBun(rootDirPath);
   return true;
 }
 
-async function preferPinnedBun(rootDirPath: string): Promise<void> {
+/** Returns whether mise resolved the pinned Bun. */
+async function preferPinnedBun(rootDirPath: string): Promise<boolean> {
   const bunPath = await spawnAndReturnStdout('mise', ['which', 'bun'], rootDirPath);
-  if (!bunPath) return;
+  if (!bunPath) return false;
   // The spawn helpers pass process.env to every child, so `bun` and `bunx` resolve to this directory.
   process.env.PATH = `${path.dirname(bunPath)}${path.delimiter}${process.env.PATH ?? ''}`;
+  return true;
 }
 
 function findUnknownVisibilityError(rootConfig: PackageConfig): string | undefined {
