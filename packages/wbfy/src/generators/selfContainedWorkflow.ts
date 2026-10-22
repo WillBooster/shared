@@ -167,7 +167,10 @@ function keepExistingActionRefs(workflow: Workflow, oldContent: string): void {
   for (const job of Object.values(parsed.data.jobs)) {
     for (const { uses } of job.steps ?? []) {
       const [action, ref] = uses?.split('@') ?? [];
-      if (action && ref) existingRefByAction.set(action, ref);
+      if (!action || !ref) continue;
+      // Renovate may have updated only some occurrences of an action, so keep the newest one.
+      const existingRef = existingRefByAction.get(action);
+      if (!existingRef || isNewerVersionRef(ref, existingRef)) existingRefByAction.set(action, ref);
     }
   }
   for (const step of Object.values(workflow.jobs).flatMap((job) => job.steps)) {

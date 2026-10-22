@@ -323,13 +323,14 @@ test('never overwrites a hand-written workflow and regenerates a marked one', as
   });
 });
 
-test('keeps a newer action ref of a regenerated workflow and raises an older one', async () => {
+test('keeps the newest action ref of a regenerated workflow and raises an older one', async () => {
   await withTempRepo(async (dirPath) => {
     const config = createConfig({
       dirPath,
       isRoot: true,
       isWillBoosterRepo: false,
       repository: 'github:someone/example',
+      depending: { ...createConfig().depending, playwrightTest: true },
     });
     const testWorkflowPath = path.join(dirPath, '.github', 'workflows', 'test.yml');
     await generateSelfContainedWorkflows(config);
@@ -339,7 +340,9 @@ test('keeps a newer action ref of a regenerated workflow and raises an older one
     await fs.writeFile(
       testWorkflowPath,
       generated
-        .replaceAll(/jdx\/mise-action@\S+/gu, 'jdx/mise-action@v99.0.0')
+        .replace(/jdx\/mise-action@\S+/u, 'jdx/mise-action@v99.0.0')
+        // Only the first of the two upload steps, as when Renovate updated one of them.
+        .replace(/actions\/upload-artifact@\S+/u, 'actions/upload-artifact@v99.0.0')
         .replaceAll(/actions\/checkout@\S+/gu, 'actions/checkout@v1.0.0')
     );
 
@@ -347,6 +350,10 @@ test('keeps a newer action ref of a regenerated workflow and raises an older one
 
     const regenerated = await fs.readFile(testWorkflowPath, 'utf8');
     expect(regenerated).toContain('jdx/mise-action@v99.0.0');
+    expect(regenerated.match(/actions\/upload-artifact@\S+/gu)).toEqual([
+      'actions/upload-artifact@v99.0.0',
+      'actions/upload-artifact@v99.0.0',
+    ]);
     expect(regenerated).not.toContain('actions/checkout@v1.0.0');
     expect(regenerated).toContain(generatedCheckout);
   });
