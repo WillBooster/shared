@@ -732,26 +732,32 @@ async function npmMayHoldVersion(project: Project, tag: string): Promise<boolean
     (plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === '@semantic-release/npm'
   );
   if (npmPlugin === undefined) return false;
-  const { npmPublish, pkgRoot = '.' } = z
+  const options = z
     .object({ npmPublish: z.boolean().optional(), pkgRoot: z.string().optional() })
-    .parse((Array.isArray(npmPlugin) ? npmPlugin[1] : undefined) ?? {});
-  if (npmPublish === false) return false;
+    .safeParse((Array.isArray(npmPlugin) ? npmPlugin[1] : undefined) ?? {}).data;
+  if (!options) return true;
+  if (options.npmPublish === false) return false;
 
-  const pkgDirPath = path.resolve(project.dirPath, pkgRoot);
-  const {
-    name,
-    private: isPrivate,
-    publishConfig,
-  } = z
+  let manifestJson: unknown;
+  try {
+    manifestJson = JSON.parse(
+      fs.readFileSync(path.resolve(project.dirPath, options.pkgRoot ?? '.', 'package.json'), 'utf8')
+    );
+  } catch {
+    return true;
+  }
+  const manifest = z
     .object({
-      name: z.string(),
+      name: z.string().optional(),
       private: z.boolean().optional(),
       publishConfig: z.object({ registry: z.string().optional() }).optional(),
     })
-    .parse(JSON.parse(fs.readFileSync(path.join(pkgDirPath, 'package.json'), 'utf8')));
-  if (isPrivate) return false;
-  const version = /^v(\d+\.\d+\.\d+\S*)$/u.exec(tag)?.[1];
-  if (!version) return true;
+    .safeParse(manifestJson).data;
+  if (manifest?.private) return false;
+  const name = manifest?.name;
+  const version = /^v?(\d+\.\d+\.\d+\S*)$/u.exec(tag)?.[1];
+  if (!name || !version) return true;
+  const publishConfig = manifest.publishConfig;
   // From the repository root, whose .npmrc maps scopes to registries (npm ignores a workspace package's .npmrc), and
   // with the registry the package publishes to; a lookup in the wrong registry would wrongly report the version absent.
   const registryArgs = publishConfig?.registry ? ['--registry', publishConfig.registry] : [];
