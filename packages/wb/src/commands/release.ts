@@ -730,16 +730,29 @@ function startedPlugins(log: string, step: 'prepare' | 'publish'): string[] {
   return [...log.matchAll(new RegExp(`Start step "${step}" of plugin "([^"]+)"`, 'gu'))].map((match) => match[1]!);
 }
 
-/** semantic-release logs @semantic-release/exec's prepare step even when no `prepareCmd` is configured. */
+/** semantic-release logs @semantic-release/exec's prepare step even when no command is configured for it. */
 function execRunsPrepareCmd(project: Project): boolean {
-  const plugins = readExplicitSemanticReleasePlugins(project.dirPath, project.packageJson);
-  if (!Array.isArray(plugins)) return true;
-  return plugins.some(
-    (plugin) =>
-      Array.isArray(plugin) &&
-      plugin[0] === '@semantic-release/exec' &&
-      z.object({ prepareCmd: z.string().optional() }).safeParse(plugin[1]).data?.prepareCmd !== undefined
-  );
+  const optionsList = resolvePluginOptions(project, '@semantic-release/exec');
+  return !optionsList || optionsList.some((options) => options.prepareCmd !== undefined || options.cmd !== undefined);
+}
+
+/**
+ * Returns the options semantic-release passes to each configured instance of `pluginName`: the top-level options under
+ * the plugin's own. Returns `undefined` when they cannot be read statically (e.g., a non-JSON config or a preset).
+ */
+function resolvePluginOptions(project: Project, pluginName: string): Record<string, unknown>[] | undefined {
+  const config = readSemanticReleaseConfig(project.dirPath, project.packageJson);
+  if (config === 'unknown' || config?.extends !== undefined) return;
+  // semantic-release's default plugin list includes @semantic-release/npm without options.
+  const plugins: unknown[] = Array.isArray(config?.plugins) ? config.plugins : ['@semantic-release/npm'];
+  const optionsList: Record<string, unknown>[] = [];
+  for (const plugin of plugins) {
+    if ((Array.isArray(plugin) ? plugin[0] : plugin) !== pluginName) continue;
+    const ownOptions: unknown = Array.isArray(plugin) ? plugin[1] : undefined;
+    if (ownOptions !== undefined && (typeof ownOptions !== 'object' || ownOptions === null)) return;
+    optionsList.push({ ...config, ...(ownOptions as object | undefined) });
+  }
+  return optionsList;
 }
 
 /** Deletes the refs locally and, where present, from the remote, and returns the refs left on the remote. */
@@ -766,18 +779,10 @@ async function deleteRefs(project: Project, refs: string[], remoteRefs: Map<stri
  * publish step can still fail. Only a registry that answers that it lacks the version rules it out.
  */
 async function npmMayHoldVersion(project: Project, tag: string): Promise<boolean> {
-  const config = readSemanticReleaseConfig(project.dirPath, project.packageJson);
-  // A preset may set the options of the npm plugin.
-  if (config === 'unknown' || config?.extends !== undefined) return true;
-  // semantic-release's default plugin list includes @semantic-release/npm without options.
-  const plugins: unknown[] = Array.isArray(config?.plugins) ? config.plugins : ['@semantic-release/npm'];
-  const npmPlugin = plugins.find((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === '@semantic-release/npm');
-  if (npmPlugin === undefined) return true;
   // Its publish step fails only after attempting an upload: with `npmPublish: false` or a private package it returns.
-  // semantic-release passes the top-level options to every plugin, under the plugin's own.
-  const options = z
-    .object({ pkgRoot: z.string().optional() })
-    .safeParse({ ...config, ...(Array.isArray(npmPlugin) ? npmPlugin[1] : undefined) }).data;
+  const optionsList = resolvePluginOptions(project, '@semantic-release/npm');
+  if (optionsList?.length !== 1) return true;
+  const options = z.object({ pkgRoot: z.string().optional() }).safeParse(optionsList[0]).data;
   if (!options) return true;
 
   let manifestJson: unknown;
