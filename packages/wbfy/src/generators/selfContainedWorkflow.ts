@@ -161,31 +161,34 @@ async function writeSelfContainedWorkflow(filePath: string, workflow: Workflow):
 
 /** Keeps each action ref of the existing file unless wbfy pins a newer version, so that Renovate's updates survive. */
 function keepExistingActionRefs(workflow: Workflow, oldContent: string): void {
-  let oldWorkflow: unknown;
-  try {
-    oldWorkflow = yaml.load(oldContent);
-  } catch {
-    // A broken generated file (e.g. a merge conflict) has no refs to keep and is regenerated.
-    return;
-  }
-  const parsed = actionRefsSchema.safeParse(oldWorkflow);
-  if (!parsed.success) return;
-  const existingRefByAction = new Map<string, string>();
-  for (const job of Object.values(parsed.data.jobs)) {
-    for (const { uses } of job.steps ?? []) {
-      const [action, ref] = uses?.split('@') ?? [];
-      if (!action || !ref) continue;
-      // Renovate may have updated only some occurrences of an action, so keep the newest one.
-      const existingRef = existingRefByAction.get(action);
-      if (!existingRef || isNewerVersionRef(ref, existingRef)) existingRefByAction.set(action, ref);
-    }
-  }
+  const existingRefByAction = readNewestActionRefs(oldContent);
   for (const step of Object.values(workflow.jobs).flatMap((job) => job.steps)) {
     const [action, ref] = step.uses?.split('@') ?? [];
     const existingRef = action && existingRefByAction.get(action);
     if (!ref || !existingRef || isNewerVersionRef(ref, existingRef)) continue;
     step.uses = `${action}@${existingRef}`;
   }
+}
+
+function readNewestActionRefs(content: string): Map<string, string> {
+  const refByAction = new Map<string, string>();
+  let workflow: unknown;
+  try {
+    workflow = yaml.load(content);
+  } catch {
+    // A broken generated file (e.g. a merge conflict) has no refs to keep and is regenerated.
+    return refByAction;
+  }
+  const parsed = actionRefsSchema.safeParse(workflow);
+  const steps = parsed.success ? Object.values(parsed.data.jobs).flatMap((job) => job.steps ?? []) : [];
+  for (const { uses } of steps) {
+    const [action, ref] = uses?.split('@') ?? [];
+    if (!action || !ref) continue;
+    // Renovate may have updated only some occurrences of an action, so keep the newest one.
+    const existingRef = refByAction.get(action);
+    if (!existingRef || isNewerVersionRef(ref, existingRef)) refByAction.set(action, ref);
+  }
+  return refByAction;
 }
 
 /** Whether both refs are version tags (e.g. `v4.2.3`) and `ref` is the newer one; a commit SHA is never newer. */
