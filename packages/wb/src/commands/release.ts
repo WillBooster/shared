@@ -668,16 +668,7 @@ async function rollBackUnpublishedTags(
     );
     return;
   }
-  const newTags: string[] = [];
-  for (const [ref, commit] of refsAfter) {
-    if (!ref.startsWith('refs/tags/') || refsBefore.has(ref)) continue;
-    // semantic-release tags the released commit or the commit a prepare plugin (e.g. @semantic-release/git) made on
-    // top of it; a new tag elsewhere belongs to another release.
-    const { status } = await spawnAsync('git', ['merge-base', '--is-ancestor', releasedCommit, commit], {
-      cwd: project.dirPath,
-    });
-    if (status === 0) newTags.push(ref.slice('refs/tags/'.length));
-  }
+  const { newTags, branchMoved } = await findNewReleaseTags(project, refsBefore, refsAfter, releasedCommit);
   if (newTags.length === 0) return;
 
   const log = stripVTControlCharacters(output);
@@ -699,9 +690,36 @@ async function rollBackUnpublishedTags(
     chalk.red(
       remainingRefs.length > 0
         ? `No publish step released ${tagList}, but deleting ${remainingRefs.join(', ')} failed. Delete them manually before re-running, or a re-run releases nothing (an orphaned note fails the next release).`
-        : `Deleted ${tagList} and its semantic-release note, which no publish step released, so a re-run releases it again.`
+        : branchMoved
+          ? `Deleted ${tagList} and its semantic-release note, which no publish step released. The branch already holds the release commit, so a re-run of this job (behind the branch) releases nothing: run the release on the branch head instead.`
+          : `Deleted ${tagList} and its semantic-release note, which no publish step released, so a re-run releases it again.`
     )
   );
+}
+
+/**
+ * Returns the new remote tags of this release and whether one of them points past the released commit. semantic-release
+ * tags the released commit or the commit a prepare plugin (e.g. @semantic-release/git) made on top of it and pushed to
+ * the branch; a new tag elsewhere belongs to another release.
+ */
+async function findNewReleaseTags(
+  project: Project,
+  refsBefore: Map<string, string>,
+  refsAfter: Map<string, string>,
+  releasedCommit: string
+): Promise<{ newTags: string[]; branchMoved: boolean }> {
+  const newTags: string[] = [];
+  let branchMoved = false;
+  for (const [ref, commit] of refsAfter) {
+    if (!ref.startsWith('refs/tags/') || refsBefore.has(ref)) continue;
+    const { status } = await spawnAsync('git', ['merge-base', '--is-ancestor', releasedCommit, commit], {
+      cwd: project.dirPath,
+    });
+    if (status !== 0) continue;
+    newTags.push(ref.slice('refs/tags/'.length));
+    if (commit !== releasedCommit) branchMoved = true;
+  }
+  return { newTags, branchMoved };
 }
 
 // Plugins whose prepare step only edits or commits the checkout and publishes nothing.
@@ -740,13 +758,28 @@ function execRunsPrepareCmd(project: Project): boolean {
   return !optionsList || optionsList.some((options) => options.prepareCmd !== undefined || options.cmd !== undefined);
 }
 
+const pluginStepNames = [
+  'verifyConditions',
+  'analyzeCommits',
+  'verifyRelease',
+  'generateNotes',
+  'prepare',
+  'publish',
+  'addChannel',
+  'success',
+  'fail',
+];
+
 /**
  * Returns the options semantic-release passes to each configured instance of `pluginName`: the top-level options under
  * the plugin's own. Returns `undefined` when they cannot be read statically (e.g., a non-JSON config or a preset).
  */
 function resolvePluginOptions(project: Project, pluginName: string): Record<string, unknown>[] | undefined {
   const config = readSemanticReleaseConfig(project.dirPath, project.packageJson);
-  if (config === 'unknown' || config?.extends !== undefined) return;
+  // A preset or a step-specific plugin definition (e.g. `prepare: { prepareCmd }`) may add options.
+  if (config === 'unknown' || config?.extends !== undefined || pluginStepNames.some((step) => step in (config ?? {}))) {
+    return;
+  }
   // semantic-release's default plugin list includes @semantic-release/npm without options.
   const plugins: unknown[] = Array.isArray(config?.plugins) ? config.plugins : ['@semantic-release/npm'];
   const optionsList: Record<string, unknown>[] = [];
