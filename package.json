@@ -48,7 +48,7 @@
     "oxlint": "1.88.0",
     "oxlint-tsgolint": "7.0.2004",
     "semantic-release": "25.0.9",
-    "sort-package-json": "4.0.0"
+    "sort-package-json": "4.1.0"
   },
   "engines": {
     "node": ">= 22.18.0"
