@@ -645,8 +645,9 @@ function configuresReleasePlugin(project: Project): boolean {
 
 /**
  * semantic-release pushes the version tag (and its note) before running the publish plugins, so a failed publish leaves
- * the tag behind and a re-run finds no commits to release. When no publish step completed, nothing was released, so the
- * tag and its note are deleted for a re-run to release the version again; otherwise the run reports the tag instead.
+ * the tag behind and a re-run finds no commits to release. The tag and its note are deleted for a re-run to release the
+ * version again only when nothing can have been published (see findPossiblePublish); otherwise the tag is kept and the
+ * run reports it with the manual recovery.
  */
 async function rollBackUnpublishedTags(
   project: Project,
