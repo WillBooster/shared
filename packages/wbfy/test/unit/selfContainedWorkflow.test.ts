@@ -246,9 +246,24 @@ test('generates release and deploy workflows for wb-deploy scripts and semantic-
         },
       },
     });
+    const workflowsPath = path.join(dirPath, '.github', 'workflows');
+    await fs.mkdir(workflowsPath, { recursive: true });
+    // Unparsable, as after a merge conflict.
+    await fs.writeFile(
+      path.join(workflowsPath, 'deploy-staging.yml'),
+      `${selfContainedWorkflowMarker}\non:\n  push: [\n`
+    );
+    const stalePin = 'amannn/action-semantic-pull-request@1111111111111111111111111111111111111111';
+    await fs.writeFile(
+      path.join(workflowsPath, 'semantic-pr.yml'),
+      `${selfContainedWorkflowMarker}\njobs:\n  semantic-pr:\n    steps:\n      - uses: ${stalePin}\n`
+    );
     await generateSelfContainedWorkflows(config);
 
-    const workflowsPath = path.join(dirPath, '.github', 'workflows');
+    // wbfy owns its bare commit SHA pins, which Renovate does not update.
+    const semanticPr = await fs.readFile(path.join(workflowsPath, 'semantic-pr.yml'), 'utf8');
+    expect(semanticPr).toContain('amannn/action-semantic-pull-request@');
+    expect(semanticPr).not.toContain(stalePin);
     const production = await fs.readFile(path.join(workflowsPath, 'deploy-production.yml'), 'utf8');
     expect(production).toContain('bun run deploy');
     expect(production).toContain('nick-fields/retry@');
