@@ -9,6 +9,7 @@ import { fixNextConfigJson } from './fixers/nextConfig.js';
 import { fixChakraToaster } from './fixers/chakraToaster.js';
 import { fixPlaywrightConfig } from './fixers/playwrightConfig.js';
 import { fixTypos } from './fixers/typos.js';
+import { fixViteConfig } from './fixers/viteConfig.js';
 import { generateAgentInstructions } from './generators/agents.js';
 import {
   generateBunfigToml,
@@ -464,6 +465,9 @@ function getSourceFixers(config: PackageConfig): PooledGenerator[] {
   }
   if (config.depending.next) {
     fixers.push(() => fixNextConfigJson(config));
+  }
+  if (config.depending.vinext) {
+    fixers.push(() => fixViteConfig(config));
   }
   if (config.depending.chakra) {
     fixers.push(() => fixChakraToaster(config));

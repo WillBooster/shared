@@ -8,6 +8,7 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
+import { getOxcTransformReactPeerRange, oxcTransformReactDependency } from '../utils/vitePluginReact.js';
 
 const sharedPreset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
 const generatedSettings = {
@@ -22,11 +23,24 @@ type Settings = Partial<typeof generatedSettings> & {
     enabled?: boolean;
     allowedVersions?: string;
     description?: string;
+    groupName?: string;
+    groupSlug?: string;
+    automerge?: boolean;
+    prBodyNotes?: string[];
   }[];
 };
 
 const managedFileName = 'renovate.jsonc';
 const blitzNextRuleDescription = 'Keep Blitz apps on Next.js 15';
+const reactCompilerGroupRuleDescription =
+  '@vitejs/plugin-react peer-requires a single minor of oxc-transform-react, which Renovate does not check, so update both together and review them by hand';
+const oxcTransformReactPinRuleDescription =
+  'Keep oxc-transform-react within the peer range of the installed @vitejs/plugin-react';
+const managedRuleDescriptions = new Set([
+  blitzNextRuleDescription,
+  reactCompilerGroupRuleDescription,
+  oxcTransformReactPinRuleDescription,
+]);
 
 // wbfy supports one canonical Renovate location. Non-canonical configs are fixed in the target
 // repository instead of being parsed, merged, or deleted here.
@@ -121,7 +135,9 @@ function buildSettings(
     : existingExtends.includes(sharedPreset)
       ? existingExtends
       : [sharedPreset, ...existingExtends];
-  settings.packageRules = settings.packageRules?.filter((rule) => rule.description !== blitzNextRuleDescription);
+  settings.packageRules = settings.packageRules?.filter(
+    (rule) => rule.description === undefined || !managedRuleDescriptions.has(rule.description)
+  );
   const blitzManifestPaths = allPackageConfigs
     .filter((packageConfig) => packageConfig.depending.blitz)
     .map((packageConfig) => path.relative(config.dirPath, path.join(packageConfig.dirPath, 'package.json')));
@@ -133,6 +149,31 @@ function buildSettings(
       matchFileNames: blitzManifestPaths,
       allowedVersions: '15.x',
     });
+  }
+  const vinextConfigs = allPackageConfigs.filter((packageConfig) => packageConfig.depending.vinext);
+  if (vinextConfigs.length > 0) {
+    settings.packageRules ??= [];
+    settings.packageRules.push({
+      description: reactCompilerGroupRuleDescription,
+      groupName: 'React Compiler',
+      groupSlug: 'react-compiler',
+      matchPackageNames: ['@vitejs/plugin-react', oxcTransformReactDependency],
+      automerge: false,
+      // The pin below holds oxc-transform-react back when @vitejs/plugin-react moves to a new peer range.
+      prBodyNotes: [
+        'Update `oxc-transform-react` and its `allowedVersions` in `renovate.jsonc` to the range the new `@vitejs/plugin-react` declares in `peerDependencies`.',
+      ],
+    });
+    const peerRange = vinextConfigs
+      .map((packageConfig) => getOxcTransformReactPeerRange(packageConfig.dirPath))
+      .find((range) => range !== undefined);
+    if (peerRange) {
+      settings.packageRules.push({
+        description: oxcTransformReactPinRuleDescription,
+        matchPackageNames: [oxcTransformReactDependency],
+        allowedVersions: peerRange,
+      });
+    }
   }
   return settings;
 }
