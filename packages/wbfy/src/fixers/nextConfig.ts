@@ -6,6 +6,7 @@ import * as ast from 'typescript/unstable/ast';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { applyTextEdits, findProperty, insertPropertiesEdit, removePropertyEdit } from '../utils/objectLiteralEdit.js';
 import { promisePool } from '../utils/promisePool.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 
@@ -13,10 +14,10 @@ import { parseSourceFile } from '../utils/typescriptApi.js';
 // property key used to detect whether the setting already exists; `text` is inserted
 // verbatim (a whole `key: value` pair) when the key is missing.
 const managedProperties: readonly { name: string; text: string }[] = [
-  { name: 'reactCompiler', text: 'reactCompiler: true' },
   { name: 'reactStrictMode', text: 'reactStrictMode: true' },
   { name: 'typescript', text: 'typescript: { ignoreBuildErrors: true }' },
 ];
+const reactCompilerProperty = { name: 'reactCompiler', text: 'reactCompiler: true' };
 
 export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('fixNextConfigJson', async () => {
@@ -29,30 +30,22 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
     if (!extracted) return;
     const { source, objectLiteral } = extracted;
 
-    // `properties` includes spread assignments (`...rest`) that carry no name, so guard before reading it.
-    const existingProperties = new Set(
-      objectLiteral.properties.map((property) =>
-        'name' in property && property.name ? getPropertyKey(property.name, source) : undefined
-      )
-    );
-    const propertyTexts = managedProperties
-      .filter((property) => !existingProperties.has(property.name))
+    // vinext ignores `reactCompiler`; fixers/viteConfig.ts enables the compiler in vite.config.ts instead.
+    const removedProperty = config.depending.vinext
+      ? findProperty(objectLiteral, reactCompilerProperty.name, source)
+      : undefined;
+    const propertyTexts = (config.depending.vinext ? managedProperties : [reactCompilerProperty, ...managedProperties])
+      .filter((property) => !findProperty(objectLiteral, property.name, source))
       .map((property) => property.text);
-    if (propertyTexts.length === 0) return;
+    const edits = [
+      ...(removedProperty ? [removePropertyEdit(source, removedProperty)] : []),
+      ...(propertyTexts.length > 0
+        ? [insertPropertiesEdit(source, objectLiteral, propertyTexts, removedProperty)]
+        : []),
+    ];
+    if (edits.length === 0) return;
 
-    const oldContent = source.text;
-    const insertionPoint = objectLiteral.getEnd() - 1;
-    // The native TS AST does not reliably expose `properties.hasTrailingComma`, so scan the source
-    // between the last property and the closing brace. Strip comments first so a comma inside a
-    // trailing comment (e.g. `foo: 1 // a, b`) is not mistaken for a real trailing comma.
-    const lastProperty = objectLiteral.properties.at(-1);
-    const hasTrailingComma = lastProperty
-      ? stripComments(oldContent.slice(lastProperty.getEnd(), insertionPoint)).includes(',')
-      : false;
-    const prefix = objectLiteral.properties.length > 0 && !hasTrailingComma ? ', ' : '';
-    const newContent = `${oldContent.slice(0, insertionPoint)}${prefix}${propertyTexts.join(', ')}${oldContent.slice(
-      insertionPoint
-    )}`;
+    const newContent = applyTextEdits(source.text, edits);
     await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
 }
@@ -131,14 +124,4 @@ function unwrapParentheses(node: ast.Expression): ast.Expression {
 // Match both the bare `NextConfig` and qualified forms like `import('next').NextConfig`.
 function isNextConfigType(typeText: string): boolean {
   return typeText === 'NextConfig' || typeText.endsWith('.NextConfig');
-}
-
-// Return a property key without surrounding quotes, so `'reactCompiler'` matches `reactCompiler`.
-// Identifier, string-literal and numeric-literal names all expose the unquoted value via `.text`.
-function getPropertyKey(name: ast.PropertyName, source: ast.SourceFile): string {
-  return 'text' in name && typeof name.text === 'string' ? name.text : name.getText(source);
-}
-
-function stripComments(text: string): string {
-  return text.replaceAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '');
 }

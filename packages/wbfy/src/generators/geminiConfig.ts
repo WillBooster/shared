@@ -9,7 +9,12 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
 import { runAllInPool } from '../utils/promisePool.js';
 
-import { generateAgentCodingStyle, getDefaultProseLanguage, readAgentsExtraContent } from './agents.js';
+import {
+  generateAgentCodingStyle,
+  getDefaultProseLanguage,
+  readAgentsExtraContent,
+  usesReactCompiler,
+} from './agents.js';
 
 const defaultConfig = {
   have_fun: true,
@@ -61,7 +66,7 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
 
     const extraContent = await readAgentsExtraContent(config.dirPath);
     const codingRuleExtraContent = extraContent?.trimStart().startsWith('#') ? undefined : extraContent;
-    const styleguideContent = `Review in ${getDefaultProseLanguage(config)} based on the following coding standards.\n\n${generateAgentCodingStyle(config, allConfigs)}${
+    const styleguideContent = `Review in ${getDefaultProseLanguage(config)} based on the following coding standards.\n\n${generateAgentCodingStyle(config, allConfigs, await usesReactCompiler(allConfigs))}${
       codingRuleExtraContent ? `\n${codingRuleExtraContent.trimEnd()}` : ''
     }`;
 

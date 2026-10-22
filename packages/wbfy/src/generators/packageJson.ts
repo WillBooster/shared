@@ -23,6 +23,7 @@ import { promisePool } from '../utils/promisePool.js';
 import { spawnAndReturnStatus, spawnAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
+import { getOxcTransformReactPeerRange, oxcTransformReactDependency } from '../utils/vitePluginReact.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 import {
   getDeclaredWorkspacePatterns,
@@ -34,6 +35,7 @@ import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bun
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const typescriptDependency = 'typescript';
+const babelReactCompilerDependency = 'babel-plugin-react-compiler';
 // TypeScript 7's `typescript` package is the tsgo native compiler and exposes no
 // programmatic API. Next.js's build-time `verifyTypeScriptSetup` needs that API, so
 // `next build` fails ("trying to use TypeScript but do not have the required package(s)")
@@ -96,6 +98,7 @@ async function core(
   await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   pruneCapabilityDependentCompilerDependencies(config, jsonObj);
+  if (config.depending.vinext) await applyVinextReactCompilerDependencies(config, jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   if (blitzNextVersion) {
@@ -199,6 +202,35 @@ function isNextFamily(config: PackageConfig): boolean {
   return config.depending.next || config.depending.blitz || config.depending.vinext;
 }
 
+/**
+ * fixers/viteConfig.ts enables the React Compiler through @vitejs/plugin-react, which runs
+ * `oxc-transform-react` instead of the `babel-plugin-react-compiler` that Next.js uses.
+ */
+async function applyVinextReactCompilerDependencies(
+  config: PackageConfig,
+  jsonObj: WritablePackageJson
+): Promise<void> {
+  delete jsonObj.dependencies[babelReactCompilerDependency];
+  delete jsonObj.devDependencies[babelReactCompilerDependency];
+  const peerRange = getOxcTransformReactPeerRange(config.dirPath);
+  if (!peerRange) return;
+
+  const currentVersion = jsonObj.devDependencies[oxcTransformReactDependency];
+  if (currentVersion && semver.valid(currentVersion) && semver.satisfies(currentVersion, peerRange)) return;
+  // `bun add` would install the latest release, which may be outside the peer range.
+  const version = getStableVersionsDescending(
+    await getNpmPackageTimes(oxcTransformReactDependency),
+    shouldApplyPackageAgeGate(oxcTransformReactDependency)
+  ).find((candidate) => semver.satisfies(candidate, peerRange));
+  if (version) {
+    jsonObj.devDependencies[oxcTransformReactDependency] = version;
+  } else {
+    console.warn(
+      `Could not resolve a release of ${oxcTransformReactDependency} in ${peerRange} for ${config.dirPath}.`
+    );
+  }
+}
+
 function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): void {
   jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
 }
@@ -270,8 +302,8 @@ async function applyPackageJsonConventions(
   // fixers/nextConfig.ts enables `reactCompiler: true` for every Next.js project, and Next.js
   // resolves `babel-plugin-react-compiler` at build time when React Compiler is on. Add it here so
   // the managed next.config never breaks `next build` with an unresolved-package error.
-  if (config.depending.next) {
-    devDependencies.push('babel-plugin-react-compiler');
+  if (config.depending.next && !config.depending.vinext) {
+    devDependencies.push(babelReactCompilerDependency);
   }
 
   // `wb verify --full` audits every `*.slidev.md` deck with slidev-check, so the checker has to be
