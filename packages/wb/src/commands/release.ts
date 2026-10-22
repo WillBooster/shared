@@ -32,7 +32,7 @@ export const releaseCommand: CommandModule = {
     "reinstall with the hoisted linker (npm cannot walk Bun's isolated node_modules layout), " +
     'rewrite `workspace:` ranges npm cannot parse, run the release, then restore the modified files. ' +
     'Extra arguments (e.g. `--debug`, after `--`) are forwarded to the release command. ' +
-    'When semantic-release fails after pushing the version tag and nothing can have been published (no prepare step that may publish ran, and no publish step started or only that of @semantic-release/npm with npm lacking the version), delete the tag and its note so that a re-run releases the version again. ' +
+    'When semantic-release fails after pushing the version tag and nothing can have been published (no option is forwarded, no prepare step that may publish ran, and no publish step started or only that of @semantic-release/npm with npm lacking the version), delete the tag and its note so that a re-run releases the version again. ' +
     `With the ${releasePluginName} semantic-release plugin, first complete a release that a failed run left pending.`,
   builder: (yargs: Argv<unknown>) => yargs.parserConfiguration({ 'populate--': true }),
   async handler(argv) {
@@ -590,30 +590,21 @@ async function runSemanticRelease(
   const releasePackageName = (
     ['@anolilab/multi-semantic-release', 'multi-semantic-release', '@qiwi/multi-semantic-release'] as const
   ).find((packageName) => project.packageJson.devDependencies?.[packageName]);
-  const releaseBin = releasePackageName ? 'multi-semantic-release' : 'semantic-release';
 
   // The project is loaded with loadEnv: false (semantic-release runs with the ambient/CI
   // environment by design), so project.env aliases process.env here; using it keeps the
   // project.env convention and picks up env loading if that design ever changes.
   const env = { ...project.env };
   prependNodeModulesBinToPath(project.dirPath, env);
-  const hasLocalBin = fs.existsSync(path.join(project.dirPath, 'node_modules', '.bin', releaseBin));
-  const fallbackPackageName = releasePackageName ?? 'semantic-release';
-  const command = hasLocalBin
-    ? [releaseBin, ...forwardedArgs]
-    : project.packageManagerCommand === 'bun'
-      ? ['bunx', fallbackPackageName, ...forwardedArgs]
-      : ['yarn', 'dlx', fallbackPackageName, ...forwardedArgs];
+  const command = buildReleaseCommand(project, releasePackageName, forwardedArgs);
   console.info(chalk.cyan(`Running: ${command.join(' ')}`));
   if (argv.dryRun) return 0;
 
   // multi-semantic-release tags each package separately, so a failure leaves tags that may be fully released, and
   // the release plugin publishes in `prepare`, before semantic-release pushes the tag.
+  const rollsBack = !releasePackageName && !configuresReleasePlugin(project);
   // Forwarded options other than these may override the configuration that the rollback reads.
-  const rollsBack =
-    !releasePackageName &&
-    !configuresReleasePlugin(project) &&
-    forwardedArgs.every((arg) => arg === '--debug' || arg === '--no-ci');
+  const readsConfig = forwardedArgs.every((arg) => arg === '--debug' || arg === '--no-ci');
   const refsBefore = rollsBack ? await listRemoteReleaseRefs(project.dirPath) : undefined;
   if (rollsBack && !refsBefore) {
     // Without the snapshot, a tag that a failed publish leaves behind could not be rolled back.
@@ -634,9 +625,24 @@ async function runSemanticRelease(
     }
   );
   if (exitCode !== 0 && refsBefore && !isCancelled()) {
-    await rollBackUnpublishedTags(project, refsBefore, releasedCommit.trim(), output);
+    await rollBackUnpublishedTags(project, refsBefore, releasedCommit.trim(), readsConfig ? output : undefined);
   }
   return exitCode;
+}
+
+function buildReleaseCommand(
+  project: Project,
+  releasePackageName: string | undefined,
+  forwardedArgs: string[]
+): string[] {
+  const releaseBin = releasePackageName ? 'multi-semantic-release' : 'semantic-release';
+  if (fs.existsSync(path.join(project.dirPath, 'node_modules', '.bin', releaseBin))) {
+    return [releaseBin, ...forwardedArgs];
+  }
+  const packageName = releasePackageName ?? 'semantic-release';
+  return project.packageManagerCommand === 'bun'
+    ? ['bunx', packageName, ...forwardedArgs]
+    : ['yarn', 'dlx', packageName, ...forwardedArgs];
 }
 
 function configuresReleasePlugin(project: Project): boolean {
@@ -657,7 +663,8 @@ async function rollBackUnpublishedTags(
   project: Project,
   refsBefore: Map<string, string>,
   releasedCommit: string,
-  output: string
+  /** `undefined` when forwarded options may override the configuration that the checks read. */
+  output: string | undefined
 ): Promise<void> {
   const refsAfter = await listRemoteReleaseRefs(project.dirPath);
   if (!refsAfter) {
@@ -671,9 +678,11 @@ async function rollBackUnpublishedTags(
   const { newTags, branchMoved } = await findNewReleaseTags(project, refsBefore, refsAfter, releasedCommit);
   if (newTags.length === 0) return;
 
-  const log = stripVTControlCharacters(output);
   for (const tag of newTags) {
-    const possiblePublish = await findPossiblePublish(project, tag, log);
+    const possiblePublish =
+      output === undefined
+        ? 'the forwarded options may override the configuration that tells whether anything was published'
+        : await findPossiblePublish(project, tag, stripVTControlCharacters(output));
     if (possiblePublish) {
       console.error(
         chalk.red(

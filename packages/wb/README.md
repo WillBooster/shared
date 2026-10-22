@@ -80,14 +80,14 @@ Commands:
                                  `--`) are forwarded to the release command.
                                  When semantic-release fails after pushing the
                                  version tag and nothing can have been published
-                                 (no prepare step that may publish ran, and no
-                                 publish step started or only that of
-                                 @semantic-release/npm with npm lacking the
-                                 version), delete the tag and its note so that a
-                                 re-run releases the version again. With the
-                                 @willbooster/wb/release-plugin semantic-release
-                                 plugin, first complete a release that a failed
-                                 run left pending.
+                                 (no option is forwarded, no prepare step that
+                                 may publish ran, and no publish step started or
+                                 only that of @semantic-release/npm with npm
+                                 lacking the version), delete the tag and its
+                                 note so that a re-run releases the version
+                                 again. With the @willbooster/wb/release-plugin
+                                 semantic-release plugin, first complete a
+                                 release that a failed run left pending.
   wb retry [command] [args...]   Retry the given command until it succeeds
   wb run [args..]                Load environment variables and run a script
                                  with the project runtime.
