@@ -79,13 +79,11 @@ Commands:
                                  files. Extra arguments (e.g. `--debug`, after
                                  `--`) are forwarded to the release command.
                                  When semantic-release fails after pushing the
-                                 version tag and nothing can have been published
-                                 (no option other than --debug and --no-ci is
-                                 forwarded, no prepare step that may publish
-                                 ran, and no publish step started or only that
-                                 of @semantic-release/npm with npm lacking the
-                                 version), delete the tag and its note so that a
-                                 re-run releases the version again. With the
+                                 version tag and the run can establish that
+                                 nothing was published, delete the tag and its
+                                 note and print how to release the version
+                                 again; otherwise keep the tag and print the
+                                 manual recovery. With the
                                  @willbooster/wb/release-plugin semantic-release
                                  plugin, first complete a release that a failed
                                  run left pending.
