@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import merge from 'deepmerge';
 
+import { enablesViteReactCompiler } from '../fixers/viteConfig.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -105,7 +106,12 @@ export async function generateRenovateJsonc(
       return;
     }
 
-    const newSettings = buildSettings(config, allPackageConfigs, oldSettings);
+    const newSettings = buildSettings(
+      config,
+      allPackageConfigs,
+      await filterReactCompilerConfigs(allPackageConfigs),
+      oldSettings
+    );
     const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(
       oldContent,
       newSettings as Record<string, unknown>
@@ -119,9 +125,16 @@ export async function generateRenovateJsonc(
   });
 }
 
+async function filterReactCompilerConfigs(allPackageConfigs: PackageConfig[]): Promise<PackageConfig[]> {
+  const vinextConfigs = allPackageConfigs.filter((packageConfig) => packageConfig.depending.vinext);
+  const enabled = await Promise.all(vinextConfigs.map((packageConfig) => enablesViteReactCompiler(packageConfig)));
+  return vinextConfigs.filter((_, index) => enabled[index]);
+}
+
 function buildSettings(
   config: PackageConfig,
   allPackageConfigs: PackageConfig[],
+  reactCompilerConfigs: PackageConfig[],
   oldSettings: Settings | undefined
 ): Settings {
   const settings: Settings = oldSettings
@@ -150,8 +163,7 @@ function buildSettings(
       allowedVersions: '15.x',
     });
   }
-  const vinextConfigs = allPackageConfigs.filter((packageConfig) => packageConfig.depending.vinext);
-  if (vinextConfigs.length > 0) {
+  if (reactCompilerConfigs.length > 0) {
     settings.packageRules ??= [];
     settings.packageRules.push({
       description: reactCompilerGroupRuleDescription,
@@ -164,7 +176,7 @@ function buildSettings(
         'Update `oxc-transform-react` and its `allowedVersions` in `renovate.jsonc` to the range the new `@vitejs/plugin-react` declares in `peerDependencies`.',
       ],
     });
-    const peerRange = vinextConfigs
+    const peerRange = reactCompilerConfigs
       .map((packageConfig) => getOxcTransformReactPeerRange(packageConfig.dirPath))
       .find((range) => range !== undefined);
     if (peerRange) {
