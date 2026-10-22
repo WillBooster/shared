@@ -29,7 +29,7 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
     const extracted = await getNextConfigObjectLiteral(filePath);
     if (!extracted) {
       console.warn(
-        `Skipped updating ${filePath} because wbfy found no config object to edit; export the config as an object literal without \`satisfies\` or \`as\`, directly, through a \`nextConfig\` or \`NextConfig\`-annotated variable (a wrapper call such as \`withSentryConfig(nextConfig)\` is fine), or as a phase function returning one.`
+        `Skipped updating ${filePath} because wbfy found no config object to edit; export the config as an object literal without \`satisfies\` or \`as\`, directly, through a \`nextConfig\` or \`NextConfig\`-annotated variable (a wrapper call such as \`withSentryConfig(nextConfig)\` is fine), or as a phase function whose body is that object literal or a single \`return\` of it.`
       );
       return;
     }
