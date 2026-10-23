@@ -40,6 +40,7 @@ test.each(smallProjectFixtures)(
       expect(runtime.stdout.trim()).toBe(tools.tools.bun);
       // Check this wbfy against this repository's wb, not the published one, which may still run
       // tools that this wbfy has removed; rerun the cleanup that ended the wbfy run with it.
+      await ensureBuiltCli(localWbDirPath);
       linkLocalWb(tempDirPath);
       await runCommand('bun', ['run', 'cleanup'], tempDirPath, { LEFTHOOK: '0' });
 
@@ -129,21 +130,22 @@ async function removeFixture(dirPath: string, miseTomlPath: string): Promise<voi
   fs.rmSync(dirPath, { force: true, recursive: true });
 }
 
-async function ensureBuiltCli(): Promise<void> {
-  if (isDistUpToDate()) return;
+async function ensureBuiltCli(dirPath = packageDirPath): Promise<void> {
+  if (isDistUpToDate(dirPath)) return;
 
   const buildResult = await spawnAsync('bun', ['run', 'build'], {
-    cwd: packageDirPath,
+    cwd: dirPath,
   });
   expect(buildResult.status).toBe(0);
 }
 
-function isDistUpToDate(): boolean {
-  if (!fs.existsSync(distIndexPath)) return false;
+function isDistUpToDate(dirPath: string): boolean {
+  const distPath = path.join(dirPath, 'dist', 'index.js');
+  if (!fs.existsSync(distPath)) return false;
 
-  const distMtimeMs = fs.statSync(distIndexPath).mtimeMs;
-  for (const relativePath of ['bin/wbfy.js', 'package.json', 'src']) {
-    const entryPath = path.join(packageDirPath, relativePath);
+  const distMtimeMs = fs.statSync(distPath).mtimeMs;
+  for (const relativePath of ['bin', 'package.json', 'src']) {
+    const entryPath = path.join(dirPath, relativePath);
     if (getLatestMtimeMs(entryPath) > distMtimeMs) return false;
   }
   return true;
