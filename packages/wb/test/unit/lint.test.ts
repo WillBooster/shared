@@ -7,17 +7,13 @@ import { describe, expect, it } from 'bun:test';
 import {
   buildDartFormatCommand,
   buildDartLintCommand,
-  buildExplicitFormatterArgs,
   buildLintCommand,
-  buildOxfmtCommand,
   buildPoetryFormatCommand,
   buildPoetryLintCommand,
-  buildPrettierArgs,
   getExplicitLintTargets,
   getLintTargetFileKind,
   getLintTargetFiles,
   getExplicitPackageJsonPaths,
-  shouldFormatExplicitPathWithPrettier,
 } from '../../src/commands/lint.js';
 
 describe('lint', () => {
@@ -53,31 +49,12 @@ describe('lint', () => {
     expect(buildDartLintCommand(['/tmp/example.dart'])).toBe('dart analyze /tmp/example.dart');
   });
 
-  it('builds an oxfmt command for explicit files', () => {
-    expect(buildOxfmtCommand(['/tmp/example.ts'])).toBe(
-      "YARN oxfmt --write --no-error-on-unmatched-pattern /tmp/example.ts '!**/package.json'"
-    );
-  });
-
   it('escapes shell-sensitive file paths', () => {
     expect(
       buildLintCommand({ preferredLinter: 'oxlint', hasTypeAwareOxlint: false }, { fix: false, format: false }, [
         '/tmp/evil"file.ts',
       ])
     ).toBe(`YARN oxlint --no-error-on-unmatched-pattern '/tmp/evil"file.ts'`);
-  });
-
-  it('keeps prettier args to prettier-only formats for oxlint projects', () => {
-    expect(
-      buildPrettierArgs('/repo', [
-        { dirPath: '/repo/packages/oxlint-app', preferredLinter: 'oxlint', hasOxfmt: false },
-        { dirPath: '/repo/packages/oxfmt-app', preferredLinter: 'oxlint', hasOxfmt: true },
-      ])
-    ).toEqual([
-      '**/{.*/,}*.{java}',
-      '!**/test{-,/}fixtures/**',
-      'packages/oxlint-app/**/{.*/,}*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}',
-    ]);
   });
 
   it('accepts lint target files passed after --', () => {
@@ -112,39 +89,6 @@ describe('lint', () => {
     await fs.writeFile(filePath, '# test\n');
 
     expect(getLintTargetFileKind(filePath)).resolves.toBe('other');
-  });
-
-  it('keeps prettier formatting only for prettier-only files without oxfmt', () => {
-    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'oxlint', hasOxfmt: false }, 'java')).toBe(true);
-    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'oxlint', hasOxfmt: false }, 'md')).toBe(true);
-  });
-
-  it('prefers oxfmt formatting when available', () => {
-    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'oxlint', hasOxfmt: true }, 'ts')).toBe(true);
-    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'oxlint', hasOxfmt: true }, 'py')).toBe(false);
-  });
-
-  it('keeps explicit files unchanged in prettier args', () => {
-    expect(
-      buildExplicitFormatterArgs(
-        { preferredLinter: 'oxlint', hasOxfmt: false },
-        '/tmp/example/README.md',
-        'other',
-        'md'
-      )
-    ).toEqual(['/tmp/example/README.md']);
-  });
-
-  it('keeps fixture ignores for explicit oxlint directories without oxfmt', () => {
-    expect(
-      buildExplicitFormatterArgs({ preferredLinter: 'oxlint', hasOxfmt: false }, '/tmp/example', 'directory', '')
-    ).toEqual(['/tmp/example', '!**/test{-,/}fixtures/**']);
-  });
-
-  it('uses direct directory formatting for oxfmt projects', () => {
-    expect(
-      buildExplicitFormatterArgs({ preferredLinter: 'oxlint', hasOxfmt: true }, '/tmp/example', 'directory', '')
-    ).toEqual(['/tmp/example']);
   });
 
   it('collects package.json files underneath explicit directories', () => {

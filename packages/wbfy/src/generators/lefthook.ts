@@ -240,7 +240,7 @@ function getCleanupGlobs(config: PackageConfig): string {
   // still needs to trigger when adding the first prettier-only file.
   const supportedExtensions = [...extensions.prettierOnly];
   if (doesContainJsOrTs(config)) {
-    supportedExtensions.push(...extensions.oxfmt, ...extensions.oxlint);
+    supportedExtensions.push(...extensions.bunFmt, ...extensions.oxlint);
   }
   if (config.doesContainPoetryLock || config.doesContainUvLock) {
     supportedExtensions.push('py');

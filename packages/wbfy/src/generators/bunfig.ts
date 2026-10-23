@@ -85,6 +85,45 @@ export async function generateBunfigToml(config: PackageConfig, useGlobalStore: 
   });
 }
 
+const fmtIgnorePatterns = [
+  '**/.agents/**',
+  '**/.claude/**',
+  '**/.devcontainer/**',
+  '**/.idea/AugmentWebviewStateStore.xml',
+  '**/.idea/copilot.*/**',
+  '**/.idea/copilot/**',
+  '**/.playwright-cli/**',
+  '**/.serena/**',
+  '**/.tmp/**',
+  '**/.venv/**',
+  '**/.yarn/**',
+  '**/3rd-party/**',
+  '**/@types/**',
+  '**/@willbooster/**',
+  '**/__generated__/**',
+  '**/android/**',
+  '**/bin/**',
+  '**/build/**',
+  '**/coverage/**',
+  '**/dist/**',
+  '**/ios/**',
+  '**/no-format/**',
+  '**/node_modules/**',
+  // sort-package-json formats it.
+  '**/package.json',
+  '**/temp/**',
+  '**/tmp/**',
+  '**/test-fixtures/**',
+  '**/test-results/**',
+  '**/test/fixtures/**',
+  '**/.aider*',
+  '**/.env.production',
+  '**/.pnp.js',
+  '**/*/mount/*.hash',
+  '**/*.d.ts',
+  '**/*.min.*js',
+];
+
 const newContent = (existingContent: string | undefined, useGlobalStore: boolean): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   // minimumReleaseAge and minimumReleaseAgeExcludes are org policy, never repository policy: both
@@ -102,6 +141,8 @@ const newContent = (existingContent: string | undefined, useGlobalStore: boolean
   // undici-types: bun-types references it without declaring it as a dependency (oven-sh/bun#22805);
   // generated tsconfigs also map undici-types to the hoisted copy (see tsconfig.ts) because the
   // global store realpaths bun-types outside the repository.
+  // fmt flavor: oxfmt's output, which repositories already follow, differs from Prettier's in places
+  // (e.g. long union types).
   return `env = false
 telemetry = false
 
@@ -113,6 +154,15 @@ publicHoistPattern = ["tsx", "undici-types"]
 minimumReleaseAge = ${bunMinimumReleaseAgeSeconds}
 minimumReleaseAgeExcludes = [
 ${bunMinimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
+]
+
+[fmt]
+flavor = "oxfmt"
+printWidth = 120
+singleQuote = true
+trailingComma = "es5"
+ignorePatterns = [
+${fmtIgnorePatterns.map((pattern) => `    "${pattern}",`).join('\n')}
 ]
 `;
 };

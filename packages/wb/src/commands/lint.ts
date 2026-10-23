@@ -52,48 +52,36 @@ const oxlintExtensions = new Set(['astro', 'cjs', 'cts', 'js', 'jsx', 'mjs', 'mt
 const pythonExtensions = new Set(['py']);
 const dartExtensions = new Set(['dart']);
 const rustExtensions = new Set(['rs']);
-const oxfmtExtensions = new Set([
-  ...oxlintExtensions,
+// `bun fmt` fails on an explicitly passed file it cannot parse (e.g. `.astro`), so only these are passed.
+const bunFmtExtensions = new Set([
+  'cjs',
   'css',
+  'cts',
   'gql',
   'graphql',
   'hbs',
   'htm',
   'html',
-  'json',
-  'json5',
-  'jsonc',
-  'less',
-  'md',
-  'mdx',
-  'scss',
-  'toml',
-  'yaml',
-  'yml',
-]);
-const prettierExtensions = new Set([
-  'cjs',
-  'css',
-  'cts',
-  'htm',
-  'html',
-  'java',
   'js',
   'json',
   'json5',
   'jsonc',
   'jsx',
+  'less',
   'md',
+  'mdx',
   'mjs',
   'mts',
   'scss',
+  'svelte',
+  'toml',
   'ts',
   'tsx',
   'vue',
   'yaml',
   'yml',
 ]);
-const prettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !oxfmtExtensions.has(ext)));
+const prettierOnlyExtensions = new Set(['java']);
 const prettierFixtureIgnorePattern = '!**/test{-,/}fixtures/**';
 
 type BufferedLintRunResult = BufferedRunResult & { command: string; cwd: string };
@@ -184,16 +172,17 @@ function planWholeLintRun(argv: LintCommandArgv, projects: FoundProjects): LintP
       if (project.hasPubspecYaml) linterCommands.push({ command: buildDartLintCommand(), project });
     }
     if (shouldRunFormatters(argv)) {
-      if (project.hasOxfmt) formatterCommands.push({ command: buildOxfmtCommand(), project });
       if (project.hasPoetryLock) formatterCommands.push({ command: buildPoetryFormatCommand(), project });
       if (project.hasPubspecYaml) formatterCommands.push({ command: buildDartFormatCommand(), project });
       if (project.hasCargoToml) formatterCommands.push({ command: buildCargoFormatCommand(), project });
     }
   }
+  // One run from the invoked project covers its workspaces, since `bun fmt` resolves the repository's single config.
+  if (shouldRunFormatters(argv)) formatterCommands.push({ command: buildBunFmtCommand(), project: projects.self });
   return {
     formatterCommands,
     linterCommands,
-    prettierArgs: buildPrettierArgs(projects.self.dirPath, projects.descendants),
+    prettierArgs: [buildPrettierOnlyPattern('.'), prettierFixtureIgnorePattern],
     sortPackageJsonArgs: projects.descendants.map((p) => p.packageJsonPath),
     missingLintTool: false,
   };
@@ -201,7 +190,7 @@ function planWholeLintRun(argv: LintCommandArgv, projects: FoundProjects): LintP
 
 interface ExplicitLintTargets {
   lintFilePathsByProject: Map<Project, string[]>;
-  oxfmtFilePathsByProject: Map<Project, string[]>;
+  bunFmtFilePathsByProject: Map<Project, string[]>;
   pythonFilePathsByProject: Map<Project, string[]>;
   dartFilePathsByProject: Map<Project, string[]>;
   // `cargo fmt --all` always formats the whole workspace, so we track target
@@ -227,7 +216,7 @@ interface ExplicitLintTarget {
 async function planExplicitLintRun(argv: LintCommandArgv, projects: Project[], files: string[]): Promise<LintPlan> {
   const targets: ExplicitLintTargets = {
     lintFilePathsByProject: new Map(),
-    oxfmtFilePathsByProject: new Map(),
+    bunFmtFilePathsByProject: new Map(),
     pythonFilePathsByProject: new Map(),
     dartFilePathsByProject: new Map(),
     cargoFormatProjects: new Set(),
@@ -286,12 +275,10 @@ function classifyExplicitLintTarget(
   if (isDirectory || supportsLintingExtension(project, extension)) {
     appendPath(targets.lintFilePathsByProject, project, lintPath);
     if (argv.format) addFormatterPathsOfLintTarget(targets, project, target);
-  } else if (argv.format && (prettierExtensions.has(extension) || oxfmtExtensions.has(extension))) {
-    if (project.hasOxfmt && oxfmtExtensions.has(extension)) {
-      appendPath(targets.oxfmtFilePathsByProject, project, lintPath);
-    } else if (prettierExtensions.has(extension)) {
-      targets.prettierFilePaths.push(lintPath);
-    }
+  } else if (argv.format && bunFmtExtensions.has(extension)) {
+    appendPath(targets.bunFmtFilePathsByProject, project, lintPath);
+  } else if (argv.format && prettierOnlyExtensions.has(extension)) {
+    targets.prettierFilePaths.push(lintPath);
   } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
     console.error(chalk.red(`No linter found for ${project.name}. Install Oxlint.`));
     targets.missingLintTool = true;
@@ -303,17 +290,11 @@ function addFormatterPathsOfLintTarget(
   project: Project,
   { lintPath, fileKind, extension }: ExplicitLintTarget
 ): void {
-  if (fileKind === 'directory' && project.hasOxfmt) {
-    appendPath(targets.oxfmtFilePathsByProject, project, lintPath);
-    targets.prettierFilePaths.push(buildPrettierOnlyDirectoryPattern(lintPath), prettierFixtureIgnorePattern);
-    return;
-  }
-  for (const formatterPath of buildExplicitFormatterArgs(project, lintPath, fileKind, extension)) {
-    if (project.hasOxfmt) {
-      appendPath(targets.oxfmtFilePathsByProject, project, formatterPath);
-    } else {
-      targets.prettierFilePaths.push(formatterPath);
-    }
+  if (fileKind === 'directory') {
+    appendPath(targets.bunFmtFilePathsByProject, project, lintPath);
+    targets.prettierFilePaths.push(buildPrettierOnlyPattern(lintPath), prettierFixtureIgnorePattern);
+  } else if (bunFmtExtensions.has(extension)) {
+    appendPath(targets.bunFmtFilePathsByProject, project, lintPath);
   }
 }
 
@@ -355,8 +336,8 @@ function buildExplicitLintCommands(
     for (const project of targets.cargoFormatProjects) {
       formatterCommands.push({ command: buildCargoFormatCommand(), project });
     }
-    for (const [project, oxfmtFilePaths] of targets.oxfmtFilePathsByProject) {
-      formatterCommands.push({ command: buildOxfmtCommand(oxfmtFilePaths), project });
+    for (const [project, bunFmtFilePaths] of targets.bunFmtFilePathsByProject) {
+      formatterCommands.push({ command: buildBunFmtCommand(bunFmtFilePaths), project });
     }
   }
   return { formatterCommands, linterCommands };
@@ -369,7 +350,7 @@ async function runLintPlan(
   projects: FoundProjects,
   files: string[] | undefined
 ): Promise<boolean> {
-  // Runs before oxfmt, which then realigns the Markdown tables whose cells got shorter.
+  // Runs before `bun fmt`, which then realigns the Markdown tables whose cells got shorter.
   if (shouldRunFormatters(argv)) {
     await fixJapaneseSpacing(projects.root.dirPath, files ?? [projects.self.dirPath], argv.dryRun);
   }
@@ -486,7 +467,7 @@ function printCommandHeader(command: string, cwd: string): void {
 }
 
 function shouldSuppressSuccessfulVerifyOutput(command: string): boolean {
-  return command.includes(' oxfmt ') || command.includes(' sort-package-json ');
+  return command.includes(' bun fmt ') || command.includes(' sort-package-json ');
 }
 
 export function buildLintCommand(
@@ -535,15 +516,8 @@ export function buildWorkspaceIgnorePatterns(
   );
 }
 
-export function buildOxfmtCommand(files?: string[]): string {
-  return buildShellCommand([
-    'YARN',
-    'oxfmt',
-    '--write',
-    '--no-error-on-unmatched-pattern',
-    ...(files ?? ['.']),
-    '!**/package.json',
-  ]);
+export function buildBunFmtCommand(files?: string[]): string {
+  return buildShellCommand(['bun', 'fmt', '--no-error-on-unmatched-pattern', ...(files ?? [])]);
 }
 
 export function buildPoetryFormatCommand(files?: string[]): string {
@@ -575,20 +549,6 @@ export function buildDartLintCommand(files?: string[]): string {
 
 function toLintTargets(files: string[] | undefined): string[] {
   return files && files.length > 0 ? files : ['.'];
-}
-
-export function buildPrettierArgs(
-  selfDirPath: string,
-  projects: Pick<Project, 'dirPath' | 'preferredLinter' | 'hasOxfmt'>[]
-): string[] {
-  const args = new Set<string>([`**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`, prettierFixtureIgnorePattern]);
-  for (const project of projects) {
-    if (!needsPrettier(project)) continue;
-
-    const projectPattern = path.join(project.dirPath, '**/{.*/,}*.{' + [...prettierExtensions].join(',') + '}');
-    args.add(path.relative(selfDirPath, projectPattern) || projectPattern);
-  }
-  return [...args];
 }
 
 function findOwningProject(projects: Project[], filePath: string): Project | undefined {
@@ -623,35 +583,8 @@ export async function getLintTargetFileKind(filePath: string): Promise<'director
   return 'other';
 }
 
-export function shouldFormatExplicitPathWithPrettier(
-  project: Pick<Project, 'preferredLinter' | 'hasOxfmt'>,
-  extension: string
-): boolean {
-  if (project.hasOxfmt) return oxfmtExtensions.has(extension);
-  if (needsPrettier(project)) return true;
-  return prettierOnlyExtensions.has(extension);
-}
-
-export function buildExplicitFormatterArgs(
-  project: Pick<Project, 'preferredLinter' | 'hasOxfmt'>,
-  filePath: string,
-  fileKind: 'directory' | 'other',
-  extension: string
-): string[] {
-  if (fileKind === 'directory' && project.hasOxfmt) {
-    return [filePath];
-  }
-  if (fileKind === 'directory' && needsPrettier(project)) {
-    return [filePath, prettierFixtureIgnorePattern];
-  }
-  if (shouldFormatExplicitPathWithPrettier(project, extension)) {
-    return [filePath];
-  }
-  return [];
-}
-
-function buildPrettierOnlyDirectoryPattern(filePath: string): string {
-  return path.join(filePath, `**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`);
+function buildPrettierOnlyPattern(dirPath: string): string {
+  return path.join(dirPath, `**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`);
 }
 
 export function getExplicitPackageJsonPaths(
@@ -694,8 +627,4 @@ function isPotentialLintTarget(extension: string): boolean {
 function supportsLintingExtension(project: Pick<Project, 'preferredLinter'>, extension: string): boolean {
   if (project.preferredLinter === 'oxlint') return oxlintExtensions.has(extension);
   return false;
-}
-
-function needsPrettier(project: Pick<Project, 'preferredLinter' | 'hasOxfmt'>): boolean {
-  return !project.hasOxfmt && project.preferredLinter === 'oxlint';
 }

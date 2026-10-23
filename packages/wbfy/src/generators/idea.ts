@@ -10,7 +10,6 @@ import { promisePool } from '../utils/promisePool.js';
 
 // Keep package-manager shims in the File Watcher program field so node does not
 // parse wrapper scripts passed through arguments.
-const oxfmtProgram = '$ProjectFileDir$/node_modules/.bin/oxfmt';
 const prettierProgram = '$ProjectFileDir$/node_modules/.bin/prettier';
 
 export async function generateIdeaSettings(config: PackageConfig): Promise<void> {
@@ -28,11 +27,11 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
 function getWatcherTasksContent(config: PackageConfig): string {
   const taskOptions = [
     {
-      args: '--write --no-error-on-unmatched-pattern !**/package.json',
+      args: 'fmt --no-error-on-unmatched-pattern',
       condition: doesContainJsOrTs(config),
-      extensions: extensions.oxfmt,
-      name: 'Oxfmt',
-      program: oxfmtProgram,
+      extensions: extensions.bunFmt,
+      name: 'Bun fmt',
+      program: 'bun',
     },
     {
       args: '--cache --write',

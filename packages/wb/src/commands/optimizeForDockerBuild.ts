@@ -363,7 +363,6 @@ function removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson: Pack
     'kill-port',
     'lint-staged',
     'open-cli',
-    'oxfmt',
     'oxlint',
     'playwright',
     'prettier',

@@ -332,11 +332,6 @@ export class Project {
   }
 
   @memoizeOne
-  get hasOxfmt(): boolean {
-    return this.hasDependency('oxfmt');
-  }
-
-  @memoizeOne
   get hasPrettier(): boolean {
     return this.hasDependency('prettier');
   }

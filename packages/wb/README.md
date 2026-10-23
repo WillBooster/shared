@@ -235,7 +235,7 @@ repository overrides them.
 
 `wb lint --format` (and so the pre-commit hook and `wb verify`) removes the spaces between Japanese
 and half-width alphanumeric characters in the plain text of Markdown paragraphs, lists, tables, and
-inline links, e.g. `この 2 つの LLM` becomes `この2つのLLM`, before oxfmt formats them. Everything
+inline links, e.g. `この 2 つの LLM` becomes `この2つのLLM`, before `bun fmt` formats them. Everything
 else keeps its spacing: code, blockquotes (which often cite external text verbatim), headings (whose
 anchors links must keep matching), reference links (whose text must keep matching their
 definitions), image alt text, HTML tags and their attributes, HTML blocks without blank lines, and

@@ -921,14 +921,14 @@ const jsRootConfig = { doesContainTypeScript: true, isRoot: true } as const;
 test('downgrades a managed tool pin that the generated release-age gate rejects', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
-      devDependencies: { oxfmt: '999.0.0' },
+      devDependencies: { oxlint: '999.0.0' },
     },
     jsRootConfig,
     { skipAddingDeps: false }
   );
 
-  expect(packageJson.devDependencies?.oxfmt).toMatch(/^\d+\.\d+\.\d+/u);
-  expect(packageJson.devDependencies?.oxfmt).not.toBe('999.0.0');
+  expect(packageJson.devDependencies?.oxlint).toMatch(/^\d+\.\d+\.\d+/u);
+  expect(packageJson.devDependencies?.oxlint).not.toBe('999.0.0');
 }, 180_000);
 
 test('removes TypeScript compilers from a repository without TypeScript', async () => {

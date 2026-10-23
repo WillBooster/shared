@@ -84,3 +84,46 @@ minimumReleaseAgeExcludes = [
   "wbfy",
   "yarn-plugin-auto-install",
 ]
+
+[fmt]
+flavor = "oxfmt"
+printWidth = 120
+singleQuote = true
+trailingComma = "es5"
+ignorePatterns = [
+  "**/.agents/**",
+  "**/.claude/**",
+  "**/.devcontainer/**",
+  "**/.idea/AugmentWebviewStateStore.xml",
+  "**/.idea/copilot.*/**",
+  "**/.idea/copilot/**",
+  "**/.playwright-cli/**",
+  "**/.serena/**",
+  "**/.tmp/**",
+  "**/.venv/**",
+  "**/.yarn/**",
+  "**/3rd-party/**",
+  "**/@types/**",
+  "**/@willbooster/**",
+  "**/__generated__/**",
+  "**/android/**",
+  "**/bin/**",
+  "**/build/**",
+  "**/coverage/**",
+  "**/dist/**",
+  "**/ios/**",
+  "**/no-format/**",
+  "**/node_modules/**",
+  "**/package.json",
+  "**/temp/**",
+  "**/tmp/**",
+  "**/test-fixtures/**",
+  "**/test-results/**",
+  "**/test/fixtures/**",
+  "**/.aider*",
+  "**/.env.production",
+  "**/.pnp.js",
+  "**/*/mount/*.hash",
+  "**/*.d.ts",
+  "**/*.min.*js",
+]
