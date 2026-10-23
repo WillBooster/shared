@@ -10,6 +10,8 @@ import { isPortAvailable } from './port.js';
 const killed = new Set<number | string>();
 const staleProcessPollIntervalMs = 100;
 const staleProcessMaxPolls = 10;
+// An unresponsive Docker daemon (e.g. a stuck Docker Desktop) never answers, which would block exit forever.
+const dockerTimeoutMs = 5000;
 
 export async function killPortProcessImmediatelyAndOnExit(port: number, project: Project): Promise<void> {
   const available = await isPortAvailable(port);
@@ -84,6 +86,7 @@ async function removeDockerContainers(filterArgs: string[], project: Project): P
     await spawnAsync('docker', ['rm', '-f', ...containerIds], {
       cwd: project.dirPath,
       env: project.env,
+      timeout: dockerTimeoutMs,
     });
   } catch {
     // do nothing
@@ -94,6 +97,7 @@ async function listDockerContainerIds(filterArgs: string[], project: Project): P
   const { stdout } = await spawnAsync('docker', ['ps', '-q', ...filterArgs], {
     cwd: project.dirPath,
     env: project.env,
+    timeout: dockerTimeoutMs,
   });
   return stdout
     .split(/\s+/)
