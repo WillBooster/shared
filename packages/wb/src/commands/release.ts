@@ -96,7 +96,7 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
     // Completing or deferring to a pending release replaces semantic-release in this run.
     if (runsSemanticRelease) {
       if (await releasePublishesToNpm(project)) {
-        await verifyNpmPublishAuth(project);
+        await verifyNpmPublishAuth(project, argv);
         await prepareNpmCompatibleLayout(project, argv, modifiedFiles, activeChild);
       } else {
         // The hoisted reinstall and workspace-range rewrite exist solely so npm (which the
@@ -334,9 +334,9 @@ function parsePluginEntry(plugin: unknown): { name: unknown; options: unknown } 
   return objectEntry ? { name: objectEntry.path, options: objectEntry } : { name: plugin, options: undefined };
 }
 
-async function verifyNpmPublishAuth(project: Project): Promise<void> {
+async function verifyNpmPublishAuth(project: Project, argv: ReleaseArgv): Promise<void> {
   // multi-semantic-release publishes each workspace package with its own configuration, which is not read here.
-  if (findMultiSemanticReleasePackageName(project)) return;
+  if (argv.dryRun || findMultiSemanticReleasePackageName(project)) return;
   const npmPluginOptionsList = resolvePluginOptions(project, '@semantic-release/npm');
   if (!npmPluginOptionsList) {
     throw new Error(
