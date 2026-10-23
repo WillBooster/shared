@@ -49,62 +49,78 @@ test('merges settings from a tsconfig containing JSONC comments instead of repla
   expect(compilerOptions.paths).toEqual({ '@/*': ['./src/*'] });
 });
 
-test('keeps workspace declaration builds isolated when removing the generated undici alias', async () => {
-  const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-path-inheritance-'));
-  try {
-    const write = (filePath: string, content: string): void => {
-      const absolutePath = path.join(dirPath, filePath);
-      fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-      fs.writeFileSync(absolutePath, content);
-    };
-    fs.symlinkSync(path.resolve(import.meta.dir, '../../node_modules'), path.join(dirPath, 'node_modules'));
-    write('base.json', JSON.stringify({ compilerOptions: { paths: { sibling: ['./sibling/index.ts'] } } }));
-    write('sibling/index.ts', 'export const value = 1;');
-    write('workspace/src/index.ts', "export { value } from 'sibling';");
-    write('workspace/node_modules/sibling/package.json', JSON.stringify({ name: 'sibling', types: 'index.d.ts' }));
-    write('workspace/node_modules/sibling/index.d.ts', 'export declare const value: number;');
-    write(
-      'workspace/tsconfig.json',
-      JSON.stringify({
-        extends: '../base.json',
-        compilerOptions: { paths: { 'undici-types': ['../node_modules/undici-types/index.d.ts'] } },
-      })
-    );
-    await generateTsconfig(createConfig({ dirPath: path.join(dirPath, 'workspace'), doesContainTypeScript: true }));
-    write(
-      'workspace/tsconfig.build.json',
-      JSON.stringify({
-        extends: './tsconfig.json',
-        compilerOptions: {
-          noEmit: false,
-          emitDeclarationOnly: true,
-          declaration: true,
-          rootDir: 'src',
-          outDir: 'dist',
-        },
-        include: ['src/**/*'],
-      })
-    );
-    const child = Bun.spawn(
-      [
-        'bun',
-        path.resolve(import.meta.dir, '../../node_modules/typescript/bin/tsc'),
-        '-p',
-        path.join(dirPath, 'workspace/tsconfig.build.json'),
-      ],
-      { stdout: 'pipe', stderr: 'pipe' }
-    );
-    const [exitCode, stdout, stderr] = await Promise.all([
-      child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    expect({ exitCode, output: stdout + stderr }).toEqual({ exitCode: 0, output: '' });
-    expect(fs.readFileSync(path.join(dirPath, 'workspace/dist/index.d.ts'), 'utf8')).toContain("from 'sibling'");
-  } finally {
-    fs.rmSync(dirPath, { recursive: true, force: true });
+test.each([true, false])(
+  'isolates workspace declarations with a generated undici alias present: %s',
+  async (hasAlias) => {
+    const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-path-inheritance-'));
+    try {
+      const write = (filePath: string, content: string): void => {
+        const absolutePath = path.join(dirPath, filePath);
+        fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+        fs.writeFileSync(absolutePath, content);
+      };
+      fs.symlinkSync(path.resolve(import.meta.dir, '../../node_modules'), path.join(dirPath, 'node_modules'));
+      write('base.json', JSON.stringify({ compilerOptions: { paths: { sibling: ['./sibling/index.ts'] } } }));
+      write('sibling/index.ts', 'export const value = 1;');
+      write(
+        'workspace/src/index.ts',
+        `export { value } from 'sibling';
+import { version } from 'undici-types';
+export const undiciVersion: string = version;`
+      );
+      write('legacy/node_modules/undici-types/index.d.ts', 'export declare const version: number;');
+      write(
+        'workspace/node_modules/undici-types/package.json',
+        JSON.stringify({ name: 'undici-types', types: 'index.d.ts' })
+      );
+      write('workspace/node_modules/undici-types/index.d.ts', 'export declare const version: string;');
+      write('workspace/node_modules/sibling/package.json', JSON.stringify({ name: 'sibling', types: 'index.d.ts' }));
+      write('workspace/node_modules/sibling/index.d.ts', 'export declare const value: number;');
+      write(
+        'workspace/tsconfig.json',
+        JSON.stringify({
+          extends: '../base.json',
+          compilerOptions: hasAlias
+            ? { paths: { 'undici-types': ['../legacy/node_modules/undici-types/index.d.ts'] } }
+            : {},
+        })
+      );
+      await generateTsconfig(createConfig({ dirPath: path.join(dirPath, 'workspace'), doesContainTypeScript: true }));
+      write(
+        'workspace/tsconfig.build.json',
+        JSON.stringify({
+          extends: './tsconfig.json',
+          compilerOptions: {
+            noEmit: false,
+            emitDeclarationOnly: true,
+            declaration: true,
+            rootDir: 'src',
+            outDir: 'dist',
+          },
+          include: ['src/**/*'],
+        })
+      );
+      const child = Bun.spawn(
+        [
+          'bun',
+          path.resolve(import.meta.dir, '../../node_modules/typescript/bin/tsc'),
+          '-p',
+          path.join(dirPath, 'workspace/tsconfig.build.json'),
+        ],
+        { stdout: 'pipe', stderr: 'pipe' }
+      );
+      const [exitCode, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      expect({ exitCode, output: stdout + stderr }).toEqual({ exitCode: 0, output: '' });
+      expect(fs.readFileSync(path.join(dirPath, 'workspace/dist/index.d.ts'), 'utf8')).toContain("from 'sibling'");
+    } finally {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+    }
   }
-});
+);
 
 test('keeps a deliberate repo-local undici-types mapping untouched', async () => {
   const compilerOptions = await generateCompilerOptionsFromContent(

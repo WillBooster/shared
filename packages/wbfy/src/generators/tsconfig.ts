@@ -93,6 +93,9 @@ function applyManagedSettings(newSettings: TsConfigJson, config: PackageConfig, 
   newSettings.extends = getTsconfigExtends(config);
   newSettings.compilerOptions ??= {};
   newSettings.compilerOptions.rootDir = getRootDir(config);
+  // Workspace aliases must be local: inheriting root source aliases pulls sibling files into
+  // src-only declaration builds. Generate the override even when an earlier run removed it.
+  if (!config.isRoot) newSettings.compilerOptions.paths = {};
   if (generatedTypes.length > 0) {
     newSettings.compilerOptions = { ...newSettings.compilerOptions, types: generatedTypes };
   }
