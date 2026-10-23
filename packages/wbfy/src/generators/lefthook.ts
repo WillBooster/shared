@@ -281,7 +281,7 @@ if [ -n "$package_json_files" ]; then
 fi
 printf '%s\n' {staged_files} | grep -E '\.(${extensions.bunFmt.join('|')})$' | while IFS= read -r file; do
   bun fmt --no-script --no-error-on-unmatched-pattern "$file" || exit
-done
+done || exit
 ${
   hasPythonPackageManager(config)
     ? `if [ -n "$python_files" ]; then
