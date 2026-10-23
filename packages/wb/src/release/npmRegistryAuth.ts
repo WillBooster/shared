@@ -17,10 +17,19 @@ import type { Project } from '../project.js';
  */
 export async function verifyPublishRegistryAuth(
   project: Pick<Project, 'dirPath' | 'env'>,
-  npmPluginOptionsList: Record<string, unknown>[],
+  forwardedArgs: string[],
   /** Receives each npm child so that the caller's signal handler can terminate it. */
-  activeChild: { current: ChildProcess | undefined }
+  activeChild: { current: ChildProcess | undefined },
+  /** Returns the options of each @semantic-release/npm instance, or `undefined` when they cannot be read statically. */
+  readNpmPluginOptionsList: () => Record<string, unknown>[] | undefined
 ): Promise<void> {
+  assertForwardedArgsKeepNpmOptions(forwardedArgs);
+  const npmPluginOptionsList = readNpmPluginOptionsList();
+  if (!npmPluginOptionsList) {
+    throw new Error(
+      'Cannot tell which registry @semantic-release/npm publishes to, so its authentication cannot be verified before releasing. Configure semantic-release in JSON (e.g. .releaserc.json) without `extends` or step-specific plugin definitions.'
+    );
+  }
   const runNpm = async (args: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> => {
     try {
       const result = await spawnAsync('npm', args, {
@@ -49,6 +58,19 @@ export async function verifyPublishRegistryAuth(
     if (status !== 0) {
       throw new Error(
         `\`npm whoami --registry ${registry}\` failed, so publishing ${manifest.name} would be rejected. Nothing has been released; configure a token that ${registry} accepts and re-run.\n${stderr.trim()}`
+      );
+    }
+  }
+}
+
+function assertForwardedArgsKeepNpmOptions(forwardedArgs: string[]): void {
+  for (let index = 0; index < forwardedArgs.length; index++) {
+    const arg = forwardedArgs[index]!;
+    if (arg === '--branches') index++;
+    // Any other option may override the @semantic-release/npm options (e.g. `--pkgRoot`).
+    else if (!['--debug', '--dry-run', '-d', '--no-ci'].includes(arg)) {
+      throw new Error(
+        `Unsupported argument \`${arg}\`: \`wb release\` verifies the registry that @semantic-release/npm publishes to before releasing, so it forwards only --debug, --dry-run, -d, --no-ci, and --branches <branch> to semantic-release.`
       );
     }
   }

@@ -191,11 +191,6 @@ function getForwardedArgs(argv: ReleaseArgv): string[] {
   return [...(argv.args ?? []), ...(argv['--'] ?? [])].map(String);
 }
 
-/** Forwarded options other than these may override the configuration that wb reads from the semantic-release config. */
-function forwardsOnlyConfigNeutralArgs(argv: ReleaseArgv): boolean {
-  return getForwardedArgs(argv).every((arg) => arg === '--debug' || arg === '--no-ci');
-}
-
 interface ActiveChildRef {
   current: child_process.ChildProcess | undefined;
 }
@@ -342,15 +337,9 @@ function parsePluginEntry(plugin: unknown): { name: unknown; options: unknown } 
 async function verifyNpmPublishAuth(project: Project, argv: ReleaseArgv, activeChild: ActiveChildRef): Promise<void> {
   // multi-semantic-release publishes each workspace package with its own configuration, which is not read here.
   if (argv.dryRun || findMultiSemanticReleasePackageName(project)) return;
-  const npmPluginOptionsList = forwardsOnlyConfigNeutralArgs(argv)
-    ? resolvePluginOptions(project, '@semantic-release/npm')
-    : undefined;
-  if (!npmPluginOptionsList) {
-    throw new Error(
-      'Cannot tell which registry @semantic-release/npm publishes to, so its authentication cannot be verified before releasing. Configure semantic-release in JSON (e.g. .releaserc.json) without `extends` or step-specific plugin definitions, and forward no options other than `--debug` and `--no-ci`.'
-    );
-  }
-  await verifyPublishRegistryAuth(project, npmPluginOptionsList, activeChild);
+  await verifyPublishRegistryAuth(project, getForwardedArgs(argv), activeChild, () =>
+    resolvePluginOptions(project, '@semantic-release/npm')
+  );
 }
 
 /**
@@ -630,7 +619,8 @@ async function runSemanticRelease(
   // multi-semantic-release tags each package separately, so a failure leaves tags that may be fully released, and
   // the release plugin publishes in `prepare`, before semantic-release pushes the tag.
   const rollsBack = !releasePackageName && !configuresReleasePlugin(project);
-  const readsConfig = forwardsOnlyConfigNeutralArgs(argv);
+  // Forwarded options other than these may override the configuration that the rollback reads.
+  const readsConfig = forwardedArgs.every((arg) => arg === '--debug' || arg === '--no-ci');
   const refsBefore = rollsBack ? await listRemoteReleaseRefs(project.dirPath) : undefined;
   if (rollsBack && !refsBefore) {
     // Without the snapshot, a tag that a failed publish leaves behind could not be rolled back.
