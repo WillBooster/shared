@@ -10,7 +10,6 @@ import semver from 'semver';
 import type { PackageJson, SetRequired } from 'type-fest';
 import * as ast from 'typescript/unstable/ast';
 
-import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
 import { generatesWorkerTypes, getWorkerTypesScriptError, type PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -114,7 +113,6 @@ async function core(
     dependencyUpdates,
     skipAddingDeps || !config.doesContainPackageJson
   );
-  await updatePrivatePackages(jsonObj);
   removeEmptyDependencySections(jsonObj);
 
   delete jsonObj.packageManager;
@@ -373,11 +371,7 @@ function applyRootPackageJsonConventions(
 function applySemanticReleaseConventions(jsonObj: WritablePackageJson, devDependencies: string[]): void {
   if (doesReleaseScriptInstallSemanticRelease(jsonObj.scripts.release)) {
     delete jsonObj.devDependencies['semantic-release'];
-  } else if (
-    !jsonObj.devDependencies['semantic-release'] &&
-    !jsonObj.devDependencies['multi-semantic-release'] &&
-    !jsonObj.devDependencies['@qiwi/multi-semantic-release']
-  ) {
+  } else if (!jsonObj.devDependencies['semantic-release']) {
     devDependencies.push('semantic-release');
   }
   jsonObj.version = '0.0.0-semantically-released';
@@ -650,11 +644,6 @@ function getRequiredTrustedDependencies(declaredDependencies: ReadonlyMap<string
   return [
     ...(hasChakraCliV3 && declaredDependencies.has('@chakra-ui/react') ? ['@chakra-ui/react'] : []),
     ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
-    // These git-dependency builds import packages they do not declare (e.g. zod), which the
-    // global-store layout places beyond their walk-up; a project-local copy under
-    // node_modules/.bun resolves them (observed in WillBooster/prompt-study).
-    ...(declaredDependencies.has('@willbooster/judge') ? ['@willbooster/judge'] : []),
-    ...(declaredDependencies.has('@willbooster/llm-proxy') ? ['@willbooster/llm-proxy'] : []),
     // blitz and @blitzjs/auth require react (and other peers) without declaring them, relying on
     // hoisting, which the global-store layout places beyond their walk-up (observed in
     // WillBooster/survey-system: `next build` page-data collection dies with "Cannot find module
@@ -682,8 +671,6 @@ const wbfyManagedTrustedDependencies = new Set([
   '@blitzjs/auth',
   '@chakra-ui/react',
   '@hookform/resolvers',
-  '@willbooster/judge',
-  '@willbooster/llm-proxy',
   '@zoom/rtms',
   'blitz',
   'drizzle-kit',
@@ -1638,56 +1625,4 @@ function doesMiseTaskCallPackageScript(config: PackageConfig, name: string): boo
   return packageManagers.some((packageManager) =>
     new RegExp(String.raw`\b${packageManager}\s+(?:run\s+)?${escapeRegExp(name)}(?![a-zA-Z0-9_\-:.])`, 'u').test(task)
   );
-}
-
-async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void> {
-  const packageNames = new Set([...Object.keys(jsonObj.dependencies), ...Object.keys(jsonObj.devDependencies)]);
-  const privatePackages: {
-    packageName: string;
-    org: string;
-    repo: string;
-    target: 'dependencies' | 'devDependencies';
-  }[] = [
-    { packageName: '@willbooster/code-analyzer', org: 'WillBooster', repo: 'code-analyzer', target: 'devDependencies' },
-    { packageName: '@willbooster/judge', org: 'WillBoosterLab', repo: 'judge', target: 'dependencies' },
-    { packageName: '@willbooster/llm-proxy', org: 'WillBoosterLab', repo: 'llm-proxy', target: 'dependencies' },
-  ];
-
-  await Promise.all(
-    privatePackages.map(async ({ org, packageName, repo, target }) => {
-      if (!packageNames.has(packageName) || isWorkspacePackage(jsonObj, packageName)) return;
-
-      const existingSpecifier = jsonObj.dependencies[packageName] ?? jsonObj.devDependencies[packageName];
-      const otherTarget = target === 'dependencies' ? 'devDependencies' : 'dependencies';
-      // The lint rule disallows `delete` with computed package names; Reflect has the same deletion semantics here.
-      Reflect.deleteProperty(jsonObj[otherTarget], packageName);
-      jsonObj[target][packageName] = isPinnedPrivatePackageSpecifier(existingSpecifier, org, repo)
-        ? existingSpecifier
-        : await getLatestPrivatePackageSpecifier(org, repo);
-    })
-  );
-}
-
-/**
- * Whether the existing specifier already pins a git ref of the expected private repository.
- * wbfy must not bump such pins: a run intended as configuration/package-manager maintenance
- * would otherwise change the dependency's version as a side effect (updating pins is Renovate's
- * job), possibly to a commit whose prebuilt artifacts are missing.
- */
-function isPinnedPrivatePackageSpecifier(
-  specifier: string | undefined,
-  org: string,
-  repo: string
-): specifier is string {
-  if (!specifier) return false;
-  return new RegExp(String.raw`(?:^|[:/])${org}/${repo}(?:\.git)?#\S+$`, 'u').test(specifier);
-}
-
-async function getLatestPrivatePackageSpecifier(org: string, repo: string): Promise<string> {
-  const commitHash = await getLatestCommitHash(org, repo);
-  return `git@github.com:${org}/${repo}.git#${commitHash}`;
-}
-
-function isWorkspacePackage(jsonObj: PackageJson, packageName: string): boolean {
-  return (jsonObj.devDependencies?.[packageName] || jsonObj.dependencies?.[packageName] || '').includes('workspace');
 }

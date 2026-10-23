@@ -100,7 +100,7 @@ test('ignores Java sources that only gitignored directories contain', async () =
   }
 }, 60_000);
 
-test('removes a generated Rust workflow based only on a cached Cargo project', async () => {
+test('leaves test-rust.yml untouched when the only Cargo project is a cached checkout', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
   try {
     fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
@@ -110,36 +110,6 @@ test('removes a generated Rust workflow based only on a cached Cargo project', a
     fs.mkdirSync(workflowsDirPath, { recursive: true });
     fs.writeFileSync(path.join(packageDirPath, 'package.json'), '{}');
     fs.writeFileSync(path.join(packageDirPath, '.cache', 'clap-rs__clap', 'Cargo.toml'), '');
-    fs.writeFileSync(
-      path.join(workflowsDirPath, 'test-rust.yml'),
-      `name: Test Rust
-on: push
-jobs:
-  test-rust:
-    uses: WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main
-`
-    );
-
-    const config = await getPackageConfig(packageDirPath);
-    if (!config) throw new Error('unreachable');
-    config.isRepoVisibilityKnown = true;
-    config.isPublicRepo = true;
-    expect(config?.cargoTomlDirPaths).toEqual([]);
-    await generateWorkflows(config);
-    expect(fs.existsSync(path.join(workflowsDirPath, 'test-rust.yml'))).toBe(false);
-  } finally {
-    fs.rmSync(tempDirPath, { recursive: true, force: true });
-  }
-});
-
-test('preserves a Rust workflow whose duplicate jobs key hides a custom job', async () => {
-  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
-  try {
-    const packageDirPath = path.join(tempDirPath, 'packages', 'root');
-    const workflowsDirPath = path.join(packageDirPath, '.github', 'workflows');
-    fs.mkdirSync(workflowsDirPath, { recursive: true });
-    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
-    fs.writeFileSync(path.join(packageDirPath, 'package.json'), '{}');
     const workflowPath = path.join(workflowsDirPath, 'test-rust.yml');
     const workflowContent = `name: Test Rust
 on: push
@@ -147,9 +117,6 @@ jobs:
   custom:
     runs-on: ubuntu-latest
     steps: []
-jobs:
-  test-rust:
-    uses: WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main
 `;
     fs.writeFileSync(workflowPath, workflowContent);
 
@@ -157,6 +124,7 @@ jobs:
     if (!config) throw new Error('unreachable');
     config.isRepoVisibilityKnown = true;
     config.isPublicRepo = true;
+    expect(config.cargoTomlDirPaths).toEqual([]);
     await generateWorkflows(config);
 
     expect(fs.readFileSync(workflowPath, 'utf8')).toBe(workflowContent);

@@ -66,8 +66,7 @@ export async function generateGitignore(config: PackageConfig, rootConfig: Packa
 
     const templates = await readTemplates([...defaultNames, ...projectFileEntries.names, ...dependencyEntries.names]);
     if (templates === undefined) return;
-    const isBerryZeroInstallEnabled = await ignoreFileUtil.isBerryZeroInstallEnabled(filePath);
-    const generated = adjustTemplates(templates, config, rootConfig, isBerryZeroInstallEnabled);
+    const generated = adjustTemplates(templates, config, rootConfig);
     const newContent = headUserContent + '\n' + generated + tailUserContent;
     await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
@@ -234,16 +233,8 @@ async function fetchTemplate(name: string): Promise<string | undefined> {
   return template;
 }
 
-function adjustTemplates(
-  templates: string,
-  config: PackageConfig,
-  rootConfig: PackageConfig,
-  isBerryZeroInstallEnabled: boolean
-): string {
-  let generated = templates;
-  if (!isBerryZeroInstallEnabled) {
-    generated = generated.replace('!.yarn/cache', '# !.yarn/cache').replace('# .pnp.*', '.pnp.*');
-  }
+function adjustTemplates(templates: string, config: PackageConfig, rootConfig: PackageConfig): string {
+  let generated = templates.replace('!.yarn/cache', '# !.yarn/cache').replace('# .pnp.*', '.pnp.*');
   if (config.doesContainPomXmlAnywhere || config.doesContainPubspecYaml) {
     generated = generated
       .replaceAll(/^# .idea\/artifacts$/gm, '.idea/artifacts')

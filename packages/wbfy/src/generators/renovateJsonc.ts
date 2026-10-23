@@ -94,13 +94,6 @@ export async function generateRenovateJsonc(
       console.warn(`Skipped generating ${filePath} because "extends" is not an array.`);
       return;
     }
-    const removedPreset = oldSettings?.extends?.find(
-      (preset) => preset.startsWith('github>WillBooster/willbooster-configs:') && !sharedPresets.has(preset)
-    );
-    if (removedPreset) {
-      console.warn(`Skipped generating ${filePath} because "${removedPreset}" no longer exists; remove it manually.`);
-      return;
-    }
 
     const newSettings = buildSettings(config, allPackageConfigs, oldSettings);
     const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(

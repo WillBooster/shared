@@ -85,33 +85,27 @@ jobs:
 
 test('removes the comments of a removed sequence entry with it', async () => {
   await withTempWorkflowsRepo('wbfy-workflow-sequence-comments-', async (dirPath, workflowsPath) => {
-    const filePath = path.join(workflowsPath, 'test.yml');
-    const head = `name: Test\n'on':\n  pull_request: null\n  push:\n    branches:\n`;
-    const tail = `concurrency:
-  group: \${{ github.workflow }}-\${{ github.ref }}
-  cancel-in-progress: true
-permissions:
-  actions: write
-  contents: write
-  pull-requests: read
-jobs:
-  test:
-    uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main
-    with:
-      github_hosted_runner: true
-    secrets:
-      GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-      TAKUMI_GUARD_TOKEN: \${{ secrets.TAKUMI_GUARD_TOKEN }}
-`;
+    const filePath = path.join(workflowsPath, 'release.yml');
+    const config = createConfig({ dirPath, isRoot: true });
+    config.depending.semanticRelease = true;
+    config.release.branches = ['main'];
+    await generateWorkflows(config);
+    const generated = fs.readFileSync(filePath, 'utf8');
+    const branches = '    branches:\n      - main\n';
+    expect(generated).toContain(branches);
+
+    // The release caller's push branches are replaced with the semantic-release branches.
     fs.writeFileSync(
       filePath,
-      `${head}      # for Renovate\n      - renovate/** # bot\n      # the main one\n      - main # keep\n  workflow_dispatch: null\n${tail}`
+      generated.replace(
+        branches,
+        '    branches:\n      # prerelease\n      - beta # bot\n      # the main one\n      - main # keep\n'
+      )
     );
-
-    await generateWorkflows(createConfig({ dirPath, isRoot: true }));
+    await generateWorkflows(config);
 
     expect(fs.readFileSync(filePath, 'utf8')).toBe(
-      `${head}      # the main one\n      - main # keep\n  workflow_dispatch: null\n${tail}`
+      generated.replace(branches, '    branches:\n      # the main one\n      - main # keep\n')
     );
   });
 });

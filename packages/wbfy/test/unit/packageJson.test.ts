@@ -589,18 +589,6 @@ test('uses bun runner for generated Python scripts in bun projects', async () =>
   expect(packageJson.scripts?.['lint-fix']).not.toContain('yarn');
 });
 
-test('preserves an already-pinned git commit of a private package instead of bumping it', async () => {
-  const pinnedSpecifier = 'git@github.com:WillBoosterLab/llm-proxy.git#4ef9b35e2d1d94adba17e167b7ae18a2e299f7f6';
-  const packageJson = await generatePackageJsonFrom({
-    devDependencies: { '@willbooster/llm-proxy': pinnedSpecifier },
-    scripts: {},
-  });
-
-  // The pinned ref survives; only the dependency section is normalized.
-  expect(packageJson.dependencies?.['@willbooster/llm-proxy']).toBe(pinnedSpecifier);
-  expect(packageJson.devDependencies?.['@willbooster/llm-proxy']).toBeUndefined();
-});
-
 test('preserves a leading MISE_ENV prefix on a mise bridge script', async () => {
   const packageJson = await generatePackageJsonFrom(
     {

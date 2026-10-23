@@ -52,14 +52,6 @@ export const ignoreFileUtil = {
     }
     return defaultTailUserContent;
   },
-  async isBerryZeroInstallEnabled(filePath: string): Promise<boolean> {
-    try {
-      const content = await fs.promises.readFile(filePath, 'utf8');
-      return content.includes('\n!.yarn/cache');
-    } catch {
-      return false;
-    }
-  },
 };
 
 function getIndexOfTailUserContentHeader(content: string): number {

@@ -91,7 +91,6 @@ test('grants aries fnox access only to the selected repositories', () => {
     'WillBooster/agent-challenges',
     'WillBooster/agentic-workflows-dashboard',
     'WillBooster/cheerlings',
-    'WillBooster/chofu-walking',
     'WillBooster/prompt-study',
     'WillBooster/exercode',
     'WillBooster/judge',
@@ -124,9 +123,11 @@ test('grants sunaga and ayame fnox access only to their selected repositories', 
     expect(recipients).toContainEqual(ayameRecipient);
   }
 
-  const chofuWalkingRecipients = getFnoxAgeRecipients(createConfig({ repository: 'github:WillBooster/chofu-walking' }));
-  expect(chofuWalkingRecipients).not.toContainEqual(sunagaRecipient);
-  expect(chofuWalkingRecipients).toContainEqual(ayameRecipient);
+  const smartseZoomBotRecipients = getFnoxAgeRecipients(
+    createConfig({ repository: 'github:WillBooster/smartse-zoom-bot' })
+  );
+  expect(smartseZoomBotRecipients).not.toContainEqual(sunagaRecipient);
+  expect(smartseZoomBotRecipients).toContainEqual(ayameRecipient);
 
   for (const repository of ['WillBooster/shared', 'WillBoosterLab/example']) {
     const recipients = getFnoxAgeRecipients(createConfig({ repository: `github:${repository}` }));
