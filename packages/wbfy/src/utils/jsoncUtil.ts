@@ -253,8 +253,11 @@ function restoreTrailingComment(content: string, arrayPath: JsonPath, insertedIn
   const inserted = elements?.[insertedIndex];
   const previous = elements?.[insertedIndex - 1];
   if (!inserted || !previous) return content;
+  // The inserted element may be followed by the comma that a trailing comma or a later element needs.
   const insertedEnd = inserted.offset + inserted.length;
-  const comment = trailingCommentPattern.exec(content.slice(insertedEnd))?.[0];
+  const comma = findComma(content, insertedEnd);
+  const commentOffset = comma ? comma.offset + 1 : insertedEnd;
+  const comment = trailingCommentPattern.exec(content.slice(commentOffset))?.[0];
   if (!comment) return content;
   // Land the comment after the separating comma so the element keeps its own line intact.
   const previousEnd = previous.offset + previous.length;
@@ -262,8 +265,8 @@ function restoreTrailingComment(content: string, arrayPath: JsonPath, insertedIn
   return (
     content.slice(0, restoreOffset) +
     comment +
-    content.slice(restoreOffset, insertedEnd) +
-    content.slice(insertedEnd + comment.length)
+    content.slice(restoreOffset, commentOffset) +
+    content.slice(commentOffset + comment.length)
   );
 }
 

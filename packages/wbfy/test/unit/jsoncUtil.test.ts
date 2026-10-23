@@ -44,3 +44,11 @@ test('keeps a comment that documents the next member on the same line as the rem
 
   expect(content).toBe('{\n  "o": {\n    /* about b */ "b": 2\n  }\n}\n');
 });
+
+test('keeps the trailing comment of the element before one appended to an array with a trailing comma', () => {
+  const { content } = jsoncUtil.stringifyPreservingTrivia('{\n  "rules": [\n    1, // about 1\n  ],\n}\n', {
+    rules: [1, 2],
+  });
+
+  expect(content).toBe('{\n  "rules": [\n    1, // about 1\n    2,\n  ],\n}\n');
+});
