@@ -21,19 +21,19 @@ const generatedSettings = {
   extends: [sharedPreset],
 };
 
-type Settings = Partial<typeof generatedSettings> & {
-  packageRules?: {
-    matchPackageNames: string[];
-    matchFileNames?: string[];
-    enabled?: boolean;
-    allowedVersions?: string;
-    description?: string;
-    groupName?: string;
-    groupSlug?: string;
-    automerge?: boolean;
-    prBodyNotes?: string[];
-  }[];
-};
+interface PackageRule {
+  matchPackageNames?: string[];
+  matchFileNames?: string[];
+  enabled?: boolean;
+  allowedVersions?: string;
+  description?: string;
+  groupName?: string;
+  groupSlug?: string;
+  automerge?: boolean;
+  prBodyNotes?: string[];
+}
+
+type Settings = Partial<typeof generatedSettings> & { packageRules?: PackageRule[] };
 
 const managedFileName = 'renovate.jsonc';
 const blitzNextRuleDescription = 'Keep Blitz apps on Next.js 15';
@@ -153,15 +153,12 @@ function buildSettings(
     : existingExtends.some((preset) => sharedPresets.has(preset))
       ? existingExtends
       : [config.repository && !config.isWillBoosterRepo ? baseSharedPreset : sharedPreset, ...existingExtends];
-  settings.packageRules = settings.packageRules?.filter(
-    (rule) => rule.description === undefined || !managedRuleDescriptions.has(rule.description)
-  );
+  const managedRules: PackageRule[] = [];
   const blitzManifestPaths = allPackageConfigs
     .filter((packageConfig) => packageConfig.depending.blitz)
     .map((packageConfig) => path.relative(config.dirPath, path.join(packageConfig.dirPath, 'package.json')));
   if (blitzManifestPaths.length > 0) {
-    settings.packageRules ??= [];
-    settings.packageRules.push({
+    managedRules.push({
       description: blitzNextRuleDescription,
       matchPackageNames: ['next'],
       matchFileNames: blitzManifestPaths,
@@ -169,25 +166,64 @@ function buildSettings(
     });
   }
   if (reactCompilerPeerRange) {
-    settings.packageRules ??= [];
-    settings.packageRules.push({
-      description: reactCompilerGroupRuleDescription,
-      groupName: 'React Compiler',
-      groupSlug: 'react-compiler',
-      matchPackageNames: ['@vitejs/plugin-react', oxcTransformReactDependency],
-      automerge: false,
-      // The pin below holds oxc-transform-react back when @vitejs/plugin-react moves to a new peer range.
-      prBodyNotes: [
-        'Update `oxc-transform-react` and its `allowedVersions` in `renovate.jsonc` to the range the new `@vitejs/plugin-react` declares in `peerDependencies`.',
-      ],
-    });
-    settings.packageRules.push({
-      description: oxcTransformReactPinRuleDescription,
-      matchPackageNames: [oxcTransformReactDependency],
-      allowedVersions: reactCompilerPeerRange,
-    });
+    managedRules.push(
+      {
+        description: reactCompilerGroupRuleDescription,
+        groupName: 'React Compiler',
+        groupSlug: 'react-compiler',
+        matchPackageNames: ['@vitejs/plugin-react', oxcTransformReactDependency],
+        automerge: false,
+        // The pin below holds oxc-transform-react back when @vitejs/plugin-react moves to a new peer range.
+        prBodyNotes: [
+          'Update `oxc-transform-react` and its `allowedVersions` in `renovate.jsonc` to the range the new `@vitejs/plugin-react` declares in `peerDependencies`.',
+        ],
+      },
+      {
+        description: oxcTransformReactPinRuleDescription,
+        matchPackageNames: [oxcTransformReactDependency],
+        allowedVersions: reactCompilerPeerRange,
+      }
+    );
   }
+  const packageRules = replaceDuplicatePackageRules(settings.packageRules ?? [], managedRules);
+  if (packageRules.length > 0 || settings.packageRules) settings.packageRules = packageRules;
   return settings;
+}
+
+/**
+ * Replaces with the managed rules each existing rule that duplicates one: wbfy's earlier output (by description) and any
+ * rule selecting exactly a managed rule's package names and file names with no other selector. Other rules are kept in
+ * order, and the managed rules come last because Renovate lets a later matching rule override an earlier one.
+ */
+function replaceDuplicatePackageRules(existingRules: PackageRule[], managedRules: PackageRule[]): PackageRule[] {
+  const keptRules = existingRules.filter(
+    (rule) => !isManagedRule(rule) && !managedRules.some((managedRule) => duplicates(rule, managedRule))
+  );
+  return [...keptRules, ...managedRules];
+}
+
+function duplicates(rule: PackageRule, managedRule: PackageRule): boolean {
+  const hasOtherSelector = Object.keys(rule).some(
+    (key) => isSelector(key) && key !== 'matchPackageNames' && key !== 'matchFileNames'
+  );
+  return (
+    !hasOtherSelector &&
+    haveSameElements(rule.matchPackageNames ?? [], managedRule.matchPackageNames ?? []) &&
+    haveSameElements(rule.matchFileNames ?? [], managedRule.matchFileNames ?? [])
+  );
+}
+
+function isSelector(key: string): boolean {
+  return /^(match|exclude)[A-Z]/u.test(key);
+}
+
+function isManagedRule(rule: PackageRule): boolean {
+  return rule.description !== undefined && managedRuleDescriptions.has(rule.description);
+}
+
+function haveSameElements(left: string[], right: string[]): boolean {
+  const leftSet = new Set(left);
+  return leftSet.size === new Set(right).size && right.every((element) => leftSet.has(element));
 }
 
 function normalize(content: string): string {
