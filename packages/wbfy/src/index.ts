@@ -226,7 +226,7 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   // Root-level install layout must cover workspace apps too: Next.js commonly lives under
   // packages/* or apps/* while bunfig.toml exists only at the repository root.
   const useGlobalStore = resolveBunGlobalStore(allPackageConfigs, previousBunGlobalStore, skipDeps);
-  await generateBunfigToml(rootConfig, useGlobalStore);
+  await generateBunfigToml(rootConfig, useGlobalStore, allPackageConfigs);
   await generateMiseToml(rootConfig);
   if (!(await setUpMiseTools(rootDirPath))) return false;
   await generateFnoxToml(rootConfig);
