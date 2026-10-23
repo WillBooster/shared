@@ -25,7 +25,7 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
 function getWatcherTasksContent(config: PackageConfig): string {
   const tasks = [
     {
-      args: 'fmt --no-script --no-error-on-unmatched-pattern',
+      args: 'fmt --no-script --no-error-on-unmatched-pattern --',
       extensions: extensions.bunFmt,
       name: 'Bun fmt',
       program: 'bun',
