@@ -9,6 +9,7 @@ import { fixNextConfigJson } from './fixers/nextConfig.js';
 import { fixChakraToaster } from './fixers/chakraToaster.js';
 import { fixPlaywrightConfig } from './fixers/playwrightConfig.js';
 import { fixTypos } from './fixers/typos.js';
+import { fixViteConfig } from './fixers/viteConfig.js';
 import { generateAgentInstructions } from './generators/agents.js';
 import {
   generateBunfigToml,
@@ -66,6 +67,8 @@ import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
 const applyReleaseAgeGateCommand = 'apply-release-age-gate';
 /** Same naming rationale as applyReleaseAgeGateCommand. */
 const generateUserAgentConfigsCommand = 'generate-user-agent-configs';
+// wbfy may process several repositories in one run, and each must start from the caller's PATH.
+const callerPath = process.env.PATH ?? '';
 
 async function main(): Promise<void> {
   const argv = await yargs(process.argv.slice(2))
@@ -225,12 +228,7 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   const useGlobalStore = resolveBunGlobalStore(allPackageConfigs, previousBunGlobalStore, skipDeps);
   await generateBunfigToml(rootConfig, useGlobalStore);
   await generateMiseToml(rootConfig);
-  // Mise shims reject untrusted configs; pin edits also invalidate trust in paranoid mode.
-  // Install lifecycle scripts, native build backends, and cleanup invoke those shims, so
-  // trust the generated config before any of them run.
-  if ((await spawnAndReturnStatus('mise', ['trust', path.join(rootDirPath, 'mise.toml')], rootDirPath)) !== 0) {
-    return false;
-  }
+  if (!(await setUpMiseTools(rootDirPath))) return false;
   await generateFnoxToml(rootConfig);
   // Run after generateFnoxToml so its transactional recipient sync cannot restore a snapshot
   // over definitions inserted here.
@@ -266,6 +264,32 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   return isBunLockUpToDate;
 }
 
+async function setUpMiseTools(rootDirPath: string): Promise<boolean> {
+  // Mise shims reject untrusted configs; pin edits also invalidate trust in paranoid mode.
+  // Install lifecycle scripts, native build backends, and cleanup invoke those shims, so
+  // trust the generated config before any of them run.
+  if ((await spawnAndReturnStatus('mise', ['trust', path.join(rootDirPath, 'mise.toml')], rootDirPath)) !== 0) {
+    return false;
+  }
+  // generateMiseToml may have raised the Bun pin, and a Bun of another version writes a different
+  // bun.lock layout, so install the pinned tools and run every later `bun` through the pinned one.
+  // A failed install (e.g. of an unrelated global tool, or an unparsable mise.toml that wbfy leaves
+  // untouched) does not abort the run, and an installed Bun pin still applies.
+  await spawnAndReturnStatus('mise', ['install'], rootDirPath);
+  if (!(await preferPinnedBun(rootDirPath))) {
+    console.warn(`mise could not resolve the Bun pinned in ${rootDirPath}, so bun commands run with the Bun on PATH.`);
+  }
+  return true;
+}
+
+/** Returns whether mise resolved the pinned Bun. */
+async function preferPinnedBun(rootDirPath: string): Promise<boolean> {
+  const bunPath = await spawnAndReturnStdout('mise', ['which', 'bun'], rootDirPath);
+  // The spawn helpers pass process.env to every child, so `bun` and `bunx` resolve to this directory.
+  process.env.PATH = bunPath ? `${path.dirname(bunPath)}${path.delimiter}${callerPath}` : callerPath;
+  return !!bunPath;
+}
+
 function findUnknownVisibilityError(rootConfig: PackageConfig): string | undefined {
   if (!rootConfig.isWillBoosterRepo || rootConfig.isRepoVisibilityKnown) return;
   // An unknown visibility would rewrite tracked files into their public variants (e.g. English agent
@@ -274,9 +298,12 @@ function findUnknownVisibilityError(rootConfig: PackageConfig): string | undefin
 }
 
 function warnIfGitHubTokenIsMissing(rootConfig: PackageConfig): void {
-  if (!rootConfig.isWillBoosterRepo || !rootConfig.repoAuthor || hasGitHubToken(rootConfig.repoAuthor)) return;
+  if (!rootConfig.repoAuthor || hasGitHubToken(rootConfig.repoAuthor)) return;
+  const [skipped, permission] = rootConfig.isWillBoosterRepo
+    ? ['repository settings, labels, and (where wbfy manages them) rulesets are', 'administration']
+    : ['the `t:` type labels are', 'issues write'];
   console.warn(
-    `No GitHub token for ${rootConfig.repoAuthor}, so repository settings, labels, and (where wbfy manages them) rulesets are skipped. Set GH_TOKEN to a GitHub token with administration permission on the repository and re-run with --force to apply them.`
+    `No GitHub token for ${rootConfig.repoAuthor}, so ${skipped} skipped. Set GH_TOKEN to a GitHub token with ${permission} permission on the repository and re-run with --force to apply them.`
   );
 }
 
@@ -464,6 +491,9 @@ function getSourceFixers(config: PackageConfig): PooledGenerator[] {
   }
   if (config.depending.next) {
     fixers.push(() => fixNextConfigJson(config));
+  }
+  if (config.depending.vinext) {
+    fixers.push(() => fixViteConfig(config));
   }
   if (config.depending.chakra) {
     fixers.push(() => fixChakraToaster(config));

@@ -6,6 +6,7 @@ import * as ast from 'typescript/unstable/ast';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { applyTextEdits, findProperty, insertPropertiesEdit, removePropertyEdit } from '../utils/objectLiteralEdit.js';
 import { promisePool } from '../utils/promisePool.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 
@@ -13,10 +14,10 @@ import { parseSourceFile } from '../utils/typescriptApi.js';
 // property key used to detect whether the setting already exists; `text` is inserted
 // verbatim (a whole `key: value` pair) when the key is missing.
 const managedProperties: readonly { name: string; text: string }[] = [
-  { name: 'reactCompiler', text: 'reactCompiler: true' },
   { name: 'reactStrictMode', text: 'reactStrictMode: true' },
   { name: 'typescript', text: 'typescript: { ignoreBuildErrors: true }' },
 ];
+const reactCompilerProperty = { name: 'reactCompiler', text: 'reactCompiler: true' };
 
 export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('fixNextConfigJson', async () => {
@@ -26,33 +27,30 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
     if (!filePath) return;
 
     const extracted = await getNextConfigObjectLiteral(filePath);
-    if (!extracted) return;
+    if (!extracted) {
+      console.warn(
+        `Skipped updating ${filePath} because wbfy found no config object to edit; export an object literal, a phase function whose body is one or a single \`return\` of one, or a variable holding either, or annotate the config variable with \`NextConfig\`.`
+      );
+      return;
+    }
     const { source, objectLiteral } = extracted;
 
-    // `properties` includes spread assignments (`...rest`) that carry no name, so guard before reading it.
-    const existingProperties = new Set(
-      objectLiteral.properties.map((property) =>
-        'name' in property && property.name ? getPropertyKey(property.name, source) : undefined
-      )
-    );
-    const propertyTexts = managedProperties
-      .filter((property) => !existingProperties.has(property.name))
+    // vinext ignores `reactCompiler`; fixers/viteConfig.ts enables the compiler in vite.config.ts instead.
+    const removedProperty = config.depending.vinext
+      ? findProperty(objectLiteral, reactCompilerProperty.name, source)
+      : undefined;
+    const propertyTexts = (config.depending.vinext ? managedProperties : [reactCompilerProperty, ...managedProperties])
+      .filter((property) => !findProperty(objectLiteral, property.name, source))
       .map((property) => property.text);
-    if (propertyTexts.length === 0) return;
+    const edits = [
+      ...(removedProperty ? [removePropertyEdit(source, removedProperty)] : []),
+      ...(propertyTexts.length > 0
+        ? [insertPropertiesEdit(source, objectLiteral, propertyTexts, removedProperty)]
+        : []),
+    ];
+    if (edits.length === 0) return;
 
-    const oldContent = source.text;
-    const insertionPoint = objectLiteral.getEnd() - 1;
-    // The native TS AST does not reliably expose `properties.hasTrailingComma`, so scan the source
-    // between the last property and the closing brace. Strip comments first so a comma inside a
-    // trailing comment (e.g. `foo: 1 // a, b`) is not mistaken for a real trailing comma.
-    const lastProperty = objectLiteral.properties.at(-1);
-    const hasTrailingComma = lastProperty
-      ? stripComments(oldContent.slice(lastProperty.getEnd(), insertionPoint)).includes(',')
-      : false;
-    const prefix = objectLiteral.properties.length > 0 && !hasTrailingComma ? ', ' : '';
-    const newContent = `${oldContent.slice(0, insertionPoint)}${prefix}${propertyTexts.join(', ')}${oldContent.slice(
-      insertionPoint
-    )}`;
+    const newContent = applyTextEdits(source.text, edits);
     await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
 }
@@ -72,33 +70,35 @@ async function getNextConfigObjectLiteral(
   const variableObjectLiterals = new Map<string, ast.ObjectLiteralExpression>();
   const typedConfigObjectLiterals: ast.ObjectLiteralExpression[] = [];
 
+  const recordExport = (expression: ast.Expression): void => {
+    const objectLiteral = unwrapObjectLiteral(expression);
+    if (objectLiteral) {
+      directObjectLiteral ??= objectLiteral;
+    } else if (ast.isIdentifier(expression)) {
+      exportedIdentifier ??= expression.getText(source);
+    }
+  };
   const visit = (node: ast.Node): void => {
-    if (ast.isExportAssignment(node)) {
-      const objectLiteral = unwrapObjectLiteral(node.expression);
-      if (objectLiteral) {
-        directObjectLiteral ??= objectLiteral;
-      } else if (ast.isIdentifier(node.expression)) {
-        exportedIdentifier ??= node.expression.getText(source);
-      }
+    if (ast.isFunctionDeclaration(node) && isDefaultExport(node)) {
+      directObjectLiteral ??= getReturnedObjectLiteral(node);
+    } else if (ast.isExportAssignment(node)) {
+      recordExport(node.expression);
     } else if (
       ast.isBinaryExpression(node) &&
       node.operatorToken.kind === ast.SyntaxKind.EqualsToken &&
       node.left.getText(source) === 'module.exports'
     ) {
-      const objectLiteral = unwrapObjectLiteral(node.right);
-      if (objectLiteral) {
-        directObjectLiteral ??= objectLiteral;
-      } else if (ast.isIdentifier(node.right)) {
-        exportedIdentifier ??= node.right.getText(source);
-      }
+      recordExport(node.right);
     } else if (ast.isVariableDeclaration(node) && node.initializer) {
       const objectLiteral = unwrapObjectLiteral(node.initializer);
       if (objectLiteral && ast.isIdentifier(node.name)) {
         variableObjectLiterals.set(node.name.getText(source), objectLiteral);
         // The `: NextConfig` annotation wbfy writes marks the canonical config object (accepting
-        // qualified names such as `import('next').NextConfig`).
+        // qualified names such as `import('next').NextConfig`). A phase function counts only as the
+        // export itself, so a typed helper function never stands in for a wrapped export.
         const annotationType = node.type?.getText(source);
-        if (annotationType !== undefined && isNextConfigType(annotationType)) {
+        const isPlainObject = ast.isObjectLiteralExpression(unwrapExpression(node.initializer));
+        if (isPlainObject && annotationType !== undefined && isNextConfigType(annotationType)) {
           typedConfigObjectLiterals.push(objectLiteral);
         }
       }
@@ -107,22 +107,50 @@ async function getNextConfigObjectLiteral(
   };
   source.forEachChild(visit);
 
+  const exportedObjectLiteral =
+    directObjectLiteral ?? (exportedIdentifier ? variableObjectLiterals.get(exportedIdentifier) : undefined);
+  // The exported object is the config whenever it resolves; a typed object stands in for a wrapped
+  // export such as `withSentryConfig(nextConfig)`.
   const objectLiteral =
-    typedConfigObjectLiterals[0] ??
-    directObjectLiteral ??
-    (exportedIdentifier ? variableObjectLiterals.get(exportedIdentifier) : undefined) ??
-    variableObjectLiterals.get('nextConfig');
+    exportedObjectLiteral ?? typedConfigObjectLiterals[0] ?? variableObjectLiterals.get('nextConfig');
   return objectLiteral ? { source, objectLiteral } : undefined;
 }
 
+/** Returns the object literal that `node` is, or that a phase function `node` returns (`(phase) => ({ ... })`). */
 function unwrapObjectLiteral(node: ast.Expression): ast.ObjectLiteralExpression | undefined {
-  const current = unwrapParentheses(node);
-  return ast.isObjectLiteralExpression(current) ? current : undefined;
+  const current = unwrapExpression(node);
+  if (ast.isObjectLiteralExpression(current)) return current;
+  if (ast.isArrowFunction(current) || ast.isFunctionExpression(current)) return getReturnedObjectLiteral(current);
+  return undefined;
 }
 
-function unwrapParentheses(node: ast.Expression): ast.Expression {
+function getReturnedObjectLiteral(
+  fn: ast.ArrowFunction | ast.FunctionExpression | ast.FunctionDeclaration
+): ast.ObjectLiteralExpression | undefined {
+  const { body } = fn;
+  const [statement, ...rest] = body && ast.isBlock(body) ? body.statements : [];
+  const returned =
+    body && !ast.isBlock(body)
+      ? body
+      : rest.length === 0 && statement && ast.isReturnStatement(statement)
+        ? statement.expression
+        : undefined;
+  const expression = returned && unwrapExpression(returned);
+  return expression && ast.isObjectLiteralExpression(expression) ? expression : undefined;
+}
+
+function isDefaultExport(node: ast.FunctionDeclaration): boolean {
+  const modifiers = node.modifiers ?? [];
+  return (
+    modifiers.some((m) => m.kind === ast.SyntaxKind.ExportKeyword) &&
+    modifiers.some((m) => m.kind === ast.SyntaxKind.DefaultKeyword)
+  );
+}
+
+/** Looks through parentheses and type assertions such as `{ ... } satisfies NextConfig`. */
+function unwrapExpression(node: ast.Expression): ast.Expression {
   let current = node;
-  while (ast.isParenthesizedExpression(current)) {
+  while (ast.isParenthesizedExpression(current) || ast.isSatisfiesExpression(current) || ast.isAsExpression(current)) {
     current = current.expression;
   }
   return current;
@@ -131,14 +159,4 @@ function unwrapParentheses(node: ast.Expression): ast.Expression {
 // Match both the bare `NextConfig` and qualified forms like `import('next').NextConfig`.
 function isNextConfigType(typeText: string): boolean {
   return typeText === 'NextConfig' || typeText.endsWith('.NextConfig');
-}
-
-// Return a property key without surrounding quotes, so `'reactCompiler'` matches `reactCompiler`.
-// Identifier, string-literal and numeric-literal names all expose the unquoted value via `.text`.
-function getPropertyKey(name: ast.PropertyName, source: ast.SourceFile): string {
-  return 'text' in name && typeof name.text === 'string' ? name.text : name.getText(source);
-}
-
-function stripComments(text: string): string {
-  return text.replaceAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '');
 }

@@ -905,9 +905,7 @@ async function requestRepoInfo(urlOrFullName: string): Promise<Record<string, un
   if (!org || !name) return;
 
   try {
-    // Metadata permission. The owner MUST be passed: getOctokit() without it prefers the
-    // WillBooster PAT, which cannot read private WillBoosterLab repositories, collapsing their
-    // visibility to unknown (and e.g. skipping the wbfy caller generation indefinitely).
+    // Metadata permission.
     return await requestRepo(org, name);
   } catch (error) {
     const redirectedFullName = getRedirectedRepoFullName(error);

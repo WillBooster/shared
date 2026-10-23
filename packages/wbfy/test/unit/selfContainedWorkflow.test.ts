@@ -246,9 +246,24 @@ test('generates release and deploy workflows for wb-deploy scripts and semantic-
         },
       },
     });
+    const workflowsPath = path.join(dirPath, '.github', 'workflows');
+    await fs.mkdir(workflowsPath, { recursive: true });
+    // Unparsable, as after a merge conflict.
+    await fs.writeFile(
+      path.join(workflowsPath, 'deploy-staging.yml'),
+      `${selfContainedWorkflowMarker}\non:\n  push: [\n`
+    );
+    const stalePin = 'amannn/action-semantic-pull-request@1111111111111111111111111111111111111111';
+    await fs.writeFile(
+      path.join(workflowsPath, 'semantic-pr.yml'),
+      `${selfContainedWorkflowMarker}\njobs:\n  semantic-pr:\n    steps:\n      - uses: ${stalePin}\n`
+    );
     await generateSelfContainedWorkflows(config);
 
-    const workflowsPath = path.join(dirPath, '.github', 'workflows');
+    // wbfy owns its bare commit SHA pins, which Renovate does not update.
+    const semanticPr = await fs.readFile(path.join(workflowsPath, 'semantic-pr.yml'), 'utf8');
+    expect(semanticPr).toContain('amannn/action-semantic-pull-request@');
+    expect(semanticPr).not.toContain(stalePin);
     const production = await fs.readFile(path.join(workflowsPath, 'deploy-production.yml'), 'utf8');
     expect(production).toContain('bun run deploy');
     expect(production).toContain('nick-fields/retry@');
@@ -305,7 +320,8 @@ test('never overwrites a hand-written workflow and regenerates a marked one', as
     await fs.writeFile(path.join(workflowsPath, 'test.yml'), handWritten);
     await fs.writeFile(
       path.join(workflowsPath, 'semantic-pr.yml'),
-      `${selfContainedWorkflowMarker} stale header\nname: Stale\njobs: {}\n`
+      // Unparsable, as after a merge conflict.
+      `${selfContainedWorkflowMarker} stale header\nname: Stale\njobs: [\n`
     );
 
     const config = createConfig({
@@ -320,6 +336,65 @@ test('never overwrites a hand-written workflow and regenerates a marked one', as
     const regenerated = await fs.readFile(path.join(workflowsPath, 'semantic-pr.yml'), 'utf8');
     expect(regenerated).toContain('amannn/action-semantic-pull-request');
     expect(regenerated).not.toContain('Stale');
+  });
+});
+
+test('keeps the newest action ref of a regenerated workflow and raises an older one', async () => {
+  await withTempRepo(async (dirPath) => {
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+      isWillBoosterRepo: false,
+      repository: 'github:someone/example',
+      depending: { ...createConfig().depending, playwrightTest: true },
+    });
+    const testWorkflowPath = path.join(dirPath, '.github', 'workflows', 'test.yml');
+    await generateSelfContainedWorkflows(config);
+    const generated = await fs.readFile(testWorkflowPath, 'utf8');
+    const generatedCheckout = /actions\/checkout@\S+/u.exec(generated)?.[0] ?? '';
+    expect(generatedCheckout).toStartWith('actions/checkout@v');
+    await fs.writeFile(
+      testWorkflowPath,
+      generated
+        .replace(/jdx\/mise-action@\S+/u, 'jdx/mise-action@v99.0.0-rc.1')
+        // Only the first of the two upload steps, as when Renovate updated one of them.
+        .replace(/actions\/upload-artifact@\S+/u, 'actions/upload-artifact@v99.0.0')
+        .replaceAll(/actions\/checkout@\S+/gu, 'actions/checkout@v1.0.0')
+        .replaceAll(/actions\/cache@\S+/gu, 'actions/cache@main')
+    );
+
+    await generateSelfContainedWorkflows(config);
+
+    const regenerated = await fs.readFile(testWorkflowPath, 'utf8');
+    expect(regenerated).toContain('jdx/mise-action@v99.0.0-rc.1');
+    expect(regenerated.match(/actions\/upload-artifact@\S+/gu)).toEqual([
+      'actions/upload-artifact@v99.0.0',
+      'actions/upload-artifact@v99.0.0',
+    ]);
+    expect(regenerated).not.toContain('actions/checkout@v1.0.0');
+    expect(regenerated).toContain('actions/cache@v');
+    expect(regenerated).not.toContain('actions/cache@main');
+    expect(regenerated).toContain(generatedCheckout);
+  });
+});
+
+test('replaces a commit SHA, which loses its version comment on regeneration, with the version tag wbfy pins', async () => {
+  await withTempRepo(async (dirPath) => {
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+      isWillBoosterRepo: false,
+      repository: 'github:someone/example',
+    });
+    const testWorkflowPath = path.join(dirPath, '.github', 'workflows', 'test.yml');
+    await generateSelfContainedWorkflows(config);
+    const generated = await fs.readFile(testWorkflowPath, 'utf8');
+    const shaPin = 'actions/checkout@ea165f8d65b6e75b540449e92b4886f43607fa02';
+    await fs.writeFile(testWorkflowPath, generated.replaceAll(/actions\/checkout@\S+/gu, `${shaPin} # v99.0.0`));
+
+    await generateSelfContainedWorkflows(config);
+
+    expect(await fs.readFile(testWorkflowPath, 'utf8')).toBe(generated);
   });
 });
 
