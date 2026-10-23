@@ -12,7 +12,13 @@ const distIndexPath = path.join(packageDirPath, 'dist', 'index.js');
 const localWbDirPath = path.resolve(packageDirPath, '..', 'wb');
 
 const smallProjectFixtures = [
-  { name: 'ESM TypeScript', isEsm: true, sourceFileName: 'index.ts', source: 'export const answer = 42;\n' },
+  {
+    name: 'ESM TypeScript',
+    isEsm: true,
+    sourceFileName: 'index.ts',
+    source:
+      "import { format } from 'oxfmt';\nconst result = await format('example.js', 'const answer=42');\nconsole.log(result.code);\n",
+  },
   {
     name: 'CommonJS JavaScript',
     isEsm: false,
@@ -35,6 +41,10 @@ test.each(smallProjectFixtures)(
       const applied = await runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
       expect(applied.stdout + applied.stderr).not.toContain('Error occurred');
       expect(fs.existsSync(path.join(tempDirPath, 'oxfmt.config.ts'))).toBe(false);
+      if (fixture.isEsm) {
+        const formatted = await runCommand('bun', ['src/index.ts'], tempDirPath);
+        expect(formatted.stdout.trim()).toBe('const answer = 42;');
+      }
       const runtime = await runCommand('mise', ['exec', '--', 'bun', '--version'], tempDirPath);
       const tools = z
         .object({ tools: z.object({ bun: z.string() }) })
@@ -174,6 +184,7 @@ function writeSmallProjectFixture(dirPath: string, fixture: (typeof smallProject
         ...(fixture.isEsm ? { type: 'module' } : {}),
         description: 'Temporary fixture for wbfy cleanup idempotency tests',
         repository: 'github:example/small-project',
+        ...(fixture.isEsm ? { dependencies: { oxfmt: '0.73.0' } } : {}),
         devDependencies: { '@willbooster/oxfmt-config': '1.2.2' },
       },
       undefined,

@@ -167,7 +167,7 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
 
 function removeBunFmtReplacedDependencies(jsonObj: WritablePackageJson): void {
   for (const dependency of bunFmtReplacedDeps) {
-    delete jsonObj.dependencies[dependency];
+    // Runtime consumers still need the formatter API; bun fmt replaces only development tooling.
     delete jsonObj.devDependencies[dependency];
   }
 }
