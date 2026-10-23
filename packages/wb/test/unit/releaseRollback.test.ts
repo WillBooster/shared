@@ -54,15 +54,19 @@ export function prepare() {}
 `,
 };
 
-// Stands for npm: \`npm publish\` fails, and \`npm view\` reports the version of pkg/ held when RELEASE_TEST_NPM_HOLDS is set.
+// Stands for npm: \`npm publish\` fails, \`npm whoami\` fails when RELEASE_TEST_NPM_UNAUTHORIZED is set, and \`npm view\`
+// reports the version of pkg/ held when RELEASE_TEST_NPM_HOLDS is set.
 const fakeNpm = `#!/bin/sh
 case "$1" in
-  publish) exit 1 ;;
+  publish) echo 'fake npm publish ran'; exit 1 ;;
+  whoami) if [ -n "$RELEASE_TEST_NPM_UNAUTHORIZED" ]; then echo 'npm error code E401' >&2; exit 1; fi ;;
   view) if [ -n "$RELEASE_TEST_NPM_HOLDS" ] && [ "$2" = release-test-pkg@1.0.0 ]; then echo 1.0.0; else echo 'npm error code E404' >&2; exit 1; fi ;;
 esac
 `;
 
 const npmPlugin = ['@semantic-release/npm', { pkgRoot: 'pkg' }];
+// @semantic-release/npm verifies its token itself only for npmjs.org.
+const privateRegistry = 'https://registry.example.com/';
 
 interface RunResult {
   status: number | null;
@@ -93,7 +97,10 @@ async function createRepo(): Promise<Repo> {
   fs.symlinkSync(semanticReleaseBinPath, path.join(repoDirPath, 'node_modules', '.bin', 'semantic-release'));
   fs.writeFileSync(path.join(repoDirPath, 'package.json'), JSON.stringify({ name: 'release-test', private: true }));
   fs.mkdirSync(path.join(repoDirPath, 'pkg'));
-  fs.writeFileSync(path.join(repoDirPath, 'pkg', 'package.json'), JSON.stringify({ name: 'release-test-pkg' }));
+  fs.writeFileSync(
+    path.join(repoDirPath, 'pkg', 'package.json'),
+    JSON.stringify({ name: 'release-test-pkg', publishConfig: { registry: privateRegistry } })
+  );
   fs.writeFileSync(path.join(repoDirPath, 'publishPlugin.mjs'), publishPlugin);
   fs.writeFileSync(path.join(repoDirPath, 'preparePlugin.mjs'), preparePlugin);
   for (const [name, source] of Object.entries(fakePlugins)) {
@@ -107,7 +114,7 @@ async function createRepo(): Promise<Repo> {
   }
   fs.writeFileSync(path.join(repoDirPath, '.gitignore'), 'node_modules\n');
   // wb removes NPM_* variables, so @semantic-release/npm authenticates from .npmrc as on CI.
-  fs.writeFileSync(path.join(repoDirPath, '.npmrc'), '//registry.npmjs.org/:_authToken=fake\n');
+  fs.writeFileSync(path.join(repoDirPath, '.npmrc'), `//${new URL(privateRegistry).host}/:_authToken=fake\n`);
   fs.writeFileSync(path.join(dirPath, 'fakeApi.mjs'), fakeApi);
   fs.mkdirSync(binDirPath);
   fs.writeFileSync(path.join(binDirPath, 'npm'), fakeNpm, { mode: 0o755 });
@@ -250,6 +257,19 @@ test.each([
       expect(failed.status, failed.output).not.toBe(0);
       expect(failed.remoteRefs, failed.output).toEqual(releasedRefs);
       expect(failed.output).toContain('so the tag is kept');
+    }),
+  timeout
+);
+
+test(
+  'releases nothing when the registry that npm publishes to rejects the token',
+  () =>
+    withRepo(async (repo) => {
+      const failed = await repo.run([npmPlugin], { RELEASE_TEST_NPM_UNAUTHORIZED: '1' });
+      expect(failed.status, failed.output).not.toBe(0);
+      expect(failed.output).toContain(`npm whoami --registry ${privateRegistry}`);
+      expect(failed.output).not.toContain('fake npm publish ran');
+      expect(failed.remoteRefs, failed.output).toEqual([]);
     }),
   timeout
 );
