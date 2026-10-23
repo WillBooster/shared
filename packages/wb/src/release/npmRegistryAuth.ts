@@ -23,13 +23,20 @@ export async function verifyPublishRegistryAuth(
   /** Returns the options of each @semantic-release/npm instance, or `undefined` when they cannot be read statically. */
   readNpmPluginOptionsList: () => Record<string, unknown>[] | undefined
 ): Promise<void> {
-  assertForwardedArgsKeepNpmOptions(forwardedArgs);
   const npmPluginOptionsList = readNpmPluginOptionsList();
   if (!npmPluginOptionsList) {
     throw new Error(
       'Cannot tell which registry @semantic-release/npm publishes to, so its authentication cannot be verified before releasing. Configure semantic-release in JSON (e.g. .releaserc.json) without `extends` or step-specific plugin definitions.'
     );
   }
+  const publishedPackages = npmPluginOptionsList.flatMap((options) => {
+    const manifest = options.npmPublish === false ? undefined : readPublishedManifest(project, options);
+    return manifest?.name && !manifest.private ? [{ name: manifest.name, registry: manifest.registry }] : [];
+  });
+  // A release that publishes nothing keeps every forwarded option.
+  if (publishedPackages.length === 0) return;
+  assertForwardedArgsKeepNpmOptions(forwardedArgs);
+
   const runNpm = async (args: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> => {
     try {
       const result = await spawnAsync('npm', args, {
@@ -45,11 +52,8 @@ export async function verifyPublishRegistryAuth(
       activeChild.current = undefined;
     }
   };
-  for (const options of npmPluginOptionsList) {
-    if (options.npmPublish === false) continue;
-    const manifest = readPublishedManifest(project, options);
-    if (!manifest?.name || manifest.private) continue;
-    const registry = manifest.registry ?? (await resolveRegistry(runNpm, manifest.name));
+  for (const { name, registry: publishConfigRegistry } of publishedPackages) {
+    const registry = publishConfigRegistry ?? (await resolveRegistry(runNpm, name));
     if (!registry || isOfficialNpmRegistry(registry)) continue;
 
     console.info(chalk.cyan(`Verifying authentication for ${registry}...`));
@@ -57,7 +61,7 @@ export async function verifyPublishRegistryAuth(
     const { status, stderr } = await runNpm(['whoami', '--registry', registry]);
     if (status !== 0) {
       throw new Error(
-        `\`npm whoami --registry ${registry}\` failed, so publishing ${manifest.name} would be rejected. Nothing has been released; configure a token that ${registry} accepts and re-run.\n${stderr.trim()}`
+        `\`npm whoami --registry ${registry}\` failed, so publishing ${name} would be rejected. Nothing has been released; configure a token that ${registry} accepts and re-run.\n${stderr.trim()}`
       );
     }
   }
