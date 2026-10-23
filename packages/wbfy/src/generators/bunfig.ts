@@ -77,14 +77,20 @@ export function shouldUseBunGlobalStore(configs: PackageConfig[]): boolean {
   return !configs.some((config) => config.depending.next || config.depending.blitz || config.depending.slidev);
 }
 
-export async function generateBunfigToml(config: PackageConfig, useGlobalStore: boolean): Promise<void> {
+export async function generateBunfigToml(
+  config: PackageConfig,
+  useGlobalStore: boolean,
+  allConfigs: PackageConfig[] = [config]
+): Promise<void> {
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const usesPrettierConfig =
-      doesContainJava(config) ||
-      fs.existsSync(path.join(config.dirPath, '.prettierrc.json')) ||
-      Boolean(config.packageJson?.prettier);
+    const usesPrettierConfig = allConfigs.some(
+      (packageConfig) =>
+        doesContainJava(packageConfig) ||
+        fs.existsSync(path.join(packageConfig.dirPath, '.prettierrc.json')) ||
+        Boolean(packageConfig.packageJson?.prettier)
+    );
     const content = newContent(existingContent, useGlobalStore, usesPrettierConfig);
     await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, content));
   });
