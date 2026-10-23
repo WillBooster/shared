@@ -11,6 +11,7 @@
     "noEmit": true,
     "noUncheckedIndexedAccess": true,
     "outDir": "dist",
+    "paths": {},
     "resolveJsonModule": true,
     "rewriteRelativeImportExtensions": true,
     "rootDir": "../..",
