@@ -194,7 +194,7 @@ function buildSettings(
 /**
  * Merges each managed rule into the existing rules that target the same packages: those with its description, and those
  * selecting exactly its package names with no other selector than the managed rule's. The merged rule takes the place of
- * the first of them, with the managed rule's values winning, so a repository never carries a duplicate of a managed
+ * the first of them, with the managed rule's selectors and values winning, so a repository never carries a duplicate of a managed
  * rule; other existing rules are kept as they are, and managed rules that are no longer generated are removed.
  */
 function mergePackageRules(existingRules: PackageRule[], managedRules: PackageRule[]): PackageRule[] {
@@ -209,9 +209,9 @@ function mergePackageRules(existingRules: PackageRule[], managedRules: PackageRu
     const index = mergedRuleIndexes.get(managedRule);
     if (index === undefined) {
       mergedRuleIndexes.set(managedRule, rules.length);
-      rules.push({ ...rule, ...managedRule });
+      rules.push(mergeRule(rule, managedRule));
     } else {
-      rules[index] = { ...rules[index], ...rule, ...managedRule };
+      rules[index] = mergeRule({ ...rules[index], ...rule }, managedRule);
     }
   }
   return [...rules, ...managedRules.filter((managedRule) => !mergedRuleIndexes.has(managedRule))];
@@ -222,12 +222,23 @@ function targetsSamePackages(rule: PackageRule, managedRule: PackageRule): boole
   if (isManagedRule(rule)) return false;
   // A managed rule without `matchFileNames` applies to every file, so it absorbs only a rule that does too.
   const hasOtherSelector = Object.keys(rule).some(
-    (key) =>
-      /^(match|exclude)[A-Z]/u.test(key) &&
-      key !== 'matchPackageNames' &&
-      !(key === 'matchFileNames' && managedRule.matchFileNames)
+    (key) => isSelector(key) && key !== 'matchPackageNames' && !(key === 'matchFileNames' && managedRule.matchFileNames)
   );
   return !hasOtherSelector && haveSameElements(rule.matchPackageNames ?? [], managedRule.matchPackageNames ?? []);
+}
+
+/**
+ * The merged rule selects exactly what the managed rule selects, so no selector of an absorbed rule narrows it. Keys keep
+ * the existing order, so a rerun rewrites nothing.
+ */
+function mergeRule(rule: PackageRule, managedRule: PackageRule): PackageRule {
+  return Object.fromEntries(
+    Object.entries({ ...rule, ...managedRule }).filter(([key]) => !isSelector(key) || key in managedRule)
+  );
+}
+
+function isSelector(key: string): boolean {
+  return /^(match|exclude)[A-Z]/u.test(key);
 }
 
 function isManagedRule(rule: PackageRule): boolean {

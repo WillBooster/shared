@@ -195,7 +195,7 @@ test('merges existing Renovate rules for the React Compiler packages into the ge
           { matchPackageNames: ['oxc-transform-react'], allowedVersions: '~0.152.0' },
           unrelatedRule,
           majorRule,
-          groupRule,
+          { ...groupRule, matchUpdateTypes: ['major'] },
         ],
       }),
       'vite.config.ts': `${viteConfigHeader}export default defineConfig({ plugins: [vinext()] });\n`,
