@@ -32,7 +32,9 @@ test.each(smallProjectFixtures)(
 
       await runCommand('git', ['init'], tempDirPath);
       await runCommand('mise', ['trust', path.join(tempDirPath, 'mise.toml')], tempDirPath);
-      await runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
+      const applied = await runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
+      expect(applied.stdout + applied.stderr).not.toContain('Error occurred');
+      expect(fs.existsSync(path.join(tempDirPath, 'oxfmt.config.ts'))).toBe(false);
       const runtime = await runCommand('mise', ['exec', '--', 'bun', '--version'], tempDirPath);
       const tools = z
         .object({ tools: z.object({ bun: z.string() }) })
@@ -172,12 +174,17 @@ function writeSmallProjectFixture(dirPath: string, fixture: (typeof smallProject
         ...(fixture.isEsm ? { type: 'module' } : {}),
         description: 'Temporary fixture for wbfy cleanup idempotency tests',
         repository: 'github:example/small-project',
+        devDependencies: { '@willbooster/oxfmt-config': '1.2.2' },
       },
       undefined,
       2
     )}\n`
   );
   fs.writeFileSync(path.join(dirPath, 'README.md'), '# Small Project\n');
+  fs.writeFileSync(
+    path.join(dirPath, 'oxfmt.config.ts'),
+    "import config from '@willbooster/oxfmt-config';\nexport default config;\n"
+  );
   fs.writeFileSync(path.join(dirPath, 'mise.toml'), '[tools]\nbun = "0.1.0"\n');
   fs.writeFileSync(path.join(dirPath, 'src', fixture.sourceFileName), fixture.source);
 }

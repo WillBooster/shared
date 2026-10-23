@@ -468,6 +468,9 @@ async function generatePackageLevelFiles(
   allPackageConfigs: PackageConfig[],
   skipDeps: boolean
 ): Promise<void> {
+  // Remove every inherited formatter config before dependency updates drop its imports and
+  // `bun fmt` formats manifests. A workspace can otherwise load the root's stale config.
+  await Promise.all(allPackageConfigs.map((config) => removeOxfmtConfig(config)));
   // Started only after the loop, so that none of them runs while a generatePackageJson rewrites
   // package.json through `bun add` and `bun fmt`.
   const pooledGenerators: PooledGenerator[] = [];
@@ -502,7 +505,7 @@ function getSourceFixers(config: PackageConfig): PooledGenerator[] {
 }
 
 function getToolConfigGenerators(config: PackageConfig, rootConfig: PackageConfig): PooledGenerator[] {
-  const generators: PooledGenerator[] = [() => removeOxfmtConfig(config)];
+  const generators: PooledGenerator[] = [];
   if (config.doesContainVscodeSettingsJson) {
     generators.push(() => generateVscodeSettings(config));
   }
