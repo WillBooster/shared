@@ -49,9 +49,9 @@ test('merges settings from a tsconfig containing JSONC comments instead of repla
   expect(compilerOptions.paths).toEqual({ '@/*': ['./src/*'] });
 });
 
-test.each([true, false])(
-  'isolates workspace declarations with a generated undici alias present: %s',
-  async (hasAlias) => {
+test.each(['generated', 'cleaned', 'local'] as const)(
+  'isolates workspace declarations with %s aliases',
+  async (aliasState) => {
     const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-path-inheritance-'));
     try {
       const write = (filePath: string, content: string): void => {
@@ -62,11 +62,13 @@ test.each([true, false])(
       fs.symlinkSync(path.resolve(import.meta.dir, '../../node_modules'), path.join(dirPath, 'node_modules'));
       write('base.json', JSON.stringify({ compilerOptions: { paths: { sibling: ['./sibling/index.ts'] } } }));
       write('sibling/index.ts', 'export const value = 1;');
+      write('workspace/src/local.ts', 'export const localValue = 1;');
       write(
         'workspace/src/index.ts',
         `export { value } from 'sibling';
 import { version } from 'undici-types';
-export const undiciVersion: string = version;`
+export const undiciVersion: string = version;
+${aliasState === 'local' ? "export { localValue } from '@local';" : ''}`
       );
       write('legacy/node_modules/undici-types/index.d.ts', 'export declare const version: number;');
       write(
@@ -80,9 +82,15 @@ export const undiciVersion: string = version;`
         'workspace/tsconfig.json',
         JSON.stringify({
           extends: '../base.json',
-          compilerOptions: hasAlias
-            ? { paths: { 'undici-types': ['../legacy/node_modules/undici-types/index.d.ts'] } }
-            : {},
+          compilerOptions:
+            aliasState === 'cleaned'
+              ? {}
+              : {
+                  paths: {
+                    'undici-types': ['../legacy/node_modules/undici-types/index.d.ts'],
+                    ...(aliasState === 'local' ? { '@local': ['./src/local.ts'] } : {}),
+                  },
+                },
         })
       );
       await generateTsconfig(createConfig({ dirPath: path.join(dirPath, 'workspace'), doesContainTypeScript: true }));
