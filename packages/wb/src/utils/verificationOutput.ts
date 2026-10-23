@@ -148,7 +148,7 @@ function readFailureTail(fd: number, start: number, end: number): string {
   fs.readSync(fd, buffer, 0, buffer.length, offset);
   // A byte limit can land inside a UTF-8 character; omit its continuation bytes.
   let first = 0;
-  while (first < buffer.length && (buffer[first]! & 0xC0) === 0x80) first++;
+  while (first < buffer.length && (buffer[first]! & 0xc0) === 0x80) first++;
   const text = buffer.subarray(first).toString('utf8');
   const lines = text.replace(/\n$/, '').split('\n');
   const truncated = offset > start || lines.length > 100;
