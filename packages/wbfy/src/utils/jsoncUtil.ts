@@ -319,20 +319,23 @@ function removeMember(content: string, jsonPath: JsonPath): { content: string; r
   // the line stays; otherwise the member's same-line trailing comment goes with it.
   const sharesLineWithNext = next !== undefined && !content.slice(end, next.offset).includes('\n');
   if (!sharesLineWithNext) end += trailingCommentPattern.exec(content.slice(end))?.[0].length ?? 0;
-  const lineStart = content.lastIndexOf('\n', member.offset - 1) + 1;
-  const startsLine = /^[\t ]*$/u.test(content.slice(lineStart, member.offset));
-  // A comment between the preceding separator and the member on the same line documents the member.
+  // The member's own line holds the member and whatever precedes it there, unless the preceding
+  // separator is on that line too: then only the comment between the separator and the member
+  // documents it, and whatever precedes the separator belongs to the previous member.
   const separatorEnd = previousComma ? previousComma.offset + 1 : (member.parent?.offset ?? member.offset - 1) + 1;
-  const inlineStart = separatorEnd + (/^[^\S\n]*/u.exec(content.slice(separatorEnd))?.[0].length ?? 0);
-  const leadingCommentStart = startsLine ? extendOverLeadingCommentLines(content, lineStart) : inlineStart;
-  const ownsLine = startsLine && !sharesLineWithNext;
+  const lineStart = content.lastIndexOf('\n', member.offset - 1) + 1;
+  const hasOwnLine = lineStart >= separatorEnd;
+  const indentation = /^[^\S\n]*/u.exec(content.slice(hasOwnLine ? lineStart : separatorEnd))?.[0].length ?? 0;
+  const memberStart = (hasOwnLine ? lineStart : separatorEnd) + indentation;
+  const ownsLine = hasOwnLine && !sharesLineWithNext;
   end += (ownsLine ? /^[^\S\n]*\n?/u : /^[^\S\n]*/u).exec(content.slice(end))?.[0].length ?? 0;
   // Remove the leading comment lines and the member itself; keep the indentation of a shared line.
+  const leadingCommentStart = hasOwnLine ? extendOverLeadingCommentLines(content, lineStart) : memberStart;
   const removedRanges: [number, number][] = ownsLine
     ? [[leadingCommentStart, end]]
     : [
-        [leadingCommentStart, startsLine ? lineStart : leadingCommentStart],
-        [startsLine ? member.offset : leadingCommentStart, end],
+        [leadingCommentStart, hasOwnLine ? lineStart : memberStart],
+        [memberStart, end],
       ];
   if (removedCommaOffset !== undefined) removedRanges.unshift([removedCommaOffset, removedCommaOffset + 1]);
   let result = content;

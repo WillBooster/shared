@@ -88,3 +88,13 @@ test('keeps a comment with the element it shares a line with when inserting befo
 
   expect(content).toBe('{\n  "rules": [\n    1,\n    9, /* about 2 */\n    2\n  ]\n}');
 });
+
+test('keeps the previous member trailing comment when removing a member that starts its line with a comment', () => {
+  const { content } = jsoncUtil.stringifyPreservingTrivia(
+    '{\n  "a": 1, /* about a */\n  /* obs */ "b": 2\n}\n',
+    { a: 1 },
+    true
+  );
+
+  expect(content).toBe('{\n  "a": 1 /* about a */\n}\n');
+});
