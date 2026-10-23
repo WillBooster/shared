@@ -153,7 +153,7 @@ linker = "isolated"
 publicHoistPattern = ["tsx", "undici-types"]
 minimumReleaseAge = ${bunMinimumReleaseAgeSeconds}
 minimumReleaseAgeExcludes = [
-${bunMinimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
+${bunMinimumReleaseAgeExcludes.map((packageName) => `  "${packageName}",`).join('\n')}
 ]
 
 [fmt]
@@ -162,7 +162,7 @@ printWidth = 120
 singleQuote = true
 trailingComma = "es5"
 ignorePatterns = [
-${fmtIgnorePatterns.map((pattern) => `    "${pattern}",`).join('\n')}
+${fmtIgnorePatterns.map((pattern) => `  "${pattern}",`).join('\n')}
 ]
 `;
 };
