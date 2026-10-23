@@ -279,9 +279,11 @@ ${config.doesContainPubspecYaml ? String.raw`dart_files="$(printf '%s\n' {staged
 if [ -n "$package_json_files" ]; then
   bun sort-package-json $package_json_files
 fi
-printf '%s\n' {staged_files} | grep -E '\.(${extensions.bunFmt.join('|')})$' | while IFS= read -r file; do
-  bun fmt --no-script --no-error-on-unmatched-pattern -- "$file" || exit
-done || exit
+for file in {staged_files}; do
+  case "$file" in
+    ${extensions.bunFmt.map((extension) => `*.${extension}`).join('|')}) bun fmt --no-script --no-error-on-unmatched-pattern -- "$file" || exit ;;
+  esac
+done
 ${
   hasPythonPackageManager(config)
     ? `if [ -n "$python_files" ]; then
