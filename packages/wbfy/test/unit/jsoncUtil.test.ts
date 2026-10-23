@@ -74,3 +74,11 @@ test('removes and reports an inline comment that precedes a removed member on it
   expect(content).toBe('{"rules":[1, 3]}');
   expect(keysLosingComments).toEqual(['rules']);
 });
+
+test('keeps a comment before the comma on the element that precedes an appended one', () => {
+  const { content } = jsoncUtil.stringifyPreservingTrivia('{\n  "rules": [\n    1 /* about 1 */,\n  ],\n}\n', {
+    rules: [1, 2],
+  });
+
+  expect(content).toBe('{\n  "rules": [\n    1, /* about 1 */\n    2,\n  ],\n}\n');
+});
