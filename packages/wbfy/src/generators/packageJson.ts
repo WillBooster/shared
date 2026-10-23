@@ -32,7 +32,9 @@ import {
 } from '../utils/workspaceUtil.js';
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
 
-const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
+const oxlintDeps = ['@willbooster/oxlint-config', 'oxlint', 'oxlint-tsgolint'];
+// `bun fmt` replaced oxfmt, configured by the bunfig.toml `[fmt]` section.
+const oxfmtDeps = ['@willbooster/oxfmt-config', 'oxfmt'];
 const typescriptDependency = 'typescript';
 const babelReactCompilerDependency = 'babel-plugin-react-compiler';
 // TypeScript 7's `typescript` package is the tsgo native compiler and exposes no
@@ -97,6 +99,7 @@ async function core(
   await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   pruneCapabilityDependentCompilerDependencies(config, jsonObj);
+  removeOxfmtDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   if (blitzNextVersion) {
@@ -165,6 +168,13 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
   jsonObj.devDependencies = jsonObj.devDependencies ?? {};
   jsonObj.peerDependencies = jsonObj.peerDependencies ?? {};
   return jsonObj as WritablePackageJson;
+}
+
+function removeOxfmtDependencies(jsonObj: WritablePackageJson): void {
+  for (const dependency of oxfmtDeps) {
+    delete jsonObj.dependencies[dependency];
+    delete jsonObj.devDependencies[dependency];
+  }
 }
 
 function pruneCapabilityDependentCompilerDependencies(config: PackageConfig, jsonObj: WritablePackageJson): void {

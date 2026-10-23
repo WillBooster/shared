@@ -238,9 +238,9 @@ function getPreCommitJobs(config: PackageConfig): LefthookJob[] {
 function getCleanupGlobs(config: PackageConfig): string {
   // Let `wb lint --format` decide whether Prettier is available; the hook
   // still needs to trigger when adding the first prettier-only file.
-  const supportedExtensions = [...extensions.prettierOnly];
+  const supportedExtensions = [...extensions.prettierOnly, ...extensions.bunFmt];
   if (doesContainJsOrTs(config)) {
-    supportedExtensions.push(...extensions.oxfmt, ...extensions.oxlint);
+    supportedExtensions.push(...extensions.oxlint);
   }
   if (config.doesContainPoetryLock || config.doesContainUvLock) {
     supportedExtensions.push('py');
@@ -279,6 +279,11 @@ ${config.doesContainPubspecYaml ? String.raw`dart_files="$(printf '%s\n' {staged
 if [ -n "$package_json_files" ]; then
   bun sort-package-json $package_json_files
 fi
+for file in {staged_files}; do
+  case "$file" in
+    ${extensions.bunFmt.map((extension) => `*.${extension}`).join('|')}) bun fmt --no-script --no-error-on-unmatched-pattern -- "$file" || exit ;;
+  esac
+done
 ${
   hasPythonPackageManager(config)
     ? `if [ -n "$python_files" ]; then

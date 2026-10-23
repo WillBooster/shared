@@ -27,7 +27,7 @@ import { ensureGlobalReleaseAgeGates } from './generators/globalReleaseAgeGate.j
 import { generateIdeaSettings } from './generators/idea.js';
 import { generateLefthook } from './generators/lefthook.js';
 import { generatePackageJson, getWorkspacePackageDirs } from './generators/packageJson.js';
-import { generateOxfmtConfig } from './generators/oxfmtConfig.js';
+import { removeOxfmtConfig } from './generators/oxfmtConfig.js';
 import { generateOxlintConfig } from './generators/oxlintConfig.js';
 import { generatePrettierignore } from './generators/prettierignore.js';
 import { generatePyrightConfigJson } from './generators/pyrightConfig.js';
@@ -502,14 +502,13 @@ function getSourceFixers(config: PackageConfig): PooledGenerator[] {
 }
 
 function getToolConfigGenerators(config: PackageConfig, rootConfig: PackageConfig): PooledGenerator[] {
-  const generators: PooledGenerator[] = [];
+  const generators: PooledGenerator[] = [() => removeOxfmtConfig(config)];
   if (config.doesContainVscodeSettingsJson) {
     generators.push(() => generateVscodeSettings(config));
   }
   if (doesContainJsOrTs(config)) {
     generators.push(
       () => generateTsconfig(config),
-      () => generateOxfmtConfig(config),
       () => generateOxlintConfig(config, rootConfig)
     );
   } else if (!config.isRoot && config.doesContainPackageJson && doesContainJsOrTs(rootConfig)) {

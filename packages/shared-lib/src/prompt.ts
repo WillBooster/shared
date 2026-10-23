@@ -444,5 +444,5 @@ function indentLines(text: string, indent: string): string {
 }
 
 function isBlockEndWhitespace(codePoint: number | undefined): boolean {
-  return codePoint === 0x0A || codePoint === 0x09 || codePoint === 0x20;
+  return codePoint === 0x0a || codePoint === 0x09 || codePoint === 0x20;
 }

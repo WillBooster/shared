@@ -13,8 +13,8 @@ interface MiseToml {
   tools?: Record<string, unknown>;
 }
 
-// The oldest Bun runtime wbfy supports.
-export const minimumBunVersion = '1.4.3';
+// The oldest Bun runtime wbfy supports: the generated scripts and hooks run `bun fmt`, added in 1.4.4.
+export const minimumBunVersion = '1.4.4';
 
 // Pinned even while `mise latest` still hides it behind its release-age filter.
 export const minimumPinnedBunVersion = '1.4.4';
