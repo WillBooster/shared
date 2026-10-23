@@ -355,8 +355,9 @@ function removeGeneratedUndiciTypesPathMapping(settings: TsConfigJson): void {
   if (!paths || mapping?.length !== 1 || !/(?:^|\/)node_modules\/undici-types\/index\.d\.ts$/u.test(mapping[0] ?? '')) {
     return;
   }
+  // An empty paths object still overrides parent aliases. Deleting it would expose inherited
+  // source mappings to workspace declaration builds and pull sibling files outside rootDir.
   delete paths['undici-types'];
-  if (Object.keys(paths).length === 0) delete settings.compilerOptions!.paths;
 }
 
 function addIncludesForFrameworkProject(settings: TsConfigJson, config: PackageConfig): void {
