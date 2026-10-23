@@ -31,7 +31,6 @@ interface PackageRule {
   groupSlug?: string;
   automerge?: boolean;
   prBodyNotes?: string[];
-  [key: string]: unknown;
 }
 
 type Settings = Partial<typeof generatedSettings> & { packageRules?: PackageRule[] };
