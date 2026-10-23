@@ -238,9 +238,9 @@ function getPreCommitJobs(config: PackageConfig): LefthookJob[] {
 function getCleanupGlobs(config: PackageConfig): string {
   // Let `wb lint --format` decide whether Prettier is available; the hook
   // still needs to trigger when adding the first prettier-only file.
-  const supportedExtensions = [...extensions.prettierOnly];
+  const supportedExtensions = [...extensions.prettierOnly, ...extensions.bunFmt];
   if (doesContainJsOrTs(config)) {
-    supportedExtensions.push(...extensions.bunFmt, ...extensions.oxlint);
+    supportedExtensions.push(...extensions.oxlint);
   }
   if (config.doesContainPoetryLock || config.doesContainUvLock) {
     supportedExtensions.push('py');
@@ -273,11 +273,15 @@ bun wb lint --fix --format -- {staged_files}
 
   return String.raw`
 package_json_files="$(printf '%s\n' {staged_files} | grep -E '(^|/)package\.json$' || true)"
+bun_fmt_files="$(printf '%s\n' {staged_files} | grep -E '\.(${extensions.bunFmt.join('|')})$' || true)"
 ${hasPythonPackageManager(config) ? String.raw`python_files="$(printf '%s\n' {staged_files} | grep -E '\.py$' || true)"` : ''}
 ${config.doesContainPubspecYaml ? String.raw`dart_files="$(printf '%s\n' {staged_files} | grep -E '\.dart$' | grep -v 'generated' | grep -v '\.freezed\.dart$' | grep -v '\.g\.dart$' || true)"` : ''}
 
 if [ -n "$package_json_files" ]; then
   bun sort-package-json $package_json_files
+fi
+if [ -n "$bun_fmt_files" ]; then
+  bun fmt --no-script --no-error-on-unmatched-pattern $bun_fmt_files
 fi
 ${
   hasPythonPackageManager(config)

@@ -69,7 +69,7 @@
     "type-fest": "5.10.0"
   },
   "engines": {
-    "bun": ">=1.4.3"
+    "bun": ">=1.4.4"
   },
   "publishConfig": {
     "access": "public",
