@@ -78,6 +78,24 @@ test('keeps the comments of the remaining package rules when removing obsolete m
   );
 });
 
+test('removes an obsolete managed rule followed by a comment before its comma', async () => {
+  await withRepository(
+    {
+      'renovate.jsonc': `{"$schema":"https://docs.renovatebot.com/renovate-schema.json","extends":["${sharedPreset}"],"packageRules":[{"description":"Keep oxc-transform-react within the peer range of the installed @vitejs/plugin-react"} /* obsolete */,{"matchPackageNames":["kept"]}]}`,
+    },
+    async (dirPath) => {
+      await generateRenovateJsonc(createConfig({ dirPath }));
+
+      const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
+      expect(Bun.JSONC.parse(content)).toEqual({
+        $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+        extends: [sharedPreset],
+        packageRules: [{ matchPackageNames: ['kept'] }],
+      });
+    }
+  );
+});
+
 test('does not shadow a non-canonical Renovate config', async () => {
   const oldContent = '{ "labels": ["dependencies"] }\n';
   await withRepository({ 'renovate.json': oldContent }, async (dirPath) => {

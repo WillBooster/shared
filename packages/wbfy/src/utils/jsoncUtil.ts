@@ -1,9 +1,18 @@
+import { isDeepStrictEqual } from 'node:util';
+
 import type { ParseError } from 'jsonc-parser';
 import { applyEdits, createScanner, findNodeAtLocation, modify, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
 // jsonc-parser declares SyntaxKind/ScanError as ambient const enums, which cannot be imported
 // under verbatimModuleSyntax; mirror the needed member values locally.
-const syntaxKind = { lineCommentTrivia: 12, blockCommentTrivia: 13, lineBreakTrivia: 14, trivia: 15, eof: 17 };
+const syntaxKind = {
+  commaToken: 5,
+  lineCommentTrivia: 12,
+  blockCommentTrivia: 13,
+  lineBreakTrivia: 14,
+  trivia: 15,
+  eof: 17,
+};
 const scanErrorNone = 0;
 
 export const jsoncUtil = {
@@ -90,6 +99,17 @@ export const jsoncUtil = {
     }
     const editor = new PreservingEditor(content);
     editor.editObject([], oldSettings ?? {}, settings, removeMissing);
+    const expectedSettings = removeMissing ? settings : { ...oldSettings, ...settings };
+    // oxlint-disable-next-line unicorn/prefer-structured-clone -- The round trip drops `undefined` properties, which mark deletions; structuredClone would keep them.
+    const expected = JSON.parse(JSON.stringify(expectedSettings)) as Record<string, unknown>;
+    // The edits work on source text, so an unforeseen combination of comments and commas could
+    // still yield a broken file; writing the settings out whole is lossy but always valid.
+    if (!isDeepStrictEqual(jsoncUtil.parseObjectIgnoringError(editor.content), expected)) {
+      const keysWithComments = Object.keys(oldSettings ?? {}).filter((key) =>
+        jsoncUtil.containsComment(valueTextOf(content, [key]) ?? '')
+      );
+      return { content: JSON.stringify(expected, undefined, 2), keysLosingComments: keysWithComments };
+    }
     return { content: editor.content, keysLosingComments: editor.keysLosingComments };
   },
 };
@@ -134,7 +154,7 @@ class PreservingEditor {
     }
     if (removeMissing) {
       for (const key of Object.keys(oldValue)) {
-        if (!Object.hasOwn(newValue, key)) this.replace([...jsonPath, key], undefined);
+        if (!Object.hasOwn(newValue, key)) this.remove([...jsonPath, key]);
       }
     }
     // Prepend rather than append the properties that are new: appending detaches a trailing
@@ -162,8 +182,7 @@ class PreservingEditor {
       return;
     }
     for (const index of arrayEdits.removals.toReversed()) {
-      this.reportLostComments(jsonPath, valueTextOf(this.content, [...jsonPath, index]));
-      this.content = removeArrayElement(this.content, jsonPath, index);
+      this.remove([...jsonPath, index]);
     }
     for (const insertion of arrayEdits.insertions) {
       this.content = applyEdits(
@@ -182,8 +201,17 @@ class PreservingEditor {
    * nested inside it along. Report that under its top-level key rather than losing it quietly.
    */
   private replace(jsonPath: JsonPath, value: unknown): void {
+    if (value === undefined) {
+      this.remove(jsonPath);
+      return;
+    }
     this.reportLostComments(jsonPath, valueTextOf(this.content, jsonPath));
     this.content = applyEdits(this.content, modify(this.content, jsonPath, value, this.modifyOptions));
+  }
+
+  private remove(jsonPath: JsonPath): void {
+    this.reportLostComments(jsonPath, valueTextOf(this.content, jsonPath));
+    this.content = removeMember(this.content, jsonPath);
   }
 
   private reportLostComments(jsonPath: JsonPath, removedText: string | undefined): void {
@@ -239,31 +267,29 @@ function restoreTrailingComment(content: string, arrayPath: JsonPath, insertedIn
 }
 
 /**
- * Removes one array element together with its separating comma and same-line trailing comment.
- * jsonc-parser's own removal is not used: for the last element it keeps a stray character of the
- * removed element on compact input, and for any other element it also deletes the comments that
- * precede the next element.
+ * Removes the array element or object property at `jsonPath` together with its separating comma,
+ * its same-line trailing comment, and the comment-only lines directly above it. jsonc-parser's own
+ * removal is not used: it keeps a stray character of a removed last array element on compact
+ * input, leaves a bare comma behind a removed last property followed by a trailing comma, and
+ * deletes the comments that precede the next element.
  */
-function removeArrayElement(content: string, arrayPath: JsonPath, index: number): string {
+function removeMember(content: string, jsonPath: JsonPath): string {
   const root = parseTree(content);
-  const elements = (root && findNodeAtLocation(root, arrayPath))?.children;
-  const element = elements?.[index];
-  const previous = elements?.[index - 1];
-  if (!element) return content;
-  const lineStart = content.lastIndexOf('\n', element.offset - 1) + 1;
-  const ownsLine = /^[\t ]*$/u.test(content.slice(lineStart, element.offset));
-  const start = ownsLine ? extendOverLeadingCommentLines(content, lineStart) : element.offset;
-  let end = element.offset + element.length;
-  const comma = /^[^\S\n]*,/u.exec(content.slice(end));
-  // Without a comma after it, the element is the last one, so the comma before it must go instead.
-  let removedCommaOffset: number | undefined;
-  if (comma) {
-    end += comma[0].length;
-  } else if (previous) {
-    const previousEnd = previous.offset + previous.length;
-    const previousComma = /^[^\S\n]*,/u.exec(content.slice(previousEnd));
-    if (previousComma) removedCommaOffset = previousEnd + previousComma[0].length - 1;
-  }
+  const valueNode = root && findNodeAtLocation(root, jsonPath);
+  const member = valueNode?.parent?.type === 'property' ? valueNode.parent : valueNode;
+  const siblings = member?.parent?.children;
+  if (!member || !siblings) return content;
+  const previous = siblings[siblings.indexOf(member) - 1];
+  const lineStart = content.lastIndexOf('\n', member.offset - 1) + 1;
+  const ownsLine = /^[\t ]*$/u.test(content.slice(lineStart, member.offset));
+  const start = ownsLine ? extendOverLeadingCommentLines(content, lineStart) : member.offset;
+  let end = member.offset + member.length;
+  const comma = findComma(content, end);
+  // Without a comma after it, the member is the last one, so the comma before it must go instead.
+  const removedCommaOffset = comma
+    ? undefined
+    : previous && findComma(content, previous.offset + previous.length)?.offset;
+  if (comma) end = comma.offset + 1;
   end += trailingCommentPattern.exec(content.slice(end))?.[0].length ?? 0;
   end += (ownsLine ? /^[^\S\n]*\n?/u : /^[^\S\n]*/u).exec(content.slice(end))?.[0].length ?? 0;
   const before =
@@ -271,6 +297,13 @@ function removeArrayElement(content: string, arrayPath: JsonPath, index: number)
       ? content.slice(0, start)
       : content.slice(0, removedCommaOffset) + content.slice(removedCommaOffset + 1, start);
   return before + content.slice(end);
+}
+
+/** Returns the comma that is the next token after `offset`, skipping comments and whitespace. */
+function findComma(content: string, offset: number): { offset: number } | undefined {
+  const scanner = createScanner(content, true);
+  scanner.setPosition(offset);
+  return (scanner.scan() as number) === syntaxKind.commaToken ? { offset: scanner.getTokenOffset() } : undefined;
 }
 
 /** Moves `lineStart` up over the comment-only lines directly above it, which describe that line. */
