@@ -15,6 +15,7 @@ import type { Project } from '../project.js';
 import { findRootAndSelfProjects, findWorkspacePackageDirs } from '../project.js';
 import { releasePluginConfigSchema, releasePluginName } from '../release/draftRelease.js';
 import { createGitHubClient } from '../release/http.js';
+import { readPublishedManifest, verifyPublishRegistryAuth } from '../release/npmRegistryAuth.js';
 import { handlePendingReleases } from '../release/pendingRelease.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { prependNodeModulesBinToPath } from '../utils/binPath.js';
@@ -32,6 +33,7 @@ export const releaseCommand: CommandModule = {
     "reinstall with the hoisted linker (npm cannot walk Bun's isolated node_modules layout), " +
     'rewrite `workspace:` ranges npm cannot parse, run the release, then restore the modified files. ' +
     'Extra arguments (e.g. `--debug`, after `--`) are forwarded to the release command. ' +
+    'Before releasing, fail unless `npm whoami` authenticates against each registry other than npmjs.org that @semantic-release/npm publishes to. ' +
     'When semantic-release fails after pushing the version tag and the run can establish that nothing was published, delete the tag and its note and print how to release the version again; otherwise keep the tag and print the manual recovery. ' +
     `With the ${releasePluginName} semantic-release plugin, first complete a release that a failed run left pending.`,
   builder: (yargs: Argv<unknown>) => yargs.parserConfiguration({ 'populate--': true }),
@@ -94,6 +96,7 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
     // Completing or deferring to a pending release replaces semantic-release in this run.
     if (runsSemanticRelease) {
       if (await releasePublishesToNpm(project)) {
+        await verifyNpmPublishAuth(project);
         await prepareNpmCompatibleLayout(project, argv, modifiedFiles, activeChild);
       } else {
         // The hoisted reinstall and workspace-range rewrite exist solely so npm (which the
@@ -329,6 +332,12 @@ function parsePluginEntry(plugin: unknown): { name: unknown; options: unknown } 
   if (Array.isArray(plugin)) return { name: plugin[0], options: plugin[1] };
   const objectEntry = z.object({ path: z.string() }).loose().safeParse(plugin).data;
   return objectEntry ? { name: objectEntry.path, options: objectEntry } : { name: plugin, options: undefined };
+}
+
+async function verifyNpmPublishAuth(project: Project): Promise<void> {
+  // multi-semantic-release publishes each workspace package with its own configuration, which is not read here.
+  if (findMultiSemanticReleasePackageName(project)) return;
+  await verifyPublishRegistryAuth(project, resolvePluginOptions(project, '@semantic-release/npm') ?? []);
 }
 
 /**
@@ -594,9 +603,7 @@ async function runSemanticRelease(
   // The PACKAGE name (for `bunx`/`yarn dlx`, which fetch a package) and the BIN name (for the
   // local node_modules/.bin lookup) differ for the scoped forks: `bunx multi-semantic-release`
   // would fetch the unrelated unscoped npm package instead of e.g. @anolilab's fork.
-  const releasePackageName = (
-    ['@anolilab/multi-semantic-release', 'multi-semantic-release', '@qiwi/multi-semantic-release'] as const
-  ).find((packageName) => project.packageJson.devDependencies?.[packageName]);
+  const releasePackageName = findMultiSemanticReleasePackageName(project);
 
   // The project is loaded with loadEnv: false (semantic-release runs with the ambient/CI
   // environment by design), so project.env aliases process.env here; using it keeps the
@@ -635,6 +642,12 @@ async function runSemanticRelease(
     await rollBackUnpublishedTags(project, refsBefore, releasedCommit.trim(), readsConfig ? output : undefined);
   }
   return exitCode;
+}
+
+function findMultiSemanticReleasePackageName(project: Project): string | undefined {
+  return (['@anolilab/multi-semantic-release', 'multi-semantic-release', '@qiwi/multi-semantic-release'] as const).find(
+    (packageName) => project.packageJson.devDependencies?.[packageName]
+  );
 }
 
 function buildReleaseCommand(
@@ -833,30 +846,13 @@ async function npmMayHoldVersion(project: Project, tag: string): Promise<boolean
   // Its publish step fails only after attempting an upload: with `npmPublish: false` or a private package it returns.
   const optionsList = resolvePluginOptions(project, '@semantic-release/npm');
   if (optionsList?.length !== 1) return true;
-  const options = z.object({ pkgRoot: z.string().optional() }).safeParse(optionsList[0]).data;
-  if (!options) return true;
-
-  let manifestJson: unknown;
-  try {
-    manifestJson = JSON.parse(
-      fs.readFileSync(path.resolve(project.dirPath, options.pkgRoot ?? '.', 'package.json'), 'utf8')
-    );
-  } catch {
-    return true;
-  }
-  const manifest = z
-    .object({
-      name: z.string().optional(),
-      publishConfig: z.object({ registry: z.string().optional() }).optional(),
-    })
-    .safeParse(manifestJson).data;
+  const manifest = readPublishedManifest(project, optionsList[0]!);
   const name = manifest?.name;
   const version = /^v?(\d+\.\d+\.\d+\S*)$/u.exec(tag)?.[1];
   if (!name || !version) return true;
-  const publishConfig = manifest.publishConfig;
   // From the repository root, whose .npmrc maps scopes to registries (npm ignores a workspace package's .npmrc), and
   // with the registry the package publishes to; a lookup in the wrong registry would wrongly report the version absent.
-  const registryArgs = publishConfig?.registry ? ['--registry', publishConfig.registry] : [];
+  const registryArgs = manifest.registry ? ['--registry', manifest.registry] : [];
   const { status, stdout, stderr } = await spawnAsync(
     'npm',
     ['view', `${name}@${version}`, 'version', ...registryArgs],
