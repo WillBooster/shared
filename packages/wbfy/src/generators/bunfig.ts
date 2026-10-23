@@ -81,7 +81,11 @@ export async function generateBunfigToml(config: PackageConfig, useGlobalStore: 
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const content = newContent(existingContent, useGlobalStore, doesContainJava(config));
+    const usesPrettierConfig =
+      doesContainJava(config) ||
+      fs.existsSync(path.join(config.dirPath, '.prettierrc.json')) ||
+      Boolean(config.packageJson?.prettier);
+    const content = newContent(existingContent, useGlobalStore, usesPrettierConfig);
     await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, content));
   });
 }
@@ -124,7 +128,11 @@ const fmtIgnorePatterns = [
   '**/*.min.*js',
 ];
 
-const newContent = (existingContent: string | undefined, useGlobalStore: boolean, containsJava: boolean): string => {
+const newContent = (
+  existingContent: string | undefined,
+  useGlobalStore: boolean,
+  usesPrettierConfig: boolean
+): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   // minimumReleaseAge and minimumReleaseAgeExcludes are org policy, never repository policy: both
   // are rewritten to configs/releaseAgeGate.json's values on every run, so a hand-edited (weakened)
@@ -134,9 +142,9 @@ const newContent = (existingContent: string | undefined, useGlobalStore: boolean
   // Keeping Next.js installs project-local avoids widening that root to $HOME (or `/` in Docker),
   // which would expand development filesystem watching and bypass the boundary's cache benefits.
   const globalStoreLine = useGlobalStore ? 'globalStore = true' : 'globalStore = false';
-  // Java repositories load prettier-plugin-java through their Prettier config. Bun then routes
-  // TOML through Prettier, which has no TOML parser, even with the oxfmt flavor selected.
-  const ignorePatterns = containsJava ? [...fmtIgnorePatterns, '**/*.toml'] : fmtIgnorePatterns;
+  // A Prettier config makes Bun route TOML through Prettier, which has no TOML parser, even
+  // with the oxfmt flavor selected. Java repositories receive that config on this same run.
+  const ignorePatterns = usesPrettierConfig ? [...fmtIgnorePatterns, '**/*.toml'] : fmtIgnorePatterns;
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   // publicHoistPattern — tsx: build-ts under Node.js spawns `node --import tsx`, which resolves
