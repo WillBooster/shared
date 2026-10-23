@@ -185,6 +185,9 @@ class PreservingEditor {
       this.remove([...jsonPath, index]);
     }
     for (const insertion of arrayEdits.insertions) {
+      // Decide from the layout before the insertion: a comment that shares its line with the
+      // element that follows documents that element and must not be reattached to the predecessor.
+      const reattachComment = !elementFollowsOnSameLine(this.content, jsonPath, insertion.index - 1);
       this.content = applyEdits(
         this.content,
         modify(this.content, [...jsonPath, insertion.index], insertion.value, {
@@ -192,7 +195,7 @@ class PreservingEditor {
           isArrayInsertion: true,
         })
       );
-      this.content = restoreTrailingComment(this.content, jsonPath, insertion.index);
+      if (reattachComment) this.content = restoreTrailingComment(this.content, jsonPath, insertion.index);
     }
   }
 
@@ -240,12 +243,22 @@ function valueTextOf(content: string, jsonPath: JsonPath): string | undefined {
 const trailingCommentPattern = /^(?:[^\S\n]*\/\*[\S\s]*?\*\/)*(?:[^\S\n]*\/\/[^\n]*)?/u;
 const blockCommentsPattern = /^(?:[^\S\n]*\/\*[\S\s]*?\*\/)*/u;
 
+/** Tells whether the element after `index` in the array at `arrayPath` starts on the line where element `index` ends. */
+function elementFollowsOnSameLine(content: string, arrayPath: JsonPath, index: number): boolean {
+  const root = parseTree(content);
+  const elements = (root && findNodeAtLocation(root, arrayPath))?.children;
+  const element = elements?.[index];
+  const next = elements?.[index + 1];
+  return !!element && !!next && !content.slice(element.offset + element.length, next.offset).includes('\n');
+}
+
 /**
  * Reattaches a same-line comment to the element it describes. Inserting into an array places the
  * new element BEFORE the trivia that follows its predecessor, so appending after
  * `{ ... } // why this rule exists` leaves that comment explaining the generated element instead.
  * A freshly serialized element never carries a comment of its own, so anything trailing the
- * insertion belonged to the element before it.
+ * insertion belonged to the element before it, unless the caller found that the comment shared its
+ * line with the element after the insertion point.
  */
 function restoreTrailingComment(content: string, arrayPath: JsonPath, insertedIndex: number): string {
   if (insertedIndex === 0) return content;

@@ -82,3 +82,9 @@ test('keeps a comment before the comma on the element that precedes an appended 
 
   expect(content).toBe('{\n  "rules": [\n    1, /* about 1 */\n    2,\n  ],\n}\n');
 });
+
+test('keeps a comment with the element it shares a line with when inserting before that element', () => {
+  const { content } = jsoncUtil.stringifyPreservingTrivia('{"rules":[1, /* about 2 */ 2]}', { rules: [1, 9, 2] });
+
+  expect(content).toBe('{\n  "rules": [\n    1,\n    9, /* about 2 */\n    2\n  ]\n}');
+});
