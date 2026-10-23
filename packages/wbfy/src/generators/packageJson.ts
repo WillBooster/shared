@@ -121,22 +121,22 @@ async function core(
   // Yarn reads package.json from disk before deciding whether `yarn add -D`
   // conflicts with an existing regular dependency, so this write must finish
   // before installing the managed dependency updates below. It is written in insertion order and
-  // sorted by the `bun fmt` run right after it.
+  // sorted by the `bun fmt` run at the end, so a formatting failure cannot cost those updates.
   // A refused write (e.g. a symlinked package.json) must also abort the dependency installation
   // below: `bun add` follows the symlink and would modify the file outside the repository.
   // fsUtil.generateFile() normalizes the trailing newline.
   if (!(await fsUtil.generateFile(filePath, JSON.stringify(jsonObj, undefined, 2)))) return;
-  await formatPackageJson(config);
 
   if (!skipAddingDeps) {
     await installDependencyUpdates(config, rootConfig, jsonObj, dependencyUpdates);
-    await formatPackageJson(config);
   }
+  await formatPackageJson(config);
 }
 
 async function formatPackageJson(config: PackageConfig): Promise<void> {
-  // Without `--no-script`, a `fmt` script would run instead.
-  const args = ['fmt', '--no-script', '--sort-package-json', '--', 'package.json'];
+  // Without `--no-script`, a `fmt` script would run instead. A manifest that the `[fmt]` ignore
+  // patterns exclude stays unformatted, as `wb lint --format` leaves it.
+  const args = ['fmt', '--no-script', '--no-error-on-unmatched-pattern', '--sort-package-json', '--', 'package.json'];
   if ((await spawnAndReturnStatus('bun', args, config.dirPath)) !== 0) {
     throw new Error(`Failed to format ${path.join(config.dirPath, 'package.json')} with \`bun fmt\`.`);
   }
