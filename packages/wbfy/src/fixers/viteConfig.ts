@@ -9,7 +9,6 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { applyTextEdits, findProperties, insertPropertiesEdit, type TextEdit } from '../utils/objectLiteralEdit.js';
 import { promisePool } from '../utils/promisePool.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
-import { getOxcTransformReactPeerRange } from '../utils/vitePluginReact.js';
 
 // vinext forwards `react` to @vitejs/plugin-react, whose `compiler` option enables the React Compiler.
 const reactCompilerOptionPath = ['react', 'compiler', 'reportDiagnostics'] as const;
@@ -31,20 +30,7 @@ export async function fixViteConfig(config: PackageConfig): Promise<void> {
   });
 }
 
-/** Whether the React Compiler is enabled in the vinext package once {@link fixViteConfig} has run. */
-export async function enablesViteReactCompiler(config: PackageConfig): Promise<boolean> {
-  const plan = await planReactCompiler(config);
-  return plan.kind !== 'unsupported';
-}
-
 async function planReactCompiler(config: PackageConfig): Promise<ReactCompilerPlan> {
-  if (!getOxcTransformReactPeerRange(config.dirPath)) {
-    return {
-      kind: 'unsupported',
-      reason:
-        'the installed @vitejs/plugin-react does not peer-require oxc-transform-react; update @vitejs/plugin-react',
-    };
-  }
   const filePath = path.resolve(config.dirPath, 'vite.config.ts');
   if (!fs.existsSync(filePath)) return { kind: 'unsupported', reason: 'vite.config.ts does not exist' };
   const source = await parseSourceFile(filePath);
