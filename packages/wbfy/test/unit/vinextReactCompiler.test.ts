@@ -5,7 +5,6 @@ import path from 'node:path';
 
 import { fixNextConfigJson } from '../../src/fixers/nextConfig.js';
 import { fixViteConfig } from '../../src/fixers/viteConfig.js';
-import { generateRenovateJsonc } from '../../src/generators/renovateJsonc.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 const viteConfigHeader = `import { defineConfig } from 'vite';
@@ -166,41 +165,6 @@ export default function nextConfig(phase: string): NextConfig {
     }
   );
 });
-
-test('removes the React Compiler Renovate rules that earlier wbfy versions generated', async () => {
-  const groupRule = {
-    description:
-      '@vitejs/plugin-react peer-requires a single minor of oxc-transform-react, which Renovate does not check, so update both together and review them by hand',
-    groupName: 'React Compiler',
-    groupSlug: 'react-compiler',
-    matchPackageNames: ['@vitejs/plugin-react', 'oxc-transform-react'],
-    automerge: false,
-  };
-  const pinRule = {
-    description: 'Keep oxc-transform-react within the peer range of the installed @vitejs/plugin-react',
-    matchPackageNames: ['oxc-transform-react'],
-    allowedVersions: '^0.152.0',
-  };
-  const unrelatedRule = { matchPackageNames: ['vite'], allowedVersions: '<8' };
-  await withVinextPackage(
-    { 'renovate.jsonc': JSON.stringify({ packageRules: [groupRule, unrelatedRule, pinRule] }) },
-    async (dirPath) => {
-      await generateRenovateJsonc(createVinextConfig(dirPath));
-      expect(readRenovateSettings(dirPath).packageRules).toEqual([unrelatedRule]);
-    }
-  );
-  await withVinextPackage(
-    { 'renovate.jsonc': JSON.stringify({ packageRules: [groupRule, pinRule] }) },
-    async (dirPath) => {
-      await generateRenovateJsonc(createVinextConfig(dirPath));
-      expect(readRenovateSettings(dirPath)).not.toHaveProperty('packageRules');
-    }
-  );
-});
-
-function readRenovateSettings(dirPath: string): Record<string, unknown> {
-  return JSON.parse(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')) as Record<string, unknown>;
-}
 
 function removeWhitespace(text: string): string {
   return text.replaceAll(/\s/gu, '');

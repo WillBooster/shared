@@ -30,14 +30,7 @@ type Settings = Partial<typeof generatedSettings> & { packageRules?: PackageRule
 
 const managedFileName = 'renovate.jsonc';
 const blitzNextRuleDescription = 'Keep Blitz apps on Next.js 15';
-// Earlier wbfy versions also grouped `@vitejs/plugin-react` with `oxc-transform-react` and pinned the latter to the
-// former's peer range. Only that range's lower bound matters, and an up-to-date `oxc-transform-react` always meets it,
-// so the rules only held updates back. Their descriptions stay here so that wbfy removes them.
-const managedRuleDescriptions = new Set([
-  blitzNextRuleDescription,
-  '@vitejs/plugin-react peer-requires a single minor of oxc-transform-react, which Renovate does not check, so update both together and review them by hand',
-  'Keep oxc-transform-react within the peer range of the installed @vitejs/plugin-react',
-]);
+const managedRuleDescriptions = new Set([blitzNextRuleDescription]);
 
 // wbfy supports one canonical Renovate location. Non-canonical configs are fixed in the target
 // repository instead of being parsed, merged, or deleted here.
