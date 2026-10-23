@@ -59,13 +59,10 @@ test('generated callers scope permissions without changing preserved sibling job
       actions: 'read',
       contents: 'read',
     });
-    expect(readPermissions(workflowsPath, 'semantic-pr.yml')).toEqual({
-      'pull-requests': 'read',
-      statuses: 'write',
-    });
+    expect(readPermissions(workflowsPath, 'semantic-pr.yml')).toEqual({ 'pull-requests': 'read' });
     const customWorkflow = readWorkflow(workflowsPath, 'custom.yml');
     expect(customWorkflow.jobs.rust?.permissions).toEqual({ actions: 'read', contents: 'read' });
-    expect(customWorkflow.jobs.pr?.permissions).toEqual({ 'pull-requests': 'read', statuses: 'write' });
+    expect(customWorkflow.jobs.pr?.permissions).toEqual({ 'pull-requests': 'read' });
   });
 });
 

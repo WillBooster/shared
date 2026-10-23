@@ -39,7 +39,6 @@ interface On {
   // `pull_request:`. `undefined` would omit the event entirely when dumping YAML.
   issues?: Types | null;
   pull_request?: PullRequest | null;
-  pull_request_target?: Types | null;
   push?: Push;
   schedule?: Schedule[];
   workflow_dispatch?: null;
@@ -164,8 +163,9 @@ const workflows = {
   },
   'semantic-pr': {
     name: 'Lint PR title',
+    // Not `pull_request_target`: GitHub blocks it on public repositories by default.
     on: {
-      pull_request_target: {
+      pull_request: {
         types: ['opened', 'edited', 'synchronize'],
       },
     },
@@ -360,9 +360,7 @@ async function writeWorkflowYaml(
     await fsUtil.removeConfined(filePath);
     return;
   }
-  if (kind === 'test' || kind === 'test-rust') {
-    removeTestPathFilters(newSettings);
-  }
+  normalizeTriggers(newSettings, kind, template);
   await writeYaml(newSettings, filePath);
 
   if (kind === 'sync') {
@@ -453,6 +451,14 @@ function normalizeReleaseWorkflow(config: PackageConfig, settings: Workflow): bo
     delete settings.permissions?.['id-token'];
   }
   return true;
+}
+
+function normalizeTriggers(settings: Workflow, kind: KnownKind, template: Workflow): void {
+  if (kind === 'test' || kind === 'test-rust') {
+    removeTestPathFilters(settings);
+  } else if (kind === 'semantic-pr') {
+    settings.on = template.on;
+  }
 }
 
 // Don't use `paths-ignore` for test because GitHub's Branch Protection and Rulesets require job running.
@@ -679,7 +685,7 @@ const installCapableReusableWorkflows = new Set(['deploy', 'release', 'run-scrip
 const reusableWorkflowPermissions: Record<string, Record<string, string>> = {
   // skip-duplicate-actions reads workflow runs; cancel_others is false, so read is enough.
   'test-rust': { actions: 'read', contents: 'read' },
-  'semantic-pr': { 'pull-requests': 'read', statuses: 'write' },
+  'semantic-pr': { 'pull-requests': 'read' },
 };
 
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {

@@ -513,18 +513,18 @@ function buildSemanticPrWorkflow(): Workflow {
   return {
     name: 'Lint PR title',
     on: {
-      pull_request_target: { types: ['opened', 'edited', 'synchronize'] },
+      pull_request: { types: ['opened', 'edited', 'synchronize'] },
     },
     jobs: {
       'semantic-pr': {
         'runs-on': 'ubuntu-latest',
-        // The action reads the pull request, and its `wip` support posts a commit status; neither
-        // permission is granted when the repository restricts default workflow permissions.
-        permissions: { 'pull-requests': 'read', statuses: 'write' },
+        // The action reads the pull request, which is not granted when the repository restricts
+        // default workflow permissions. Its `wip` option would post a commit status, which the
+        // read-only token of a fork's `pull_request` run cannot.
+        permissions: { 'pull-requests': 'read' },
         steps: [
           {
             uses: semanticPullRequestAction,
-            with: { wip: true },
             env: { GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}' },
           },
         ],

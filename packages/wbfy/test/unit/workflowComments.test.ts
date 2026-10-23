@@ -68,7 +68,6 @@ jobs:
     uses: WillBooster/reusable-workflows/.github/workflows/semantic-pr.yml@main
     permissions:
       pull-requests: read
-      statuses: write
   lint:
     runs-on: ubuntu-latest
     steps:
