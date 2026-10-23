@@ -225,17 +225,23 @@ function targetsSamePackages(rule: PackageRule, managedRule: PackageRule): boole
 }
 
 /**
- * The merged rule keeps only the absorbed settings that no managed rule sets (e.g. `schedule`): managed rules overlap
- * (the React Compiler group and the oxc-transform-react pin), so an absorbed `automerge` or `groupName` on one would
- * override the other's, and an absorbed selector would narrow it. Keys keep the existing rule's order, so a rerun
+ * The merged rule keeps only the absorbed settings that no managed rule for an overlapping package sets (e.g.
+ * `schedule`): the React Compiler group and the oxc-transform-react pin overlap, so an absorbed `automerge` or `groupName`
+ * on one would override the other's, and an absorbed selector would narrow it. Keys keep the existing rule's order, so a rerun
  * rewrites nothing.
  */
 function mergeRule(rule: PackageRule, managedRule: PackageRule, managedRules: PackageRule[]): PackageRule {
   return Object.fromEntries(
     Object.entries({ ...rule, ...managedRule }).filter(
-      ([key]) => key in managedRule || (!isSelector(key) && managedRules.every((other) => !(key in other)))
+      ([key]) =>
+        key in managedRule ||
+        (!isSelector(key) && managedRules.every((other) => !(key in other) || !overlaps(other, managedRule)))
     )
   );
+}
+
+function overlaps(rule: PackageRule, otherRule: PackageRule): boolean {
+  return (rule.matchPackageNames ?? []).some((name) => otherRule.matchPackageNames?.includes(name));
 }
 
 function isSelector(key: string): boolean {
