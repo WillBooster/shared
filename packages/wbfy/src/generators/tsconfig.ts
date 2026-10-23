@@ -93,6 +93,9 @@ function applyManagedSettings(newSettings: TsConfigJson, config: PackageConfig, 
   newSettings.extends = getTsconfigExtends(config);
   newSettings.compilerOptions ??= {};
   newSettings.compilerOptions.rootDir = getRootDir(config);
+  // Workspace aliases must be local: inheriting root source aliases pulls sibling files into
+  // src-only declaration builds. Generate the override even when an earlier run removed it.
+  if (!config.isRoot) newSettings.compilerOptions.paths = {};
   if (generatedTypes.length > 0) {
     newSettings.compilerOptions = { ...newSettings.compilerOptions, types: generatedTypes };
   }
@@ -355,8 +358,9 @@ function removeGeneratedUndiciTypesPathMapping(settings: TsConfigJson): void {
   if (!paths || mapping?.length !== 1 || !/(?:^|\/)node_modules\/undici-types\/index\.d\.ts$/u.test(mapping[0] ?? '')) {
     return;
   }
+  // An empty paths object still overrides parent aliases. Deleting it would expose inherited
+  // source mappings to workspace declaration builds and pull sibling files outside rootDir.
   delete paths['undici-types'];
-  if (Object.keys(paths).length === 0) delete settings.compilerOptions!.paths;
 }
 
 function addIncludesForFrameworkProject(settings: TsConfigJson, config: PackageConfig): void {
