@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -16,21 +17,35 @@ import type { Project } from '../project.js';
  */
 export async function verifyPublishRegistryAuth(
   project: Pick<Project, 'dirPath' | 'env'>,
-  npmPluginOptionsList: Record<string, unknown>[]
+  npmPluginOptionsList: Record<string, unknown>[],
+  /** Receives each npm child so that the caller's signal handler can terminate it. */
+  activeChild: { current: ChildProcess | undefined }
 ): Promise<void> {
+  const runNpm = async (args: string[]): Promise<{ status: number | null; stdout: string; stderr: string }> => {
+    try {
+      const result = await spawnAsync('npm', args, {
+        cwd: project.dirPath,
+        env: project.env,
+        onSpawn: (child) => {
+          activeChild.current = child;
+        },
+      });
+      if (result.signal) throw new Error(`\`npm ${args.join(' ')}\` was terminated by ${result.signal}.`);
+      return result;
+    } finally {
+      activeChild.current = undefined;
+    }
+  };
   for (const options of npmPluginOptionsList) {
     if (options.npmPublish === false) continue;
     const manifest = readPublishedManifest(project, options);
     if (!manifest?.name || manifest.private) continue;
-    const registry = manifest.registry ?? (await resolveRegistry(project, manifest.name));
+    const registry = manifest.registry ?? (await resolveRegistry(runNpm, manifest.name));
     if (!registry || isOfficialNpmRegistry(registry)) continue;
 
     console.info(chalk.cyan(`Verifying authentication for ${registry}...`));
     // From the repository root, like the npm plugin, which publishes with the npm configuration found there.
-    const { status, stderr } = await spawnAsync('npm', ['whoami', '--registry', registry], {
-      cwd: project.dirPath,
-      env: project.env,
-    });
+    const { status, stderr } = await runNpm(['whoami', '--registry', registry]);
     if (status !== 0) {
       throw new Error(
         `\`npm whoami --registry ${registry}\` failed, so publishing ${manifest.name} would be rejected. Nothing has been released; configure a token that ${registry} accepts and re-run.\n${stderr.trim()}`
@@ -41,15 +56,12 @@ export async function verifyPublishRegistryAuth(
 
 /** Mirrors @semantic-release/npm's lookup for a package without `publishConfig.registry`. */
 async function resolveRegistry(
-  project: Pick<Project, 'dirPath' | 'env'>,
+  runNpm: (args: string[]) => Promise<{ status: number | null; stdout: string }>,
   packageName: string
 ): Promise<string | undefined> {
   const scope = packageName.startsWith('@') ? packageName.split('/')[0] : undefined;
   for (const key of scope ? [`${scope}:registry`, 'registry'] : ['registry']) {
-    const { status, stdout } = await spawnAsync('npm', ['config', 'get', key], {
-      cwd: project.dirPath,
-      env: project.env,
-    });
+    const { status, stdout } = await runNpm(['config', 'get', key]);
     const value = stdout.trim();
     if (status === 0 && value && value !== 'undefined') return value;
   }

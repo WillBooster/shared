@@ -96,7 +96,7 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
     // Completing or deferring to a pending release replaces semantic-release in this run.
     if (runsSemanticRelease) {
       if (await releasePublishesToNpm(project)) {
-        await verifyNpmPublishAuth(project, argv);
+        await verifyNpmPublishAuth(project, argv, activeChild);
         await prepareNpmCompatibleLayout(project, argv, modifiedFiles, activeChild);
       } else {
         // The hoisted reinstall and workspace-range rewrite exist solely so npm (which the
@@ -334,7 +334,7 @@ function parsePluginEntry(plugin: unknown): { name: unknown; options: unknown } 
   return objectEntry ? { name: objectEntry.path, options: objectEntry } : { name: plugin, options: undefined };
 }
 
-async function verifyNpmPublishAuth(project: Project, argv: ReleaseArgv): Promise<void> {
+async function verifyNpmPublishAuth(project: Project, argv: ReleaseArgv, activeChild: ActiveChildRef): Promise<void> {
   // multi-semantic-release publishes each workspace package with its own configuration, which is not read here.
   if (argv.dryRun || findMultiSemanticReleasePackageName(project)) return;
   const npmPluginOptionsList = resolvePluginOptions(project, '@semantic-release/npm');
@@ -343,7 +343,7 @@ async function verifyNpmPublishAuth(project: Project, argv: ReleaseArgv): Promis
       'Cannot tell which registry @semantic-release/npm publishes to, so its authentication cannot be verified before releasing. Configure semantic-release in JSON (e.g. .releaserc.json) without `extends` or step-specific plugin definitions.'
     );
   }
-  await verifyPublishRegistryAuth(project, npmPluginOptionsList);
+  await verifyPublishRegistryAuth(project, npmPluginOptionsList, activeChild);
 }
 
 /**
