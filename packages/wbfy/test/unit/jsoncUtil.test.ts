@@ -34,3 +34,13 @@ test('removes and reports the comments around a removed array element', () => {
   expect(content).toBe('{"rules":[\n  2 /* about 2 */,\n  3\n]}');
   expect(keysLosingComments).toEqual(['rules']);
 });
+
+test('keeps a comment that documents the next member on the same line as the removed one', () => {
+  const { content } = jsoncUtil.stringifyPreservingTrivia(
+    '{\n  "o": {\n    "a": 1, /* about b */ "b": 2\n  }\n}\n',
+    { o: { b: 2 } },
+    true
+  );
+
+  expect(content).toBe('{\n  "o": {\n    /* about b */ "b": 2\n  }\n}\n');
+});

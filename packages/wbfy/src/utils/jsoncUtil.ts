@@ -282,9 +282,6 @@ function removeMember(content: string, jsonPath: JsonPath): { content: string; r
   const siblings = member?.parent?.children;
   if (!member || !siblings) return { content, removedText: '' };
   const previous = siblings[siblings.indexOf(member) - 1];
-  const lineStart = content.lastIndexOf('\n', member.offset - 1) + 1;
-  const ownsLine = /^[\t ]*$/u.test(content.slice(lineStart, member.offset));
-  const start = ownsLine ? extendOverLeadingCommentLines(content, lineStart) : member.offset;
   let end = member.offset + member.length;
   const comma = findComma(content, end);
   // Without a comma after it, the member is the last one, so the comma before it must go instead.
@@ -292,7 +289,14 @@ function removeMember(content: string, jsonPath: JsonPath): { content: string; r
     ? undefined
     : previous && findComma(content, previous.offset + previous.length)?.offset;
   if (comma) end = comma.offset + 1;
-  end += trailingCommentPattern.exec(content.slice(end))?.[0].length ?? 0;
+  // A same-line comment belongs to the removed member only when no other member follows it on that
+  // line; otherwise it documents the member that comes next and stays.
+  const trailingCommentLength = trailingCommentPattern.exec(content.slice(end))?.[0].length ?? 0;
+  const isLastOnLine = /^[\s\]}]*$/u.test(content.slice(end + trailingCommentLength).split('\n', 1)[0] ?? '');
+  if (isLastOnLine) end += trailingCommentLength;
+  const lineStart = content.lastIndexOf('\n', member.offset - 1) + 1;
+  const ownsLine = isLastOnLine && /^[\t ]*$/u.test(content.slice(lineStart, member.offset));
+  const start = ownsLine ? extendOverLeadingCommentLines(content, lineStart) : member.offset;
   end += (ownsLine ? /^[^\S\n]*\n?/u : /^[^\S\n]*/u).exec(content.slice(end))?.[0].length ?? 0;
   const before =
     removedCommaOffset === undefined
