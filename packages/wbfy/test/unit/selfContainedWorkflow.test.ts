@@ -207,7 +207,7 @@ test('semantic-pr workflow grants the permissions the action needs', async () =>
     const workflow = YAML.parse(content) as {
       jobs: Record<string, { permissions?: Record<string, string> }>;
     };
-    expect(workflow.jobs['semantic-pr']?.permissions).toEqual({ 'pull-requests': 'read', statuses: 'write' });
+    expect(workflow.jobs['semantic-pr']?.permissions).toEqual({ 'pull-requests': 'read' });
   });
 });
 
