@@ -38,11 +38,6 @@ test.each(smallProjectFixtures)(
         .object({ tools: z.object({ bun: z.string() }) })
         .parse(Bun.TOML.parse(fs.readFileSync(path.join(tempDirPath, 'mise.toml'), 'utf8')));
       expect(runtime.stdout.trim()).toBe(tools.tools.bun);
-      // Check this wbfy against this repository's wb, not the published one, which may still run
-      // tools that this wbfy has removed; rerun the cleanup that ended the wbfy run with it.
-      await ensureBuiltCli(localWbDirPath);
-      linkLocalWb(tempDirPath);
-      await runCommand('bun', ['run', 'cleanup'], tempDirPath, { LEFTHOOK: '0' });
 
       await runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
       await runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
@@ -51,6 +46,10 @@ test.each(smallProjectFixtures)(
         LEFTHOOK: '0',
       });
 
+      // Check this wbfy against this repository's wb, not the published one, which may still run
+      // tools that this wbfy has removed.
+      await ensureBuiltCli(localWbDirPath);
+      linkLocalWb(tempDirPath);
       await runCommand('bun', ['run', 'cleanup'], tempDirPath, {
         LEFTHOOK: '0',
       });
