@@ -52,3 +52,14 @@ test('keeps the trailing comment of the element before one appended to an array 
 
   expect(content).toBe('{\n  "rules": [\n    1, // about 1\n    2,\n  ],\n}\n');
 });
+
+test('removes the trailing comment of a last member on a compact line that continues past its container', () => {
+  const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(
+    '{"rules":[1,2 /* why 2 */],"after":1}',
+    { rules: [1], after: 1 },
+    true
+  );
+
+  expect(content).toBe('{"rules":[1],"after":1}');
+  expect(keysLosingComments).toEqual(['rules']);
+});

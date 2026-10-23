@@ -284,28 +284,38 @@ function removeMember(content: string, jsonPath: JsonPath): { content: string; r
   const member = valueNode?.parent?.type === 'property' ? valueNode.parent : valueNode;
   const siblings = member?.parent?.children;
   if (!member || !siblings) return { content, removedText: '' };
-  const previous = siblings[siblings.indexOf(member) - 1];
+  const index = siblings.indexOf(member);
+  const previous = siblings[index - 1];
+  const next = siblings[index + 1];
   let end = member.offset + member.length;
   const comma = findComma(content, end);
+  if (comma) end = comma.offset + 1;
   // Without a comma after it, the member is the last one, so the comma before it must go instead.
   const removedCommaOffset = comma
     ? undefined
     : previous && findComma(content, previous.offset + previous.length)?.offset;
-  if (comma) end = comma.offset + 1;
-  // A same-line comment belongs to the removed member only when no other member follows it on that
-  // line; otherwise it documents the member that comes next and stays.
-  const trailingCommentLength = trailingCommentPattern.exec(content.slice(end))?.[0].length ?? 0;
-  const isLastOnLine = /^[\s\]}]*$/u.test(content.slice(end + trailingCommentLength).split('\n', 1)[0] ?? '');
-  if (isLastOnLine) end += trailingCommentLength;
+  // When the next member starts on the same line, a comment between them documents that member and
+  // the line stays; otherwise the member's same-line trailing comment goes with it.
+  const sharesLineWithNext = next !== undefined && !content.slice(end, next.offset).includes('\n');
+  if (!sharesLineWithNext) end += trailingCommentPattern.exec(content.slice(end))?.[0].length ?? 0;
   const lineStart = content.lastIndexOf('\n', member.offset - 1) + 1;
-  const ownsLine = isLastOnLine && /^[\t ]*$/u.test(content.slice(lineStart, member.offset));
-  const start = ownsLine ? extendOverLeadingCommentLines(content, lineStart) : member.offset;
+  const startsLine = /^[\t ]*$/u.test(content.slice(lineStart, member.offset));
+  const leadingCommentStart = startsLine ? extendOverLeadingCommentLines(content, lineStart) : member.offset;
+  const ownsLine = startsLine && !sharesLineWithNext;
   end += (ownsLine ? /^[^\S\n]*\n?/u : /^[^\S\n]*/u).exec(content.slice(end))?.[0].length ?? 0;
-  const before =
-    removedCommaOffset === undefined
-      ? content.slice(0, start)
-      : content.slice(0, removedCommaOffset) + content.slice(removedCommaOffset + 1, start);
-  return { content: before + content.slice(end), removedText: content.slice(start, end) };
+  // Remove the leading comment lines and the member itself; keep the indentation of a shared line.
+  const removedRanges: [number, number][] = ownsLine
+    ? [[leadingCommentStart, end]]
+    : [
+        [leadingCommentStart, startsLine ? lineStart : member.offset],
+        [member.offset, end],
+      ];
+  if (removedCommaOffset !== undefined) removedRanges.unshift([removedCommaOffset, removedCommaOffset + 1]);
+  let result = content;
+  for (const [rangeStart, rangeEnd] of removedRanges.toReversed()) {
+    result = result.slice(0, rangeStart) + result.slice(rangeEnd);
+  }
+  return { content: result, removedText: removedRanges.map(([from, to]) => content.slice(from, to)).join('') };
 }
 
 /** Returns the comma that is the next token after `offset`, skipping comments and whitespace. */
