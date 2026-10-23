@@ -207,7 +207,7 @@ function mergePackageRules(existingRules: PackageRule[], managedRules: PackageRu
   // Renovate lets a later matching rule override an earlier one, so the managed rules come last.
   return [
     ...keptRules,
-    ...managedRules.map((managedRule) => mergeRule(absorbedRules.get(managedRule) ?? {}, managedRule)),
+    ...managedRules.map((managedRule) => mergeRule(absorbedRules.get(managedRule) ?? {}, managedRule, managedRules)),
   ];
 }
 
@@ -225,12 +225,16 @@ function targetsSamePackages(rule: PackageRule, managedRule: PackageRule): boole
 }
 
 /**
- * The merged rule selects exactly what the managed rule selects, so no selector of an absorbed rule narrows it. Keys keep
- * the existing rule's order, so a rerun rewrites nothing.
+ * The merged rule keeps only the absorbed settings that no managed rule sets (e.g. `schedule`): managed rules overlap
+ * (the React Compiler group and the oxc-transform-react pin), so an absorbed `automerge` or `groupName` on one would
+ * override the other's, and an absorbed selector would narrow it. Keys keep the existing rule's order, so a rerun
+ * rewrites nothing.
  */
-function mergeRule(rule: PackageRule, managedRule: PackageRule): PackageRule {
+function mergeRule(rule: PackageRule, managedRule: PackageRule, managedRules: PackageRule[]): PackageRule {
   return Object.fromEntries(
-    Object.entries({ ...rule, ...managedRule }).filter(([key]) => !isSelector(key) || key in managedRule)
+    Object.entries({ ...rule, ...managedRule }).filter(
+      ([key]) => key in managedRule || (!isSelector(key) && managedRules.every((other) => !(key in other)))
+    )
   );
 }
 

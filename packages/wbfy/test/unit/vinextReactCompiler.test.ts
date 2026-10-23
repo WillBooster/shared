@@ -192,7 +192,7 @@ test('merges existing Renovate rules for the React Compiler packages into the ge
             matchPackageNames: ['oxc-transform-react', '@vitejs/plugin-react'],
             schedule: ['weekly'],
           },
-          { matchPackageNames: ['oxc-transform-react'], allowedVersions: '~0.152.0' },
+          { matchPackageNames: ['oxc-transform-react'], allowedVersions: '~0.152.0', automerge: true },
           unrelatedRule,
           majorRule,
           { ...groupRule, matchUpdateTypes: ['major'] },
