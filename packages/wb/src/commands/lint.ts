@@ -81,7 +81,7 @@ const bunFmtExtensions = new Set([
   'yaml',
   'yml',
 ]);
-const prettierOnlyExtensions = new Set(['java']);
+const prettierOnlyExtension = 'java';
 const prettierFixtureIgnorePattern = '!**/test{-,/}fixtures/**';
 
 type BufferedLintRunResult = BufferedRunResult & { command: string; cwd: string };
@@ -277,7 +277,7 @@ function classifyExplicitLintTarget(
     if (argv.format) addFormatterPathsOfLintTarget(targets, project, target);
   } else if (argv.format && bunFmtExtensions.has(extension)) {
     appendPath(targets.bunFmtFilePathsByProject, project, lintPath);
-  } else if (argv.format && prettierOnlyExtensions.has(extension)) {
+  } else if (argv.format && extension === prettierOnlyExtension) {
     targets.prettierFilePaths.push(lintPath);
   } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
     console.error(chalk.red(`No linter found for ${project.name}. Install Oxlint.`));
@@ -517,7 +517,8 @@ export function buildWorkspaceIgnorePatterns(
 }
 
 export function buildBunFmtCommand(files?: string[]): string {
-  return buildShellCommand(['bun', 'fmt', '--no-error-on-unmatched-pattern', ...(files ?? [])]);
+  // Without `--no-script`, `bun fmt` runs a package script named `fmt` instead.
+  return buildShellCommand(['bun', 'fmt', '--no-script', '--no-error-on-unmatched-pattern', ...(files ?? [])]);
 }
 
 export function buildPoetryFormatCommand(files?: string[]): string {
@@ -584,7 +585,8 @@ export async function getLintTargetFileKind(filePath: string): Promise<'director
 }
 
 function buildPrettierOnlyPattern(dirPath: string): string {
-  return path.join(dirPath, `**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`);
+  // Prettier's glob matches nothing through a single-alternative brace such as `*.{java}`.
+  return path.join(dirPath, `**/{.*/,}*.${prettierOnlyExtension}`);
 }
 
 export function getExplicitPackageJsonPaths(
