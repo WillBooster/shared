@@ -206,14 +206,14 @@ test('merges existing Renovate rules for the React Compiler packages into the ge
       await generateRenovateJsonc(config);
 
       expect(readRenovatePackageRules(dirPath)).toEqual([
+        unrelatedRule,
+        majorRule,
         { ...groupRule, schedule: ['weekly'], prBodyNotes: expect.any(Array) },
         {
           description: 'Keep oxc-transform-react within the peer range of the installed @vitejs/plugin-react',
           matchPackageNames: ['oxc-transform-react'],
           allowedVersions: '^0.152.0',
         },
-        unrelatedRule,
-        majorRule,
       ]);
     }
   );
