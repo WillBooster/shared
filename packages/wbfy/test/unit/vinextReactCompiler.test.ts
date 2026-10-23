@@ -172,11 +172,32 @@ export default function nextConfig(phase: string): NextConfig {
   );
 });
 
-test('groups the React Compiler packages in Renovate while keeping custom rules', async () => {
-  const customPin = { matchPackageNames: ['oxc-transform-react'], allowedVersions: '~0.152.0' };
+test('merges existing Renovate rules for the React Compiler packages into the generated ones', async () => {
+  const groupRule = {
+    description:
+      '@vitejs/plugin-react peer-requires a single minor of oxc-transform-react, which Renovate does not check, so update both together and review them by hand',
+    groupName: 'React Compiler',
+    groupSlug: 'react-compiler',
+    matchPackageNames: ['@vitejs/plugin-react', 'oxc-transform-react'],
+    automerge: false,
+  };
+  const unrelatedRule = { matchPackageNames: ['vite'], allowedVersions: '<8' };
+  const majorRule = { matchPackageNames: ['oxc-transform-react'], matchUpdateTypes: ['major'], enabled: false };
   await withVinextPackage(
     {
-      'renovate.jsonc': JSON.stringify({ packageRules: [customPin] }),
+      'renovate.jsonc': JSON.stringify({
+        packageRules: [
+          {
+            groupName: 'react',
+            matchPackageNames: ['oxc-transform-react', '@vitejs/plugin-react'],
+            schedule: ['weekly'],
+          },
+          { matchPackageNames: ['oxc-transform-react'], allowedVersions: '~0.152.0' },
+          unrelatedRule,
+          majorRule,
+          groupRule,
+        ],
+      }),
       'vite.config.ts': `${viteConfigHeader}export default defineConfig({ plugins: [vinext()] });\n`,
     },
     async (dirPath) => {
@@ -185,12 +206,14 @@ test('groups the React Compiler packages in Renovate while keeping custom rules'
       await generateRenovateJsonc(config);
 
       expect(readRenovatePackageRules(dirPath)).toEqual([
-        customPin,
-        expect.objectContaining({
-          matchPackageNames: ['@vitejs/plugin-react', 'oxc-transform-react'],
-          automerge: false,
-        }),
-        expect.objectContaining({ matchPackageNames: ['oxc-transform-react'], allowedVersions: '^0.152.0' }),
+        { ...groupRule, schedule: ['weekly'], prBodyNotes: expect.any(Array) },
+        {
+          description: 'Keep oxc-transform-react within the peer range of the installed @vitejs/plugin-react',
+          matchPackageNames: ['oxc-transform-react'],
+          allowedVersions: '^0.152.0',
+        },
+        unrelatedRule,
+        majorRule,
       ]);
     }
   );
