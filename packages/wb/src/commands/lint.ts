@@ -52,7 +52,6 @@ const oxlintExtensions = new Set(['astro', 'cjs', 'cts', 'js', 'jsx', 'mjs', 'mt
 const pythonExtensions = new Set(['py']);
 const dartExtensions = new Set(['dart']);
 const rustExtensions = new Set(['rs']);
-// `bun fmt` fails on an explicitly passed file it cannot parse (e.g. `.astro`), so only these are passed.
 const bunFmtExtensions = new Set([
   'cjs',
   'css',
@@ -73,7 +72,6 @@ const bunFmtExtensions = new Set([
   'mjs',
   'mts',
   'scss',
-  'svelte',
   'toml',
   'ts',
   'tsx',

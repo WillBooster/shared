@@ -47,7 +47,6 @@ export const extensions = {
     'mjs',
     'mts',
     'scss',
-    'svelte',
     'toml',
     'ts',
     'tsx',
