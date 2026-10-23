@@ -172,7 +172,7 @@ export default function nextConfig(phase: string): NextConfig {
   );
 });
 
-test('merges existing Renovate rules for the React Compiler packages into the generated ones', async () => {
+test('replaces existing Renovate rules that duplicate the generated React Compiler rules', async () => {
   const groupRule = {
     description:
       '@vitejs/plugin-react peer-requires a single minor of oxc-transform-react, which Renovate does not check, so update both together and review them by hand',
@@ -208,7 +208,7 @@ test('merges existing Renovate rules for the React Compiler packages into the ge
       expect(readRenovatePackageRules(dirPath)).toEqual([
         unrelatedRule,
         majorRule,
-        { ...groupRule, schedule: ['weekly'], prBodyNotes: expect.any(Array) },
+        { ...groupRule, prBodyNotes: expect.any(Array) },
         {
           description: 'Keep oxc-transform-react within the peer range of the installed @vitejs/plugin-react',
           matchPackageNames: ['oxc-transform-react'],

@@ -186,34 +186,24 @@ function buildSettings(
       }
     );
   }
-  const packageRules = mergePackageRules(settings.packageRules ?? [], managedRules);
+  const packageRules = replaceDuplicatePackageRules(settings.packageRules ?? [], managedRules);
   if (packageRules.length > 0 || settings.packageRules) settings.packageRules = packageRules;
   return settings;
 }
 
 /**
- * Merges into each managed rule the existing rules that target the same packages: those with its description, and those
- * selecting exactly its package names and file names with no other selector. The managed rule's selectors and values win
- * over theirs, so a repository never carries a duplicate of a managed rule; other existing rules are kept in order, and
- * managed rules that are no longer generated are removed.
+ * Replaces with the managed rules each existing rule that duplicates one: wbfy's earlier output (by description) and any
+ * rule selecting exactly a managed rule's package names and file names with no other selector. Other rules are kept in
+ * order, and the managed rules come last because Renovate lets a later matching rule override an earlier one.
  */
-function mergePackageRules(existingRules: PackageRule[], managedRules: PackageRule[]): PackageRule[] {
-  const absorbedRules = new Map<PackageRule, PackageRule>();
-  const keptRules = existingRules.filter((rule) => {
-    const managedRule = managedRules.find((candidate) => targetsSamePackages(rule, candidate));
-    if (managedRule) absorbedRules.set(managedRule, { ...absorbedRules.get(managedRule), ...rule });
-    return !managedRule && !isManagedRule(rule);
-  });
-  // Renovate lets a later matching rule override an earlier one, so the managed rules come last.
-  return [
-    ...keptRules,
-    ...managedRules.map((managedRule) => mergeRule(absorbedRules.get(managedRule) ?? {}, managedRule, managedRules)),
-  ];
+function replaceDuplicatePackageRules(existingRules: PackageRule[], managedRules: PackageRule[]): PackageRule[] {
+  const keptRules = existingRules.filter(
+    (rule) => !isManagedRule(rule) && !managedRules.some((managedRule) => duplicates(rule, managedRule))
+  );
+  return [...keptRules, ...managedRules];
 }
 
-function targetsSamePackages(rule: PackageRule, managedRule: PackageRule): boolean {
-  if (rule.description === managedRule.description) return true;
-  if (isManagedRule(rule)) return false;
+function duplicates(rule: PackageRule, managedRule: PackageRule): boolean {
   const hasOtherSelector = Object.keys(rule).some(
     (key) => isSelector(key) && key !== 'matchPackageNames' && key !== 'matchFileNames'
   );
@@ -222,26 +212,6 @@ function targetsSamePackages(rule: PackageRule, managedRule: PackageRule): boole
     haveSameElements(rule.matchPackageNames ?? [], managedRule.matchPackageNames ?? []) &&
     haveSameElements(rule.matchFileNames ?? [], managedRule.matchFileNames ?? [])
   );
-}
-
-/**
- * The merged rule keeps only the absorbed settings that no managed rule for an overlapping package sets (e.g.
- * `schedule`): the React Compiler group and the oxc-transform-react pin overlap, so an absorbed `automerge` or `groupName`
- * on one would override the other's, and an absorbed selector would narrow it. Keys keep the existing rule's order, so a rerun
- * rewrites nothing.
- */
-function mergeRule(rule: PackageRule, managedRule: PackageRule, managedRules: PackageRule[]): PackageRule {
-  return Object.fromEntries(
-    Object.entries({ ...rule, ...managedRule }).filter(
-      ([key]) =>
-        key in managedRule ||
-        (!isSelector(key) && managedRules.every((other) => !(key in other) || !overlaps(other, managedRule)))
-    )
-  );
-}
-
-function overlaps(rule: PackageRule, otherRule: PackageRule): boolean {
-  return (rule.matchPackageNames ?? []).some((name) => otherRule.matchPackageNames?.includes(name));
 }
 
 function isSelector(key: string): boolean {
