@@ -337,7 +337,13 @@ function parsePluginEntry(plugin: unknown): { name: unknown; options: unknown } 
 async function verifyNpmPublishAuth(project: Project): Promise<void> {
   // multi-semantic-release publishes each workspace package with its own configuration, which is not read here.
   if (findMultiSemanticReleasePackageName(project)) return;
-  await verifyPublishRegistryAuth(project, resolvePluginOptions(project, '@semantic-release/npm') ?? []);
+  const npmPluginOptionsList = resolvePluginOptions(project, '@semantic-release/npm');
+  if (!npmPluginOptionsList) {
+    throw new Error(
+      'Cannot tell which registry @semantic-release/npm publishes to, so its authentication cannot be verified before releasing. Configure semantic-release in JSON (e.g. .releaserc.json) without `extends` or step-specific plugin definitions.'
+    );
+  }
+  await verifyPublishRegistryAuth(project, npmPluginOptionsList);
 }
 
 /**
