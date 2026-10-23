@@ -145,7 +145,7 @@ function buildSettings(
     });
   }
   const packageRules = replaceDuplicatePackageRules(settings.packageRules ?? [], managedRules);
-  // An `undefined` value, unlike a deleted key, makes jsoncUtil.stringifyPreservingTrivia remove the property.
+  // jsoncUtil.stringifyPreservingTrivia deletes a property only when its key is set to `undefined`.
   settings.packageRules = packageRules.length > 0 ? packageRules : undefined;
   return settings;
 }

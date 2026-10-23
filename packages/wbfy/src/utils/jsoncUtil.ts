@@ -61,9 +61,8 @@ export const jsoncUtil = {
   },
   /**
    * Serializes `settings` into `oldContent`, editing only the top-level properties whose values
-   * changed so the comments and formatting of an existing file survive. Callers never drop
-   * properties (generated settings are merged ON TOP of the existing ones), so removals are not
-   * handled: a property missing from `settings` is left untouched rather than deleted.
+   * changed so the comments and formatting of an existing file survive. A property missing from
+   * `settings` is left untouched; to delete one, set its key to `undefined`.
    *
    * Trivia-only content keeps its comments as a header above the generated object, rather than
    * being replaced outright or run through modify() (which would move the object in front of them).
