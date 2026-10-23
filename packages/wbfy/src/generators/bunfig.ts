@@ -120,6 +120,8 @@ const fmtIgnorePatterns = [
   '**/*.d.ts',
   // Prettier formats Java; `bun fmt` would run it a second time through a Prettier config's plugin.
   '**/*.java',
+  // Bun's oxfmt flavor skips TOML during discovery but rejects explicit paths from staged-file hooks.
+  '**/*.toml',
   '**/*.min.*js',
 ];
 
