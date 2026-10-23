@@ -4,6 +4,7 @@ import path from 'node:path';
 import { ISSUE_TEMPLATE_RULES, PULL_REQUEST_BODY_RULES, TEST_WRITING_RULES } from '@willbooster/shared-lib/src';
 import fg from 'fast-glob';
 
+import { enablesViteReactCompiler } from '../fixers/viteConfig.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -27,7 +28,7 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     // it after a file that never appears — and away from the `Env` it should be editing.
     const generatedWorkerTypes = await Promise.all(allConfigs.map((config) => generatesWorkerTypes(config)));
     const deployFacts = { ownsGeneratedWorkerTypes: generatedWorkerTypes.includes(true), usesWbDeploy };
-    const codingStyle = generateAgentCodingStyle(rootConfig, allConfigs, usesReactCompiler(allConfigs));
+    const codingStyle = generateAgentCodingStyle(rootConfig, allConfigs, await usesReactCompiler(allConfigs));
 
     const agentsMdPath = path.resolve(rootConfig.dirPath, 'AGENTS.md');
     const agentsMdContent = generateAgentInstruction(rootConfig, allConfigs, deployFacts, codingStyle, extraContent);
@@ -203,12 +204,16 @@ export function getDefaultProseLanguage(rootConfig: PackageConfig): 'English' | 
 }
 
 /** Whether the React Compiler compiles all of the project's React code once wbfy has run. */
-export function usesReactCompiler(allConfigs: PackageConfig[]): boolean {
-  // fixers/nextConfig.ts and fixers/viteConfig.ts enable it in every Next.js and vinext package.
+export async function usesReactCompiler(allConfigs: PackageConfig[]): Promise<boolean> {
+  // fixers/nextConfig.ts enables it in every Next.js package outside vinext.
   if (allConfigs.some((c) => c.depending.next && !c.depending.vinext)) return true;
-  if (!allConfigs.some((c) => c.depending.vinext)) return false;
+  const vinextConfigs = allConfigs.filter((c) => c.depending.vinext);
+  if (vinextConfigs.length === 0) return false;
   // Components in a package that another tool builds (e.g. a library built with tsc next to a vinext fixture) stay uncompiled.
-  return !allConfigs.some((c) => !c.depending.vinext && containsComponents(c));
+  if (allConfigs.some((c) => !c.depending.vinext && containsComponents(c))) return false;
+  // fixViteConfig respects an opt-out such as `vinext({ react: false })`.
+  const enabled = await Promise.all(vinextConfigs.map((c) => enablesViteReactCompiler(c)));
+  return enabled.every(Boolean);
 }
 
 function containsComponents(config: PackageConfig): boolean {

@@ -30,6 +30,12 @@ export async function fixViteConfig(config: PackageConfig): Promise<void> {
   });
 }
 
+/** Whether the React Compiler is enabled in the vinext package once {@link fixViteConfig} has run. */
+export async function enablesViteReactCompiler(config: PackageConfig): Promise<boolean> {
+  const plan = await planReactCompiler(config);
+  return plan.kind !== 'unsupported';
+}
+
 async function planReactCompiler(config: PackageConfig): Promise<ReactCompilerPlan> {
   const filePath = path.resolve(config.dirPath, 'vite.config.ts');
   if (!fs.existsSync(filePath)) return { kind: 'unsupported', reason: 'vite.config.ts does not exist' };

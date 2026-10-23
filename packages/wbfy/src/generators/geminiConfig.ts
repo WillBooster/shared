@@ -66,7 +66,7 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
 
     const extraContent = await readAgentsExtraContent(config.dirPath);
     const codingRuleExtraContent = extraContent?.trimStart().startsWith('#') ? undefined : extraContent;
-    const styleguideContent = `Review in ${getDefaultProseLanguage(config)} based on the following coding standards.\n\n${generateAgentCodingStyle(config, allConfigs, usesReactCompiler(allConfigs))}${
+    const styleguideContent = `Review in ${getDefaultProseLanguage(config)} based on the following coding standards.\n\n${generateAgentCodingStyle(config, allConfigs, await usesReactCompiler(allConfigs))}${
       codingRuleExtraContent ? `\n${codingRuleExtraContent.trimEnd()}` : ''
     }`;
 
