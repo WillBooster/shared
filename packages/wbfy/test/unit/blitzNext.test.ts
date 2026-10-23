@@ -125,3 +125,47 @@ test('converges incompatible Blitz manifests on a stable Next.js 15 pin without 
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test('replaces an existing Renovate rule that duplicates the Blitz Next.js rule', async () => {
+  await fs.mkdir('.tmp', { recursive: true });
+  const root = await fs.mkdtemp(path.resolve('.tmp/blitz-renovate-'));
+  try {
+    const variantRule = {
+      matchPackageNames: ['next'],
+      matchFileNames: ['package.json'],
+      matchUpdateTypes: ['major'],
+      enabled: false,
+    };
+    await fs.writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'app', private: true, dependencies: { blitz: '2.2.4', next: '15.5.4' } })
+    );
+    await fs.writeFile(
+      path.join(root, 'renovate.jsonc'),
+      JSON.stringify({
+        packageRules: [
+          { matchPackageNames: ['next'], matchFileNames: ['package.json'], allowedVersions: '16.x' },
+          variantRule,
+        ],
+      })
+    );
+    const config = await getPackageConfig(root, { isRoot: true });
+    assert.ok(config);
+    await generateRenovateJsonc(config);
+
+    const renovate = z
+      .object({ packageRules: z.array(z.unknown()) })
+      .parse(await Bun.file(path.join(root, 'renovate.jsonc')).json());
+    expect(renovate.packageRules).toEqual([
+      variantRule,
+      {
+        description: 'Keep Blitz apps on Next.js 15',
+        matchPackageNames: ['next'],
+        matchFileNames: ['package.json'],
+        allowedVersions: '15.x',
+      },
+    ]);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

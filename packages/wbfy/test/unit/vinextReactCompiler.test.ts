@@ -9,10 +9,6 @@ import { fixViteConfig } from '../../src/fixers/viteConfig.js';
 import { generateRenovateJsonc } from '../../src/generators/renovateJsonc.js';
 import { createConfig } from '../helpers/testConfig.js';
 
-const pluginReactPackageJson = JSON.stringify({
-  name: '@vitejs/plugin-react',
-  peerDependencies: { 'oxc-transform-react': '^0.152.0', vite: '^8.0.0' },
-});
 const viteConfigHeader = `import { defineConfig } from 'vite';
 import vinext from 'vinext';
 `;
@@ -172,7 +168,7 @@ export default function nextConfig(phase: string): NextConfig {
   );
 });
 
-test('replaces existing Renovate rules that duplicate the generated React Compiler rules', async () => {
+test('removes the React Compiler Renovate rules that earlier wbfy versions generated', async () => {
   const groupRule = {
     description:
       '@vitejs/plugin-react peer-requires a single minor of oxc-transform-react, which Renovate does not check, so update both together and review them by hand',
@@ -181,60 +177,30 @@ test('replaces existing Renovate rules that duplicate the generated React Compil
     matchPackageNames: ['@vitejs/plugin-react', 'oxc-transform-react'],
     automerge: false,
   };
+  const pinRule = {
+    description: 'Keep oxc-transform-react within the peer range of the installed @vitejs/plugin-react',
+    matchPackageNames: ['oxc-transform-react'],
+    allowedVersions: '^0.152.0',
+  };
   const unrelatedRule = { matchPackageNames: ['vite'], allowedVersions: '<8' };
-  const majorRule = { matchPackageNames: ['oxc-transform-react'], matchUpdateTypes: ['major'], enabled: false };
   await withVinextPackage(
-    {
-      'renovate.jsonc': JSON.stringify({
-        packageRules: [
-          {
-            groupName: 'react',
-            matchPackageNames: ['oxc-transform-react', '@vitejs/plugin-react'],
-            schedule: ['weekly'],
-          },
-          { matchPackageNames: ['oxc-transform-react'], allowedVersions: '~0.152.0', automerge: true },
-          unrelatedRule,
-          majorRule,
-          { ...groupRule, matchUpdateTypes: ['major'] },
-        ],
-      }),
-      'vite.config.ts': `${viteConfigHeader}export default defineConfig({ plugins: [vinext()] });\n`,
-    },
-    async (dirPath) => {
-      const config = createVinextConfig(dirPath);
-      await generateRenovateJsonc(config);
-      await generateRenovateJsonc(config);
-
-      expect(readRenovatePackageRules(dirPath)).toEqual([
-        unrelatedRule,
-        majorRule,
-        { ...groupRule, prBodyNotes: expect.any(Array) },
-        {
-          description: 'Keep oxc-transform-react within the peer range of the installed @vitejs/plugin-react',
-          matchPackageNames: ['oxc-transform-react'],
-          allowedVersions: '^0.152.0',
-        },
-      ]);
-    }
-  );
-});
-
-test('omits the React Compiler Renovate rules from a vinext package that opts out of the compiler', async () => {
-  await withVinextPackage(
-    { 'vite.config.ts': `${viteConfigHeader}export default defineConfig({ plugins: [vinext({ react: false })] });\n` },
+    { 'renovate.jsonc': JSON.stringify({ packageRules: [groupRule, unrelatedRule, pinRule] }) },
     async (dirPath) => {
       await generateRenovateJsonc(createVinextConfig(dirPath));
-
-      expect(readRenovatePackageRules(dirPath)).toEqual([]);
+      expect(readRenovateSettings(dirPath).packageRules).toEqual([unrelatedRule]);
+    }
+  );
+  await withVinextPackage(
+    { 'renovate.jsonc': JSON.stringify({ packageRules: [groupRule, pinRule] }) },
+    async (dirPath) => {
+      await generateRenovateJsonc(createVinextConfig(dirPath));
+      expect(readRenovateSettings(dirPath)).not.toHaveProperty('packageRules');
     }
   );
 });
 
-function readRenovatePackageRules(dirPath: string): Record<string, unknown>[] {
-  const settings = JSON.parse(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')) as {
-    packageRules?: Record<string, unknown>[];
-  };
-  return settings.packageRules ?? [];
+function readRenovateSettings(dirPath: string): Record<string, unknown> {
+  return JSON.parse(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')) as Record<string, unknown>;
 }
 
 function removeWhitespace(text: string): string {
@@ -253,10 +219,7 @@ async function withVinextPackage(
 ): Promise<void> {
   const dirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-vinext-')));
   try {
-    for (const [relativePath, content] of Object.entries({
-      ...files,
-      'node_modules/@vitejs/plugin-react/package.json': pluginReactPackageJson,
-    })) {
+    for (const [relativePath, content] of Object.entries(files)) {
       const filePath = path.join(dirPath, relativePath);
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, content);
