@@ -120,8 +120,8 @@ async function core(
   delete jsonObj.packageManager;
   // Yarn reads package.json from disk before deciding whether `yarn add -D`
   // conflicts with an existing regular dependency, so this write must finish
-  // before installing the managed dependency updates below. Sort it right away so a
-  // mid-run interruption never leaves package.json in a partially managed order.
+  // before installing the managed dependency updates below. It is written in insertion order and
+  // sorted by the `bun fmt` run right after it.
   // A refused write (e.g. a symlinked package.json) must also abort the dependency installation
   // below: `bun add` follows the symlink and would modify the file outside the repository.
   // fsUtil.generateFile() normalizes the trailing newline.
@@ -135,8 +135,11 @@ async function core(
 }
 
 async function formatPackageJson(config: PackageConfig): Promise<void> {
-  // bunfig.toml's `[fmt]` section sorts the keys; without `--no-script`, a `fmt` script would run instead.
-  await spawnAndReturnStatus('bun', ['fmt', '--no-script', '--', 'package.json'], config.dirPath);
+  // Without `--no-script`, a `fmt` script would run instead.
+  const args = ['fmt', '--no-script', '--sort-package-json', '--', 'package.json'];
+  if ((await spawnAndReturnStatus('bun', args, config.dirPath)) !== 0) {
+    throw new Error(`Failed to format ${path.join(config.dirPath, 'package.json')} with \`bun fmt\`.`);
+  }
 }
 
 async function getBlitzNextVersion(): Promise<string> {
