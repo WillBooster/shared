@@ -66,16 +66,11 @@ ${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;
 `;
   }
 
-  // In the order `bun fmt` sorts imports: it would otherwise move the first import above the block marker.
-  const imports = oxlintBaseConfigModule.startsWith('.')
-    ? `import type { OxlintConfig } from 'oxlint';
-
-import oxlintBaseConfig from '${oxlintBaseConfigModule}';`
-    : `import oxlintBaseConfig from '${oxlintBaseConfigModule}';
-import type { OxlintConfig } from 'oxlint';`;
   return `${managedConfigBlocks.getBlock(
     'base',
-    `${imports}
+    `import type { OxlintConfig } from 'oxlint';
+
+import oxlintBaseConfig from '${oxlintBaseConfigModule}';
 
 ${getResolvedConfigContent('oxlintBaseConfig', isRootConfig) + getSlidevOverrides(config)}`
   )}

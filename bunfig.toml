@@ -128,3 +128,7 @@ ignorePatterns = [
   "**/*.d.ts",
   "**/*.min.*js",
 ]
+
+[[fmt.overrides]]
+files = ["**/oxlint.config.ts"]
+options = { sortImports = false }

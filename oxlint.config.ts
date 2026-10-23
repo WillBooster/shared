@@ -1,6 +1,7 @@
 // wbfy:start oxlint-base
-import oxlintBaseConfig from '@willbooster/oxlint-config';
 import type { OxlintConfig } from 'oxlint';
+
+import oxlintBaseConfig from '@willbooster/oxlint-config';
 
 const oxlintResolvedConfig: OxlintConfig = structuredClone(oxlintBaseConfig);
 oxlintResolvedConfig.options = { ...oxlintResolvedConfig.options, typeAware: true, typeCheck: true };

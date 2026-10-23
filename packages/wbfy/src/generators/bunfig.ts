@@ -136,6 +136,8 @@ const newContent = (existingContent: string | undefined, useGlobalStore: boolean
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   // publicHoistPattern — tsx: build-ts under Node.js spawns `node --import tsx`, which resolves
   // tsx from the consumer package's directory, not from build-ts's own dependencies.
+  // fmt overrides: sorting imports would move a repository's own imports into the managed blocks
+  // of oxlint.config.ts, which wbfy replaces wholesale.
   // fmt flavor: oxfmt's output, which repositories already follow, differs from Prettier's in places
   // (e.g. long union types).
   return `env = false
@@ -161,6 +163,10 @@ trailingComma = "es5"
 ignorePatterns = [
 ${fmtIgnorePatterns.map((pattern) => `  "${pattern}",`).join('\n')}
 ]
+
+[[fmt.overrides]]
+files = ["**/oxlint.config.ts"]
+options = { sortImports = false }
 `;
 };
 
