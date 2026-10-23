@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 
-import type { ParseError } from 'jsonc-parser';
+import type { Node as JsonNode, ParseError } from 'jsonc-parser';
 import { applyEdits, createScanner, findNodeAtLocation, modify, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
 // jsonc-parser declares SyntaxKind/ScanError as ambient const enums, which cannot be imported
@@ -157,14 +157,9 @@ class PreservingEditor {
         if (!Object.hasOwn(newValue, key)) this.remove([...jsonPath, key]);
       }
     }
-    // Prepend rather than append the properties that are new: appending detaches a trailing
-    // same-line comment from the last property, leaving it to describe the generated value
-    // instead. Inserting in reverse keeps the order the settings declare them in.
+    // Prepend the properties that are new, in reverse to keep the order the settings declare them in.
     for (const [key, value] of newEntries.toReversed()) {
-      this.content = applyEdits(
-        this.content,
-        modify(this.content, [...jsonPath, key], value, { ...this.modifyOptions, getInsertionIndex: () => 0 })
-      );
+      this.insert(jsonPath, 0, value, key);
     }
   }
 
@@ -185,17 +180,7 @@ class PreservingEditor {
       this.remove([...jsonPath, index]);
     }
     for (const insertion of arrayEdits.insertions) {
-      // Decide from the layout before the insertion: a comment that shares its line with the
-      // element that follows documents that element and must not be reattached to the predecessor.
-      const reattachComment = !elementFollowsOnSameLine(this.content, jsonPath, insertion.index - 1);
-      this.content = applyEdits(
-        this.content,
-        modify(this.content, [...jsonPath, insertion.index], insertion.value, {
-          ...this.modifyOptions,
-          isArrayInsertion: true,
-        })
-      );
-      if (reattachComment) this.content = restoreTrailingComment(this.content, jsonPath, insertion.index);
+      this.insert(jsonPath, insertion.index, insertion.value);
     }
   }
 
@@ -213,9 +198,89 @@ class PreservingEditor {
   }
 
   private remove(jsonPath: JsonPath): void {
-    const { content, removedText } = removeMember(this.content, jsonPath);
-    this.reportLostComments(jsonPath, removedText);
-    this.content = content;
+    const container = nodeAt(this.content, jsonPath.slice(0, -1));
+    const key = jsonPath.at(-1);
+    const members = container?.children ?? [];
+    const index =
+      typeof key === 'number' ? key : members.findIndex((property) => property.children?.[0]?.value === key);
+    if (!container || index === -1) return;
+    const regions = memberRegions(this.content, container);
+    const region = regions[index];
+    if (!region) return;
+    const member = members[index];
+    if (!member) return;
+    const removedRanges: [number, number][] = [[region.start, region.end]];
+    // When the next member continues the removed member's line, keep that line's indentation for it.
+    const memberLineStart = this.content.lastIndexOf('\n', member.offset - 1) + 1;
+    if (this.content[region.end - 1] !== '\n' && memberLineStart >= region.start) {
+      const indentationEnd =
+        memberLineStart + (/^[^\S\n]*/u.exec(this.content.slice(memberLineStart))?.[0].length ?? 0);
+      const spacesAfter = /^[^\S\n]*/u.exec(this.content.slice(region.end))?.[0].length ?? 0;
+      removedRanges.splice(0, 1, [region.start, memberLineStart], [indentationEnd, region.end + spacesAfter]);
+    } else if (index === 0 && this.content[region.end - 1] !== '\n') {
+      removedRanges.splice(0, 1, [
+        region.start,
+        region.end + (/^[^\S\n]*/u.exec(this.content.slice(region.end))?.[0].length ?? 0),
+      ]);
+    }
+    // Without a comma of its own, the member is the last one, so the comma before it must go instead.
+    const previousComma = regions[index - 1]?.commaOffset;
+    if (region.commaOffset === undefined && previousComma !== undefined) {
+      removedRanges.unshift([previousComma, previousComma + 1]);
+    }
+    this.reportLostComments(jsonPath, removedRanges.map(([start, end]) => this.content.slice(start, end)).join(''));
+    for (const [start, end] of removedRanges.toReversed()) {
+      this.content = this.content.slice(0, start) + this.content.slice(end);
+    }
+  }
+
+  /**
+   * Inserts `value` as the member at `index` of the container at `jsonPath` (as property `key` of an
+   * object), between the source regions of its neighbours so that no comment changes its member.
+   */
+  private insert(jsonPath: JsonPath, index: number, value: unknown, key?: string): void {
+    const container = nodeAt(this.content, jsonPath);
+    const members = container?.children ?? [];
+    const firstMember = members[0];
+    if (!container || !firstMember) {
+      this.content = applyEdits(
+        this.content,
+        modify(this.content, [...jsonPath, key ?? index], value, { ...this.modifyOptions, isArrayInsertion: true })
+      );
+      return;
+    }
+    const regions = memberRegions(this.content, container);
+    const multiline = this.content.slice(container.offset + 1, firstMember.offset).includes('\n');
+    const lineStart = this.content.lastIndexOf('\n', firstMember.offset - 1) + 1;
+    const indentation = multiline ? (/^[^\S\n]*/u.exec(this.content.slice(lineStart))?.[0] ?? '') : '';
+    const { insertSpaces, tabSize } = this.modifyOptions.formattingOptions;
+    const valueText = multiline
+      ? JSON.stringify(value, undefined, insertSpaces ? ' '.repeat(tabSize) : '\t').replaceAll('\n', `\n${indentation}`)
+      : JSON.stringify(value);
+    const memberText = key === undefined ? valueText : `${JSON.stringify(key)}: ${valueText}`;
+    const region = regions[index];
+    if (region) {
+      const text = multiline ? `${indentation}${memberText},\n` : index === 0 ? `${memberText}, ` : ` ${memberText},`;
+      this.content = this.content.slice(0, region.start) + text + this.content.slice(region.start);
+      return;
+    }
+    const last = regions.at(-1);
+    const lastMember = members.at(-1);
+    if (!last || !lastMember) return;
+    const endsLine = this.content[last.end - 1] === '\n';
+    const hasTrailingComma = last.commaOffset !== undefined;
+    const lineBreak = multiline && !endsLine ? '\n' : '';
+    const text = multiline
+      ? `${lineBreak}${indentation}${memberText}${hasTrailingComma ? ',' : ''}${endsLine ? '\n' : ''}`
+      : ` ${memberText}${hasTrailingComma ? ',' : ''}`;
+    const lastMemberEnd = lastMember.offset + lastMember.length;
+    this.content = hasTrailingComma
+      ? this.content.slice(0, last.end) + text + this.content.slice(last.end)
+      : this.content.slice(0, lastMemberEnd) +
+        ',' +
+        this.content.slice(lastMemberEnd, last.end) +
+        text +
+        this.content.slice(last.end);
   }
 
   private reportLostComments(jsonPath: JsonPath, removedText: string | undefined): void {
@@ -237,112 +302,53 @@ function valueTextOf(content: string, jsonPath: JsonPath): string | undefined {
   return node && content.slice(node.offset, node.offset + node.length);
 }
 
-// The whole same-line comment sequence, not just the first one: a line comment ends it (it runs to
-// the newline), but any number of block comments can precede it, and moving only the first would
-// leave the rest describing the wrong element.
+// A same-line comment sequence: any number of block comments, optionally closed by a line comment.
 const trailingCommentPattern = /^(?:[^\S\n]*\/\*[\S\s]*?\*\/)*(?:[^\S\n]*\/\/[^\n]*)?/u;
-const blockCommentsPattern = /^(?:[^\S\n]*\/\*[\S\s]*?\*\/)*/u;
 
-/** Tells whether the element after `index` in the array at `arrayPath` starts on the line where element `index` ends. */
-function elementFollowsOnSameLine(content: string, arrayPath: JsonPath, index: number): boolean {
+function nodeAt(content: string, jsonPath: JsonPath): JsonNode | undefined {
   const root = parseTree(content);
-  const elements = (root && findNodeAtLocation(root, arrayPath))?.children;
-  const element = elements?.[index];
-  const next = elements?.[index + 1];
-  return !!element && !!next && !content.slice(element.offset + element.length, next.offset).includes('\n');
+  return root && (jsonPath.length === 0 ? root : findNodeAtLocation(root, jsonPath));
+}
+
+interface MemberRegion {
+  start: number;
+  end: number;
+  commaOffset: number | undefined;
 }
 
 /**
- * Reattaches a same-line comment to the element it describes. Inserting into an array places the
- * new element BEFORE the trivia that follows its predecessor, so appending after
- * `{ ... } // why this rule exists` leaves that comment explaining the generated element instead.
- * A freshly serialized element never carries a comment of its own, so anything trailing the
- * insertion belonged to the element before it, unless the caller found that the comment shared its
- * line with the element after the insertion point.
+ * Splits the members of a container into contiguous source regions, each holding the member and
+ * the comments that document it: the comment lines above it (or an inline comment between the
+ * preceding separator and it), its own comma, and its same-line trailing comment. A comment that
+ * shares its line with the next member documents that member instead, so the region ends at the
+ * comma then. The comments after the opening bracket on its line and after the last region belong
+ * to the container and lie outside every region.
  */
-function restoreTrailingComment(content: string, arrayPath: JsonPath, insertedIndex: number): string {
-  if (insertedIndex === 0) return content;
-  const root = parseTree(content);
-  const elements = (root && findNodeAtLocation(root, arrayPath))?.children;
-  const inserted = elements?.[insertedIndex];
-  const previous = elements?.[insertedIndex - 1];
-  if (!inserted || !previous) return content;
-  // The predecessor's comments may sit on either side of the comma that follows the inserted
-  // element (which a trailing comma or a later element needs).
-  const insertedEnd = inserted.offset + inserted.length;
-  const blockComments = blockCommentsPattern.exec(content.slice(insertedEnd))?.[0] ?? '';
-  const commaMatch = /^[^\S\n]*,/u.exec(content.slice(insertedEnd + blockComments.length));
-  // Without a comma, a line comment can follow the block comments as well.
-  const commentBeforeComma = commaMatch
-    ? blockComments
-    : (trailingCommentPattern.exec(content.slice(insertedEnd))?.[0] ?? '');
-  const afterCommaOffset = insertedEnd + commentBeforeComma.length + (commaMatch?.[0].length ?? 0);
-  const commentAfterComma = commaMatch ? (trailingCommentPattern.exec(content.slice(afterCommaOffset))?.[0] ?? '') : '';
-  if (!commentBeforeComma && !commentAfterComma) return content;
-  // Land the comments after the separating comma so the element keeps its own line intact.
-  const previousEnd = previous.offset + previous.length;
-  const restoreOffset = previousEnd + (/^\s*,/u.exec(content.slice(previousEnd))?.[0].length ?? 0);
-  return (
-    content.slice(0, restoreOffset) +
-    commentBeforeComma +
-    commentAfterComma +
-    content.slice(restoreOffset, insertedEnd) +
-    content.slice(insertedEnd + commentBeforeComma.length, afterCommaOffset) +
-    content.slice(afterCommaOffset + commentAfterComma.length)
-  );
-}
-
-/**
- * Removes the array element or object property at `jsonPath` together with its separating comma,
- * its same-line trailing comment, and the comment-only lines directly above it, and returns the
- * removed source so that the caller can report the comments it took along. jsonc-parser's own
- * removal is not used: it keeps a stray character of a removed last array element on compact
- * input, leaves a bare comma behind a removed last property followed by a trailing comma, and
- * deletes the comments that precede the next element.
- */
-function removeMember(content: string, jsonPath: JsonPath): { content: string; removedText: string } {
-  const root = parseTree(content);
-  const valueNode = root && findNodeAtLocation(root, jsonPath);
-  const member = valueNode?.parent?.type === 'property' ? valueNode.parent : valueNode;
-  const siblings = member?.parent?.children;
-  if (!member || !siblings) return { content, removedText: '' };
-  const index = siblings.indexOf(member);
-  const previous = siblings[index - 1];
-  const next = siblings[index + 1];
-  let end = member.offset + member.length;
-  const comma = findComma(content, end);
-  if (comma) end = comma.offset + 1;
-  const previousComma = previous && findComma(content, previous.offset + previous.length);
-  // Without a comma after it, the member is the last one, so the comma before it must go instead.
-  const removedCommaOffset = comma ? undefined : previousComma?.offset;
-  // When the next member starts on the same line, a comment between them documents that member and
-  // the line stays; otherwise the member's same-line trailing comment goes with it.
-  const sharesLineWithNext = next !== undefined && !content.slice(end, next.offset).includes('\n');
-  if (!sharesLineWithNext) end += trailingCommentPattern.exec(content.slice(end))?.[0].length ?? 0;
-  // The member's own line holds the member and whatever precedes it there, unless the preceding
-  // separator is on that line too: then only the comment between the separator and the member
-  // documents it, and whatever precedes the separator belongs to the previous member.
-  const separatorEnd = previousComma ? previousComma.offset + 1 : (member.parent?.offset ?? member.offset - 1) + 1;
-  const lineStart = content.lastIndexOf('\n', member.offset - 1) + 1;
-  const hasOwnLine = lineStart >= separatorEnd;
-  const indentation = /^[^\S\n]*/u.exec(content.slice(hasOwnLine ? lineStart : separatorEnd))?.[0].length ?? 0;
-  const memberStart = (hasOwnLine ? lineStart : separatorEnd) + indentation;
-  const ownsLine = hasOwnLine && !sharesLineWithNext;
-  end += (ownsLine ? /^[^\S\n]*\n?/u : /^[^\S\n]*/u).exec(content.slice(end))?.[0].length ?? 0;
-  // Remove the leading comment lines and the member itself; keep the indentation of a shared line.
-  const leadingCommentStart = hasOwnLine ? extendOverLeadingCommentLines(content, lineStart) : memberStart;
-  const removedRanges: [number, number][] = ownsLine
-    ? [[leadingCommentStart, end]]
-    : [
-        [leadingCommentStart, hasOwnLine ? lineStart : memberStart],
-        [memberStart, end],
-      ];
-  if (removedCommaOffset !== undefined) removedRanges.unshift([removedCommaOffset, removedCommaOffset + 1]);
-  let result = content;
-  for (const [rangeStart, rangeEnd] of removedRanges.toReversed()) {
-    result = result.slice(0, rangeStart) + result.slice(rangeEnd);
+function memberRegions(content: string, container: JsonNode): MemberRegion[] {
+  const members = container.children ?? [];
+  const regions: MemberRegion[] = [];
+  let start = container.offset + 1;
+  const firstMember = members[0];
+  if (firstMember && content.slice(start, firstMember.offset).includes('\n')) start += lineTailLength(content, start);
+  for (const [index, member] of members.entries()) {
+    const next = members[index + 1];
+    const comma = findComma(content, member.offset + member.length);
+    let end = comma ? comma.offset + 1 : member.offset + member.length;
+    if (!next || content.slice(end, next.offset).includes('\n')) end += lineTailLength(content, end);
+    regions.push({ start, end, commaOffset: comma?.offset });
+    start = end;
   }
-  return { content: result, removedText: removedRanges.map(([from, to]) => content.slice(from, to)).join('') };
+  return regions;
+}
+
+/**
+ * Returns the length of the same-line comments at `offset` plus, when nothing else follows them on
+ * that line, the rest of the line including its line break.
+ */
+function lineTailLength(content: string, offset: number): number {
+  const comments = trailingCommentPattern.exec(content.slice(offset))?.[0] ?? '';
+  const lineEnd = /^[^\S\n]*\n/u.exec(content.slice(offset + comments.length))?.[0] ?? '';
+  return comments.length + lineEnd.length;
 }
 
 /** Returns the comma that is the next token after `offset`, skipping comments and whitespace. */
@@ -350,36 +356,6 @@ function findComma(content: string, offset: number): { offset: number } | undefi
   const scanner = createScanner(content, true);
   scanner.setPosition(offset);
   return (scanner.scan() as number) === syntaxKind.commaToken ? { offset: scanner.getTokenOffset() } : undefined;
-}
-
-/**
- * Moves `lineStart` up over the comment-only lines directly above it, which describe that line,
- * including a block comment that spans several lines.
- */
-function extendOverLeadingCommentLines(content: string, lineStart: number): number {
-  let start = lineStart;
-  while (start > 0) {
-    const previousLineStart = content.lastIndexOf('\n', start - 2) + 1;
-    const previousLine = content.slice(previousLineStart, start);
-    if (/^[^\S\n]*\/\/[^\n]*\n$/u.test(previousLine)) {
-      start = previousLineStart;
-      continue;
-    }
-    if (!/\*\/[^\S\n]*\n$/u.test(previousLine)) break;
-    const commentStart = content.lastIndexOf('/*', start);
-    const commentLineStart = content.lastIndexOf('\n', commentStart - 1) + 1;
-    const isWholeComment =
-      commentStart !== -1 &&
-      /^[^\S\n]*$/u.test(content.slice(commentLineStart, commentStart)) &&
-      !content
-        .slice(commentStart + 2, start)
-        .trimEnd()
-        .slice(0, -2)
-        .includes('*/');
-    if (!isWholeComment) break;
-    start = commentLineStart;
-  }
-  return start;
 }
 
 /**

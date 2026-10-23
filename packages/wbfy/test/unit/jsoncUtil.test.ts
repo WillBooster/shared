@@ -80,13 +80,13 @@ test('keeps a comment before the comma on the element that precedes an appended 
     rules: [1, 2],
   });
 
-  expect(content).toBe('{\n  "rules": [\n    1, /* about 1 */\n    2,\n  ],\n}\n');
+  expect(content).toBe('{\n  "rules": [\n    1 /* about 1 */,\n    2,\n  ],\n}\n');
 });
 
 test('keeps a comment with the element it shares a line with when inserting before that element', () => {
   const { content } = jsoncUtil.stringifyPreservingTrivia('{"rules":[1, /* about 2 */ 2]}', { rules: [1, 9, 2] });
 
-  expect(content).toBe('{\n  "rules": [\n    1,\n    9, /* about 2 */\n    2\n  ]\n}');
+  expect(content).toBe('{"rules":[1, 9, /* about 2 */ 2]}');
 });
 
 test('keeps the previous member trailing comment when removing a member that starts its line with a comment', () => {
@@ -97,4 +97,26 @@ test('keeps the previous member trailing comment when removing a member that sta
   );
 
   expect(content).toBe('{\n  "a": 1 /* about a */\n}\n');
+});
+
+test('keeps the predecessor comment before its comma when inserting after it on a compact line', () => {
+  const { content } = jsoncUtil.stringifyPreservingTrivia('{"rules":[1 /* about 1 */, 2]}', { rules: [1, 9, 2] });
+
+  expect(content).toBe('{"rules":[1 /* about 1 */, 9, 2]}');
+});
+
+test('keeps every comment outside a removed member that ends a multi-line block comment', () => {
+  const oldContent =
+    '{\n  // header\n  "rules": [\n    1,\n    /* obsolete rule\n       spanning lines */ 2\n  ],\n  "other": 1 // keep other\n}\n';
+  const { content } = jsoncUtil.stringifyPreservingTrivia(oldContent, { rules: [1], other: 1 }, true);
+
+  expect(content).toBe('{\n  // header\n  "rules": [\n    1\n  ],\n  "other": 1 // keep other\n}\n');
+});
+
+test('keeps an element comment above it when inserting twice before that element', () => {
+  const { content } = jsoncUtil.stringifyPreservingTrivia('{\n  "rules": [\n    1,\n    // about 3\n    3\n  ]\n}\n', {
+    rules: [1, 2, 2.5, 3],
+  });
+
+  expect(content).toBe('{\n  "rules": [\n    1,\n    2,\n    2.5,\n    // about 3\n    3\n  ]\n}\n');
 });
