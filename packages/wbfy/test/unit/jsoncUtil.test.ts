@@ -63,3 +63,14 @@ test('removes the trailing comment of a last member on a compact line that conti
   expect(content).toBe('{"rules":[1],"after":1}');
   expect(keysLosingComments).toEqual(['rules']);
 });
+
+test('removes and reports an inline comment that precedes a removed member on its line', () => {
+  const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(
+    '{"rules":[1, /* about 2 */ 2, 3]}',
+    { rules: [1, 3] },
+    true
+  );
+
+  expect(content).toBe('{"rules":[1, 3]}');
+  expect(keysLosingComments).toEqual(['rules']);
+});
