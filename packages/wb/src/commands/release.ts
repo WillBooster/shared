@@ -33,7 +33,7 @@ export const releaseCommand: CommandModule = {
     "reinstall with the hoisted linker (npm cannot walk Bun's isolated node_modules layout), " +
     'rewrite `workspace:` ranges npm cannot parse, run the release, then restore the modified files. ' +
     'Extra arguments (e.g. `--debug`, after `--`) are forwarded to the release command. ' +
-    'Before releasing, fail unless `npm whoami` authenticates against each registry other than npmjs.org that @semantic-release/npm publishes to. ' +
+    'Before running semantic-release (not multi-semantic-release), fail unless `npm whoami` authenticates against each registry other than npmjs.org that @semantic-release/npm publishes to, or when those registries cannot be determined. ' +
     'When semantic-release fails after pushing the version tag and the run can establish that nothing was published, delete the tag and its note and print how to release the version again; otherwise keep the tag and print the manual recovery. ' +
     `With the ${releasePluginName} semantic-release plugin, first complete a release that a failed run left pending.`,
   builder: (yargs: Argv<unknown>) => yargs.parserConfiguration({ 'populate--': true }),
