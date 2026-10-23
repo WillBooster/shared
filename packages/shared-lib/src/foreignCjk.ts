@@ -67,9 +67,9 @@ function buildJapaneseKanjiSet(): Set<string> {
   // The WHATWG `shift_jis` decoder is Windows-31J, so skip its vendor-extension lead bytes (0xED-0xFC) to keep JIS X 0208 only.
   const decoder = new TextDecoder('shift_jis');
   const kanjiSet = new Set(JOYO_KANJI_OUTSIDE_JIS_X_0208 + JAPANESE_NAME_KANJI_OUTSIDE_JIS_X_0208);
-  for (let lead = 0x81; lead <= 0xEA; lead++) {
-    if (lead >= 0xA0 && lead <= 0xDF) continue;
-    for (let trail = 0x40; trail <= 0xFC; trail++) {
+  for (let lead = 0x81; lead <= 0xea; lead++) {
+    if (lead >= 0xa0 && lead <= 0xdf) continue;
+    for (let trail = 0x40; trail <= 0xfc; trail++) {
       kanjiSet.add(decoder.decode(new Uint8Array([lead, trail])));
     }
   }

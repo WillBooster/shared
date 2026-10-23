@@ -59,7 +59,7 @@ export function truncate(text: string, maxLength: number, ellipsis = '…'): str
 export function sliceWithoutSplittingSurrogates(text: string, end: number): string {
   // oxlint-disable-next-line unicorn/prefer-code-point -- the check is on a single UTF-16 code unit
   const lastKeptUnit = text.charCodeAt(end - 1);
-  return text.slice(0, lastKeptUnit >= 0xD8_00 && lastKeptUnit <= 0xDB_FF ? end - 1 : end);
+  return text.slice(0, lastKeptUnit >= 0xd8_00 && lastKeptUnit <= 0xdb_ff ? end - 1 : end);
 }
 
 const htmlEntities: Readonly<Record<string, string>> = {

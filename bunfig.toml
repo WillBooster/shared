@@ -97,8 +97,7 @@ ignorePatterns = [
   "**/.claude/**",
   "**/.devcontainer/**",
   "**/.idea/AugmentWebviewStateStore.xml",
-  "**/.idea/copilot.*/**",
-  "**/.idea/copilot/**",
+  "**/.idea/copilot*/**",
   "**/.playwright-cli/**",
   "**/.serena/**",
   "**/.tmp/**",
@@ -126,6 +125,7 @@ ignorePatterns = [
   "**/.pnp.js",
   "**/*/mount/*.hash",
   "**/*.d.ts",
+  "**/*.java",
   "**/*.min.*js",
 ]
 

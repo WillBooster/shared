@@ -56,7 +56,7 @@
     "@tsconfig/node-ts": "23.6.4",
     "@types/bun": "1.4.3",
     "@types/node": "26.6.5",
-    "@willbooster/oxlint-config": "1.4.8",
+    "@willbooster/oxlint-config": "1.4.9",
     "@willbooster/wb": "workspace:*",
     "build-ts": "21.0.27",
     "oxlint": "1.88.0",

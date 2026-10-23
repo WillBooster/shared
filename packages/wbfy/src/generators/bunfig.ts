@@ -90,8 +90,7 @@ const fmtIgnorePatterns = [
   '**/.claude/**',
   '**/.devcontainer/**',
   '**/.idea/AugmentWebviewStateStore.xml',
-  '**/.idea/copilot.*/**',
-  '**/.idea/copilot/**',
+  '**/.idea/copilot*/**',
   '**/.playwright-cli/**',
   '**/.serena/**',
   '**/.tmp/**',
@@ -119,6 +118,8 @@ const fmtIgnorePatterns = [
   '**/.pnp.js',
   '**/*/mount/*.hash',
   '**/*.d.ts',
+  // Prettier formats Java; `bun fmt` would run it a second time through a Prettier config's plugin.
+  '**/*.java',
   '**/*.min.*js',
 ];
 
