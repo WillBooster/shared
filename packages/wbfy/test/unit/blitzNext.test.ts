@@ -130,7 +130,12 @@ test('replaces an existing Renovate rule that duplicates the Blitz Next.js rule'
   await fs.mkdir('.tmp', { recursive: true });
   const root = await fs.mkdtemp(path.resolve('.tmp/blitz-renovate-'));
   try {
-    const variantRule = { matchPackageNames: ['next'], matchUpdateTypes: ['major'], enabled: false };
+    const variantRule = {
+      matchPackageNames: ['next'],
+      matchFileNames: ['package.json'],
+      matchUpdateTypes: ['major'],
+      enabled: false,
+    };
     await fs.writeFile(
       path.join(root, 'package.json'),
       JSON.stringify({ name: 'app', private: true, dependencies: { blitz: '2.2.4', next: '15.5.4' } })
