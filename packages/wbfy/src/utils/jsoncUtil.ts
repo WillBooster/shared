@@ -60,16 +60,18 @@ export const jsoncUtil = {
     return false;
   },
   /**
-   * Serializes `settings` into `oldContent`, editing only the top-level properties whose values
-   * changed so the comments and formatting of an existing file survive. A property missing from
-   * `settings` is left untouched; to delete one, set its key to `undefined`.
+   * Serializes `settings` into `oldContent`, editing only the properties and array elements whose
+   * values changed so the comments and formatting of an existing file survive. A top-level property
+   * missing from `settings` is left untouched unless `removeMissing` is set; to delete one
+   * otherwise, set its key to `undefined`. A nested property missing from `settings` is removed.
    *
    * Trivia-only content keeps its comments as a header above the generated object, rather than
    * being replaced outright or run through modify() (which would move the object in front of them).
    */
   stringifyPreservingTrivia(
     oldContent: string | undefined,
-    settings: Record<string, unknown>
+    settings: Record<string, unknown>,
+    removeMissing = false
   ): { content: string; keysLosingComments: string[] } {
     if (oldContent === undefined) {
       return { content: JSON.stringify(settings, undefined, 2), keysLosingComments: [] };
@@ -86,49 +88,120 @@ export const jsoncUtil = {
         keysLosingComments: [],
       };
     }
-    const modifyOptions = { formattingOptions: detectFormattingOptions(content) };
-    const keysLosingComments: string[] = [];
+    const editor = new PreservingEditor(content);
+    editor.editObject([], oldSettings ?? {}, settings, removeMissing);
+    return { content: editor.content, keysLosingComments: editor.keysLosingComments };
+  },
+};
+
+type JsonPath = (string | number)[];
+
+/**
+ * Applies the difference between two parsed values to JSONC source one property or element at a
+ * time, so the comments and formatting of everything left unchanged survive.
+ */
+class PreservingEditor {
+  content: string;
+  readonly keysLosingComments: string[] = [];
+  private readonly modifyOptions: { formattingOptions: { insertSpaces: boolean; tabSize: number } };
+
+  constructor(content: string) {
+    this.content = content;
+    this.modifyOptions = { formattingOptions: detectFormattingOptions(content) };
+  }
+
+  /**
+   * Edits the properties of the object at `jsonPath`, removing those missing from `newValue` when
+   * `removeMissing` is set (nested objects always set it, as replacing the whole object would).
+   */
+  editObject(
+    jsonPath: JsonPath,
+    oldValue: Record<string, unknown>,
+    newValue: Record<string, unknown>,
+    removeMissing: boolean
+  ): void {
     const newEntries: [string, unknown][] = [];
-    for (const [key, value] of Object.entries(settings)) {
-      const oldValue = oldSettings?.[key];
+    for (const [key, value] of Object.entries(newValue)) {
+      const oldPropertyValue = oldValue[key];
       // Compare serialized forms so deep-equal values (e.g. a re-merged `extends` array) do not
       // rewrite the property and reflow its formatting.
-      if (JSON.stringify(oldValue) === JSON.stringify(value)) continue;
-      if (oldValue === undefined) {
+      if (JSON.stringify(oldPropertyValue) === JSON.stringify(value)) continue;
+      if (oldPropertyValue === undefined) {
         newEntries.push([key, value]);
         continue;
       }
-      // Replacing a whole array would discard the comments between its elements, so grow it with
-      // per-element insertions whenever the new value only adds to it.
-      const insertions = Array.isArray(oldValue) && Array.isArray(value) ? findInsertions(oldValue, value) : undefined;
-      for (const insertion of insertions ?? []) {
-        content = applyEdits(
-          content,
-          modify(content, [key, insertion.index], insertion.value, { ...modifyOptions, isArrayInsertion: true })
-        );
-        content = restoreTrailingComment(content, key, insertion.index);
+      this.editValue([...jsonPath, key], oldPropertyValue, value);
+    }
+    if (removeMissing) {
+      for (const key of Object.keys(oldValue)) {
+        if (!Object.hasOwn(newValue, key)) this.replace([...jsonPath, key], undefined);
       }
-      if (insertions) continue;
-      // Rewriting the whole value is the only option left (the new one drops or reorders elements),
-      // and it takes any comment nested inside it along. Report that rather than losing it quietly.
-      const replacedText = valueTextOf(content, key);
-      if (replacedText !== undefined && jsoncUtil.containsComment(replacedText)) keysLosingComments.push(key);
-      content = applyEdits(content, modify(content, [key], value, modifyOptions));
     }
     // Prepend rather than append the properties that are new: appending detaches a trailing
     // same-line comment from the last property, leaving it to describe the generated value
     // instead. Inserting in reverse keeps the order the settings declare them in.
     for (const [key, value] of newEntries.toReversed()) {
-      content = applyEdits(content, modify(content, [key], value, { ...modifyOptions, getInsertionIndex: () => 0 }));
+      this.content = applyEdits(
+        this.content,
+        modify(this.content, [...jsonPath, key], value, { ...this.modifyOptions, getInsertionIndex: () => 0 })
+      );
     }
-    return { content, keysLosingComments };
-  },
-};
+  }
 
-/** Returns the source text of a top-level property's value, comments and all. */
-function valueTextOf(content: string, key: string): string | undefined {
+  private editValue(jsonPath: JsonPath, oldValue: unknown, newValue: unknown): void {
+    if (isPlainObject(oldValue) && isPlainObject(newValue)) {
+      this.editObject(jsonPath, oldValue, newValue, true);
+      return;
+    }
+    // Replacing a whole array would discard the comments inside and between its elements, so
+    // remove and insert elements one by one whenever the new value keeps the old elements' order.
+    const arrayEdits =
+      Array.isArray(oldValue) && Array.isArray(newValue) ? findArrayEdits(oldValue, newValue) : undefined;
+    if (!arrayEdits) {
+      this.replace(jsonPath, newValue);
+      return;
+    }
+    for (const index of arrayEdits.removals.toReversed()) {
+      this.reportLostComments(jsonPath, valueTextOf(this.content, [...jsonPath, index]));
+      this.content = removeArrayElement(this.content, jsonPath, index);
+    }
+    for (const insertion of arrayEdits.insertions) {
+      this.content = applyEdits(
+        this.content,
+        modify(this.content, [...jsonPath, insertion.index], insertion.value, {
+          ...this.modifyOptions,
+          isArrayInsertion: true,
+        })
+      );
+      this.content = restoreTrailingComment(this.content, jsonPath, insertion.index);
+    }
+  }
+
+  /**
+   * Rewrites (or, with `undefined`, removes) the whole value at `jsonPath`, which takes any comment
+   * nested inside it along. Report that under its top-level key rather than losing it quietly.
+   */
+  private replace(jsonPath: JsonPath, value: unknown): void {
+    this.reportLostComments(jsonPath, valueTextOf(this.content, jsonPath));
+    this.content = applyEdits(this.content, modify(this.content, jsonPath, value, this.modifyOptions));
+  }
+
+  private reportLostComments(jsonPath: JsonPath, removedText: string | undefined): void {
+    const key = String(jsonPath[0]);
+    if (removedText !== undefined && jsoncUtil.containsComment(removedText) && !this.keysLosingComments.includes(key)) {
+      this.keysLosingComments.push(key);
+    }
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Returns the source text of the value at `jsonPath`, comments and all. */
+function valueTextOf(content: string, jsonPath: JsonPath): string | undefined {
   const root = parseTree(content);
-  const node = root && findNodeAtLocation(root, [key]);
+  const node = root && findNodeAtLocation(root, jsonPath);
   return node && content.slice(node.offset, node.offset + node.length);
 }
 
@@ -144,10 +217,10 @@ const trailingCommentPattern = /^(?:[^\S\n]*\/\*[\S\s]*?\*\/)*(?:[^\S\n]*\/\/[^\
  * A freshly serialized element never carries a comment of its own, so anything trailing the
  * insertion belonged to the element before it.
  */
-function restoreTrailingComment(content: string, key: string, insertedIndex: number): string {
+function restoreTrailingComment(content: string, arrayPath: JsonPath, insertedIndex: number): string {
   if (insertedIndex === 0) return content;
   const root = parseTree(content);
-  const elements = (root && findNodeAtLocation(root, [key]))?.children;
+  const elements = (root && findNodeAtLocation(root, arrayPath))?.children;
   const inserted = elements?.[insertedIndex];
   const previous = elements?.[insertedIndex - 1];
   if (!inserted || !previous) return content;
@@ -166,6 +239,53 @@ function restoreTrailingComment(content: string, key: string, insertedIndex: num
 }
 
 /**
+ * Removes one array element together with its separating comma and same-line trailing comment.
+ * jsonc-parser's own removal is not used: for the last element it keeps a stray character of the
+ * removed element on compact input, and for any other element it also deletes the comments that
+ * precede the next element.
+ */
+function removeArrayElement(content: string, arrayPath: JsonPath, index: number): string {
+  const root = parseTree(content);
+  const elements = (root && findNodeAtLocation(root, arrayPath))?.children;
+  const element = elements?.[index];
+  const previous = elements?.[index - 1];
+  if (!element) return content;
+  const lineStart = content.lastIndexOf('\n', element.offset - 1) + 1;
+  const ownsLine = /^[\t ]*$/u.test(content.slice(lineStart, element.offset));
+  const start = ownsLine ? extendOverLeadingCommentLines(content, lineStart) : element.offset;
+  let end = element.offset + element.length;
+  const comma = /^[^\S\n]*,/u.exec(content.slice(end));
+  // Without a comma after it, the element is the last one, so the comma before it must go instead.
+  let removedCommaOffset: number | undefined;
+  if (comma) {
+    end += comma[0].length;
+  } else if (previous) {
+    const previousEnd = previous.offset + previous.length;
+    const previousComma = /^[^\S\n]*,/u.exec(content.slice(previousEnd));
+    if (previousComma) removedCommaOffset = previousEnd + previousComma[0].length - 1;
+  }
+  end += trailingCommentPattern.exec(content.slice(end))?.[0].length ?? 0;
+  end += (ownsLine ? /^[^\S\n]*\n?/u : /^[^\S\n]*/u).exec(content.slice(end))?.[0].length ?? 0;
+  const before =
+    removedCommaOffset === undefined
+      ? content.slice(0, start)
+      : content.slice(0, removedCommaOffset) + content.slice(removedCommaOffset + 1, start);
+  return before + content.slice(end);
+}
+
+/** Moves `lineStart` up over the comment-only lines directly above it, which describe that line. */
+function extendOverLeadingCommentLines(content: string, lineStart: number): number {
+  let start = lineStart;
+  while (start > 0) {
+    const previousLineStart = content.lastIndexOf('\n', start - 2) + 1;
+    if (!/^[^\S\n]*(?:\/\/[^\n]*|\/\*(?:(?!\*\/)[^\n])*\*\/[^\S\n]*)\n$/u.test(content.slice(previousLineStart, start)))
+      break;
+    start = previousLineStart;
+  }
+  return start;
+}
+
+/**
  * Mirrors the indentation the file already uses, so a semantic change does not reindent unrelated
  * lines. The first property is measured rather than the first indented line, because a decorated
  * block comment (` * ...`) would otherwise pass for the file's indentation. Falls back to the two
@@ -181,20 +301,33 @@ function detectFormattingOptions(content: string): { insertSpaces: boolean; tabS
 }
 
 /**
- * Returns the elements to insert into `oldValue` to turn it into `newValue`, or undefined when
- * that is impossible because `newValue` drops or reorders an existing element (the caller must
- * then replace the array wholesale). Indices address the array as it grows, so applying the
- * insertions left to right yields `newValue`.
+ * Returns the edits that turn `oldValue` into `newValue` while keeping the old elements that
+ * survive, or undefined when that is impossible because `newValue` reorders them (the caller must
+ * then replace the array wholesale). `removals` are ascending indices into `oldValue`; removing
+ * them right to left and then applying `insertions` left to right (their indices address the
+ * array as it grows) yields `newValue`.
  */
-function findInsertions(oldValue: unknown[], newValue: unknown[]): { index: number; value: unknown }[] | undefined {
+function findArrayEdits(
+  oldValue: unknown[],
+  newValue: unknown[]
+): { removals: number[]; insertions: { index: number; value: unknown }[] } | undefined {
+  const oldTexts = oldValue.map((element) => JSON.stringify(element));
+  const removals: number[] = [];
   const insertions: { index: number; value: unknown }[] = [];
   let oldIndex = 0;
   for (const [newIndex, element] of newValue.entries()) {
-    if (oldIndex < oldValue.length && JSON.stringify(oldValue[oldIndex]) === JSON.stringify(element)) {
-      oldIndex++;
+    const matchedIndex = oldTexts.indexOf(JSON.stringify(element), oldIndex);
+    if (matchedIndex === -1) {
+      insertions.push({ index: newIndex, value: element });
       continue;
     }
-    insertions.push({ index: newIndex, value: element });
+    for (; oldIndex < matchedIndex; oldIndex++) removals.push(oldIndex);
+    oldIndex++;
   }
-  return oldIndex === oldValue.length ? insertions : undefined;
+  for (; oldIndex < oldTexts.length; oldIndex++) removals.push(oldIndex);
+  // A reordered element shows up as both removed and inserted; rewriting the array keeps the
+  // result readable instead of moving elements piecemeal.
+  const removedTexts = new Set(removals.map((index) => oldTexts[index]));
+  if (insertions.some((insertion) => removedTexts.has(JSON.stringify(insertion.value)))) return undefined;
+  return { removals, insertions };
 }

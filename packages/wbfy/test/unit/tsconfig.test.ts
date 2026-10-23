@@ -56,6 +56,28 @@ test('removes the wbfy-generated undici-types mapping', async () => {
   expect(compilerOptions.paths).toBeUndefined();
 });
 
+test('keeps the comments of an existing tsconfig when removing the wbfy-generated undici-types mapping', async () => {
+  await withTempTsconfig('', async (filePath, config) => {
+    await generateTsconfig(config);
+    const settings = JSON.parse(fs.readFileSync(filePath, 'utf8')) as { compilerOptions: Record<string, unknown> };
+    settings.compilerOptions.paths = {
+      '@/*': ['./src/*'],
+      'undici-types': ['./node_modules/undici-types/index.d.ts'],
+    };
+    const commented = JSON.stringify(settings, undefined, 2)
+      .replace('{\n', '{\n  // explains the setup\n')
+      .replace('    "paths": {', '    // explains why the alias exists\n    "paths": {');
+    fs.writeFileSync(filePath, commented);
+
+    await generateTsconfig(config);
+
+    const content = fs.readFileSync(filePath, 'utf8');
+    expect(content).toContain('// explains the setup');
+    expect(content).toContain('// explains why the alias exists');
+    expect(content).not.toContain('undici-types');
+  });
+});
+
 test('keeps a deliberate repo-local undici-types mapping untouched', async () => {
   const compilerOptions = await generateCompilerOptionsFromContent(
     JSON.stringify({ compilerOptions: { paths: { 'undici-types': ['./patched-types/undici-types/index.d.ts'] } } })
@@ -103,8 +125,9 @@ test('does not write through a dangling tsconfig.json symlink', async () => {
 test('initializes a comment-only tsconfig with the generated settings', async () => {
   await withTempTsconfig('// intentionally empty\n', async (filePath, config) => {
     await generateTsconfig(config);
-    const generated = JSON.parse(fs.readFileSync(filePath, 'utf8')) as { compilerOptions?: object };
-    expect(generated.compilerOptions).toBeDefined();
+    const content = fs.readFileSync(filePath, 'utf8');
+    expect(content).toStartWith('// intentionally empty\n');
+    expect((Bun.JSONC.parse(content) as { compilerOptions?: object }).compilerOptions).toBeDefined();
   });
 });
 
@@ -382,7 +405,7 @@ async function generateCompilerOptionsFromContent(
   return withTempTsconfig(existingContent, async (filePath, config) => {
     Object.assign(config.depending, dependingOverrides);
     await generateTsconfig(config);
-    const generated = JSON.parse(fs.readFileSync(filePath, 'utf8')) as {
+    const generated = Bun.JSONC.parse(fs.readFileSync(filePath, 'utf8')) as {
       compilerOptions?: Record<string, unknown>;
     };
     return generated.compilerOptions ?? {};

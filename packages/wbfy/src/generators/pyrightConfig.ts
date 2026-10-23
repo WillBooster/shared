@@ -37,7 +37,11 @@ export async function generatePyrightConfigJson(config: PackageConfig): Promise<
     if (originalSettingsJson === JSON.stringify(sortKeys(structuredClone(newSettings) as Record<string, unknown>))) {
       return;
     }
-    const newContent = JSON.stringify(newSettings, undefined, 2);
+    const { content: newContent } = jsoncUtil.stringifyPreservingTrivia(
+      oldContent,
+      newSettings as Record<string, unknown>,
+      true
+    );
     await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
 }

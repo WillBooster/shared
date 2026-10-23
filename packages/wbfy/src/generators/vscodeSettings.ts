@@ -45,7 +45,11 @@ export async function generateVscodeSettings(config: PackageConfig): Promise<voi
     // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
     // already-clean settings.json survive wbfy runs.
     if (JSON.stringify(settings) === originalSettingsJson) return;
-    const newContent = JSON.stringify(settings, undefined, 2);
+    const { content: newContent } = jsoncUtil.stringifyPreservingTrivia(
+      existingContent,
+      settings as Record<string, unknown>,
+      true
+    );
     await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
   });
 }

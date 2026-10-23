@@ -29,6 +29,55 @@ test('updates the canonical config without rewriting its unrelated content', asy
   );
 });
 
+test('keeps the comments of the remaining package rules when removing obsolete managed rules', async () => {
+  await withRepository(
+    {
+      'renovate.jsonc': `{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["${sharedPreset}"],
+  "packageRules": [
+    {
+      // Keep the first pin.
+      "matchPackageNames": ["first"],
+      "allowedVersions": "<2",
+    },
+    {
+      "description": "Keep oxc-transform-react within the peer range of the installed @vitejs/plugin-react",
+      "matchPackageNames": ["oxc-transform-react"],
+      "allowedVersions": "^0.152.0",
+    },
+    {
+      // Keep the last pin.
+      "matchPackageNames": ["last"],
+      "allowedVersions": "<3",
+    },
+    {
+      "description": "@vitejs/plugin-react peer-requires a single minor of oxc-transform-react, which Renovate does not check, so update both together and review them by hand",
+      "matchPackageNames": ["@vitejs/plugin-react", "oxc-transform-react"],
+    },
+  ],
+}
+`,
+    },
+    async (dirPath) => {
+      await generateRenovateJsonc(createConfig({ dirPath }));
+
+      const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
+      expect(content).toContain('// Keep the first pin.');
+      expect(content).toContain('// Keep the last pin.');
+      expect(content).not.toContain('oxc-transform-react');
+      expect(Bun.JSONC.parse(content)).toEqual({
+        $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+        extends: [sharedPreset],
+        packageRules: [
+          { matchPackageNames: ['first'], allowedVersions: '<2' },
+          { matchPackageNames: ['last'], allowedVersions: '<3' },
+        ],
+      });
+    }
+  );
+});
+
 test('does not shadow a non-canonical Renovate config', async () => {
   const oldContent = '{ "labels": ["dependencies"] }\n';
   await withRepository({ 'renovate.json': oldContent }, async (dirPath) => {
