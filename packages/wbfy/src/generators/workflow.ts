@@ -39,6 +39,7 @@ interface On {
   // `pull_request:`. `undefined` would omit the event entirely when dumping YAML.
   issues?: Types | null;
   pull_request?: PullRequest | null;
+  pull_request_target?: Types | null;
   push?: Push;
   schedule?: Schedule[];
   workflow_dispatch?: null;
@@ -456,8 +457,10 @@ function normalizeReleaseWorkflow(config: PackageConfig, settings: Workflow): bo
 function normalizeTriggers(settings: Workflow, kind: KnownKind, template: Workflow): void {
   if (kind === 'test' || kind === 'test-rust') {
     removeTestPathFilters(settings);
-  } else if (kind === 'semantic-pr') {
-    settings.on = template.on;
+  } else if (kind === 'semantic-pr' && settings.on) {
+    // Other triggers may drive preserved sibling jobs, so only the event is replaced.
+    delete settings.on.pull_request_target;
+    settings.on.pull_request = template.on?.pull_request;
   }
 }
 
