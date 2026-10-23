@@ -211,6 +211,7 @@ export async function usesReactCompiler(allConfigs: PackageConfig[]): Promise<bo
   if (vinextConfigs.length === 0) return false;
   // Components in a package that another tool builds (e.g. a library built with tsc next to a vinext fixture) stay uncompiled.
   if (allConfigs.some((c) => !c.depending.vinext && containsComponents(c))) return false;
+  // fixViteConfig respects an opt-out such as `vinext({ react: false })`.
   const enabled = await Promise.all(vinextConfigs.map((c) => enablesViteReactCompiler(c)));
   return enabled.every(Boolean);
 }

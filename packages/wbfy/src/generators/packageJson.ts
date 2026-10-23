@@ -11,7 +11,6 @@ import { sortPackageJson } from 'sort-package-json';
 import * as ast from 'typescript/unstable/ast';
 import type { PackageJson, SetRequired } from 'type-fest';
 
-import { enablesViteReactCompiler } from '../fixers/viteConfig.js';
 import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
 import { generatesWorkerTypes, getWorkerTypesScriptError, type PackageConfig } from '../packageConfig.js';
@@ -24,7 +23,6 @@ import { promisePool } from '../utils/promisePool.js';
 import { spawnAndReturnStatus, spawnAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
-import { getOxcTransformReactPeerRange, oxcTransformReactDependency } from '../utils/vitePluginReact.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 import {
   getDeclaredWorkspacePatterns,
@@ -99,7 +97,6 @@ async function core(
   await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   pruneCapabilityDependentCompilerDependencies(config, jsonObj);
-  if (config.depending.vinext) await applyVinextReactCompilerDependencies(config, jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   if (blitzNextVersion) {
@@ -181,6 +178,10 @@ function pruneCapabilityDependentCompilerDependencies(config: PackageConfig, jso
     // A `typescript` in `dependencies` is a library imported at runtime (e.g. wbfy's own AST parsing).
     delete jsonObj.devDependencies[typescriptDependency];
   }
+  if (config.depending.vinext) {
+    delete jsonObj.dependencies[babelReactCompilerDependency];
+    delete jsonObj.devDependencies[babelReactCompilerDependency];
+  }
 }
 
 /**
@@ -201,35 +202,6 @@ function needsTypeScriptCompiler(config: PackageConfig, jsonObj: WritablePackage
 
 function isNextFamily(config: PackageConfig): boolean {
   return config.depending.next || config.depending.blitz || config.depending.vinext;
-}
-
-/**
- * fixers/viteConfig.ts enables the React Compiler through @vitejs/plugin-react, which runs
- * `oxc-transform-react` instead of the `babel-plugin-react-compiler` that Next.js uses.
- */
-async function applyVinextReactCompilerDependencies(
-  config: PackageConfig,
-  jsonObj: WritablePackageJson
-): Promise<void> {
-  delete jsonObj.dependencies[babelReactCompilerDependency];
-  delete jsonObj.devDependencies[babelReactCompilerDependency];
-  const peerRange = getOxcTransformReactPeerRange(config.dirPath);
-  if (!peerRange || !(await enablesViteReactCompiler(config))) return;
-
-  const currentVersion = jsonObj.devDependencies[oxcTransformReactDependency];
-  if (currentVersion && semver.valid(currentVersion) && semver.satisfies(currentVersion, peerRange)) return;
-  // `bun add` would install the latest release, which may be outside the peer range.
-  const version = getStableVersionsDescending(
-    await getNpmPackageTimes(oxcTransformReactDependency),
-    shouldApplyPackageAgeGate(oxcTransformReactDependency)
-  ).find((candidate) => semver.satisfies(candidate, peerRange));
-  if (version) {
-    jsonObj.devDependencies[oxcTransformReactDependency] = version;
-  } else {
-    console.warn(
-      `Could not resolve a release of ${oxcTransformReactDependency} in ${peerRange} for ${config.dirPath}.`
-    );
-  }
 }
 
 function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): void {
@@ -303,7 +275,10 @@ async function applyPackageJsonConventions(
   // fixers/nextConfig.ts enables `reactCompiler: true` for every Next.js project outside vinext, and Next.js
   // resolves `babel-plugin-react-compiler` at build time when React Compiler is on. Add it here so
   // the managed next.config never breaks `next build` with an unresolved-package error.
-  if (config.depending.next && !config.depending.vinext) {
+  // fixers/viteConfig.ts enables it in vinext instead, whose @vitejs/plugin-react runs `oxc-transform-react`.
+  if (config.depending.vinext) {
+    devDependencies.push('oxc-transform-react');
+  } else if (config.depending.next) {
     devDependencies.push(babelReactCompilerDependency);
   }
 
