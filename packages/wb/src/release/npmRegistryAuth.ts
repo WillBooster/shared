@@ -66,7 +66,7 @@ export async function verifyPublishRegistryAuth(
 function assertForwardedArgsKeepNpmOptions(forwardedArgs: string[]): void {
   for (let index = 0; index < forwardedArgs.length; index++) {
     const arg = forwardedArgs[index]!;
-    if (arg === '--branches') index++;
+    if (arg === '--branches' && /^[^-,][^,]*$/u.test(forwardedArgs[index + 1] ?? '')) index++;
     // Any other option may override the @semantic-release/npm options (e.g. `--pkgRoot`).
     else if (!['--debug', '--dry-run', '-d', '--no-ci'].includes(arg)) {
       throw new Error(
