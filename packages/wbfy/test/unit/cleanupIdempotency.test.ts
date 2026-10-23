@@ -1,14 +1,15 @@
+import { expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { expect, test } from 'bun:test';
 import { z } from 'zod';
 
 const packageDirPath = path.resolve(import.meta.dirname, '..', '..');
 const distIndexPath = path.join(packageDirPath, 'dist', 'index.js');
+const localWbDirPath = path.resolve(packageDirPath, '..', 'wb');
 
 const smallProjectFixtures = [
   { name: 'ESM TypeScript', isEsm: true, sourceFileName: 'index.ts', source: 'export const answer = 42;\n' },
@@ -45,6 +46,10 @@ test.each(smallProjectFixtures)(
         LEFTHOOK: '0',
       });
 
+      // Check this wbfy against this repository's wb, not the published one, which may still run
+      // tools that this wbfy has removed.
+      await ensureBuiltCli(localWbDirPath);
+      linkLocalWb(tempDirPath);
       await runCommand('bun', ['run', 'cleanup'], tempDirPath, {
         LEFTHOOK: '0',
       });
@@ -109,6 +114,12 @@ test('rejects a linked mise configuration without modifying the repository or tr
   }
 }, 300_000);
 
+function linkLocalWb(dirPath: string): void {
+  const installedWbPath = path.join(dirPath, 'node_modules', '@willbooster', 'wb');
+  fs.rmSync(installedWbPath, { force: true, recursive: true });
+  fs.symlinkSync(localWbDirPath, installedWbPath);
+}
+
 async function removeFixture(dirPath: string, miseTomlPath: string): Promise<void> {
   // Cleanup must preserve the test failure even if mise cannot launch.
   await spawnAsync('mise', ['untrust', miseTomlPath], {
@@ -118,21 +129,22 @@ async function removeFixture(dirPath: string, miseTomlPath: string): Promise<voi
   fs.rmSync(dirPath, { force: true, recursive: true });
 }
 
-async function ensureBuiltCli(): Promise<void> {
-  if (isDistUpToDate()) return;
+async function ensureBuiltCli(dirPath = packageDirPath): Promise<void> {
+  if (isDistUpToDate(dirPath)) return;
 
   const buildResult = await spawnAsync('bun', ['run', 'build'], {
-    cwd: packageDirPath,
+    cwd: dirPath,
   });
   expect(buildResult.status).toBe(0);
 }
 
-function isDistUpToDate(): boolean {
-  if (!fs.existsSync(distIndexPath)) return false;
+function isDistUpToDate(dirPath: string): boolean {
+  const distPath = path.join(dirPath, 'dist', 'index.js');
+  if (!fs.existsSync(distPath)) return false;
 
-  const distMtimeMs = fs.statSync(distIndexPath).mtimeMs;
-  for (const relativePath of ['bin/wbfy.js', 'package.json', 'src']) {
-    const entryPath = path.join(packageDirPath, relativePath);
+  const distMtimeMs = fs.statSync(distPath).mtimeMs;
+  for (const relativePath of ['bin', 'package.json', 'src']) {
+    const entryPath = path.join(dirPath, relativePath);
     if (getLatestMtimeMs(entryPath) > distMtimeMs) return false;
   }
   return true;

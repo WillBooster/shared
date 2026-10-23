@@ -2,10 +2,9 @@ import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import { z } from 'zod';
-
-import { spawnAsync } from '@willbooster/shared-lib-node/src';
 
 import type { Project } from '../project.js';
 

@@ -1,7 +1,6 @@
 import { createServer } from 'node:net';
 
 import type { Project } from '../project.js';
-
 import { publishLocalServerUrl } from './localServerUrl.js';
 import { killPortProcessImmediatelyAndOnExit } from './process.js';
 

@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import chalk from 'chalk';
 import { distance } from 'fastest-levenshtein';
-import type { Argv, ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
+import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';

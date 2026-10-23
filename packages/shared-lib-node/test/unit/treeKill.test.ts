@@ -1,8 +1,7 @@
+import { describe, expect, it, spyOn } from 'bun:test';
 import type { ChildProcessByStdio } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import type { Readable } from 'node:stream';
-
-import { describe, expect, it, spyOn } from 'bun:test';
 
 import {
   createTreeScript,

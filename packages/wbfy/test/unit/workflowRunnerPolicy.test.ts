@@ -1,9 +1,9 @@
+import { expect, test } from 'bun:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { YAML } from 'bun';
-import { expect, test } from 'bun:test';
 import { z } from 'zod';
 
 import { generateWorkflows } from '../../src/generators/workflow.js';

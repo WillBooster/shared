@@ -22,7 +22,6 @@
         "oxlint": "1.88.0",
         "oxlint-tsgolint": "7.0.2004",
         "semantic-release": "25.0.9",
-        "sort-package-json": "4.1.0",
       },
     },
     "packages/shared-lib": {
@@ -39,7 +38,6 @@
         "build-ts": "21.0.27",
         "oxlint": "1.88.0",
         "oxlint-tsgolint": "7.0.2004",
-        "sort-package-json": "4.1.0",
         "yaml": "2.9.1",
       },
     },
@@ -58,7 +56,6 @@
         "build-ts": "21.0.27",
         "oxlint": "1.88.0",
         "oxlint-tsgolint": "7.0.2004",
-        "sort-package-json": "4.1.0",
       },
     },
     "packages/shared-lib-next": {
@@ -76,7 +73,6 @@
         "next": "16.4.1",
         "oxlint": "1.88.0",
         "oxlint-tsgolint": "7.0.2004",
-        "sort-package-json": "4.1.0",
         "typescript": "7.0.2",
       },
       "peerDependencies": {
@@ -102,7 +98,6 @@
         "build-ts": "21.0.27",
         "oxlint": "1.88.0",
         "oxlint-tsgolint": "7.0.2004",
-        "sort-package-json": "4.1.0",
       },
     },
     "packages/shared-lib-react": {
@@ -123,7 +118,6 @@
         "oxlint-tsgolint": "7.0.2004",
         "react": "19.3.1",
         "react-dom": "19.3.1",
-        "sort-package-json": "4.1.0",
       },
       "peerDependencies": {
         "react": "~19.2.0 || ~19.3.0",
@@ -173,7 +167,6 @@
         "oxlint": "1.88.0",
         "oxlint-tsgolint": "7.0.2004",
         "semantic-release": "25.0.9",
-        "sort-package-json": "4.1.0",
         "textlint-rule-no-hankaku-kana": "2.0.1",
         "type-fest": "5.10.0",
       },
@@ -218,7 +211,6 @@
         "lefthook": "2.2.2",
         "oxlint": "1.88.0",
         "oxlint-tsgolint": "7.0.2004",
-        "sort-package-json": "4.1.0",
         "type-fest": "5.10.0",
       },
     },
@@ -1553,8 +1545,6 @@
 
     "detect-libc": ["detect-libc@2.1.2", "", {}, "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="],
 
-    "detect-newline": ["detect-newline@4.0.1", "", {}, "sha512-qE3Veg1YXzGHQhlA6jzebZN2qVf6NX+A7m7qlhCGG30dJixrAQhYOsJjsnBjJkCSmuOPpCk30145fr8FV0bzog=="],
-
     "detect-node": ["detect-node@2.1.0", "", {}, "sha512-T0NIuQpnTvFDATNuHN5roPwSBG83rFsuO+MXXH9/3N1eFbn4wcPjttvjMLEPWJ0RGUYgQE7cGgS3tNxbqCGM7g=="],
 
     "detect-port": ["detect-port@1.3.0", "", { "dependencies": { "address": "^1.0.1", "debug": "^2.6.0" }, "bin": { "detect": "./bin/detect-port", "detect-port": "./bin/detect-port" } }, "sha512-E+B1gzkl2gqxt1IhUzwjrxBKRqx1UzC3WLONHinn8S3T6lwV/agVCyitiFOsGJ/eYuEUBvD71MZHy3Pv1G9doQ=="],
@@ -1754,8 +1744,6 @@
     "get-stream": ["get-stream@6.0.1", "", {}, "sha512-ts6Wi+2j3jQjqi70w5AlN8DFnkSwC+MqmxEzdEALB2qXZYV3X/b1CTfgPLGJNMeAWxdPfU8FO1ms3NUfaHCPYg=="],
 
     "get-value": ["get-value@2.0.6", "", {}, "sha512-Ln0UQDlxH1BapMu3GPtf7CuYNwRZf2gwCuPqbyG6pB8WfmFpzqcy4xtAaAMUhnNqjMKTiCPZG2oMT3YSx8U2NA=="],
-
-    "git-hooks-list": ["git-hooks-list@4.2.1", "", {}, "sha512-WNvqJjOxxs/8ZP9+DWdwWJ7cDsd60NHf39XnD82pDVrKO5q7xfPqpkK6hwEAmBa/ZSEE4IOoR75EzbbIuwGlMw=="],
 
     "git-log-parser": ["git-log-parser@1.2.1", "", { "dependencies": { "argv-formatter": "~1.0.0", "spawn-error-forwarder": "~1.0.0", "split2": "~1.0.0", "stream-combiner2": "~1.1.1", "through2": "~2.0.0", "traverse": "0.6.8" } }, "sha512-PI+sPDvHXNPl5WNOErAK05s3j0lgwUzMN6o8cyQrDaKfT3qd7TmNJKeXX+SknI5I0QhG5fVPAEwSY4tRGDtYoQ=="],
 
@@ -2594,10 +2582,6 @@
     "snapdragon-node": ["snapdragon-node@2.1.1", "", { "dependencies": { "define-property": "^1.0.0", "isobject": "^3.0.0", "snapdragon-util": "^3.0.1" } }, "sha512-O27l4xaMYt/RSQ5TR3vpWCAB5Kb/czIcqUFOM/C4fYcLnbZUc1PkjTAMjof2pBWaSTwOUd6qUHcFGVGj7aIwnw=="],
 
     "snapdragon-util": ["snapdragon-util@3.0.1", "", { "dependencies": { "kind-of": "^3.2.0" } }, "sha512-mbKkMdQKsjX4BAL4bRYTj21edOf8cN7XHdYUJEe+Zn99hVEYcMvKPct1IqNe7+AZPirn8BCDOQBHQZknqmKlZQ=="],
-
-    "sort-object-keys": ["sort-object-keys@2.1.0", "", {}, "sha512-SOiEnthkJKPv2L6ec6HMwhUcN0/lppkeYuN1x63PbyPRrgSPIuBJCiYxYyvWRTtjMlOi14vQUCGUJqS6PLVm8g=="],
-
-    "sort-package-json": ["sort-package-json@4.1.0", "", { "dependencies": { "detect-indent": "^7.0.2", "detect-newline": "^4.0.1", "git-hooks-list": "^4.1.1", "is-plain-obj": "^4.1.0", "semver": "^7.7.3", "sort-object-keys": "^2.0.1", "tinyglobby": "^0.2.15" }, "bin": { "sort-package-json": "cli.js" } }, "sha512-CI7HgkV5rCE5dbYYJMuXkxgiSLc3uJczff9ic3kHuY5QRYKUbfsDSKN4DjTpvqejdJEkKLusQ64ykTte5ypr1A=="],
 
     "source-map": ["source-map@0.6.1", "", {}, "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g=="],
 

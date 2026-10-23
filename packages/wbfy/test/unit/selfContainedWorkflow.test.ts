@@ -1,10 +1,10 @@
+import { expect, test } from 'bun:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { YAML } from 'bun';
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { expect, test } from 'bun:test';
+import { YAML } from 'bun';
 
 import {
   generateSelfContainedWorkflows,

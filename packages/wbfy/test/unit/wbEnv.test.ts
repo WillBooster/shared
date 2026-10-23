@@ -1,12 +1,11 @@
+import { expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 import { TOML } from 'bun';
-import { expect, test } from 'bun:test';
 
 import { ensureWbEnvDefinitions, insertWbEnvIntoFnoxToml } from '../../src/generators/wbEnv.js';
-
 import { createConfig } from '../helpers/testConfig.js';
 
 const fnoxTomlWithoutWbEnv = `[providers.age]

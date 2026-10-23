@@ -1,6 +1,5 @@
-import { spawn } from 'node:child_process';
-
 import { describe, expect, it } from 'bun:test';
+import { spawn } from 'node:child_process';
 
 import { waitForProcessStopped } from '../../../../test/helpers/processUtils.js';
 import { killPorts } from '../../src/commands/killPort.js';

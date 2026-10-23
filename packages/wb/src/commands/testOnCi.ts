@@ -14,7 +14,6 @@ import { PackageCommandError } from '../utils/packageCommand.js';
 import { promisePool } from '../utils/promisePool.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../utils/shell.js';
 import { findTestStructureViolations, printTestStructureViolations } from '../utils/testStructure.js';
-
 import { getDefaultUnitTargets, POST_TEST_SCRIPT_NAME } from './test.js';
 
 const testOnCiBuilder = {

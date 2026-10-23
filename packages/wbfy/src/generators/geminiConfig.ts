@@ -8,7 +8,6 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
 import { runAllInPool } from '../utils/promisePool.js';
-
 import {
   generateAgentCodingStyle,
   getDefaultProseLanguage,

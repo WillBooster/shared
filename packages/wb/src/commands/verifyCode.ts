@@ -1,7 +1,7 @@
 import path from 'node:path';
 
 import chalk from 'chalk';
-import type { Argv, ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
+import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import { findDescendantProjects, findRootAndSelfProjects, findSelfProject } from '../project.js';
@@ -9,16 +9,15 @@ import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { normalizeBunLockfile } from '../utils/bunLockfile.js';
 import { PackageCommandError, runPackageCommand } from '../utils/packageCommand.js';
 import { startVerificationOutput } from '../utils/verificationOutput.js';
-
 import { checkCodeGaugeForVerify, printCodeGaugeCommandsForVerify } from './codeGauge.js';
 import { buildLintCommand, lint, type LintCommandArgv } from './lint.js';
 import { checkSlidevDecks, findSlidevDecks } from './slidevCheck.js';
 import {
   describeTestSelection,
   test,
-  testSelectionOptions,
   testArgumentsBuilder,
   type TestCommandArgv,
+  testSelectionOptions,
   withDefaultTestCascadeEnv,
 } from './test.js';
 import { buildTypeCheckCommands, typeCheck, type TypeCheckCommandArgv } from './typecheck.js';

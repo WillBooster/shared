@@ -9,8 +9,8 @@ import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } fro
 
 import type { Project } from '../project.js';
 import { findSelfProjectOrExit } from '../project.js';
-import { selectFnoxSourcedKeys } from '../utils/envSources.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { selectFnoxSourcedKeys } from '../utils/envSources.js';
 
 // Railway injects its own system variables and platform-managed values; never mirror those back,
 // and skip local-only keys. App variables (including DATABASE_URL, PORT) stay eligible because

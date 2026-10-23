@@ -1,13 +1,11 @@
+import { expect, test } from 'bun:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from 'bun:test';
-
 import { generateTsconfig } from '../../src/generators/tsconfig.js';
 import { getPackageConfig, type PackageConfig } from '../../src/packageConfig.js';
-
 import { createConfig } from '../helpers/testConfig.js';
 
 test('keeps the bundler pair for Vite-dependent packages', async () => {
@@ -42,22 +40,20 @@ test('does not force a bundler resolver on Next configs that extend a base confi
 test('merges settings from a tsconfig containing JSONC comments instead of replacing the file', async () => {
   const compilerOptions = await generateCompilerOptionsFromContent(`{
   "compilerOptions": {
-    // explains why the mapping exists
+    // explains why the alias exists
     "paths": {
-      "undici-types": ["./node_modules/undici-types/index.d.ts"]
+      "@/*": ["./src/*"]
     },
   }
 }`);
-  expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types/index.d.ts'] });
+  expect(compilerOptions.paths).toEqual({ '@/*': ['./src/*'] });
 });
 
-test('rewrites a stale wbfy-generated undici-types mapping to the current root depth', async () => {
-  // An older getRootDir mis-resolved deep workspaces, so wbfy-generated mappings may carry a
-  // wrong depth; they must be migrated to the depth the current getRootDir computes ('.' here).
+test('removes the wbfy-generated undici-types mapping', async () => {
   const compilerOptions = await generateCompilerOptionsFromContent(
     JSON.stringify({ compilerOptions: { paths: { 'undici-types': ['../../node_modules/undici-types/index.d.ts'] } } })
   );
-  expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types/index.d.ts'] });
+  expect(compilerOptions.paths).toBeUndefined();
 });
 
 test('keeps a deliberate repo-local undici-types mapping untouched', async () => {
@@ -124,10 +120,9 @@ test('keeps a commented tsconfig byte-identical when the settings are already up
 
 test('merges settings from a tsconfig with a UTF-8 BOM instead of skipping it', async () => {
   const compilerOptions = await generateCompilerOptionsFromContent(
-    '\uFEFF' +
-      JSON.stringify({ compilerOptions: { paths: { 'undici-types': ['./node_modules/undici-types/index.d.ts'] } } })
+    '\uFEFF' + JSON.stringify({ compilerOptions: { paths: { '@/*': ['./src/*'] } } })
   );
-  expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types/index.d.ts'] });
+  expect(compilerOptions.paths).toEqual({ '@/*': ['./src/*'] });
 });
 
 test('keeps a nested workspace in the root project when its ancestor package is negated', async () => {
@@ -359,10 +354,10 @@ test('keeps root and workspace compiler scopes separate while preserving coverag
 test('keeps a commented Next tsconfig byte-identical when no cleanup is needed', async () => {
   const commentedContent = `{
   "compilerOptions": {
-    // explains why the mapping exists
+    // explains why the alias exists
     "moduleResolution": "bundler",
     "paths": {
-      "undici-types": ["./node_modules/undici-types/index.d.ts"]
+      "@/*": ["./src/*"]
     }
   }
 }`;

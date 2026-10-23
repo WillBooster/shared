@@ -5,7 +5,7 @@ import { resolveFallbackWbEnv } from '@willbooster/shared-lib-node/src';
 import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
 
 import { getRunScriptArgs } from '../../bin/runArgs.js';
-import { findSelfProject, readAndMergeEnvironmentVariables, type Project } from '../project.js';
+import { findSelfProject, type Project, readAndMergeEnvironmentVariables } from '../project.js';
 import { applyLocalServerUrl } from '../utils/localServerUrl.js';
 import { usesBunRuntime } from '../utils/runtime.js';
 import { runCommandWithEnvironment } from './dotenv.js';

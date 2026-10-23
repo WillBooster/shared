@@ -1,7 +1,7 @@
+import { beforeEach, describe, expect, mock, test } from 'bun:test';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import type { MiddlewareNext } from 'blitz';
-import { beforeEach, describe, expect, test, mock } from 'bun:test';
 
 import { BasicAuthMiddleware } from '../../src/index.js';
 

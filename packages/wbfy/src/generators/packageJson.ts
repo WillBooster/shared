@@ -2,21 +2,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { escapeRegExp, quoteForShell } from '@willbooster/shared-lib/src';
 import { getGlobIgnore, globIgnore } from '@willbooster/shared-lib-node/src';
+import { escapeRegExp, quoteForShell } from '@willbooster/shared-lib/src';
 import merge from 'deepmerge';
 import fg from 'fast-glob';
 import semver from 'semver';
-import { sortPackageJson } from 'sort-package-json';
-import * as ast from 'typescript/unstable/ast';
 import type { PackageJson, SetRequired } from 'type-fest';
+import * as ast from 'typescript/unstable/ast';
 
 import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
 import { generatesWorkerTypes, getWorkerTypesScriptError, type PackageConfig } from '../packageConfig.js';
-import { classifyScriptSegment, splitScriptSegments } from '../utils/managedScriptSegment.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
+import { classifyScriptSegment, splitScriptSegments } from '../utils/managedScriptSegment.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -33,8 +32,8 @@ import {
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
 
 const oxlintDeps = ['@willbooster/oxlint-config', 'oxlint', 'oxlint-tsgolint'];
-// `bun fmt` replaced oxfmt, configured by the bunfig.toml `[fmt]` section.
-const oxfmtDeps = ['@willbooster/oxfmt-config', 'oxfmt'];
+// `bun fmt` replaced these formatters, configured by the bunfig.toml `[fmt]` section.
+const bunFmtReplacedDeps = ['@willbooster/oxfmt-config', 'oxfmt', 'sort-package-json'];
 const typescriptDependency = 'typescript';
 const babelReactCompilerDependency = 'babel-plugin-react-compiler';
 // TypeScript 7's `typescript` package is the tsgo native compiler and exposes no
@@ -52,7 +51,6 @@ const managedDependencyNames = new Set([
   lefthookDependency,
   typescriptDependency,
   typescriptGoDependency,
-  'sort-package-json',
   // Mixed @types/bun versions across a monorepo load two bun-types copies, which
   // breaks global interface merging (e.g. Response/Headers) during type checking.
   '@types/bun',
@@ -99,7 +97,7 @@ async function core(
   await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   pruneCapabilityDependentCompilerDependencies(config, jsonObj);
-  removeOxfmtDependencies(jsonObj);
+  removeBunFmtReplacedDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   if (blitzNextVersion) {
@@ -122,27 +120,26 @@ async function core(
   delete jsonObj.packageManager;
   // Yarn reads package.json from disk before deciding whether `yarn add -D`
   // conflicts with an existing regular dependency, so this write must finish
-  // before installing the managed dependency updates below. Keep this generated
-  // file sorted even when we later run the target repository's formatter so a
-  // mid-run interruption never leaves package.json in a partially managed order.
+  // before installing the managed dependency updates below. It is written in insertion order and
+  // sorted by the `bun fmt` run at the end, so a formatting failure cannot cost those updates.
   // A refused write (e.g. a symlinked package.json) must also abort the dependency installation
   // below: `bun add` follows the symlink and would modify the file outside the repository.
-  if (!(await fsUtil.generateFile(filePath, serializePackageJson(jsonObj)))) return;
+  // fsUtil.generateFile() normalizes the trailing newline.
+  if (!(await fsUtil.generateFile(filePath, JSON.stringify(jsonObj, undefined, 2)))) return;
 
   if (!skipAddingDeps) {
     await installDependencyUpdates(config, rootConfig, jsonObj, dependencyUpdates);
-    // A newly created manifest is already sorted by wbfy's bundled serializer; the target formatter
-    // is available without an extra fetch only when this run started with package.json.
-    if (config.doesContainPackageJson) {
-      await formatPackageJsonWithProjectFormatter(config, filePath);
-    }
   }
+  await formatPackageJson(config);
 }
 
-function serializePackageJson(jsonObj: WritablePackageJson): string {
-  // fsUtil.generateFile() normalizes the trailing newline, so keep the serializer
-  // focused on the JSON payload itself.
-  return JSON.stringify(sortPackageJson(jsonObj), undefined, 2);
+async function formatPackageJson(config: PackageConfig): Promise<void> {
+  // Without `--no-script`, a `fmt` script would run instead. A manifest that the `[fmt]` ignore
+  // patterns exclude stays unformatted, as `wb lint --format` leaves it.
+  const args = ['fmt', '--no-script', '--no-error-on-unmatched-pattern', '--sort-package-json', '--', 'package.json'];
+  if ((await spawnAndReturnStatus('bun', args, config.dirPath)) !== 0) {
+    throw new Error(`Failed to format ${path.join(config.dirPath, 'package.json')} with \`bun fmt\`.`);
+  }
 }
 
 async function getBlitzNextVersion(): Promise<string> {
@@ -170,8 +167,8 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
   return jsonObj as WritablePackageJson;
 }
 
-function removeOxfmtDependencies(jsonObj: WritablePackageJson): void {
-  for (const dependency of oxfmtDeps) {
+function removeBunFmtReplacedDependencies(jsonObj: WritablePackageJson): void {
+  for (const dependency of bunFmtReplacedDeps) {
     delete jsonObj.dependencies[dependency];
     delete jsonObj.devDependencies[dependency];
   }
@@ -272,7 +269,7 @@ async function applyPackageJsonConventions(
 ): Promise<DependencyUpdates> {
   const updates: DependencyUpdates = {
     dependencies: [],
-    devDependencies: ['sort-package-json'],
+    devDependencies: [],
     pythonDevDependencies: [],
   };
   const { devDependencies } = updates;
@@ -1068,17 +1065,6 @@ async function addPackageJsonDependencies(
     packageJsonDependencies[dependency] = latestVersion;
   }
   return dependenciesToInstall;
-}
-
-async function formatPackageJsonWithProjectFormatter(config: PackageConfig, filePath: string): Promise<void> {
-  const relativeFilePath = path.relative(config.dirPath, filePath);
-  if (!relativeFilePath) return;
-
-  // Reuse the target repository's own formatter after dependency installation so
-  // package.json matches whatever its current sort-package-json version expects.
-  // This avoids follow-up autofix commits caused only by formatter version drift
-  // between wbfy and the project being updated.
-  await spawnAndReturnStatus('bunx', ['sort-package-json', relativeFilePath], config.dirPath);
 }
 
 async function removeUnusedTsconfigBaseDependencies(

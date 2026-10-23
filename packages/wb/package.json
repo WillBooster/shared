@@ -2,17 +2,12 @@
   "name": "@willbooster/wb",
   "version": "0.0.0-semantically-released",
   "description": "CLI tool for WillBooster projects",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/wb"
-  },
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
-  "type": "module",
-  "exports": {
-    "./bin/*": "./bin/*",
-    "./release-plugin": "./dist/releasePlugin.js"
   },
   "bin": {
     "wb": "bin/index.js"
@@ -22,6 +17,15 @@
     "docker/",
     "dist/"
   ],
+  "type": "module",
+  "exports": {
+    "./bin/*": "./bin/*",
+    "./release-plugin": "./dist/releasePlugin.js"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
     "build": "bun run start buildIfNeeded --command 'bun build-ts app --input src/index.ts src/releasePlugin.ts'",
     "cleanup": "bun wb lint --fix --format",
@@ -72,15 +76,10 @@
     "oxlint": "1.88.0",
     "oxlint-tsgolint": "7.0.2004",
     "semantic-release": "25.0.9",
-    "sort-package-json": "4.1.0",
     "textlint-rule-no-hankaku-kana": "2.0.1",
     "type-fest": "5.10.0"
   },
   "engines": {
     "node": ">= 22.18.0"
-  },
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/"
   }
 }

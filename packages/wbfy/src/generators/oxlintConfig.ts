@@ -7,7 +7,6 @@ import {
   isPublishedWillboosterConfigsPackage,
   resolveWillboosterConfigModule,
 } from '../utils/willboosterConfigsUtil.js';
-
 import { normalizeConfigContent } from './configContent.js';
 import { ManagedConfigBlocks } from './managedConfigBlock.js';
 

@@ -1,11 +1,9 @@
+import { expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from 'bun:test';
-
 import { fixPlaywrightConfig } from '../../src/fixers/playwrightConfig.js';
-
 import { createConfig } from '../helpers/testConfig.js';
 
 test('preserves a custom Playwright web server lifecycle', async () => {

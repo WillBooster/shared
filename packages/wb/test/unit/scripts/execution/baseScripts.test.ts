@@ -1,8 +1,8 @@
+import { afterAll, describe, expect, it, mock, spyOn } from 'bun:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterAll, describe, expect, it, mock, spyOn } from 'bun:test';
 import yargs from 'yargs';
 
 import type { TestArgv } from '../../../../src/commands/test.js';

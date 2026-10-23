@@ -9,7 +9,6 @@ import { findDescendantProjects } from '../project.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { promisePool } from '../utils/promisePool.js';
 import { shellEscapeArgument } from '../utils/shell.js';
-
 import { prepareForRunningCommand } from './commandUtils.js';
 
 const builder = {} as const;

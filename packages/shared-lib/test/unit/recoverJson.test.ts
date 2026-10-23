@@ -1,5 +1,6 @@
 /*! Selected cases adapted from jsonrepair, Copyright (c) 2020-2026 Jos de Jong (ISC). See NOTICE. */
 import { expect, test } from 'bun:test';
+
 import { type JsonRecovery, recoverJson as recoverJsonUnchecked } from '../../src/index.js';
 
 test('locates repairs in the original response and distinguishes their uncertainty', () => {

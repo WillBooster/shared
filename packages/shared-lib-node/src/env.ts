@@ -1,6 +1,6 @@
+import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import childProcess from 'node:child_process';
 
 import { expand } from 'dotenv-expand';
 import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';

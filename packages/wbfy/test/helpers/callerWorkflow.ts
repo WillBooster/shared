@@ -1,8 +1,8 @@
+import { expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { YAML } from 'bun';
-import { expect } from 'bun:test';
 
 export interface CallerJob {
   secrets?: Record<string, string>;

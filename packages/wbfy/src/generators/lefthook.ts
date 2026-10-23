@@ -5,12 +5,11 @@ import { quoteForShell } from '@willbooster/shared-lib/src';
 import * as yaml from 'js-yaml';
 
 import { logger } from '../logger.js';
-import { fsUtil } from '../utils/fsUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
+import { fsUtil } from '../utils/fsUtil.js';
 import { getGenI18nTsCommand } from '../utils/genI18nTs.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
-
 import { generateScripts } from './packageJson.js';
 
 interface LefthookSettings {
@@ -272,13 +271,9 @@ bun wb lint --fix --format -- {staged_files}
   }
 
   return String.raw`
-package_json_files="$(printf '%s\n' {staged_files} | grep -E '(^|/)package\.json$' || true)"
 ${hasPythonPackageManager(config) ? String.raw`python_files="$(printf '%s\n' {staged_files} | grep -E '\.py$' || true)"` : ''}
 ${config.doesContainPubspecYaml ? String.raw`dart_files="$(printf '%s\n' {staged_files} | grep -E '\.dart$' | grep -v 'generated' | grep -v '\.freezed\.dart$' | grep -v '\.g\.dart$' || true)"` : ''}
 
-if [ -n "$package_json_files" ]; then
-  bun sort-package-json $package_json_files
-fi
 for file in {staged_files}; do
   case "$file" in
     ${extensions.bunFmt.map((extension) => `*.${extension}`).join('|')}) bun fmt --no-script --no-error-on-unmatched-pattern -- "$file" || exit ;;

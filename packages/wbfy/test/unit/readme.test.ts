@@ -1,8 +1,7 @@
+import { afterEach, expect, mock, spyOn, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-
-import { afterEach, expect, mock, spyOn, test } from 'bun:test';
 
 import { generateReadme, readAppliedWbfyVersionLabel, writeBadgeBlock } from '../../src/generators/readme.js';
 import { getPackageConfig } from '../../src/packageConfig.js';

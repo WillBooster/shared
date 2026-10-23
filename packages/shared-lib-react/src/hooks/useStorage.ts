@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useMemo, useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 
 export interface UseStorageOptions<T> {
   parseAfterJsonParse?: (value: unknown) => T;

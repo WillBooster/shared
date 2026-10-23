@@ -1,3 +1,4 @@
+import { afterEach, beforeAll, expect, it } from 'bun:test';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -6,7 +7,6 @@ import { stripVTControlCharacters } from 'node:util';
 
 import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { afterEach, beforeAll, expect, it } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
 

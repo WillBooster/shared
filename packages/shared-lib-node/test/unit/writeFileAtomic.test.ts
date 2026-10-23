@@ -1,8 +1,7 @@
+import { afterEach, beforeEach, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-
-import { afterEach, beforeEach, expect, test } from 'bun:test';
 
 import { writeFileAtomic } from '../../src/writeFileAtomic.js';
 

@@ -1,7 +1,6 @@
 import { beforeAll, describe, expect, it } from 'bun:test';
 
 import { spawnAsync } from '../../src/spawn.js';
-
 import { isFnoxAvailable } from '../helpers/commandAvailability.js';
 
 // Bundlers (build-ts/rolldown) replace the `process.env.NODE_ENV` member expression with the

@@ -13,10 +13,10 @@ import chalk from 'chalk';
 import { z } from 'zod';
 
 import type { Project } from '../project.js';
-import type { CheckEnvArgv } from './checkEnv.js';
-import { checkEnv } from './checkEnv.js';
 import { exitWithError } from '../utils/exit.js';
 import { collectFnoxKeyNamesForProfile } from '../utils/fnoxToml.js';
+import type { CheckEnvArgv } from './checkEnv.js';
+import { checkEnv } from './checkEnv.js';
 import { isNonRailwayKey, pushRailwayVariables, resolveRailwayVariables } from './railwayEnv.js';
 
 export const RAILWAY_IAC_FILE_PATH = '.railway/railway.ts';

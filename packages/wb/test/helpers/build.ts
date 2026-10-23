@@ -1,8 +1,8 @@
+import { expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { expect } from 'bun:test';
 
 /**
  * Builds dist/ for tests that run bin/index.js. Every such test file must call this in `beforeAll`:

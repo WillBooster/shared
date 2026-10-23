@@ -1,7 +1,6 @@
+import { afterEach, describe, expect, it } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-
-import { afterEach, describe, expect, it } from 'bun:test';
 
 import { generateRepositoryNpmrc } from '../../src/generators/npmrc.js';
 import { getPackageConfig, type PackageConfig } from '../../src/packageConfig.js';

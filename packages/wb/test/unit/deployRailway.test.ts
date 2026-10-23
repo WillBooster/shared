@@ -1,3 +1,4 @@
+import { afterEach, beforeAll, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test';
 import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -6,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 
 import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
 

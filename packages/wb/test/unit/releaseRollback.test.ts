@@ -1,3 +1,4 @@
+import { beforeAll, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -5,7 +6,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { beforeAll, expect, test } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
 

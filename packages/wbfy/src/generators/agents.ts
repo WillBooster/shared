@@ -7,9 +7,9 @@ import fg from 'fast-glob';
 import { enablesViteReactCompiler } from '../fixers/viteConfig.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { generatesWorkerTypes } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { runAllInPool } from '../utils/promisePool.js';
-import { generatesWorkerTypes } from '../packageConfig.js';
 import { hasCloudflareDeployWorkflow, invokesWbDeploy } from './workflow.js';
 
 export async function generateAgentInstructions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {

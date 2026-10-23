@@ -1,12 +1,12 @@
+import { describe, expect, it } from 'bun:test';
 import childProcess from 'node:child_process';
-import http from 'node:http';
 import { once } from 'node:events';
 import fs from 'node:fs/promises';
+import http from 'node:http';
 import path from 'node:path';
 
 import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { describe, expect, it } from 'bun:test';
 
 import { getMaintenancePidFilePath } from '../../src/commands/maintenance.js';
 

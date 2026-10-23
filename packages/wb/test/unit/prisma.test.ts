@@ -1,5 +1,6 @@
-import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { describe, expect, it } from 'bun:test';
+
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import yargs from 'yargs';
 
 import { extractUnknownOptions } from '../../src/commands/prisma.js';

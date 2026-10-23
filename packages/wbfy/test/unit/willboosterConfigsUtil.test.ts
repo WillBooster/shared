@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
 import { resolveWillboosterConfigModule } from '../../src/utils/willboosterConfigsUtil.js';
-
 import { createConfig } from '../helpers/testConfig.js';
 
 describe('resolveWillboosterConfigModule', () => {

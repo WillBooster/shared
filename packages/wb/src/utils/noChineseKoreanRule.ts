@@ -1,5 +1,5 @@
-import { findForeignCjkCharactersInJapanese } from '@willbooster/shared-lib/src';
 import type { TextlintKernelRule } from '@textlint/kernel';
+import { findForeignCjkCharactersInJapanese } from '@willbooster/shared-lib/src';
 
 // Checks the whole source except code and HTML comments (speaker notes), since visible slide text also lives in
 // block HTML, image alt text, and other nodes that a per-node-type visitor would miss.

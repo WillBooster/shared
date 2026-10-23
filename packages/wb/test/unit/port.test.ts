@@ -1,10 +1,9 @@
+import { afterAll, describe, expect, it, mock, spyOn } from 'bun:test';
 import fs from 'node:fs';
 import type { Server } from 'node:net';
 import { createServer } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-
-import { afterAll, describe, expect, it, mock, spyOn } from 'bun:test';
 
 import type { Project } from '../../src/project.js';
 import { computePreferredPort, ensurePort, getEnsuredPort } from '../../src/utils/port.js';

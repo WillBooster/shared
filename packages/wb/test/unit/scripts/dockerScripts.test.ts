@@ -1,10 +1,10 @@
+import { describe, expect, it } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { describe, expect, it } from 'bun:test';
 
 import { Project } from '../../../src/project.js';
 import { dockerScripts, selectContainerEnvKeys } from '../../../src/scripts/dockerScripts.js';

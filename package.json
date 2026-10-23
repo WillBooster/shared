@@ -1,16 +1,20 @@
 {
   "name": "willbooster-shared",
   "version": "0.0.0-semantically-released",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git"
   },
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
-  "type": "module",
   "workspaces": [
     "packages/*"
   ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
     "build": "bun run --filter '*' build",
     "cleanup": "bun wb lint --fix --format",
@@ -24,9 +28,6 @@
     "typecheck": "bun wb typecheck",
     "verify": "bun wb verify",
     "verify-full": "bun wb verify --full"
-  },
-  "overrides": {
-    "@types/glob": "9.0.0"
   },
   "devDependencies": {
     "@anolilab/multi-semantic-release": "4.4.23",
@@ -45,15 +46,13 @@
     "lefthook": "2.2.2",
     "oxlint": "1.88.0",
     "oxlint-tsgolint": "7.0.2004",
-    "semantic-release": "25.0.9",
-    "sort-package-json": "4.1.0"
+    "semantic-release": "25.0.9"
+  },
+  "overrides": {
+    "@types/glob": "9.0.0"
   },
   "engines": {
     "node": ">= 22.18.0"
-  },
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/"
   },
   "trustedDependencies": [
     "@airbnb/node-memwatch",

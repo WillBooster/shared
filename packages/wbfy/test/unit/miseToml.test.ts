@@ -1,8 +1,8 @@
+import { afterEach, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { afterEach, expect, test } from 'bun:test';
 import semver from 'semver';
 
 import { generateMiseToml, minimumPinnedBunVersion } from '../../src/generators/miseToml.js';

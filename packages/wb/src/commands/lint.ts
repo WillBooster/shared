@@ -9,8 +9,8 @@ import { findDescendantProjects } from '../project.js';
 import type { BufferedRunResult } from '../scripts/run.js';
 import { normalizeScript, runWithSpawnInParallel, runWithSpawnInParallelBuffered } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { printBufferedOutput, shouldPrintBufferedOutput } from '../utils/output.js';
 import { fixJapaneseSpacing, isInTestFixtures } from '../utils/japaneseSpacing.js';
+import { printBufferedOutput, shouldPrintBufferedOutput } from '../utils/output.js';
 import { buildShellCommand } from '../utils/shell.js';
 import { reportTestStructureViolations } from '../utils/testStructure.js';
 import { isCapturingVerificationOutput } from '../utils/verificationOutput.js';
@@ -144,7 +144,6 @@ interface LintPlan {
   formatterCommands: LintRunCommand[];
   linterCommands: LintRunCommand[];
   prettierArgs: string[];
-  sortPackageJsonArgs: string[];
   /** Whether an explicitly passed file needs a linter that its project lacks. */
   missingLintTool: boolean;
 }
@@ -181,7 +180,6 @@ function planWholeLintRun(argv: LintCommandArgv, projects: FoundProjects): LintP
     formatterCommands,
     linterCommands,
     prettierArgs: [buildPrettierOnlyPattern('.'), prettierFixtureIgnorePattern],
-    sortPackageJsonArgs: projects.descendants.map((p) => p.packageJsonPath),
     missingLintTool: false,
   };
 }
@@ -201,7 +199,6 @@ interface ExplicitLintTargets {
   // workspace membership would require invoking `cargo locate-project`.
   cargoFormatProjects: Set<Project>;
   prettierFilePaths: string[];
-  packageJsonFilePaths: string[];
   missingLintTool: boolean;
 }
 
@@ -219,7 +216,6 @@ async function planExplicitLintRun(argv: LintCommandArgv, projects: Project[], f
     dartFilePathsByProject: new Map(),
     cargoFormatProjects: new Set(),
     prettierFilePaths: [],
-    packageJsonFilePaths: [],
     missingLintTool: false,
   };
   const explicitPaths = await Promise.all(
@@ -231,11 +227,6 @@ async function planExplicitLintRun(argv: LintCommandArgv, projects: Project[], f
   );
   for (const { fileKind, filePath } of explicitPaths) {
     if (isInTestFixtures(filePath)) continue;
-    if (filePath.endsWith('/package.json')) {
-      targets.packageJsonFilePaths.push(filePath);
-      continue;
-    }
-    targets.packageJsonFilePaths.push(...getExplicitPackageJsonPaths(projects, filePath, fileKind));
 
     const extension = path.extname(filePath).slice(1);
     for (const { lintPath, project } of getExplicitLintTargets(projects, filePath, fileKind)) {
@@ -245,7 +236,6 @@ async function planExplicitLintRun(argv: LintCommandArgv, projects: Project[], f
   return {
     ...buildExplicitLintCommands(targets, argv),
     prettierArgs: [...new Set(targets.prettierFilePaths)],
-    sortPackageJsonArgs: [...new Set(targets.packageJsonFilePaths)],
     missingLintTool: targets.missingLintTool,
   };
 }
@@ -354,7 +344,7 @@ async function runLintPlan(
   }
   if (shouldRunFormatters(argv) && !(await runAndReportLintCommands(plan.formatterCommands, argv))) return false;
   if (plan.missingLintTool) return false;
-  if (shouldRunFormatters(argv) && !(await runRootFormatters(plan, argv, projects.self))) return false;
+  if (shouldRunFormatters(argv) && !(await runPrettier(plan, argv, projects.self))) return false;
   return !shouldRunLinters(argv) || (await runAndReportLintCommands(plan.linterCommands, argv));
 }
 
@@ -364,31 +354,20 @@ async function runAndReportLintCommands(commands: LintRunCommand[], argv: LintCo
   return results.every((result) => result.exitCode === 0);
 }
 
-async function runRootFormatters(plan: LintPlan, argv: LintCommandArgv, selfProject: Project): Promise<boolean> {
-  const commands: string[] = [];
-  if (plan.prettierArgs.length > 0 && selfProject.hasPrettier) {
-    commands.push(
-      buildShellCommand([
-        'YARN',
-        'prettier',
-        '--cache',
-        '--no-error-on-unmatched-pattern',
-        '--write',
-        '--',
-        ...plan.prettierArgs,
-      ])
-    );
-  }
-  if (plan.sortPackageJsonArgs.length > 0) {
-    commands.push(buildShellCommand(['YARN', 'sort-package-json', '--', ...plan.sortPackageJsonArgs]));
-  }
-  let succeeded = true;
-  for (const command of commands) {
-    const result = await runLintCommand(command, selfProject, argv, buildLintRunOptions(argv));
-    printSilentLintOutputs([result], argv);
-    succeeded &&= result.exitCode === 0;
-  }
-  return succeeded;
+async function runPrettier(plan: LintPlan, argv: LintCommandArgv, selfProject: Project): Promise<boolean> {
+  if (plan.prettierArgs.length === 0 || !selfProject.hasPrettier) return true;
+  const command = buildShellCommand([
+    'YARN',
+    'prettier',
+    '--cache',
+    '--no-error-on-unmatched-pattern',
+    '--write',
+    '--',
+    ...plan.prettierArgs,
+  ]);
+  const result = await runLintCommand(command, selfProject, argv, buildLintRunOptions(argv));
+  printSilentLintOutputs([result], argv);
+  return result.exitCode === 0;
 }
 
 function buildLintRunOptions(argv: LintCommandArgv): Parameters<typeof runWithSpawnInParallel>[3] {
@@ -465,7 +444,7 @@ function printCommandHeader(command: string, cwd: string): void {
 }
 
 function shouldSuppressSuccessfulVerifyOutput(command: string): boolean {
-  return command.includes(' bun fmt ') || command.includes(' sort-package-json ');
+  return command.includes(' bun fmt ');
 }
 
 export function buildLintCommand(
@@ -585,21 +564,6 @@ export async function getLintTargetFileKind(filePath: string): Promise<'director
 function buildPrettierOnlyPattern(dirPath: string): string {
   // Prettier's glob matches nothing through a single-alternative brace such as `*.{java}`.
   return path.join(dirPath, `**/{.*/,}*.${prettierOnlyExtension}`);
-}
-
-export function getExplicitPackageJsonPaths(
-  projects: Pick<Project, 'dirPath' | 'packageJsonPath'>[],
-  filePath: string,
-  fileKind: 'directory' | 'other'
-): string[] {
-  if (fileKind !== 'directory') return [];
-  return projects
-    .filter(
-      (project) =>
-        project.packageJsonPath === path.join(filePath, 'package.json') ||
-        project.packageJsonPath.startsWith(`${filePath}/`)
-    )
-    .map((project) => project.packageJsonPath);
 }
 
 export function getExplicitLintTargets(

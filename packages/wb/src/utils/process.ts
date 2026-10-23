@@ -5,7 +5,6 @@ import { isProcessAlive, spawnAsync } from '@willbooster/shared-lib-node/src';
 
 import type { Project } from '../project.js';
 import { printFinishedAndExitIfNeeded, printStart } from '../scripts/run.js';
-
 import { isPortAvailable } from './port.js';
 
 const killed = new Set<number | string>();

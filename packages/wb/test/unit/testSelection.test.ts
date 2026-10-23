@@ -1,9 +1,9 @@
+import { afterEach, beforeAll, expect, it } from 'bun:test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { afterEach, beforeAll, expect, it } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
 
