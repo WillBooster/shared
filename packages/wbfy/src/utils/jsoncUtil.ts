@@ -210,8 +210,9 @@ class PreservingEditor {
   }
 
   private remove(jsonPath: JsonPath): void {
-    this.reportLostComments(jsonPath, valueTextOf(this.content, jsonPath));
-    this.content = removeMember(this.content, jsonPath);
+    const { content, removedText } = removeMember(this.content, jsonPath);
+    this.reportLostComments(jsonPath, removedText);
+    this.content = content;
   }
 
   private reportLostComments(jsonPath: JsonPath, removedText: string | undefined): void {
@@ -268,17 +269,18 @@ function restoreTrailingComment(content: string, arrayPath: JsonPath, insertedIn
 
 /**
  * Removes the array element or object property at `jsonPath` together with its separating comma,
- * its same-line trailing comment, and the comment-only lines directly above it. jsonc-parser's own
+ * its same-line trailing comment, and the comment-only lines directly above it, and returns the
+ * removed source so that the caller can report the comments it took along. jsonc-parser's own
  * removal is not used: it keeps a stray character of a removed last array element on compact
  * input, leaves a bare comma behind a removed last property followed by a trailing comma, and
  * deletes the comments that precede the next element.
  */
-function removeMember(content: string, jsonPath: JsonPath): string {
+function removeMember(content: string, jsonPath: JsonPath): { content: string; removedText: string } {
   const root = parseTree(content);
   const valueNode = root && findNodeAtLocation(root, jsonPath);
   const member = valueNode?.parent?.type === 'property' ? valueNode.parent : valueNode;
   const siblings = member?.parent?.children;
-  if (!member || !siblings) return content;
+  if (!member || !siblings) return { content, removedText: '' };
   const previous = siblings[siblings.indexOf(member) - 1];
   const lineStart = content.lastIndexOf('\n', member.offset - 1) + 1;
   const ownsLine = /^[\t ]*$/u.test(content.slice(lineStart, member.offset));
@@ -296,7 +298,7 @@ function removeMember(content: string, jsonPath: JsonPath): string {
     removedCommaOffset === undefined
       ? content.slice(0, start)
       : content.slice(0, removedCommaOffset) + content.slice(removedCommaOffset + 1, start);
-  return before + content.slice(end);
+  return { content: before + content.slice(end), removedText: content.slice(start, end) };
 }
 
 /** Returns the comma that is the next token after `offset`, skipping comments and whitespace. */
@@ -306,14 +308,32 @@ function findComma(content: string, offset: number): { offset: number } | undefi
   return (scanner.scan() as number) === syntaxKind.commaToken ? { offset: scanner.getTokenOffset() } : undefined;
 }
 
-/** Moves `lineStart` up over the comment-only lines directly above it, which describe that line. */
+/**
+ * Moves `lineStart` up over the comment-only lines directly above it, which describe that line,
+ * including a block comment that spans several lines.
+ */
 function extendOverLeadingCommentLines(content: string, lineStart: number): number {
   let start = lineStart;
   while (start > 0) {
     const previousLineStart = content.lastIndexOf('\n', start - 2) + 1;
-    if (!/^[^\S\n]*(?:\/\/[^\n]*|\/\*(?:(?!\*\/)[^\n])*\*\/[^\S\n]*)\n$/u.test(content.slice(previousLineStart, start)))
-      break;
-    start = previousLineStart;
+    const previousLine = content.slice(previousLineStart, start);
+    if (/^[^\S\n]*\/\/[^\n]*\n$/u.test(previousLine)) {
+      start = previousLineStart;
+      continue;
+    }
+    if (!/\*\/[^\S\n]*\n$/u.test(previousLine)) break;
+    const commentStart = content.lastIndexOf('/*', start);
+    const commentLineStart = content.lastIndexOf('\n', commentStart - 1) + 1;
+    const isWholeComment =
+      commentStart !== -1 &&
+      /^[^\S\n]*$/u.test(content.slice(commentLineStart, commentStart)) &&
+      !content
+        .slice(commentStart + 2, start)
+        .trimEnd()
+        .slice(0, -2)
+        .includes('*/');
+    if (!isWholeComment) break;
+    start = commentLineStart;
   }
   return start;
 }
