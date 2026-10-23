@@ -125,5 +125,6 @@ ignorePatterns = [
   "**/.pnp.js",
   "**/*/mount/*.hash",
   "**/*.d.ts",
+  "**/*.java",
   "**/*.min.*js",
 ]
