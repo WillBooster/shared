@@ -7,10 +7,6 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
-const managedScriptsBlock = `scripts/**
-!scripts/
-!scripts/*.sh`;
-
 export async function fixRailwayignore(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('fixRailwayignore', async () => {
     const filePath = path.resolve(config.dirPath, '.railwayignore');
@@ -23,7 +19,7 @@ export async function fixRailwayignore(config: PackageConfig): Promise<void> {
       return;
     }
 
-    let newContent = content.replace(/^scripts\/$/m, managedScriptsBlock);
+    let newContent = content;
     // `railway up` strips gitignored files from the uploaded build context, so the generated
     // non-secret .docker.env (`wb gen-docker-env` output) needs an explicit un-ignore to reach
     // the remote Docker build. Appended, not prepended: ignore files are last-match-wins, so a

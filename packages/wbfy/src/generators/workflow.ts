@@ -229,7 +229,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
   });
 }
 
-/** Maps each workflow kind to generate to its file, deleting generated callers that no longer apply. */
+/** Maps each workflow kind to generate to its file. */
 async function collectWorkflowFileNamesByKind(
   rootConfig: PackageConfig,
   workflowsPath: string
@@ -247,12 +247,7 @@ async function collectWorkflowFileNamesByKind(
   }
   if (rootConfig.cargoTomlDirPaths.length > 0) {
     mandatoryKinds.push('test-rust');
-  } else {
-    // A previous run may have mistaken a gitignored third-party checkout for repository Rust code.
-    await removeGeneratedCaller(workflowsPath, fileNamesByKind, 'test-rust');
   }
-  await removeGeneratedCaller(workflowsPath, fileNamesByKind, 'close-comment');
-  fileNamesByKind.delete('wbfy');
   for (const kind of mandatoryKinds) {
     if (!fileNamesByKind.has(kind)) {
       fileNamesByKind.set(kind, `${kind}.yml`);
@@ -266,51 +261,10 @@ async function collectWorkflowFileNamesByKind(
   return fileNamesByKind;
 }
 
-// Removes only the generated-style caller: a same-named custom workflow with any other job stays.
-async function removeGeneratedCaller(
-  workflowsPath: string,
-  fileNamesByKind: Map<string, string>,
-  kind: string
-): Promise<void> {
-  const fileName = fileNamesByKind.get(kind);
-  if (fileName && jobsAllCallReusableWorkflow(workflowsPath, fileName, kind)) {
-    fileNamesByKind.delete(kind);
-    await fsUtil.removeConfined(path.join(workflowsPath, fileName));
-  }
-}
-
 export function isReusableWorkflowsRepo(repository?: string): boolean {
   // Case-insensitive: GitHub repository names are, and a remote may spell this one any way. Getting it wrong
   // lets wbfy rewrite the repository that hosts the upstream workflow definitions.
   return repository?.toLowerCase().endsWith('/reusable-workflows') ?? false;
-}
-
-/**
- * Whether every job of the workflow file calls the named WillBooster reusable workflow (owner
- * restricted via parseOrgReusableWorkflowCall). Used to decide whether wbfy owns a file enough to
- * delete it: unparsable files and files with any other job return false — deleting a whole
- * workflow on a loose match would be too aggressive.
- */
-export function jobsAllCallReusableWorkflow(workflowsPath: string, fileName: string, workflowName: string): boolean {
-  if (!fileName.endsWith('.yml')) return false;
-  let content: string;
-  try {
-    content = fs.readFileSync(path.join(workflowsPath, fileName), 'utf8');
-  } catch {
-    return false;
-  }
-  const isTargetCall = (uses: unknown): boolean =>
-    typeof uses === 'string' && parseOrgReusableWorkflowCall(uses)?.workflowName === workflowName;
-  try {
-    const workflow = yaml.load(content) as Workflow | undefined;
-    if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
-      const jobs = Object.values(workflow.jobs);
-      return jobs.length > 0 && jobs.every((job) => isTargetCall(job?.uses));
-    }
-  } catch {
-    // Unparsable content is not provably a caller of the named workflow.
-  }
-  return false;
 }
 
 async function writeWorkflowYaml(
@@ -455,23 +409,10 @@ function normalizeReleaseWorkflow(config: PackageConfig, settings: Workflow): bo
 }
 
 function normalizeTriggers(settings: Workflow, kind: KnownKind, template: Workflow): void {
-  if (kind === 'test' || kind === 'test-rust') {
-    removeTestPathFilters(settings);
-  } else if (kind === 'semantic-pr' && settings.on) {
+  if (kind === 'semantic-pr' && settings.on) {
     // Other triggers may drive preserved sibling jobs, so only the event is replaced.
     delete settings.on.pull_request_target;
     settings.on.pull_request = template.on?.pull_request;
-  }
-}
-
-// Don't use `paths-ignore` for test because GitHub's Branch Protection and Rulesets require job running.
-function removeTestPathFilters(settings: Workflow): void {
-  if (settings.on?.pull_request) {
-    delete settings.on.pull_request['paths-ignore'];
-  }
-  if (settings.on?.push) {
-    delete settings.on.push['paths-ignore'];
-    settings.on.push.branches = settings.on.push.branches.filter((branch) => branch !== 'renovate/**');
   }
 }
 
