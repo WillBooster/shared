@@ -1,12 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { ignoreError, ignoreErrorAsync } from '@willbooster/shared-lib/src';
 import { normalizeBunLockfile } from '@willbooster/shared-lib-node/src';
+import { ignoreError, ignoreErrorAsync } from '@willbooster/shared-lib/src';
 import yargs from 'yargs';
 
-import { fixNextConfigJson } from './fixers/nextConfig.js';
 import { fixChakraToaster } from './fixers/chakraToaster.js';
+import { fixNextConfigJson } from './fixers/nextConfig.js';
 import { fixPlaywrightConfig } from './fixers/playwrightConfig.js';
 import { fixTypos } from './fixers/typos.js';
 import { fixViteConfig } from './fixers/viteConfig.js';
@@ -26,23 +26,23 @@ import { generateGitignore } from './generators/gitignore.js';
 import { ensureGlobalReleaseAgeGates } from './generators/globalReleaseAgeGate.js';
 import { generateIdeaSettings } from './generators/idea.js';
 import { generateLefthook } from './generators/lefthook.js';
-import { generatePackageJson, getWorkspacePackageDirs } from './generators/packageJson.js';
+import { generateMiseToml, minimumBunVersion } from './generators/miseToml.js';
+import { generateRepositoryNpmrc } from './generators/npmrc.js';
 import { removeOxfmtConfig } from './generators/oxfmtConfig.js';
 import { generateOxlintConfig } from './generators/oxlintConfig.js';
+import { generatePackageJson, getWorkspacePackageDirs } from './generators/packageJson.js';
 import { generatePrettierignore } from './generators/prettierignore.js';
 import { generatePyrightConfigJson } from './generators/pyrightConfig.js';
 import { fixRailwayignore } from './generators/railwayignore.js';
 import { generateReadme, readAppliedWbfyVersionLabel } from './generators/readme.js';
 import { generateReleaserc } from './generators/releaserc.js';
 import { generateRenovateJsonc } from './generators/renovateJsonc.js';
+import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
 import { generateTsconfig } from './generators/tsconfig.js';
 import { generateUserAgentConfigs } from './generators/userAgentConfigs.js';
 import { generateVscodeSettings } from './generators/vscodeSettings.js';
 import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
-import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
-import { generateMiseToml, minimumBunVersion } from './generators/miseToml.js';
-import { generateRepositoryNpmrc } from './generators/npmrc.js';
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
 import { setupGitHubSettings } from './github/settings.js';
@@ -469,7 +469,7 @@ async function generatePackageLevelFiles(
   skipDeps: boolean
 ): Promise<void> {
   // Started only after the loop, so that none of them runs while a generatePackageJson rewrites
-  // package.json through `bun add` and `sort-package-json`.
+  // package.json through `bun add` and `bun fmt`.
   const pooledGenerators: PooledGenerator[] = [];
   for (const config of allPackageConfigs) {
     pooledGenerators.push(...getSourceFixers(config));

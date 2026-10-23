@@ -1,14 +1,15 @@
+import { expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { expect, test } from 'bun:test';
 import { z } from 'zod';
 
 const packageDirPath = path.resolve(import.meta.dirname, '..', '..');
 const distIndexPath = path.join(packageDirPath, 'dist', 'index.js');
+const localWbDirPath = path.resolve(packageDirPath, '..', 'wb');
 
 const smallProjectFixtures = [
   { name: 'ESM TypeScript', isEsm: true, sourceFileName: 'index.ts', source: 'export const answer = 42;\n' },
@@ -37,6 +38,10 @@ test.each(smallProjectFixtures)(
         .object({ tools: z.object({ bun: z.string() }) })
         .parse(Bun.TOML.parse(fs.readFileSync(path.join(tempDirPath, 'mise.toml'), 'utf8')));
       expect(runtime.stdout.trim()).toBe(tools.tools.bun);
+      // Check this wbfy against this repository's wb, not the published one, which may still run
+      // tools that this wbfy has removed; rerun the cleanup that ended the wbfy run with it.
+      linkLocalWb(tempDirPath);
+      await runCommand('bun', ['run', 'cleanup'], tempDirPath, { LEFTHOOK: '0' });
 
       await runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
       await runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
@@ -108,6 +113,12 @@ test('rejects a linked mise configuration without modifying the repository or tr
     await removeFixture(tempDirPath, externalPath);
   }
 }, 300_000);
+
+function linkLocalWb(dirPath: string): void {
+  const installedWbPath = path.join(dirPath, 'node_modules', '@willbooster', 'wb');
+  fs.rmSync(installedWbPath, { force: true, recursive: true });
+  fs.symlinkSync(localWbDirPath, installedWbPath);
+}
 
 async function removeFixture(dirPath: string, miseTomlPath: string): Promise<void> {
   // Cleanup must preserve the test failure even if mise cannot launch.

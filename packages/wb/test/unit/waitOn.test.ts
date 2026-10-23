@@ -1,8 +1,7 @@
+import { describe, expect, it } from 'bun:test';
+import { once } from 'node:events';
 import http from 'node:http';
 import net from 'node:net';
-import { once } from 'node:events';
-
-import { describe, expect, it } from 'bun:test';
 
 import { waitOn } from '../../src/commands/waitOn.js';
 

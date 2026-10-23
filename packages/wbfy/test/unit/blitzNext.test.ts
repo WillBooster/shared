@@ -1,8 +1,8 @@
+import { expect, setDefaultTimeout, test } from 'bun:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { expect, setDefaultTimeout, test } from 'bun:test';
 import semver from 'semver';
 import { z } from 'zod';
 

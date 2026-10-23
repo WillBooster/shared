@@ -1,9 +1,9 @@
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
 import { parse as parseDotenv } from 'dotenv';
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import {
   readCloudflareEnvFiles,

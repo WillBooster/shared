@@ -1,6 +1,5 @@
-import { spawn } from 'node:child_process';
-
 import { describe, expect, it } from 'bun:test';
+import { spawn } from 'node:child_process';
 
 import {
   createTreeScript,

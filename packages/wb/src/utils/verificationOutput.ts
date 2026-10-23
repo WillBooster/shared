@@ -1,6 +1,6 @@
+import { Console } from 'node:console';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Console } from 'node:console';
 import { Writable } from 'node:stream';
 
 let capturingVerificationOutput = false;

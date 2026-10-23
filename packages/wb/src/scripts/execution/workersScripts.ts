@@ -7,7 +7,6 @@ import {
   getLocalWranglerStateDir,
 } from '../../utils/wrangler.js';
 import type { ScriptArgv } from '../builder.js';
-
 import { HttpServerScripts } from './httpServerScripts.js';
 
 /**

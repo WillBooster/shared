@@ -1,8 +1,8 @@
+import { expect, setDefaultTimeout, test } from 'bun:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, setDefaultTimeout, test } from 'bun:test';
 import type { PackageJson } from 'type-fest';
 
 import { generatePackageJson } from '../../src/generators/packageJson.js';
@@ -814,7 +814,6 @@ test('creates the managed manifest for a repository without package.json', async
   expect(packageJson.scripts?.cleanup).toBe('bun wb lint --fix --format');
   expect(packageJson.devDependencies?.['@willbooster/wb']).toMatch(/^\d+\.\d+\.\d+$/u);
   expect(packageJson.devDependencies?.lefthook).toMatch(/^\d+\.\d+\.\d+$/u);
-  expect(packageJson.devDependencies?.['sort-package-json']).toMatch(/^\d+\.\d+\.\d+$/u);
 });
 
 // @semantic-release/npm silently skips private packages, so forcing `private: true` on a

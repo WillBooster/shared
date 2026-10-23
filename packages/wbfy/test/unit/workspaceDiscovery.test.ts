@@ -1,12 +1,11 @@
+import { expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from 'bun:test';
-
-import { getWorkspaceDirPatterns, getWorkspaceSubDirPaths } from '../../src/utils/workspaceUtil.js';
 import { generateTsconfig } from '../../src/generators/tsconfig.js';
 import { getPackageConfig } from '../../src/packageConfig.js';
+import { getWorkspaceDirPatterns, getWorkspaceSubDirPaths } from '../../src/utils/workspaceUtil.js';
 
 test('discovers and manages workspaces declared outside packages/* (e.g. apps/*)', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));

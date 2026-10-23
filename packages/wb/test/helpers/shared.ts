@@ -1,8 +1,8 @@
+import { afterAll } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterAll } from 'bun:test';
 import { removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 
 import { clearProjectCaches } from '../../src/project.js';

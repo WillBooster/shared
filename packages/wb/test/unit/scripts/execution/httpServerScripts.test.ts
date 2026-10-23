@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it, mock, spyOn } from 'bun:test';
+
 import yargs from 'yargs';
 
 import type { TestArgv } from '../../../../src/commands/test.js';

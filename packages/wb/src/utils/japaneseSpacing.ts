@@ -1,11 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { TextlintKernel, type TextlintKernelFilterRule, type TextlintKernelRule } from '@textlint/kernel';
 import { moduleInterop } from '@textlint/module-interop';
 // The pinned package has no named Processor export; its default import also fails NodeNext typing.
 import { MarkdownProcessor } from '@textlint/textlint-plugin-markdown/lib/src/MarkdownProcessor.js';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import nodeTypesFilter from 'textlint-filter-rule-node-types';
 import jaSpaceBetweenHalfAndFullWidth from 'textlint-rule-ja-space-between-half-and-full-width';
 

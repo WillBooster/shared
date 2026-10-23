@@ -1,8 +1,8 @@
+import { beforeAll, describe, expect, it } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { beforeAll, describe, expect, it } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
 import { createTempDir, initializeProjectDirectory } from '../helpers/shared.js';

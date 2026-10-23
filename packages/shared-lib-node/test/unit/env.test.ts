@@ -1,8 +1,7 @@
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { readAndApplyEnvironmentVariables, readEnvironmentVariables } from '../../src/env.js';
 import { isFnoxAvailable, isMiseAvailable } from '../helpers/commandAvailability.js';

@@ -1,9 +1,9 @@
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import child_process from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it, afterEach, mock, spyOn } from 'bun:test';
 import yargs from 'yargs';
 
 import { concurrentlyCommand, runConcurrently } from '../../src/commands/concurrently.js';

@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
-import { escapeRegExp } from '@willbooster/shared-lib/src';
 import { getGlobIgnore } from '@willbooster/shared-lib-node/src';
+import { escapeRegExp } from '@willbooster/shared-lib/src';
 import fg from 'fast-glob';
 import type { PackageJson } from 'type-fest';
 import { z } from 'zod';

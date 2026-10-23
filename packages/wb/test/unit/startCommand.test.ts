@@ -1,9 +1,9 @@
+import { describe, expect, it, setDefaultTimeout } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { describe, expect, it, setDefaultTimeout } from 'bun:test';
 
 // Every test runs the CLI from source in a child process, which took up to 2.7 seconds on CI.
 setDefaultTimeout(30_000);

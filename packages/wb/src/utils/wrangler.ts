@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { Project } from '../project.js';
-import { buildEnvReaderOptionArgs } from '../sharedOptionsBuilder.js';
 import type { ScriptArgv } from '../scripts/builder.js';
+import { buildEnvReaderOptionArgs } from '../sharedOptionsBuilder.js';
 import { buildShellCommand } from './shell.js';
 import { resolveWranglerConfig, usesWranglerNativeMigrations } from './wranglerConfig.js';
 

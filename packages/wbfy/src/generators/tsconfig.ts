@@ -69,7 +69,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       originalSettingsJson = JSON.stringify(sortKeys(structuredClone(oldSettings)));
       newSettings = mergeExistingSettings(config, newSettings, oldSettings, generatedTypes);
     }
-    addUndiciTypesPathMapping(newSettings, config);
+    removeGeneratedUndiciTypesPathMapping(newSettings);
     sortKeys(newSettings);
     newSettings.include?.sort();
     // Don't use old decorator
@@ -336,7 +336,7 @@ async function normalizeFrameworkTsconfig(config: PackageConfig): Promise<void> 
   normalizeNextTsconfigModuleSettings(settings);
   normalizeNextTsconfigPathAliases(settings.compilerOptions);
   addIncludesForFrameworkProject(settings, config);
-  addUndiciTypesPathMapping(settings, config);
+  removeGeneratedUndiciTypesPathMapping(settings);
   // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
   // already-clean tsconfig.json survive wbfy runs.
   if (JSON.stringify(settings) === originalSettingsJson) return;
@@ -346,39 +346,17 @@ async function normalizeFrameworkTsconfig(config: PackageConfig): Promise<void> 
 }
 
 /**
- * bun-types references undici-types without declaring it as a dependency (oven-sh/bun#22805), so
- * Bun's isolated linker (especially with the global store outside the repository) cannot resolve
- * it from bun-types' location, which silently degrades global fetch types such as Response. Map it
- * to the copy that bunfig.toml's publicHoistPattern places in the root node_modules.
+ * Removes the undici-types mapping that wbfy generated while bun-types did not declare undici-types
+ * as a dependency. Any other mapping is a deliberate repo-local one (e.g. patched types).
  */
-function addUndiciTypesPathMapping(settings: TsConfigJson, config: PackageConfig): void {
-  // Map undici-types only when bun-types actually loads: an explicit `types` list loads it iff it
-  // contains "bun" (even on React Native, whose projects may opt in by hand); with `types`
-  // omitted, TypeScript's automatic @types inclusion loads it because wbfy installs @types/bun
-  // for every JavaScript or TypeScript project except React Native, which uses
-  // @tsconfig/react-native instead.
-  const types = settings.compilerOptions?.types;
-  if (types ? !types.includes('bun') : config.depending.reactNative) return;
-  const correctMapping = `${getRootDir(config)}/node_modules/undici-types/index.d.ts`;
-  const existingMapping = settings.compilerOptions?.paths?.['undici-types'];
-  if (existingMapping) {
-    // Rewrite the generated mapping when a workspace moves to a different root depth. Any other
-    // value is a deliberate repo-local mapping (e.g. patched types) and must be kept.
-    if (
-      existingMapping.length === 1 &&
-      typeof existingMapping[0] === 'string' &&
-      /(?:^|\/)node_modules\/undici-types\/index\.d\.ts$/u.test(existingMapping[0])
-    ) {
-      settings.compilerOptions!.paths!['undici-types'] = [correctMapping];
-    }
+function removeGeneratedUndiciTypesPathMapping(settings: TsConfigJson): void {
+  const paths = settings.compilerOptions?.paths;
+  const mapping = paths?.['undici-types'];
+  if (!paths || mapping?.length !== 1 || !/(?:^|\/)node_modules\/undici-types\/index\.d\.ts$/u.test(mapping[0] ?? '')) {
     return;
   }
-
-  settings.compilerOptions ??= {};
-  settings.compilerOptions.paths = {
-    ...settings.compilerOptions.paths,
-    'undici-types': [correctMapping],
-  };
+  delete paths['undici-types'];
+  if (Object.keys(paths).length === 0) delete settings.compilerOptions!.paths;
 }
 
 function addIncludesForFrameworkProject(settings: TsConfigJson, config: PackageConfig): void {
@@ -437,9 +415,8 @@ function normalizePathAliasTargets(targets: string[]): string[] {
 
 function getRootDir(config: PackageConfig): string {
   if (config.isRoot) return '.';
-  // The undici-types path mapping must reach the monorepo root's node_modules (bunfig.toml's
-  // publicHoistPattern hoists the package there), and workspace patterns may be arbitrarily deep
-  // (e.g. `examples/**`), so a fixed two-level probe is not enough. Prefer the nearest ancestor
+  // Workspace patterns may be arbitrarily deep (e.g. `examples/**`), so a fixed two-level probe
+  // cannot find the monorepo root. Prefer the nearest ancestor
   // manifest that declares workspaces (the monorepo root); otherwise fall back to the nearest
   // ancestor manifest. Stop at the first git repository boundary so an unrelated enclosing
   // repository's manifest can never be chosen.

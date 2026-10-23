@@ -1,7 +1,7 @@
-import { getErrorMessage } from '@willbooster/shared-lib/src';
 import { constants } from 'node:os';
 
 import { treeKill } from '@willbooster/shared-lib-node/src';
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import type { Argv, CommandModule } from 'yargs';
 
 interface TreeKillCommandArgs {

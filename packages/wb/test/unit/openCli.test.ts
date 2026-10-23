@@ -1,8 +1,8 @@
+import { describe, expect, it } from 'bun:test';
 import { fileURLToPath } from 'node:url';
 
 import type { SpawnAsyncReturns } from '@willbooster/shared-lib-node/src';
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { describe, expect, it } from 'bun:test';
 
 const target = 'http://localhost:3000';
 const cliPath = fileURLToPath(new URL('../../src/index.ts', import.meta.url));

@@ -1,3 +1,4 @@
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import childProcess from 'node:child_process';
 import fs from 'node:fs/promises';
 import type { Server } from 'node:net';
@@ -7,7 +8,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 
 import { buildWb } from '../helpers/build.js';
 

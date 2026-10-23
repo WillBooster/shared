@@ -1,5 +1,6 @@
 // oxlint-disable unicorn/no-null -- null is a JSON value whose serialization differs from undefined.
 import { expect, test } from 'bun:test';
+
 import { parse, stringify } from 'yaml';
 
 import {

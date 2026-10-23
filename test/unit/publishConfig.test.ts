@@ -1,6 +1,5 @@
-import { readdir } from 'node:fs/promises';
-
 import { describe, expect, test } from 'bun:test';
+import { readdir } from 'node:fs/promises';
 
 const packageDirectories = await readdir('packages');
 const packageVisibilities = await Promise.all(

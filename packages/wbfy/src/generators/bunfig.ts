@@ -109,8 +109,6 @@ const fmtIgnorePatterns = [
   '**/ios/**',
   '**/no-format/**',
   '**/node_modules/**',
-  // sort-package-json formats it.
-  '**/package.json',
   '**/temp/**',
   '**/tmp/**',
   '**/test-fixtures/**',
@@ -138,9 +136,6 @@ const newContent = (existingContent: string | undefined, useGlobalStore: boolean
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   // publicHoistPattern — tsx: build-ts under Node.js spawns `node --import tsx`, which resolves
   // tsx from the consumer package's directory, not from build-ts's own dependencies.
-  // undici-types: bun-types references it without declaring it as a dependency (oven-sh/bun#22805);
-  // generated tsconfigs also map undici-types to the hoisted copy (see tsconfig.ts) because the
-  // global store realpaths bun-types outside the repository.
   // fmt flavor: oxfmt's output, which repositories already follow, differs from Prettier's in places
   // (e.g. long union types).
   return `env = false
@@ -150,7 +145,7 @@ ${extractRawTestSections(existingContent)}[install]
 exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
 ${globalStoreLine}
 linker = "isolated"
-publicHoistPattern = ["tsx", "undici-types"]
+publicHoistPattern = ["tsx"]
 minimumReleaseAge = ${bunMinimumReleaseAgeSeconds}
 minimumReleaseAgeExcludes = [
 ${bunMinimumReleaseAgeExcludes.map((packageName) => `  "${packageName}",`).join('\n')}
@@ -160,6 +155,8 @@ ${bunMinimumReleaseAgeExcludes.map((packageName) => `  "${packageName}",`).join(
 flavor = "oxfmt"
 printWidth = 120
 singleQuote = true
+sortImports = true
+sortPackageJson = true
 trailingComma = "es5"
 ignorePatterns = [
 ${fmtIgnorePatterns.map((pattern) => `  "${pattern}",`).join('\n')}

@@ -1,7 +1,7 @@
-import { getErrorMessage } from '@willbooster/shared-lib/src';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
@@ -9,11 +9,11 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 import { findDescendantProjects, findRootAndSelfProjects, type FoundProjects } from '../project.js';
 import type { PrivateRegistryAuth } from '../utils/privateRegistry.js';
 import {
-  PRIVATE_REGISTRY_SCOPE,
   downloadAndExtractRegistryPackage,
   installedVersionSatisfies,
   isPrivateGitDependency,
   isPrivateRegistryDependency,
+  PRIVATE_REGISTRY_SCOPE,
   resolvePrivateRegistryAuth,
   specifierSubset,
   toUnscopedPackageName,

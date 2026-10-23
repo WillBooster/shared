@@ -1,10 +1,10 @@
+import { expect, it } from 'bun:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { expect, it } from 'bun:test';
 
 const scriptPath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),

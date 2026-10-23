@@ -1,11 +1,10 @@
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 
 import { isProcessRunning, wait, waitForProcessStopped } from '../../../../test/helpers/processUtils.js';
 import { spawnAsync } from '../../src/spawn.js';

@@ -1,8 +1,7 @@
+import { describe, expect, it } from 'bun:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-
-import { describe, expect, it } from 'bun:test';
 
 import { prepareRailwayCli, selectRailwayVariables } from '../../src/commands/railwayEnv.js';
 import { selectFnoxSourcedKeys } from '../../src/utils/envSources.js';

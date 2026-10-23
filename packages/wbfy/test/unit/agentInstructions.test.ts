@@ -1,7 +1,6 @@
+import { expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-
-import { expect, test } from 'bun:test';
 
 import { generateAgentInstructions } from '../../src/generators/agents.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';

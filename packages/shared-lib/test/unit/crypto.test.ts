@@ -1,6 +1,5 @@
-import { createHash } from 'node:crypto';
-
 import { expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 
 import { sha256HexAsync, timingSafeEqualStringAsync } from '../../src/crypto.js';
 

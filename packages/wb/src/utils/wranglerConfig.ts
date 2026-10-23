@@ -5,7 +5,6 @@ import type { ParseError } from 'jsonc-parser';
 import { parse } from 'jsonc-parser';
 
 import type { Project } from '../project.js';
-
 import { findWranglerConfigPath } from './wrangler.js';
 
 export interface WranglerD1Database {

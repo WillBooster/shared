@@ -7,7 +7,6 @@ import {
   isPublishedWillboosterConfigsPackage,
   resolveWillboosterConfigModule,
 } from '../utils/willboosterConfigsUtil.js';
-
 import { normalizeConfigContent } from './configContent.js';
 import { ManagedConfigBlocks } from './managedConfigBlock.js';
 
@@ -67,11 +66,16 @@ ${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;
 `;
   }
 
+  // In the order `bun fmt` sorts imports: it would otherwise move the first import above the block marker.
+  const imports = oxlintBaseConfigModule.startsWith('.')
+    ? `import type { OxlintConfig } from 'oxlint';
+
+import oxlintBaseConfig from '${oxlintBaseConfigModule}';`
+    : `import oxlintBaseConfig from '${oxlintBaseConfigModule}';
+import type { OxlintConfig } from 'oxlint';`;
   return `${managedConfigBlocks.getBlock(
     'base',
-    `import type { OxlintConfig } from 'oxlint';
-
-import oxlintBaseConfig from '${oxlintBaseConfigModule}';
+    `${imports}
 
 ${getResolvedConfigContent('oxlintBaseConfig', isRootConfig) + getSlidevOverrides(config)}`
   )}

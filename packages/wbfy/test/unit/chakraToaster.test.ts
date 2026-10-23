@@ -1,8 +1,7 @@
+import { expect, test } from 'bun:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-
-import { expect, test } from 'bun:test';
 
 import { fixChakraToaster } from '../../src/fixers/chakraToaster.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';

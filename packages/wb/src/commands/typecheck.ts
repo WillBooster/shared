@@ -8,7 +8,6 @@ import { findDescendantProjects } from '../project.js';
 import type { Project } from '../project.js';
 import { runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-
 import { buildLintCommand, buildWorkspaceIgnorePatterns } from './lint.js';
 
 const builder = {} as const;

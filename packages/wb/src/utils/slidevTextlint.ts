@@ -1,12 +1,12 @@
-import { getErrorMessage } from '@willbooster/shared-lib/src';
 import path from 'node:path';
 
 import { load } from '@slidev/parser/fs';
+import noInvalidControlCharacter from '@textlint-rule/textlint-rule-no-invalid-control-character';
 import { TextlintKernel, type TextlintKernelRule } from '@textlint/kernel';
 import { moduleInterop } from '@textlint/module-interop';
 // The pinned package has no named Processor export; its default import also fails NodeNext typing.
 import { MarkdownProcessor } from '@textlint/textlint-plugin-markdown/lib/src/MarkdownProcessor.js';
-import noInvalidControlCharacter from '@textlint-rule/textlint-rule-no-invalid-control-character';
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import noHankakuKana from 'textlint-rule-no-hankaku-kana';
 import noZeroWidthSpaces from 'textlint-rule-no-zero-width-spaces';
 

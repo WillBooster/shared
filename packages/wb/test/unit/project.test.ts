@@ -1,8 +1,7 @@
+import { describe, expect, it } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-
-import { describe, expect, it } from 'bun:test';
 
 import {
   findDescendantProjects,
@@ -10,7 +9,6 @@ import {
   findWorkspacePackageDirs,
   getAbsoluteFileDatabaseUrlPath,
 } from '../../src/project.js';
-
 import { usesBunRuntime } from '../../src/utils/runtime.js';
 import { createTempDir, initializeProjectDirectory } from '../helpers/shared.js';
 

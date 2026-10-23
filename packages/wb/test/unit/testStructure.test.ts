@@ -1,8 +1,7 @@
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-
-import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { findTestStructureViolations, reportTestStructureViolations } from '../../src/utils/testStructure.js';
 

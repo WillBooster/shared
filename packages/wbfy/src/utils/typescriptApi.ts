@@ -1,5 +1,5 @@
-import { API } from 'typescript/unstable/async';
 import type { SourceFile } from 'typescript/unstable/ast';
+import { API } from 'typescript/unstable/async';
 
 // TypeScript 7 ships the native (Go) compiler as the `typescript` package and no
 // longer exposes an in-process parser such as `ts.createSourceFile`. Parsing now

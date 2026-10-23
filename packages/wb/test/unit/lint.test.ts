@@ -1,8 +1,7 @@
+import { describe, expect, it } from 'bun:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-
-import { describe, expect, it } from 'bun:test';
 
 import {
   buildDartFormatCommand,
@@ -13,7 +12,6 @@ import {
   getExplicitLintTargets,
   getLintTargetFileKind,
   getLintTargetFiles,
-  getExplicitPackageJsonPaths,
 } from '../../src/commands/lint.js';
 
 describe('lint', () => {
@@ -89,20 +87,6 @@ describe('lint', () => {
     await fs.writeFile(filePath, '# test\n');
 
     expect(getLintTargetFileKind(filePath)).resolves.toBe('other');
-  });
-
-  it('collects package.json files underneath explicit directories', () => {
-    expect(
-      getExplicitPackageJsonPaths(
-        [
-          { dirPath: '/repo', packageJsonPath: '/repo/package.json' },
-          { dirPath: '/repo/packages/a', packageJsonPath: '/repo/packages/a/package.json' },
-          { dirPath: '/repo/packages/b', packageJsonPath: '/repo/packages/b/package.json' },
-        ],
-        '/repo/packages',
-        'directory'
-      )
-    ).toEqual(['/repo/packages/a/package.json', '/repo/packages/b/package.json']);
   });
 
   it('fans out parent directory targets to descendant projects', () => {

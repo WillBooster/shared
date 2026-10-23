@@ -3,11 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { removeNpmAndYarnEnvironmentVariables, treeKill } from '@willbooster/shared-lib-node/src';
-import { protectRunScriptArgs } from '../bin/runArgs.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { z } from 'zod';
 
+import { protectRunScriptArgs } from '../bin/runArgs.js';
 import { buildIfNeededCommand } from './commands/buildIfNeeded.js';
 import { checkEnvCommand } from './commands/checkEnv.js';
 import { codeGaugeCommand } from './commands/codeGauge.js';
