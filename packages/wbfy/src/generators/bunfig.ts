@@ -91,11 +91,16 @@ export async function generateBunfigToml(
         fs.existsSync(path.join(packageConfig.dirPath, '.prettierrc.json')) ||
         Boolean(packageConfig.packageJson?.prettier)
     );
+    // A Prettier config makes Bun route TOML through Prettier, which has no TOML parser, even
+    // with the oxfmt flavor selected. Java repositories receive that config on this same run.
+    const managedIgnorePatterns = usesPrettierConfig ? [...fmtIgnorePatterns, '**/*.toml'] : fmtIgnorePatterns;
     const existingIgnoreLines = extractProjectFmtIgnoreLines(existingContent);
     const projectIgnoreLines = (
-      existingIgnoreLines.length > 0 ? existingIgnoreLines : migrateOxfmtIgnoreLines(config.dirPath)
-    ).filter((line) => !fmtIgnorePatterns.some((pattern) => line === `"${pattern}",`));
-    const content = newContent(existingContent, useGlobalStore, usesPrettierConfig, projectIgnoreLines);
+      existingIgnoreLines.length > 0
+        ? existingIgnoreLines
+        : migrateOxfmtIgnoreLines(config.dirPath, managedIgnorePatterns)
+    ).filter((line) => !managedIgnorePatterns.some((pattern) => line === `"${pattern}",`));
+    const content = newContent(existingContent, useGlobalStore, managedIgnorePatterns, projectIgnoreLines);
     await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, content));
   });
 }
@@ -148,7 +153,7 @@ const projectIgnorePatternsComment = '# Project-specific patterns';
 const newContent = (
   existingContent: string | undefined,
   useGlobalStore: boolean,
-  usesPrettierConfig: boolean,
+  managedIgnorePatterns: string[],
   projectIgnoreLines: string[]
 ): string => {
   const bunfigToml = parseBunfigToml(existingContent);
@@ -160,9 +165,6 @@ const newContent = (
   // Keeping Next.js installs project-local avoids widening that root to $HOME (or `/` in Docker),
   // which would expand development filesystem watching and bypass the boundary's cache benefits.
   const globalStoreLine = useGlobalStore ? 'globalStore = true' : 'globalStore = false';
-  // A Prettier config makes Bun route TOML through Prettier, which has no TOML parser, even
-  // with the oxfmt flavor selected. Java repositories receive that config on this same run.
-  const ignorePatterns = usesPrettierConfig ? [...fmtIgnorePatterns, '**/*.toml'] : fmtIgnorePatterns;
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   // publicHoistPattern — tsx: build-ts under Node.js spawns `node --import tsx`, which resolves
@@ -192,7 +194,7 @@ sortImports = true
 sortPackageJson = true
 trailingComma = "es5"
 ignorePatterns = [
-${ignorePatterns.map((pattern) => `  "${pattern}",`).join('\n')}
+${managedIgnorePatterns.map((pattern) => `  "${pattern}",`).join('\n')}
 ${projectIgnoreLines.length > 0 ? `  ${projectIgnorePatternsComment}\n${projectIgnoreLines.map((line) => `  ${line}`).join('\n')}\n` : ''}]
 
 [[fmt.overrides]]
@@ -237,7 +239,7 @@ function extractProjectFmtIgnoreLines(content: string | undefined): string[] {
  * Convert the repository's own `ignorePatterns` in oxfmt.config.ts, which removeOxfmtConfig deletes
  * later in the same run, into bunfig.toml lines, keeping the comments that explain them.
  */
-function migrateOxfmtIgnoreLines(dirPath: string): string[] {
+function migrateOxfmtIgnoreLines(dirPath: string, managedIgnorePatterns: string[]): string[] {
   const migratedLines: string[] = [];
   let pendingComments: string[] = [];
   let inIgnorePatterns = false;
@@ -247,7 +249,7 @@ function migrateOxfmtIgnoreLines(dirPath: string): string[] {
     if (!code.trim()) continue;
 
     inIgnorePatterns ||= /\bignorePatterns\s*=/.test(code);
-    const projectPatterns = patterns.filter((pattern) => !fmtIgnorePatterns.includes(pattern));
+    const projectPatterns = patterns.filter((pattern) => !managedIgnorePatterns.includes(pattern));
     if (inIgnorePatterns && projectPatterns.length > 0) {
       migratedLines.push(...pendingComments, ...projectPatterns.map((pattern) => `${JSON.stringify(pattern)},`));
     }

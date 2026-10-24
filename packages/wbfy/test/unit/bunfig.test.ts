@@ -139,13 +139,15 @@ oxfmtResolvedConfig.ignorePatterns = [
   // Already ignored by wbfy.
   '**/src/grammar.json',
 ];
-oxfmtResolvedConfig.ignorePatterns = [...(oxfmtResolvedConfig.ignorePatterns ?? []), 'src/**', '**/dist/**'];
+oxfmtResolvedConfig.ignorePatterns = [...(oxfmtResolvedConfig.ignorePatterns ?? []), 'src/**', '**/dist/**', '**/*.toml'];
 
 // wbfy:start oxfmt-export
 module.exports = oxfmtResolvedConfig;
 // wbfy:end oxfmt-export
 `
     );
+    // A Prettier config makes wbfy manage `**/*.toml` too.
+    fs.writeFileSync(path.join(tempDirPath, '.prettierrc.json'), '{}');
     const config = createConfig({ dirPath: tempDirPath });
     await generateBunfigToml(config, true);
     // removeOxfmtConfig deletes the file later in the same wbfy run.
@@ -164,6 +166,7 @@ module.exports = oxfmtResolvedConfig;
 `);
     const ignorePatterns = (Bun.TOML.parse(content) as { fmt: { ignorePatterns: string[] } }).fmt.ignorePatterns;
     expect(ignorePatterns.filter((pattern) => pattern === '**/dist/**')).toHaveLength(1);
+    expect(ignorePatterns.filter((pattern) => pattern === '**/*.toml')).toHaveLength(1);
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
