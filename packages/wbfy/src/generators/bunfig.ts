@@ -229,8 +229,10 @@ function extractProjectFmtIgnoreLines(content: string | undefined): string[] {
   const startIndex = lines.findIndex((line) => line.trim() === projectIgnorePatternsComment);
   if (startIndex === -1) return [];
   const endIndex = lines.findIndex((line, index) => index > startIndex && line.trim() === ']');
+  // A marker outside the array would pull later sections into it, so such a block is regenerated away.
+  if (endIndex === -1) return [];
   return lines
-    .slice(startIndex + 1, endIndex === -1 ? undefined : endIndex)
+    .slice(startIndex + 1, endIndex)
     .map((line) => line.trim())
     .filter(Boolean);
 }
