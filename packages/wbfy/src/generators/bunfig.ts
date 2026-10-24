@@ -264,7 +264,7 @@ function migrateOxfmtIgnoreLines(dirPath: string, managedIgnorePatterns: string[
 }
 
 function parseOxfmtConfigLine(line: string): { code: string; comment?: string; patterns: string[] } {
-  // Matching string literals first keeps a `//` inside a pattern from starting a comment.
+  // One left-to-right scan: a quoted pattern consumes its own `//`, and a comment runs to the end of the line.
   const tokens = [...line.matchAll(/'([^']*)'|"([^"]*)"|\/\/\s?(.*)$/g)];
   const commentToken = tokens.find((token) => token[3] !== undefined);
   return {
