@@ -120,3 +120,48 @@ minimumReleaseAgeExcludes = [
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
 });
+
+test('carries the repository-specific formatter ignores from oxfmt.config.ts over regenerations', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-fmt-ignores-')));
+  try {
+    fs.writeFileSync(
+      path.join(tempDirPath, 'oxfmt.config.ts'),
+      `// wbfy:start oxfmt-base
+const oxfmtResolvedConfig = require('@willbooster/oxfmt-config');
+// wbfy:end oxfmt-base
+
+// Keep generator output byte-identical.
+oxfmtResolvedConfig.ignorePatterns = [
+  ...(oxfmtResolvedConfig.ignorePatterns ?? []),
+  'examples/**',
+  // Upstream layout.
+  'grammar.js',
+];
+oxfmtResolvedConfig.ignorePatterns = [...(oxfmtResolvedConfig.ignorePatterns ?? []), 'src/**', '**/dist/**'];
+
+// wbfy:start oxfmt-export
+module.exports = oxfmtResolvedConfig;
+// wbfy:end oxfmt-export
+`
+    );
+    const config = createConfig({ dirPath: tempDirPath });
+    await generateBunfigToml(config, true);
+    // removeOxfmtConfig deletes the file later in the same wbfy run.
+    fs.rmSync(path.join(tempDirPath, 'oxfmt.config.ts'));
+    await generateBunfigToml(config, true);
+
+    const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
+    expect(content).toContain(`  # Project-specific patterns
+  # Keep generator output byte-identical.
+  "examples/**",
+  # Upstream layout.
+  "grammar.js",
+  "src/**",
+]
+`);
+    const ignorePatterns = (Bun.TOML.parse(content) as { fmt: { ignorePatterns: string[] } }).fmt.ignorePatterns;
+    expect(ignorePatterns.filter((pattern) => pattern === '**/dist/**')).toHaveLength(1);
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});

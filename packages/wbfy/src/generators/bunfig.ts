@@ -91,7 +91,11 @@ export async function generateBunfigToml(
         fs.existsSync(path.join(packageConfig.dirPath, '.prettierrc.json')) ||
         Boolean(packageConfig.packageJson?.prettier)
     );
-    const content = newContent(existingContent, useGlobalStore, usesPrettierConfig);
+    const existingIgnoreLines = extractProjectFmtIgnoreLines(existingContent);
+    const projectIgnoreLines = (
+      existingIgnoreLines.length > 0 ? existingIgnoreLines : migrateOxfmtIgnoreLines(config.dirPath)
+    ).filter((line) => !fmtIgnorePatterns.some((pattern) => line === `"${pattern}",`));
+    const content = newContent(existingContent, useGlobalStore, usesPrettierConfig, projectIgnoreLines);
     await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, content));
   });
 }
@@ -138,10 +142,14 @@ const fmtIgnorePatterns = [
   '**/src/node-types.json',
 ];
 
+// Lines below this comment in `ignorePatterns` belong to the repository and survive regeneration.
+const projectIgnorePatternsComment = '# Project-specific patterns';
+
 const newContent = (
   existingContent: string | undefined,
   useGlobalStore: boolean,
-  usesPrettierConfig: boolean
+  usesPrettierConfig: boolean,
+  projectIgnoreLines: string[]
 ): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   // minimumReleaseAge and minimumReleaseAgeExcludes are org policy, never repository policy: both
@@ -185,7 +193,7 @@ sortPackageJson = true
 trailingComma = "es5"
 ignorePatterns = [
 ${ignorePatterns.map((pattern) => `  "${pattern}",`).join('\n')}
-]
+${projectIgnoreLines.length > 0 ? `  ${projectIgnorePatternsComment}\n${projectIgnoreLines.map((line) => `  ${line}`).join('\n')}\n` : ''}]
 
 [[fmt.overrides]]
 files = ["**/oxlint.config.ts"]
@@ -212,6 +220,51 @@ export function extractRawTestSections(content: string | undefined): string {
     }
   }
   return preservedLines.length > 0 ? `${preservedLines.join('\n')}\n\n` : '';
+}
+
+function extractProjectFmtIgnoreLines(content: string | undefined): string[] {
+  const lines = content?.split('\n') ?? [];
+  const startIndex = lines.findIndex((line) => line.trim() === projectIgnorePatternsComment);
+  if (startIndex === -1) return [];
+  const endIndex = lines.findIndex((line, index) => index > startIndex && line.trim() === ']');
+  return lines
+    .slice(startIndex + 1, endIndex === -1 ? undefined : endIndex)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Convert the repository's own `ignorePatterns` in oxfmt.config.ts, which removeOxfmtConfig deletes
+ * later in the same run, into bunfig.toml lines, keeping the comments that explain them.
+ */
+function migrateOxfmtIgnoreLines(dirPath: string): string[] {
+  const migratedLines: string[] = [];
+  let pendingComments: string[] = [];
+  let inIgnorePatterns = false;
+  for (const line of readOxfmtProjectSection(dirPath).split('\n')) {
+    if (!line.trim()) continue;
+    const comment = /^\s*\/\/\s?(.*)$/.exec(line)?.[1];
+    if (comment !== undefined) {
+      pendingComments.push(`# ${comment}`.trimEnd());
+      continue;
+    }
+    inIgnorePatterns ||= /\bignorePatterns\s*=/.test(line);
+    if (inIgnorePatterns) {
+      const patterns = [...line.matchAll(/'([^']*)'|"([^"]*)"/g)].map((match) => match[1] ?? match[2]);
+      migratedLines.push(...pendingComments, ...patterns.map((pattern) => `${JSON.stringify(pattern)},`));
+    }
+    pendingComments = [];
+    // `...(oxfmtResolvedConfig.ignorePatterns ?? [])` contains a bracket, so only a closing one ends.
+    if (/\]\s*;?\s*$/.test(line)) inIgnorePatterns = false;
+  }
+  return migratedLines;
+}
+
+function readOxfmtProjectSection(dirPath: string): string {
+  const filePath = path.resolve(dirPath, 'oxfmt.config.ts');
+  if (!fs.existsSync(filePath)) return '';
+  const content = fs.readFileSync(filePath, 'utf8');
+  return /wbfy:end oxfmt-base([\s\S]*?)\/\/ wbfy:start oxfmt-export/.exec(content)?.[1] ?? '';
 }
 
 function parseBunfigToml(content: string | undefined): BunfigToml | undefined {
