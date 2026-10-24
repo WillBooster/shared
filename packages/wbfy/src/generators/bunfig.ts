@@ -132,6 +132,10 @@ const fmtIgnorePatterns = [
   // Prettier formats Java; `bun fmt` would run it a second time through a Prettier config's plugin.
   '**/*.java',
   '**/*.min.*js',
+  // Tree-sitter owns these JSON files' layout, including their missing final newline.
+  // Formatting them makes a subsequent `tree-sitter generate` dirty the working tree.
+  '**/src/grammar.json',
+  '**/src/node-types.json',
 ];
 
 const newContent = (
