@@ -12,9 +12,13 @@ import type { PackageConfig } from '../packageConfig.js';
  * imports oxlint-config and vice versa), so a declared edge would form a
  * dependency cycle that multi-semantic-release cannot topologically sort. Since
  * the edge is absent, isolated installs cannot resolve the bare package name, so
- * import the committed `config.mjs` build output through a relative path instead.
+ * load the committed entry file (`config.mjs` by default) through a relative path instead.
  */
-export function resolveWillboosterConfigModule(config: PackageConfig, configPackageName: string): string {
+export function resolveWillboosterConfigModule(
+  config: PackageConfig,
+  configPackageName: string,
+  entryFile = 'config.mjs'
+): string {
   if (!config.isWillBoosterConfigs) return configPackageName;
 
   // e.g. '@willbooster/oxlint-config' -> 'oxlint-config', which is its directory under `packages/`.
@@ -25,7 +29,7 @@ export function resolveWillboosterConfigModule(config: PackageConfig, configPack
   // path for a directly targeted config package. Every willbooster-configs package is either the
   // root or a direct child under `packages/`, so the root is the package dir itself or its grandparent.
   const repoRootDirPath = config.isRoot ? config.dirPath : path.resolve(config.dirPath, '..', '..');
-  const localEntry = path.resolve(repoRootDirPath, 'packages', configPackageDir, 'config.mjs');
+  const localEntry = path.resolve(repoRootDirPath, 'packages', configPackageDir, entryFile);
   const relativePath = path.relative(config.dirPath, localEntry);
   return relativePath.startsWith('.') ? relativePath : `./${relativePath}`;
 }

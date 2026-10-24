@@ -21,7 +21,10 @@ import { promisePool } from '../utils/promisePool.js';
 import { spawnAndReturnStatus, spawnAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
-import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
+import {
+  isPublishedWillboosterConfigsPackage,
+  resolveWillboosterConfigModule,
+} from '../utils/willboosterConfigsUtil.js';
 import {
   getDeclaredWorkspacePatterns,
   getWorkspacePackageJsonPaths,
@@ -333,7 +336,9 @@ function addJavaFormatterDependencies(
     !fs.existsSync(path.join(rootConfig.dirPath, '.prettierrc.json')) &&
     !fs.existsSync(path.join(config.dirPath, '.prettierrc.json'))
   ) {
-    jsonObj.prettier = '@willbooster/prettier-config';
+    // The config repository cannot declare its own config packages without risking release
+    // dependency cycles; Bun's formatter must load the local JSON instead of an unresolved package.
+    jsonObj.prettier = resolveWillboosterConfigModule(config, '@willbooster/prettier-config', '.prettierrc.json');
     devDependencies.push('prettier-plugin-java', '@willbooster/prettier-config');
   }
   devDependencies.push('prettier');
