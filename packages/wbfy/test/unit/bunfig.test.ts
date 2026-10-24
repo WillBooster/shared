@@ -171,3 +171,34 @@ module.exports = oxfmtResolvedConfig;
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
 });
+
+test('drops a project formatter ignore marker placed outside the [fmt] ignorePatterns array', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-fmt-marker-')));
+  try {
+    fs.writeFileSync(
+      path.join(tempDirPath, 'bunfig.toml'),
+      `# Project-specific patterns
+env = false
+
+[install]
+minimumReleaseAgeExcludes = [
+  "build-ts",
+]
+
+[fmt]
+ignorePatterns = [
+  "**/dist/**",
+] # Project-specific patterns
+"src/**",
+`
+    );
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath }), true);
+
+    const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
+    const bunfigToml = Bun.TOML.parse(content) as { fmt: { ignorePatterns: string[] } };
+    expect(bunfigToml.fmt.ignorePatterns).not.toContain('src/**');
+    expect(content).not.toContain('# Project-specific patterns');
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});

@@ -226,13 +226,15 @@ export function extractRawTestSections(content: string | undefined): string {
 
 function extractProjectFmtIgnoreLines(content: string | undefined): string[] {
   const lines = content?.split('\n') ?? [];
-  const startIndex = lines.findIndex((line) => line.trim() === projectIgnorePatternsComment);
-  if (startIndex === -1) return [];
-  const endIndex = lines.findIndex((line, index) => index > startIndex && line.trim() === ']');
-  // A marker outside the array would pull later sections into it, so such a block is regenerated away.
-  if (endIndex === -1) return [];
-  return lines
-    .slice(startIndex + 1, endIndex)
+  const arrayStartIndex = lines.findIndex((line) => /^\s*ignorePatterns\s*=\s*\[\s*$/.test(line));
+  const arrayEndIndex = lines.findIndex((line, index) => index > arrayStartIndex && line.trim() === ']');
+  if (arrayStartIndex === -1 || arrayEndIndex === -1) return [];
+  const arrayLines = lines.slice(arrayStartIndex + 1, arrayEndIndex);
+  // A marker anywhere else is dropped, since lines after it would be pulled into the array.
+  const markerIndex = arrayLines.findIndex((line) => line.trim() === projectIgnorePatternsComment);
+  if (markerIndex === -1) return [];
+  return arrayLines
+    .slice(markerIndex + 1)
     .map((line) => line.trim())
     .filter(Boolean);
 }
