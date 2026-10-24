@@ -135,7 +135,9 @@ oxfmtResolvedConfig.ignorePatterns = [
   ...(oxfmtResolvedConfig.ignorePatterns ?? []),
   'examples/**',
   // Upstream layout.
-  'grammar.js',
+  'grammar.js', // not 'grammar/**'
+  // Already ignored by wbfy.
+  '**/src/grammar.json',
 ];
 oxfmtResolvedConfig.ignorePatterns = [...(oxfmtResolvedConfig.ignorePatterns ?? []), 'src/**', '**/dist/**'];
 
@@ -155,6 +157,7 @@ module.exports = oxfmtResolvedConfig;
   # Keep generator output byte-identical.
   "examples/**",
   # Upstream layout.
+  # not 'grammar/**'
   "grammar.js",
   "src/**",
 ]

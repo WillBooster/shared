@@ -242,22 +242,32 @@ function migrateOxfmtIgnoreLines(dirPath: string): string[] {
   let pendingComments: string[] = [];
   let inIgnorePatterns = false;
   for (const line of readOxfmtProjectSection(dirPath).split('\n')) {
-    if (!line.trim()) continue;
-    const comment = /^\s*\/\/\s?(.*)$/.exec(line)?.[1];
-    if (comment !== undefined) {
-      pendingComments.push(`# ${comment}`.trimEnd());
-      continue;
+    const { code, comment, patterns } = parseOxfmtConfigLine(line);
+    if (comment !== undefined) pendingComments.push(`# ${comment}`.trimEnd());
+    if (!code.trim()) continue;
+
+    inIgnorePatterns ||= /\bignorePatterns\s*=/.test(code);
+    const projectPatterns = patterns.filter((pattern) => !fmtIgnorePatterns.includes(pattern));
+    if (inIgnorePatterns && projectPatterns.length > 0) {
+      migratedLines.push(...pendingComments, ...projectPatterns.map((pattern) => `${JSON.stringify(pattern)},`));
     }
-    inIgnorePatterns ||= /\bignorePatterns\s*=/.test(line);
-    if (inIgnorePatterns) {
-      const patterns = [...line.matchAll(/'([^']*)'|"([^"]*)"/g)].map((match) => match[1] ?? match[2]);
-      migratedLines.push(...pendingComments, ...patterns.map((pattern) => `${JSON.stringify(pattern)},`));
-    }
-    pendingComments = [];
+    // Comments above the assignment or its spread line describe the patterns that follow.
+    if (!inIgnorePatterns || patterns.length > 0) pendingComments = [];
     // `...(oxfmtResolvedConfig.ignorePatterns ?? [])` contains a bracket, so only a closing one ends.
-    if (/\]\s*;?\s*$/.test(line)) inIgnorePatterns = false;
+    if (/\]\s*;?\s*$/.test(code)) inIgnorePatterns = false;
   }
   return migratedLines;
+}
+
+function parseOxfmtConfigLine(line: string): { code: string; comment?: string; patterns: string[] } {
+  // Matching string literals first keeps a `//` inside a pattern from starting a comment.
+  const tokens = [...line.matchAll(/'([^']*)'|"([^"]*)"|\/\/\s?(.*)$/g)];
+  const commentToken = tokens.find((token) => token[3] !== undefined);
+  return {
+    code: commentToken ? line.slice(0, commentToken.index) : line,
+    comment: commentToken?.[3],
+    patterns: tokens.flatMap((token) => (token[3] === undefined ? [token[1] ?? token[2] ?? ''] : [])),
+  };
 }
 
 function readOxfmtProjectSection(dirPath: string): string {
