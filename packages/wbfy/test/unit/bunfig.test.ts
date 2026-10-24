@@ -120,3 +120,85 @@ minimumReleaseAgeExcludes = [
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
 });
+
+test('carries the repository-specific formatter ignores from oxfmt.config.ts over regenerations', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-fmt-ignores-')));
+  try {
+    fs.writeFileSync(
+      path.join(tempDirPath, 'oxfmt.config.ts'),
+      `// wbfy:start oxfmt-base
+const oxfmtResolvedConfig = require('@willbooster/oxfmt-config');
+// wbfy:end oxfmt-base
+
+// Keep generator output byte-identical.
+oxfmtResolvedConfig.ignorePatterns = [
+  ...(oxfmtResolvedConfig.ignorePatterns ?? []),
+  'examples/**',
+  // Upstream layout.
+  'grammar.js', // not 'grammar/**'
+  // Already ignored by wbfy.
+  '**/src/grammar.json',
+];
+oxfmtResolvedConfig.ignorePatterns = [...(oxfmtResolvedConfig.ignorePatterns ?? []), 'src/**', '**/dist/**', '**/*.toml'];
+
+// wbfy:start oxfmt-export
+module.exports = oxfmtResolvedConfig;
+// wbfy:end oxfmt-export
+`
+    );
+    // A Prettier config makes wbfy manage `**/*.toml` too.
+    fs.writeFileSync(path.join(tempDirPath, '.prettierrc.json'), '{}');
+    const config = createConfig({ dirPath: tempDirPath });
+    await generateBunfigToml(config, true);
+    // removeOxfmtConfig deletes the file later in the same wbfy run.
+    fs.rmSync(path.join(tempDirPath, 'oxfmt.config.ts'));
+    await generateBunfigToml(config, true);
+
+    const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
+    expect(content).toContain(`  # Project-specific patterns
+  # Keep generator output byte-identical.
+  "examples/**",
+  # Upstream layout.
+  # not 'grammar/**'
+  "grammar.js",
+  "src/**",
+]
+`);
+    const ignorePatterns = (Bun.TOML.parse(content) as { fmt: { ignorePatterns: string[] } }).fmt.ignorePatterns;
+    expect(ignorePatterns.filter((pattern) => pattern === '**/dist/**')).toHaveLength(1);
+    expect(ignorePatterns.filter((pattern) => pattern === '**/*.toml')).toHaveLength(1);
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
+
+test('drops a project formatter ignore marker placed outside the [fmt] ignorePatterns array', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-fmt-marker-')));
+  try {
+    fs.writeFileSync(
+      path.join(tempDirPath, 'bunfig.toml'),
+      `# Project-specific patterns
+env = false
+
+[install]
+minimumReleaseAgeExcludes = [
+  "build-ts",
+]
+
+[fmt]
+ignorePatterns = [
+  "**/dist/**",
+] # Project-specific patterns
+"src/**",
+`
+    );
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath }), true);
+
+    const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
+    const bunfigToml = Bun.TOML.parse(content) as { fmt: { ignorePatterns: string[] } };
+    expect(bunfigToml.fmt.ignorePatterns).not.toContain('src/**');
+    expect(content).not.toContain('# Project-specific patterns');
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});

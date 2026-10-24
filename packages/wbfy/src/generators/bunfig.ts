@@ -91,7 +91,16 @@ export async function generateBunfigToml(
         fs.existsSync(path.join(packageConfig.dirPath, '.prettierrc.json')) ||
         Boolean(packageConfig.packageJson?.prettier)
     );
-    const content = newContent(existingContent, useGlobalStore, usesPrettierConfig);
+    // A Prettier config makes Bun route TOML through Prettier, which has no TOML parser, even
+    // with the oxfmt flavor selected. Java repositories receive that config on this same run.
+    const managedIgnorePatterns = usesPrettierConfig ? [...fmtIgnorePatterns, '**/*.toml'] : fmtIgnorePatterns;
+    const existingIgnoreLines = extractProjectFmtIgnoreLines(existingContent);
+    const projectIgnoreLines = (
+      existingIgnoreLines.length > 0
+        ? existingIgnoreLines
+        : migrateOxfmtIgnoreLines(config.dirPath, managedIgnorePatterns)
+    ).filter((line) => !managedIgnorePatterns.some((pattern) => line === `"${pattern}",`));
+    const content = newContent(existingContent, useGlobalStore, managedIgnorePatterns, projectIgnoreLines);
     await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, content));
   });
 }
@@ -138,10 +147,14 @@ const fmtIgnorePatterns = [
   '**/src/node-types.json',
 ];
 
+// Lines below this comment in `ignorePatterns` belong to the repository and survive regeneration.
+const projectIgnorePatternsComment = '# Project-specific patterns';
+
 const newContent = (
   existingContent: string | undefined,
   useGlobalStore: boolean,
-  usesPrettierConfig: boolean
+  managedIgnorePatterns: string[],
+  projectIgnoreLines: string[]
 ): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   // minimumReleaseAge and minimumReleaseAgeExcludes are org policy, never repository policy: both
@@ -152,9 +165,6 @@ const newContent = (
   // Keeping Next.js installs project-local avoids widening that root to $HOME (or `/` in Docker),
   // which would expand development filesystem watching and bypass the boundary's cache benefits.
   const globalStoreLine = useGlobalStore ? 'globalStore = true' : 'globalStore = false';
-  // A Prettier config makes Bun route TOML through Prettier, which has no TOML parser, even
-  // with the oxfmt flavor selected. Java repositories receive that config on this same run.
-  const ignorePatterns = usesPrettierConfig ? [...fmtIgnorePatterns, '**/*.toml'] : fmtIgnorePatterns;
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   // publicHoistPattern — tsx: build-ts under Node.js spawns `node --import tsx`, which resolves
@@ -184,8 +194,8 @@ sortImports = true
 sortPackageJson = true
 trailingComma = "es5"
 ignorePatterns = [
-${ignorePatterns.map((pattern) => `  "${pattern}",`).join('\n')}
-]
+${managedIgnorePatterns.map((pattern) => `  "${pattern}",`).join('\n')}
+${projectIgnoreLines.length > 0 ? `  ${projectIgnorePatternsComment}\n${projectIgnoreLines.map((line) => `  ${line}`).join('\n')}\n` : ''}]
 
 [[fmt.overrides]]
 files = ["**/oxlint.config.ts"]
@@ -212,6 +222,65 @@ export function extractRawTestSections(content: string | undefined): string {
     }
   }
   return preservedLines.length > 0 ? `${preservedLines.join('\n')}\n\n` : '';
+}
+
+function extractProjectFmtIgnoreLines(content: string | undefined): string[] {
+  const lines = content?.split('\n') ?? [];
+  const arrayStartIndex = lines.findIndex((line) => /^\s*ignorePatterns\s*=\s*\[\s*$/.test(line));
+  const arrayEndIndex = lines.findIndex((line, index) => index > arrayStartIndex && line.trim() === ']');
+  if (arrayStartIndex === -1 || arrayEndIndex === -1) return [];
+  const arrayLines = lines.slice(arrayStartIndex + 1, arrayEndIndex);
+  // A marker anywhere else is dropped, since lines after it would be pulled into the array.
+  const markerIndex = arrayLines.findIndex((line) => line.trim() === projectIgnorePatternsComment);
+  if (markerIndex === -1) return [];
+  return arrayLines
+    .slice(markerIndex + 1)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Convert the repository's own `ignorePatterns` in oxfmt.config.ts, which removeOxfmtConfig deletes
+ * later in the same run, into bunfig.toml lines, keeping the comments that explain them.
+ */
+function migrateOxfmtIgnoreLines(dirPath: string, managedIgnorePatterns: string[]): string[] {
+  const migratedLines: string[] = [];
+  let pendingComments: string[] = [];
+  let inIgnorePatterns = false;
+  for (const line of readOxfmtProjectSection(dirPath).split('\n')) {
+    const { code, comment, patterns } = parseOxfmtConfigLine(line);
+    if (comment !== undefined) pendingComments.push(`# ${comment}`.trimEnd());
+    if (!code.trim()) continue;
+
+    inIgnorePatterns ||= /\bignorePatterns\s*=/.test(code);
+    const projectPatterns = patterns.filter((pattern) => !managedIgnorePatterns.includes(pattern));
+    if (inIgnorePatterns && projectPatterns.length > 0) {
+      migratedLines.push(...pendingComments, ...projectPatterns.map((pattern) => `${JSON.stringify(pattern)},`));
+    }
+    // Comments above the assignment or its spread line describe the patterns that follow.
+    if (!inIgnorePatterns || patterns.length > 0) pendingComments = [];
+    // `...(oxfmtResolvedConfig.ignorePatterns ?? [])` contains a bracket, so only a closing one ends.
+    if (/\]\s*;?\s*$/.test(code)) inIgnorePatterns = false;
+  }
+  return migratedLines;
+}
+
+function parseOxfmtConfigLine(line: string): { code: string; comment?: string; patterns: string[] } {
+  // One left-to-right scan: a quoted pattern consumes its own `//`, and a comment runs to the end of the line.
+  const tokens = [...line.matchAll(/'([^']*)'|"([^"]*)"|\/\/\s?(.*)$/g)];
+  const commentToken = tokens.find((token) => token[3] !== undefined);
+  return {
+    code: commentToken ? line.slice(0, commentToken.index) : line,
+    comment: commentToken?.[3],
+    patterns: tokens.flatMap((token) => (token[3] === undefined ? [token[1] ?? token[2] ?? ''] : [])),
+  };
+}
+
+function readOxfmtProjectSection(dirPath: string): string {
+  const filePath = path.resolve(dirPath, 'oxfmt.config.ts');
+  if (!fs.existsSync(filePath)) return '';
+  const content = fs.readFileSync(filePath, 'utf8');
+  return /wbfy:end oxfmt-base([\s\S]*?)\/\/ wbfy:start oxfmt-export/.exec(content)?.[1] ?? '';
 }
 
 function parseBunfigToml(content: string | undefined): BunfigToml | undefined {
