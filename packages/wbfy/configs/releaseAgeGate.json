@@ -9,6 +9,7 @@
     "@willbooster-private/ai-ocr",
     "@willbooster-private/code-analyzer",
     "@willbooster-private/judge",
+    "@willbooster-private/kaizen-spring",
     "@willbooster-private/llm-proxy",
     "@willbooster-private/review-booster",
     "@willbooster-private/slidev-theme-willbooster",
