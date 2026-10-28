@@ -12,6 +12,7 @@
     "@willbooster-private/kaizen-spring",
     "@willbooster-private/llm-proxy",
     "@willbooster-private/review-booster",
+    "@willbooster-private/rubitasu",
     "@willbooster-private/slidev-theme-willbooster",
     "@willbooster/babel-configs",
     "@willbooster/biome-config",
