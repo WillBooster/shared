@@ -14,6 +14,7 @@ import { codeGaugeCommand } from './commands/codeGauge.js';
 import { concurrentlyCommand } from './commands/concurrently.js';
 import { deployCommand } from './commands/deploy.js';
 import { dotenvCommand } from './commands/dotenv.js';
+import { gcCommand, startAutoGcIfDue } from './commands/gc.js';
 import { genCodeCommand } from './commands/genCode.js';
 import { genDevVarsCommand } from './commands/genDevVars.js';
 import { genDockerEnvCommand } from './commands/genDockerEnv.js';
@@ -67,6 +68,7 @@ await yargs(hideBin(process.argv))
     }
 
     if (argv._[0] !== 'run') removeNpmAndYarnEnvironmentVariables(process.env);
+    startAutoGcIfDue(argv._[0]);
   })
   .command(verifyCodeCommand)
   .command(buildIfNeededCommand)
@@ -75,6 +77,7 @@ await yargs(hideBin(process.argv))
   .command(concurrentlyCommand)
   .command(deployCommand)
   .command(dotenvCommand)
+  .command(gcCommand)
   .command(genCodeCommand)
   .command(genDevVarsCommand)
   .command(genDockerEnvCommand)

@@ -33,6 +33,10 @@ Commands:
                                  checks the plan of every environment.
   wb dotenv [args..]             Load environment variables from fnox and run a
                                  command.
+  wb gc                          Remove stale temporary files, worktrees, and
+                                 build artifacts: under the ghq root locally, or
+                                 stale job workspaces on a self-hosted CI
+                                 runner.
   wb gen-code                    Generate code for the current project
   wb gen-dev-vars [path]         Generate a .dev.vars file for `wrangler dev`
                                  from the environment variables loaded from fnox
@@ -145,6 +149,23 @@ Options:
       --version           Show version number                          [boolean]
       --help              Show help                                    [boolean]
 ```
+
+## Disk cleanup
+
+`wb gc` removes what is safe to lose and prints each removed path to stderr. `--dry-run` only lists them.
+
+- Locally, under `$GHQ_ROOT` (default `~/ghq`, laid out as `<host>/<owner>/<repo>`):
+  - `.tmp` entries unmodified for 7 days, then `git worktree prune`. An entry is kept when it contains Git-tracked files or a worktree whose detached HEAD has commits on no branch or tag. Uncommitted changes in a stale entry are removed.
+  - `node_modules` and directories marked by `CACHEDIR.TAG` (e.g., Cargo's `target`) up to three levels deep, unmodified for 30 days in a repository whose Git metadata (`index`, `HEAD`, `FETCH_HEAD`, `logs/HEAD`) is also older than 30 days.
+- On a self-hosted CI runner: every job workspace (`<work>/<repo>`) other than the current one whose checkouts were not fetched for 3 days. The runner's own `_`-prefixed directories are kept.
+- Both: `mise prune --yes` and `mise cache prune`.
+
+The directory wb runs in and its ancestors are never removed.
+
+Every other wb command starts `wb gc` once per interval from the outermost wb process:
+
+- On a developer machine, once a day in the background when `WB_AUTO_GC` is truthy, logging to `~/.cache/wb/gc.log`.
+- On a self-hosted CI runner (`RUNNER_ENVIRONMENT=self-hosted`), once an hour per work directory, synchronously, because the job end kills background processes. GitHub-hosted runners are skipped.
 
 ## Running relevant tests
 
