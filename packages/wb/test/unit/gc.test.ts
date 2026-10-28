@@ -92,7 +92,10 @@ describe('wb gc', () => {
     createRepository(path.join(workRootPath, 'stale', 'stale'));
     createRepository(path.join(workRootPath, 'recent', 'src', 'recent'));
     writeFile(path.join(workRootPath, '_tool', 'node', 'bin'));
+    const lockedGitPath = path.join(createRepository(path.join(workRootPath, 'locked', 'locked')), '.git');
     setOld(tempDirPath, 10);
+    setNow(path.join(lockedGitPath, 'index'));
+    fs.chmodSync(lockedGitPath, 0o600);
     setNow(path.join(workRootPath, 'recent', 'src', 'recent', '.git', 'FETCH_HEAD'));
     const env = {
       CI: 'true',
@@ -103,12 +106,14 @@ describe('wb gc', () => {
 
     const firstRunHour = getCurrentHour();
     const result = runWb(currentCheckoutPath, ['kill-port-if-non-ci'], env);
+    fs.chmodSync(lockedGitPath, 0o700);
 
     expect(result.status).toBe(0);
     expect(fs.existsSync(path.join(workRootPath, 'stale'))).toBe(false);
     expect(fs.existsSync(currentWorkspacePath)).toBe(true);
     expect(fs.existsSync(path.join(workRootPath, 'recent'))).toBe(true);
     expect(fs.existsSync(path.join(workRootPath, '_tool'))).toBe(true);
+    expect(fs.existsSync(path.join(workRootPath, 'locked'))).toBe(true);
 
     createRepository(path.join(workRootPath, 'another', 'another'));
     setOld(path.join(workRootPath, 'another'), 10);

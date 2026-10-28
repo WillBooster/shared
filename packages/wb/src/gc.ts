@@ -331,13 +331,25 @@ function resolveGitDirPath(repoPath: string): string {
   return gitDir ? path.resolve(repoPath, gitDir) : gitPath;
 }
 
+/** Anything that cannot be inspected counts as modified: it may hide a recent change. */
 function isModifiedSince(entryPath: string, cutoffMs: number): boolean {
-  const stat = tryLstat(entryPath);
-  if (!stat) return false;
+  let stat: fs.Stats;
+  try {
+    stat = fs.lstatSync(entryPath);
+  } catch (error) {
+    // A vanished entry holds nothing; any other failure (e.g., a parent without the execute bit) hides one.
+    return (error as NodeJS.ErrnoException).code !== 'ENOENT';
+  }
   if (stat.mtimeMs >= cutoffMs) return true;
   if (!stat.isDirectory()) return false;
 
-  return listChildPaths(entryPath).some((childPath) => isModifiedSince(childPath, cutoffMs));
+  let childNames: string[];
+  try {
+    childNames = fs.readdirSync(entryPath);
+  } catch {
+    return true;
+  }
+  return childNames.some((childName) => isModifiedSince(path.join(entryPath, childName), cutoffMs));
 }
 
 /** Returns whether the path was (or, in a dry run, would be) removed; a failure is logged and skipped. */

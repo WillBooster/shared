@@ -160,7 +160,7 @@ Options:
 - On a self-hosted CI runner: every job workspace (`<work>/<repo>`) other than the current one in which nothing was modified for 3 days. The runner's own `_`-prefixed directories are kept.
 - Both: `mise prune --yes` and `mise cache prune`.
 
-The directory wb runs in and its ancestors are never removed.
+The directory wb runs in and its ancestors are never removed. Anything wb gc cannot inspect (an unreadable directory, a failed git check) is kept, and freshness counts it as modified.
 
 Every other wb command starts `wb gc` once per interval from the outermost wb process:
 
