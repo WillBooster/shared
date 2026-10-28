@@ -134,6 +134,7 @@ describe('wb gc', () => {
       CI: 'true',
       HOME: tempDirPath,
       RUNNER_ENVIRONMENT: 'self-hosted',
+      RUNNER_TEMP: path.join(workRootPath, '_temp'),
       RUNNER_WORKSPACE: currentWorkspacePath,
     };
 
@@ -153,6 +154,12 @@ describe('wb gc', () => {
     expect(runWb(currentCheckoutPath, ['kill-port-if-non-ci'], env).status).toBe(0);
     // CI intervals are clock-aligned hours, so a second run in the next hour legitimately cleans again.
     if (getCurrentHour() === firstRunHour) expect(fs.existsSync(path.join(workRootPath, 'another'))).toBe(true);
+
+    createRepository(path.join(workRootPath, 'misconfigured', 'misconfigured'));
+    setOld(path.join(workRootPath, 'misconfigured'), 10);
+    const misconfiguredResult = runWb(currentCheckoutPath, ['gc'], { ...env, RUNNER_TEMP: tempDirPath });
+    expect(misconfiguredResult.status).toBe(0);
+    expect(fs.existsSync(path.join(workRootPath, 'misconfigured'))).toBe(true);
   }, 60_000);
 });
 

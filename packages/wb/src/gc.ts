@@ -150,6 +150,14 @@ function getGcRootPath(mode: GcMode): string {
  * workspace but the current job's is idle; actions/checkout re-creates a removed one.
  */
 function removeStaleCiWorkspaces(workRootPath: string, context: GcContext): void {
+  // The runner sets RUNNER_TEMP to `<work>/_temp`; requiring it to agree keeps a misconfigured
+  // RUNNER_WORKSPACE from pointing the cleanup at an unrelated directory such as the home directory.
+  const expectedTempPath = path.join(workRootPath, '_temp');
+  if (path.resolve(process.env.RUNNER_TEMP ?? '') !== expectedTempPath) {
+    console.error(`wb gc: skipped CI workspaces because RUNNER_TEMP is not ${expectedTempPath}.`);
+    return;
+  }
+
   const currentWorkspacePath = getCurrentCiWorkspacePath();
   const cutoffMs = context.nowMs - ciWorkspaceMaxAgeMs;
   for (const entry of listDirEntries(workRootPath)) {
@@ -258,7 +266,8 @@ function findRemovalBlocker(dirPath: string): string | undefined {
   } catch {
     return `${dirPath} cannot be read`;
   }
-  const blocker = isGitDir(entries)
+  const isGitDirectory = isGitDir(entries);
+  const blocker = isGitDirectory
     ? findGitDirBlocker(dirPath)
     : // Read `.git` from the listing: lstat fails in a directory without the execute bit.
       entries.some((entry) => entry.name === '.git' && !entry.isDirectory())
@@ -266,9 +275,9 @@ function findRemovalBlocker(dirPath: string): string | undefined {
       : undefined;
   if (blocker) return blocker;
 
-  // Git directories are scanned too: submodules keep theirs under `.git/modules/<name>`.
+  // Inside a Git directory, only `modules` (submodules' Git directories) can hold another repository.
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory() || (isGitDirectory && entry.name !== 'modules')) continue;
     const childBlocker = findRemovalBlocker(path.join(dirPath, entry.name));
     if (childBlocker) return childBlocker;
   }
@@ -483,8 +492,7 @@ function pruneMise(dryRun: boolean): void {
     ['prune', '--yes', ...dryRunArgs],
     ['cache', 'prune', ...dryRunArgs],
   ]) {
-    const result = childProcess.spawnSync('mise', args, { stdio: ['ignore', 'pipe', 'inherit'] });
-    process.stderr.write(result.stdout ?? '');
+    const result = childProcess.spawnSync('mise', args, { stdio: ['ignore', 2, 2] });
     if (result.error) {
       console.error(`wb gc: skipped \`mise ${args.join(' ')}\`: ${result.error.message}`);
       return;
