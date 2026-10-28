@@ -177,17 +177,13 @@ function removeStaleTmpEntries(repoPath: string, context: GcContext): void {
       .filter(Boolean)
       .map((filePath) => filePath.split('/')[1])
   );
-  const unreachableWorktreePaths = listWorktreesWithUnreachableHead(repoPath);
-  if (!unreachableWorktreePaths) return;
-
   const cutoffMs = context.nowMs - localTmpEntryMaxAgeMs;
   let removedAny = false;
   for (const { name: entryName } of listDirEntries(tmpPath)) {
     const entryPath = path.join(tmpPath, entryName);
     if (trackedEntryNames.has(entryName) || isModifiedSince(entryPath, cutoffMs)) continue;
 
-    const realEntryPath = resolveWithoutLastSymlink(entryPath);
-    const worktreePath = unreachableWorktreePaths.find((p) => isSameOrInside(p, realEntryPath));
+    const worktreePath = findWorktreeWithUnreachableHead(entryPath);
     if (worktreePath) {
       console.error(
         `wb gc: kept ${entryPath} because ${worktreePath} has commits on no branch, remote-tracking branch, or tag.`
@@ -225,30 +221,32 @@ function findBuildArtifactDirPaths(dirPath: string, depth: number): string[] {
 }
 
 /**
- * Removing a worktree keeps its branch commits in the main repository, but loses commits reachable
- * only from a detached HEAD.
+ * Removing a worktree keeps its branch commits in its main repository (which may be any
+ * repository, not only the enclosing one), but loses commits reachable only from a detached HEAD.
  */
-function listWorktreesWithUnreachableHead(repoPath: string): string[] | undefined {
-  const output = runGit(repoPath, ['worktree', 'list', '--porcelain']);
-  if (output === undefined) return undefined;
+function findWorktreeWithUnreachableHead(dirPath: string): string | undefined {
+  if (tryLstat(path.join(dirPath, '.git'))?.isFile() && hasUnreachableDetachedHead(dirPath)) return dirPath;
 
-  const worktreePaths: string[] = [];
-  for (const block of output.split('\n\n')) {
-    const worktreePath = /^worktree (.+)$/m.exec(block)?.[1];
-    const head = /^HEAD ([\da-f]+)$/m.exec(block)?.[1];
-    if (!worktreePath || !head || !/^detached$/m.test(block)) continue;
-
-    const containingRef = runGit(repoPath, [
-      'for-each-ref',
-      '--count=1',
-      `--contains=${head}`,
-      'refs/heads',
-      'refs/remotes',
-      'refs/tags',
-    ]);
-    if (!containingRef?.trim()) worktreePaths.push(resolveWithoutLastSymlink(worktreePath));
+  for (const childPath of listChildDirPaths(dirPath)) {
+    if (path.basename(childPath) === 'node_modules') continue;
+    const worktreePath = findWorktreeWithUnreachableHead(childPath);
+    if (worktreePath) return worktreePath;
   }
-  return worktreePaths;
+  return undefined;
+}
+
+function hasUnreachableDetachedHead(worktreePath: string): boolean {
+  if (runGit(worktreePath, ['symbolic-ref', '-q', 'HEAD']) !== undefined) return false;
+
+  const containingRef = runGit(worktreePath, [
+    'for-each-ref',
+    '--count=1',
+    '--contains=HEAD',
+    'refs/heads',
+    'refs/remotes',
+    'refs/tags',
+  ]);
+  return !containingRef?.trim();
 }
 
 function getRepositoryLastUsedMs(repoPath: string): number {

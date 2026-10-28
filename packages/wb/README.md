@@ -155,7 +155,7 @@ Options:
 `wb gc` removes what is safe to lose and prints each removed path to stderr. `--dry-run` only lists them.
 
 - Locally, under `$GHQ_ROOT` (default `~/ghq`, laid out as `<host>/<owner>/<repo>`):
-  - `.tmp` entries unmodified for 7 days, then `git worktree prune`. An entry is kept when it contains Git-tracked files or a worktree of that repository whose detached HEAD has commits on no branch, remote-tracking branch, or tag. A path that cannot be removed is logged and skipped. Uncommitted changes in a stale entry are removed.
+  - `.tmp` entries unmodified for 7 days, then `git worktree prune`. An entry is kept when it contains Git-tracked files or, at any depth, a worktree whose detached HEAD has commits on no branch, remote-tracking branch, or tag. A path that cannot be removed is logged and skipped. Uncommitted changes in a stale entry are removed.
   - `node_modules` and directories marked by `CACHEDIR.TAG` (e.g., Cargo's `target`) up to three levels deep, unmodified for 30 days in a repository whose Git metadata (`index`, `HEAD`, `FETCH_HEAD`, `logs/HEAD`) is also older than 30 days.
 - On a self-hosted CI runner: every job workspace (`<work>/<repo>`) other than the current one whose checkouts were not fetched for 3 days. The runner's own `_`-prefixed directories are kept.
 - Both: `mise prune --yes` and `mise cache prune`.

@@ -21,6 +21,10 @@ describe('wb gc', () => {
     const detachedWorktreePath = path.join(activeRepoPath, '.tmp', 'session', 'a', 'b', 'detached-worktree');
     git(activeRepoPath, 'worktree', 'add', '-q', '--detach', detachedWorktreePath);
     git(detachedWorktreePath, 'commit', '-q', '--allow-empty', '-m', 'detached');
+    const foreignRepoPath = createRepository(path.join(tempDirPath, 'foreign'));
+    const foreignWorktreePath = path.join(activeRepoPath, '.tmp', 'foreign-session', 'worktree');
+    git(foreignRepoPath, 'worktree', 'add', '-q', '--detach', foreignWorktreePath);
+    git(foreignWorktreePath, 'commit', '-q', '--allow-empty', '-m', 'detached');
     writeFile(path.join(activeRepoPath, '.tmp', 'stale', 'log.txt'));
     writeFile(path.join(activeRepoPath, '.tmp', 'stale.log'));
     fs.symlinkSync(path.join(tempDirPath, 'missing'), path.join(activeRepoPath, '.tmp', 'dangling'));
@@ -44,6 +48,7 @@ describe('wb gc', () => {
     expect(git(activeRepoPath, 'worktree', 'list')).not.toContain('branch-worktree');
     expect(git(activeRepoPath, 'branch', '--list', 'feature')).toContain('feature');
     expect(fs.existsSync(detachedWorktreePath)).toBe(true);
+    expect(fs.existsSync(foreignWorktreePath)).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'tracked', 'keep.txt'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'recent'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, 'node_modules'))).toBe(true);
