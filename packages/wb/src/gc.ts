@@ -108,16 +108,6 @@ function getWbCacheDirPath(): string {
   return dirPath;
 }
 
-function getGcRootPath(mode: GcMode): string {
-  if (mode === 'ci') return path.dirname(getCurrentCiWorkspacePath());
-  return path.resolve(process.env.GHQ_ROOT ?? path.join(os.homedir(), 'ghq'));
-}
-
-function getCurrentCiWorkspacePath(): string {
-  assert.ok(process.env.RUNNER_WORKSPACE, 'RUNNER_WORKSPACE must be set on CI.');
-  return path.resolve(process.env.RUNNER_WORKSPACE);
-}
-
 export function runGc(mode: GcMode, dryRun: boolean): void {
   const rootPath = getGcRootPath(mode);
   console.error(`wb gc: cleaning ${rootPath} (${mode}) at ${new Date().toISOString()}${dryRun ? ' (dry run)' : ''}.`);
@@ -150,6 +140,11 @@ export function runGc(mode: GcMode, dryRun: boolean): void {
   }
 }
 
+function getGcRootPath(mode: GcMode): string {
+  if (mode === 'ci') return path.dirname(getCurrentCiWorkspacePath());
+  return path.resolve(process.env.GHQ_ROOT ?? path.join(os.homedir(), 'ghq'));
+}
+
 /**
  * Each job checks out into `<work>/<repo>/<repo>`, and one runner runs one job at a time, so every
  * workspace but the current job's is idle; actions/checkout re-creates a removed one.
@@ -169,6 +164,11 @@ function removeStaleCiWorkspaces(workRootPath: string, context: GcContext): void
       removePath(workspacePath, 'CI workspace unmodified for 3 days', context);
     }
   }
+}
+
+function getCurrentCiWorkspacePath(): string {
+  assert.ok(process.env.RUNNER_WORKSPACE, 'RUNNER_WORKSPACE must be set on CI.');
+  return path.resolve(process.env.RUNNER_WORKSPACE);
 }
 
 function listGhqRepositories(rootPath: string): string[] {
@@ -299,6 +299,12 @@ function findLinkedWorktreeBlocker(worktreePath: string): string | undefined {
   return branch.trim() === 'HEAD' ? findUnreachableCommitBlocker(worktreePath, [], 'HEAD', worktreePath) : undefined;
 }
 
+interface WorktreeRecord {
+  worktreePath?: string;
+  head?: string;
+  isDetached: boolean;
+}
+
 function findGitDirBlocker(gitDirPath: string): string | undefined {
   const gitDirArgs = ['--git-dir=.'];
   // `-z`: paths may contain newlines, even blank lines, but never NUL.
@@ -314,12 +320,6 @@ function findGitDirBlocker(gitDirPath: string): string | undefined {
     if (blocker) return blocker;
   }
   return undefined;
-}
-
-interface WorktreeRecord {
-  worktreePath?: string;
-  head?: string;
-  isDetached: boolean;
 }
 
 /** Parses `git worktree list --porcelain -z`, whose records end with an empty field. */
