@@ -8,7 +8,6 @@ import { createTempDir } from '../helpers/shared.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const cliPath = fileURLToPath(new URL('../../src/index.ts', import.meta.url));
-const packageDirPath = fileURLToPath(new URL('../..', import.meta.url));
 
 describe('wb gc', () => {
   it('removes stale .tmp entries and artifacts of unused repositories under the ghq root', () => {
@@ -38,7 +37,7 @@ describe('wb gc', () => {
     writeFile(path.join(activeRepoPath, '.tmp', 'recent', 'log.txt'));
     for (const fileName of ['index', 'HEAD']) setNow(path.join(activeRepoPath, '.git', fileName));
 
-    const result = runWbGc({ GHQ_ROOT: ghqRootPath, HOME: tempDirPath });
+    const result = runWbGc(tempDirPath, { GHQ_ROOT: ghqRootPath, HOME: tempDirPath });
 
     expect(result.status).toBe(0);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'stale'))).toBe(false);
@@ -61,7 +60,8 @@ describe('wb gc', () => {
     const tempDirPath = createTempDir();
     const workRootPath = path.join(tempDirPath, '_work');
     const currentWorkspacePath = path.join(workRootPath, 'current');
-    createRepository(path.join(currentWorkspacePath, 'current'));
+    const currentCheckoutPath = createRepository(path.join(currentWorkspacePath, 'current'));
+    fs.writeFileSync(path.join(currentCheckoutPath, 'package.json'), JSON.stringify({ name: 'current' }));
     createRepository(path.join(workRootPath, 'stale', 'stale'));
     createRepository(path.join(workRootPath, 'recent', 'recent'));
     writeFile(path.join(workRootPath, '_tool', 'node', 'bin'));
@@ -74,7 +74,7 @@ describe('wb gc', () => {
       RUNNER_WORKSPACE: currentWorkspacePath,
     };
 
-    const result = runWb(['kill-port-if-non-ci'], env);
+    const result = runWb(currentCheckoutPath, ['kill-port-if-non-ci'], env);
 
     expect(result.status).toBe(0);
     expect(fs.existsSync(path.join(workRootPath, 'stale'))).toBe(false);
@@ -84,19 +84,20 @@ describe('wb gc', () => {
 
     createRepository(path.join(workRootPath, 'another', 'another'));
     setOld(path.join(workRootPath, 'another'), 10);
-    expect(runWb(['kill-port-if-non-ci'], env).status).toBe(0);
+    expect(runWb(currentCheckoutPath, ['kill-port-if-non-ci'], env).status).toBe(0);
     expect(fs.existsSync(path.join(workRootPath, 'another'))).toBe(true);
   }, 60_000);
 });
 
-function runWbGc(env: Record<string, string>): childProcess.SpawnSyncReturns<string> {
-  return runWb(['gc'], { CI: '', ...env });
+function runWbGc(cwd: string, env: Record<string, string>): childProcess.SpawnSyncReturns<string> {
+  return runWb(cwd, ['gc'], { CI: '', ...env });
 }
 
-function runWb(args: string[], env: Record<string, string>): childProcess.SpawnSyncReturns<string> {
+/** Runs from a temporary directory, so mise finds no configuration of the host's ancestor directories. */
+function runWb(cwd: string, args: string[], env: Record<string, string>): childProcess.SpawnSyncReturns<string> {
   const miseDirPath = path.join(env.HOME ?? '', 'mise');
   const result = childProcess.spawnSync('bun', [cliPath, ...args], {
-    cwd: packageDirPath,
+    cwd,
     encoding: 'utf8',
     env: {
       ...process.env,
