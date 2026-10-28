@@ -201,7 +201,7 @@ function removeStaleTmpEntries(repoPath: string, context: GcContext): void {
     }
     removedAny = removePath(entryPath, '.tmp entry unmodified for 7 days', context) || removedAny;
   }
-  if (removedAny) runGit(repoPath, ['worktree', 'prune']);
+  if (removedAny && !context.dryRun) runGit(repoPath, ['worktree', 'prune']);
 }
 
 function removeStaleBuildArtifacts(repoPath: string, context: GcContext): void {
