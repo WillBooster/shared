@@ -15,6 +15,7 @@ describe('wb gc', () => {
     const ghqRootPath = path.join(tempDirPath, 'ghq');
     const activeRepoPath = createRepository(path.join(ghqRootPath, 'github.com', 'owner', 'active'));
     const unusedRepoPath = createRepository(path.join(ghqRootPath, 'github.com', 'owner', 'unused'));
+    const invokingRepoPath = createRepository(path.join(ghqRootPath, 'github.com', 'owner', 'invoking'));
 
     git(activeRepoPath, 'worktree', 'add', '-q', '-b', 'feature', '.tmp/branch-worktree');
     const detachedWorktreePath = path.join(activeRepoPath, '.tmp', 'session', 'a', 'b', 'detached-worktree');
@@ -26,6 +27,10 @@ describe('wb gc', () => {
     git(foreignWorktreePath, 'commit', '-q', '--allow-empty', '-m', 'detached');
     writeFile(path.join(activeRepoPath, '.tmp', 'stale', 'log.txt'));
     writeFile(path.join(activeRepoPath, '.tmp', 'stale.log'));
+    const cloneRepoPath = createRepository(path.join(activeRepoPath, '.tmp', 'clone'));
+    const cloneWorktreePath = path.join(activeRepoPath, '.tmp', 'clone-worktree');
+    git(cloneRepoPath, 'worktree', 'add', '-q', '--detach', cloneWorktreePath);
+    git(cloneWorktreePath, 'commit', '-q', '--allow-empty', '-m', 'detached');
     const lockedDirPath = path.join(activeRepoPath, '.tmp', 'unreadable', 'locked');
     writeFile(path.join(lockedDirPath, 'inner', 'file'));
     fs.symlinkSync(path.join(tempDirPath, 'missing'), path.join(activeRepoPath, '.tmp', 'dangling'));
@@ -35,13 +40,14 @@ describe('wb gc', () => {
     writeFile(path.join(activeRepoPath, 'node_modules', 'pkg', 'index.js'));
     writeFile(path.join(unusedRepoPath, 'node_modules', 'pkg', 'index.js'));
     writeFile(path.join(unusedRepoPath, 'native', 'target', 'CACHEDIR.TAG'));
+    writeFile(path.join(invokingRepoPath, 'node_modules', 'pkg', 'index.js'));
     setOld(tempDirPath, 60);
     writeFile(path.join(activeRepoPath, '.tmp', 'recent', 'log.txt'));
     for (const fileName of ['index', 'HEAD']) setNow(path.join(activeRepoPath, '.git', fileName));
 
     fs.chmodSync(lockedDirPath, 0o600);
     // As exported by a Git hook of another repository that runs wb.
-    const result = runWbGc(tempDirPath, {
+    const result = runWbGc(invokingRepoPath, {
       GHQ_ROOT: ghqRootPath,
       GIT_DIR: path.join(foreignRepoPath, '.git'),
       GIT_INDEX_FILE: path.join(foreignRepoPath, '.git', 'index'),
@@ -59,6 +65,9 @@ describe('wb gc', () => {
     expect(fs.existsSync(detachedWorktreePath)).toBe(true);
     expect(fs.existsSync(foreignWorktreePath)).toBe(true);
     expect(fs.existsSync(lockedDirPath)).toBe(true);
+    expect(fs.existsSync(cloneRepoPath)).toBe(true);
+    expect(fs.existsSync(cloneWorktreePath)).toBe(true);
+    expect(fs.existsSync(path.join(invokingRepoPath, 'node_modules'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'tracked', 'keep.txt'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'recent'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, 'node_modules'))).toBe(true);

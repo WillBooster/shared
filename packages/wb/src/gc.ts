@@ -61,6 +61,8 @@ function startBackgroundGc(): void {
       env: process.env,
       stdio: ['ignore', logFd, logFd],
     })
+    // Spawn failures (e.g., EAGAIN) arrive as an event, outside the caller's try/catch.
+    .on('error', (error) => console.error('wb gc failed to start:', error))
     .unref();
   fs.closeSync(logFd);
 }
@@ -206,6 +208,9 @@ function removeStaleTmpEntries(repoPath: string, context: GcContext): void {
 }
 
 function removeStaleBuildArtifacts(repoPath: string, context: GcContext): void {
+  // The command that triggered GC may be about to load this repository's dependencies.
+  if (isSameOrInside(context.cwd, tryRealpath(repoPath))) return;
+
   const cutoffMs = context.nowMs - localArtifactMaxAgeMs;
   if (getRepositoryLastUsedMs(repoPath) >= cutoffMs) return;
 
@@ -232,8 +237,9 @@ function findBuildArtifactDirPaths(dirPath: string, depth: number): string[] {
 
 /**
  * Removing a worktree keeps its branch commits in its main repository (which may be any
- * repository, not only the enclosing one), but loses commits reachable only from a detached HEAD.
- * A directory that cannot be listed may hide such a worktree, so it blocks removal as well.
+ * repository, not only the enclosing one), but loses commits reachable only from a detached HEAD;
+ * removing a main repository loses those of all its worktrees, wherever they are. A directory or
+ * repository that cannot be inspected may hide such commits, so it blocks removal as well.
  */
 function findRemovalBlocker(dirPath: string): string | undefined {
   let entries: fs.Dirent[];
@@ -243,31 +249,51 @@ function findRemovalBlocker(dirPath: string): string | undefined {
     return `${dirPath} cannot be read`;
   }
   // Read `.git` from the listing: lstat fails in a directory without the execute bit.
-  if (entries.some((entry) => entry.name === '.git' && !entry.isDirectory()) && hasUnreachableDetachedHead(dirPath)) {
-    return `${dirPath} has commits on no branch, remote-tracking branch, or tag`;
-  }
+  const gitEntry = entries.find((entry) => entry.name === '.git');
+  const gitBlocker =
+    gitEntry && (gitEntry.isDirectory() ? findMainRepositoryBlocker(dirPath) : findLinkedWorktreeBlocker(dirPath));
+  if (gitBlocker) return gitBlocker;
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory() || entry.name === '.git') continue;
     const blocker = findRemovalBlocker(path.join(dirPath, entry.name));
     if (blocker) return blocker;
   }
   return undefined;
 }
 
-/** A failed git command counts as unreachable, so an unreadable worktree is kept. */
-function hasUnreachableDetachedHead(worktreePath: string): boolean {
-  if (runGit(worktreePath, ['symbolic-ref', '-q', 'HEAD']) !== undefined) return false;
+function findLinkedWorktreeBlocker(worktreePath: string): string | undefined {
+  const branch = runGit(worktreePath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+  if (branch === undefined) return `git cannot inspect ${worktreePath}`;
+  return branch.trim() === 'HEAD' ? findUnreachableCommitBlocker(worktreePath, 'HEAD', worktreePath) : undefined;
+}
 
-  const containingRef = runGit(worktreePath, [
+function findMainRepositoryBlocker(repoPath: string): string | undefined {
+  const output = runGit(repoPath, ['worktree', 'list', '--porcelain']);
+  if (output === undefined) return `git cannot inspect ${repoPath}`;
+
+  for (const block of output.split('\n\n')) {
+    const worktreePath = /^worktree (.+)$/m.exec(block)?.[1];
+    const head = /^HEAD ([\da-f]+)$/m.exec(block)?.[1];
+    if (!worktreePath || !head || !/^detached$/m.test(block)) continue;
+
+    const blocker = findUnreachableCommitBlocker(repoPath, head, worktreePath);
+    if (blocker) return blocker;
+  }
+  return undefined;
+}
+
+function findUnreachableCommitBlocker(gitCwd: string, commit: string, worktreePath: string): string | undefined {
+  const containingRef = runGit(gitCwd, [
     'for-each-ref',
     '--count=1',
-    '--contains=HEAD',
+    `--contains=${commit}`,
     'refs/heads',
     'refs/remotes',
     'refs/tags',
   ]);
-  return !containingRef?.trim();
+  if (containingRef === undefined) return `git cannot inspect ${worktreePath}`;
+  return containingRef.trim() ? undefined : `${worktreePath} has commits on no branch, remote-tracking branch, or tag`;
 }
 
 function getRepositoryLastUsedMs(repoPath: string): number {
@@ -313,6 +339,14 @@ function removePath(targetPath: string, reason: string, context: GcContext): boo
   } catch (error) {
     console.error(`wb gc: failed to remove ${targetPath}:`, error);
     return false;
+  }
+}
+
+function tryRealpath(targetPath: string): string {
+  try {
+    return fs.realpathSync(targetPath);
+  } catch {
+    return path.resolve(targetPath);
   }
 }
 
