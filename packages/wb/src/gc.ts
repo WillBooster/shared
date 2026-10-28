@@ -159,12 +159,10 @@ function removeStaleCiWorkspaces(workRootPath: string, context: GcContext): void
     const workspacePath = path.join(workRootPath, entry.name);
     if (workspacePath === currentWorkspacePath) continue;
 
-    const checkoutPaths = listChildDirPaths(workspacePath);
-    const lastUsedMs = Math.max(
-      getMtimeMs(workspacePath) ?? 0,
-      ...checkoutPaths.map((checkoutPath) => getRepositoryLastUsedMs(checkoutPath))
-    );
-    if (lastUsedMs < cutoffMs) removePath(workspacePath, 'CI workspace unused for 3 days', context);
+    // Anything inside counts, since a job may check out at any `path:` and touch only its Git metadata.
+    if (!isModifiedSince(workspacePath, cutoffMs)) {
+      removePath(workspacePath, 'CI workspace unmodified for 3 days', context);
+    }
   }
 }
 

@@ -90,10 +90,10 @@ describe('wb gc', () => {
     const currentCheckoutPath = createRepository(path.join(currentWorkspacePath, 'current'));
     fs.writeFileSync(path.join(currentCheckoutPath, 'package.json'), JSON.stringify({ name: 'current' }));
     createRepository(path.join(workRootPath, 'stale', 'stale'));
-    createRepository(path.join(workRootPath, 'recent', 'recent'));
+    createRepository(path.join(workRootPath, 'recent', 'src', 'recent'));
     writeFile(path.join(workRootPath, '_tool', 'node', 'bin'));
     setOld(tempDirPath, 10);
-    setNow(path.join(workRootPath, 'recent', 'recent', '.git', 'FETCH_HEAD'));
+    setNow(path.join(workRootPath, 'recent', 'src', 'recent', '.git', 'FETCH_HEAD'));
     const env = {
       CI: 'true',
       HOME: tempDirPath,
