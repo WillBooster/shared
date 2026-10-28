@@ -2,10 +2,13 @@ import { describe, expect, it } from 'bun:test';
 import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { createTempDir } from '../helpers/shared.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const cliPath = fileURLToPath(new URL('../../src/index.ts', import.meta.url));
+const packageDirPath = fileURLToPath(new URL('../..', import.meta.url));
 
 describe('wb gc', () => {
   it('removes stale .tmp entries and artifacts of unused repositories under the ghq root', () => {
@@ -87,12 +90,15 @@ function runWbGc(env: Record<string, string>): childProcess.SpawnSyncReturns<str
 
 function runWb(args: string[], env: Record<string, string>): childProcess.SpawnSyncReturns<string> {
   const miseDirPath = path.join(env.HOME ?? '', 'mise');
-  const result = childProcess.spawnSync('bun', ['src/index.ts', ...args], {
+  const result = childProcess.spawnSync('bun', [cliPath, ...args], {
+    cwd: packageDirPath,
     encoding: 'utf8',
     env: {
       ...process.env,
       WB_GC_CHECKED: '',
       MISE_CACHE_DIR: path.join(miseDirPath, 'cache'),
+      MISE_CONFIG_DIR: path.join(miseDirPath, 'config'),
+      MISE_GLOBAL_CONFIG_FILE: path.join(miseDirPath, 'config', 'config.toml'),
       MISE_DATA_DIR: path.join(miseDirPath, 'data'),
       MISE_STATE_DIR: path.join(miseDirPath, 'state'),
       ...env,

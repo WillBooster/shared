@@ -164,7 +164,8 @@ function listGhqRepositories(rootPath: string): string[] {
 
 function removeStaleTmpEntries(repoPath: string, context: GcContext): void {
   const tmpPath = path.join(repoPath, '.tmp');
-  if (!fs.existsSync(tmpPath)) return;
+  // lstat, not stat: a symlinked `.tmp` would redirect removal outside the repository.
+  if (!tryLstat(tmpPath)?.isDirectory()) return;
 
   const trackedFiles = runGit(repoPath, ['ls-files', '-z', '--', '.tmp']);
   // Without the tracked file list, tracked files cannot be told apart from disposable ones.
@@ -188,7 +189,9 @@ function removeStaleTmpEntries(repoPath: string, context: GcContext): void {
     const realEntryPath = resolveWithoutLastSymlink(entryPath);
     const worktreePath = unreachableWorktreePaths.find((p) => isSameOrInside(p, realEntryPath));
     if (worktreePath) {
-      console.error(`wb gc: kept ${entryPath} because ${worktreePath} has commits on no branch or tag.`);
+      console.error(
+        `wb gc: kept ${entryPath} because ${worktreePath} has commits on no branch, remote-tracking branch, or tag.`
+      );
       continue;
     }
     removedAny = removePath(entryPath, '.tmp entry unmodified for 7 days', context) || removedAny;
