@@ -29,7 +29,8 @@ describe('wb gc', () => {
     writeFile(path.join(activeRepoPath, '.tmp', 'stale', 'log.txt'));
     writeFile(path.join(activeRepoPath, '.tmp', 'stale.log'));
     const cloneRepoPath = createRepository(path.join(activeRepoPath, '.tmp', 'clone'));
-    const cloneWorktreePath = path.join(activeRepoPath, '.tmp', 'clone-worktree');
+    // Git permits blank lines in worktree paths.
+    const cloneWorktreePath = path.join(activeRepoPath, '.tmp', 'clone\n\nworktree');
     git(cloneRepoPath, 'worktree', 'add', '-q', '--detach', cloneWorktreePath);
     git(cloneWorktreePath, 'commit', '-q', '--allow-empty', '-m', 'detached');
     const submoduleSourcePath = createRepository(path.join(tempDirPath, 'submodule-source'));

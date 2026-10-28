@@ -288,18 +288,41 @@ function findLinkedWorktreeBlocker(worktreePath: string): string | undefined {
 
 function findGitDirBlocker(gitDirPath: string): string | undefined {
   const gitDirArgs = ['--git-dir=.'];
-  const output = runGit(gitDirPath, [...gitDirArgs, 'worktree', 'list', '--porcelain']);
+  // `-z`: paths may contain newlines, even blank lines, but never NUL.
+  const output = runGit(gitDirPath, [...gitDirArgs, 'worktree', 'list', '--porcelain', '-z']);
   if (output === undefined) return `git cannot inspect ${gitDirPath}`;
 
-  for (const block of output.split('\n\n')) {
-    const worktreePath = /^worktree (.+)$/m.exec(block)?.[1];
-    const head = /^HEAD ([\da-f]+)$/m.exec(block)?.[1];
-    if (!worktreePath || !head || !/^detached$/m.test(block)) continue;
+  for (const { worktreePath = gitDirPath, head, isDetached } of parseWorktreeRecords(output)) {
+    if (!isDetached) continue;
 
-    const blocker = findUnreachableCommitBlocker(gitDirPath, gitDirArgs, head, worktreePath);
+    const blocker = head
+      ? findUnreachableCommitBlocker(gitDirPath, gitDirArgs, head, worktreePath)
+      : `git cannot inspect ${worktreePath}`;
     if (blocker) return blocker;
   }
   return undefined;
+}
+
+interface WorktreeRecord {
+  worktreePath?: string;
+  head?: string;
+  isDetached: boolean;
+}
+
+/** Parses `git worktree list --porcelain -z`, whose records end with an empty field. */
+function parseWorktreeRecords(output: string): WorktreeRecord[] {
+  const records: WorktreeRecord[] = [];
+  let record: WorktreeRecord = { isDetached: false };
+  for (const field of output.split('\0')) {
+    if (field.startsWith('worktree ')) record.worktreePath = field.slice('worktree '.length);
+    else if (field.startsWith('HEAD ')) record.head = field.slice('HEAD '.length);
+    else if (field === 'detached') record.isDetached = true;
+    else if (field === '') {
+      records.push(record);
+      record = { isDetached: false };
+    }
+  }
+  return records;
 }
 
 function findUnreachableCommitBlocker(
