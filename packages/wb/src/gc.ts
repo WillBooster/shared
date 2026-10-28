@@ -83,7 +83,8 @@ function claimAutoGcRun(mode: GcMode): boolean {
   // Runners sharing a machine have separate work directories, so each one keeps its own stamps.
   const rootHash = crypto.createHash('sha256').update(getGcRootPath(mode)).digest('hex').slice(0, 16);
   const stampPrefix = `gc-${mode}-${rootHash}-`;
-  const stampName = `${stampPrefix}${Math.floor(Date.now() / autoGcIntervalMs[mode])}`;
+  const interval = Math.floor(Date.now() / autoGcIntervalMs[mode]);
+  const stampName = `${stampPrefix}${interval}`;
   const cacheDirPath = getWbCacheDirPath();
   try {
     fs.closeSync(fs.openSync(path.join(cacheDirPath, stampName), 'wx'));
@@ -92,8 +93,11 @@ function claimAutoGcRun(mode: GcMode): boolean {
     throw error;
   }
 
+  // Only older intervals: a claimant delayed past the boundary must not free a newer interval's claim.
   for (const { name } of listDirEntries(cacheDirPath)) {
-    if (name.startsWith(stampPrefix) && name !== stampName) fs.rmSync(path.join(cacheDirPath, name), { force: true });
+    if (name.startsWith(stampPrefix) && Number(name.slice(stampPrefix.length)) < interval) {
+      fs.rmSync(path.join(cacheDirPath, name), { force: true });
+    }
   }
   return true;
 }
