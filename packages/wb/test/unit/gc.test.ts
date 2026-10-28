@@ -76,6 +76,9 @@ describe('wb gc', () => {
     expect(fs.existsSync(detachedWorktreePath)).toBe(true);
     expect(fs.existsSync(foreignWorktreePath)).toBe(true);
     expect(fs.existsSync(lockedDirPath)).toBe(true);
+    expect(result.stderr).toContain(
+      `kept what contains ${path.join(lockedDirPath, 'inner')} because it cannot be inspected`
+    );
     expect(fs.existsSync(cloneRepoPath)).toBe(true);
     expect(fs.existsSync(cloneWorktreePath)).toBe(true);
     expect(fs.existsSync(superprojectPath)).toBe(true);

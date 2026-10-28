@@ -383,7 +383,8 @@ function isModifiedSince(entryPath: string, cutoffMs: number): boolean {
     stat = fs.lstatSync(entryPath);
   } catch (error) {
     // A vanished entry holds nothing; any other failure (e.g., a parent without the execute bit) hides one.
-    return (error as NodeJS.ErrnoException).code !== 'ENOENT';
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    return keepUninspectable(entryPath);
   }
   if (stat.mtimeMs >= cutoffMs) return true;
   if (!stat.isDirectory()) return false;
@@ -392,9 +393,15 @@ function isModifiedSince(entryPath: string, cutoffMs: number): boolean {
   try {
     childNames = fs.readdirSync(entryPath);
   } catch {
-    return true;
+    return keepUninspectable(entryPath);
   }
   return childNames.some((childName) => isModifiedSince(path.join(entryPath, childName), cutoffMs));
+}
+
+/** Logs the path so that its owner can fix its permissions or remove it manually. */
+function keepUninspectable(targetPath: string): true {
+  console.error(`wb gc: kept what contains ${targetPath} because it cannot be inspected.`);
+  return true;
 }
 
 /** Returns whether the path was (or, in a dry run, would be) removed; a failure is logged and skipped. */
