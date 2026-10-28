@@ -15,9 +15,12 @@ describe('wb gc', () => {
     const unusedRepoPath = createRepository(path.join(ghqRootPath, 'github.com', 'owner', 'unused'));
 
     git(activeRepoPath, 'worktree', 'add', '-q', '-b', 'feature', '.tmp/branch-worktree');
-    git(activeRepoPath, 'worktree', 'add', '-q', '--detach', '.tmp/detached-worktree');
-    git(path.join(activeRepoPath, '.tmp', 'detached-worktree'), 'commit', '-q', '--allow-empty', '-m', 'detached');
+    const detachedWorktreePath = path.join(activeRepoPath, '.tmp', 'session', 'a', 'b', 'detached-worktree');
+    git(activeRepoPath, 'worktree', 'add', '-q', '--detach', detachedWorktreePath);
+    git(detachedWorktreePath, 'commit', '-q', '--allow-empty', '-m', 'detached');
     writeFile(path.join(activeRepoPath, '.tmp', 'stale', 'log.txt'));
+    writeFile(path.join(activeRepoPath, '.tmp', 'stale.log'));
+    fs.symlinkSync(path.join(tempDirPath, 'missing'), path.join(activeRepoPath, '.tmp', 'dangling'));
     writeFile(path.join(activeRepoPath, '.tmp', 'tracked', 'keep.txt'));
     git(activeRepoPath, 'add', '-f', '.tmp/tracked/keep.txt');
     git(activeRepoPath, 'commit', '-q', '-m', 'track a .tmp file');
@@ -32,10 +35,12 @@ describe('wb gc', () => {
 
     expect(result.status).toBe(0);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'stale'))).toBe(false);
+    expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'stale.log'))).toBe(false);
+    expect(fs.lstatSync(path.join(activeRepoPath, '.tmp', 'dangling'), { throwIfNoEntry: false })).toBeUndefined();
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'branch-worktree'))).toBe(false);
     expect(git(activeRepoPath, 'worktree', 'list')).not.toContain('branch-worktree');
     expect(git(activeRepoPath, 'branch', '--list', 'feature')).toContain('feature');
-    expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'detached-worktree'))).toBe(true);
+    expect(fs.existsSync(detachedWorktreePath)).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'tracked', 'keep.txt'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'recent'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, 'node_modules'))).toBe(true);

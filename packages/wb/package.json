@@ -27,7 +27,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "build": "bun run start buildIfNeeded --command 'bun build-ts app --input src/index.ts src/releasePlugin.ts'",
+    "build": "bun run start buildIfNeeded --command 'bun build-ts app --input src/index.ts src/releasePlugin.ts src/gc.ts'",
     "cleanup": "bun wb lint --fix --format",
     "format": "bun wb lint --format",
     "lint": "bun wb lint",

@@ -14,7 +14,7 @@ import { codeGaugeCommand } from './commands/codeGauge.js';
 import { concurrentlyCommand } from './commands/concurrently.js';
 import { deployCommand } from './commands/deploy.js';
 import { dotenvCommand } from './commands/dotenv.js';
-import { gcCommand, startAutoGcIfDue } from './commands/gc.js';
+import { gcCommand } from './commands/gc.js';
 import { genCodeCommand } from './commands/genCode.js';
 import { genDevVarsCommand } from './commands/genDevVars.js';
 import { genDockerEnvCommand } from './commands/genDockerEnv.js';
@@ -39,6 +39,7 @@ import { treeKillCommand } from './commands/treeKill.js';
 import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
 import { verifyCodeCommand } from './commands/verifyCode.js';
 import { waitOnCommand } from './commands/waitOn.js';
+import { startAutoGcIfDue } from './gc.js';
 import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
 import { readNearestPackageJson } from './utils/nearestPackageJson.js';
 
