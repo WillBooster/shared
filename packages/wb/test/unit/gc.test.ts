@@ -106,7 +106,9 @@ function createRepository(repoPath: string): string {
 }
 
 function git(cwd: string, ...args: string[]): string {
-  return childProcess.execFileSync('git', ['-c', 'user.name=test', '-c', 'user.email=test@example.com', ...args], {
+  // Background auto-maintenance would create and delete lock files while `setOld` walks the tree.
+  const configArgs = ['-c', 'user.name=test', '-c', 'user.email=test@example.com', '-c', 'maintenance.auto=false'];
+  return childProcess.execFileSync('git', [...configArgs, ...args], {
     cwd,
     encoding: 'utf8',
   });

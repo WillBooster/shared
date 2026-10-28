@@ -209,8 +209,7 @@ function removeStaleBuildArtifacts(repoPath: string, context: GcContext): void {
   if (getRepositoryLastUsedMs(repoPath) >= cutoffMs) return;
 
   for (const artifactPath of findBuildArtifactDirPaths(repoPath, artifactSearchDepth)) {
-    const lastModifiedMs = Math.max(...[artifactPath, ...listChildPaths(artifactPath)].map((p) => getMtimeMs(p) ?? 0));
-    if (lastModifiedMs < cutoffMs) {
+    if (!isModifiedSince(artifactPath, cutoffMs)) {
       removePath(artifactPath, 'build artifact in a repository unused for 30 days', context);
     }
   }
