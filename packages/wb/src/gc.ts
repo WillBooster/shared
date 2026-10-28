@@ -132,8 +132,13 @@ export function runGc(mode: GcMode, dryRun: boolean): void {
     removeStaleCiWorkspaces(rootPath, context);
   } else {
     for (const repoPath of listGhqRepositories(rootPath)) {
-      removeStaleTmpEntries(repoPath, context);
-      removeStaleBuildArtifacts(repoPath, context);
+      // One repository's unexpected state must not stop the cleanup of the others.
+      try {
+        removeStaleTmpEntries(repoPath, context);
+        removeStaleBuildArtifacts(repoPath, context);
+      } catch (error) {
+        console.error(`wb gc: skipped the rest of ${repoPath}:`, error);
+      }
     }
   }
   // Last, so that versions referenced only by the removed directories' configs are pruned too.
