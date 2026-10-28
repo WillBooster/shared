@@ -55,16 +55,19 @@ export function startAutoGcIfDue(command: unknown): void {
 function startBackgroundGc(): void {
   const logPath = path.join(getWbCacheDirPath(), 'gc.log');
   const logFd = fs.openSync(logPath, 'a');
-  childProcess
-    .spawn(process.execPath, [process.argv[1] ?? '', 'gc'], {
-      detached: true,
-      env: process.env,
-      stdio: ['ignore', logFd, logFd],
-    })
-    // Spawn failures (e.g., EAGAIN) arrive as an event, outside the caller's try/catch.
-    .on('error', (error) => console.error('wb gc failed to start:', error))
-    .unref();
-  fs.closeSync(logFd);
+  try {
+    childProcess
+      .spawn(process.execPath, [process.argv[1] ?? '', 'gc'], {
+        detached: true,
+        env: process.env,
+        stdio: ['ignore', logFd, logFd],
+      })
+      // Spawn failures (e.g., EAGAIN) arrive as an event, outside the caller's try/catch.
+      .on('error', (error) => console.error('wb gc failed to start:', error))
+      .unref();
+  } finally {
+    fs.closeSync(logFd);
+  }
 }
 
 function detectAutoGcMode(): GcMode | undefined {
@@ -87,7 +90,7 @@ function claimAutoGcRun(mode: GcMode): boolean {
   const stampName = `${stampPrefix}${interval}`;
   const cacheDirPath = getWbCacheDirPath();
   try {
-    fs.closeSync(fs.openSync(path.join(cacheDirPath, stampName), 'wx'));
+    fs.writeFileSync(path.join(cacheDirPath, stampName), '', { flag: 'wx' });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
     throw error;
@@ -116,7 +119,7 @@ export function runGc(mode: GcMode, dryRun: boolean): void {
     return;
   }
 
-  const context: GcContext = { dryRun, nowMs: Date.now(), cwd: fs.realpathSync(process.cwd()) };
+  const context: GcContext = { dryRun, nowMs: Date.now(), cwd: tryRealpath(process.cwd()) };
   const availableBytesBefore = getAvailableBytes(rootPath);
   if (mode === 'ci') {
     removeStaleCiWorkspaces(rootPath, context);
@@ -153,7 +156,7 @@ function removeStaleCiWorkspaces(workRootPath: string, context: GcContext): void
   // The runner sets RUNNER_TEMP to `<work>/_temp`; requiring it to agree keeps a misconfigured
   // RUNNER_WORKSPACE from pointing the cleanup at an unrelated directory such as the home directory.
   const expectedTempPath = path.join(workRootPath, '_temp');
-  if (path.resolve(process.env.RUNNER_TEMP ?? '') !== expectedTempPath) {
+  if (!process.env.RUNNER_TEMP || path.resolve(process.env.RUNNER_TEMP) !== expectedTempPath) {
     console.error(`wb gc: skipped CI workspaces because RUNNER_TEMP is not ${expectedTempPath}.`);
     return;
   }
