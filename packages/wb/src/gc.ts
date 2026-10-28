@@ -228,7 +228,6 @@ function findWorktreeWithUnreachableHead(dirPath: string): string | undefined {
   if (tryLstat(path.join(dirPath, '.git'))?.isFile() && hasUnreachableDetachedHead(dirPath)) return dirPath;
 
   for (const childPath of listChildDirPaths(dirPath)) {
-    if (path.basename(childPath) === 'node_modules') continue;
     const worktreePath = findWorktreeWithUnreachableHead(childPath);
     if (worktreePath) return worktreePath;
   }
