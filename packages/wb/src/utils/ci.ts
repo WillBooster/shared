@@ -8,6 +8,6 @@ export function isDockerEnabled(project: Pick<Project, 'env'>): boolean {
   return isTruthyEnvValue(project.env.WB_DOCKER);
 }
 
-function isTruthyEnvValue(value: string | undefined): boolean {
+export function isTruthyEnvValue(value: string | undefined): boolean {
   return !!value && value !== '0' && value !== 'false';
 }
