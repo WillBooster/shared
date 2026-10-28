@@ -52,12 +52,15 @@ describe('wb gc', () => {
     writeFile(path.join(unusedRepoPath, 'native', 'target', 'CACHEDIR.TAG'));
     writeFile(path.join(invokingRepoPath, 'node_modules', 'pkg', 'index.js'));
     writeFile(path.join(lockedRepoPath, 'target', 'CACHEDIR.TAG'));
+    writeFile(path.join(lockedRepoPath, '.tmp', 'old.log'));
     setOld(tempDirPath, 60);
     writeFile(path.join(activeRepoPath, '.tmp', 'recent', 'log.txt'));
     for (const fileName of ['index', 'HEAD']) setNow(path.join(activeRepoPath, '.git', fileName));
 
     fs.chmodSync(lockedDirPath, 0o600);
     fs.chmodSync(path.join(lockedRepoPath, '.git'), 0o600);
+    fs.mkdirSync(path.join(invokingRepoPath, '.tmp'));
+    fs.chmodSync(path.join(invokingRepoPath, '.tmp'), 0o000);
     // As exported by a Git hook of another repository that runs wb.
     const result = runWbGc(invokingRepoPath, {
       GHQ_ROOT: ghqRootPath,
@@ -67,6 +70,7 @@ describe('wb gc', () => {
     });
     fs.chmodSync(lockedDirPath, 0o700);
     fs.chmodSync(path.join(lockedRepoPath, '.git'), 0o700);
+    fs.chmodSync(path.join(invokingRepoPath, '.tmp'), 0o700);
 
     expect(result.status).toBe(0);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'stale'))).toBe(false);
@@ -87,7 +91,11 @@ describe('wb gc', () => {
     expect(fs.existsSync(cloneWorktreePath)).toBe(true);
     expect(fs.existsSync(superprojectPath)).toBe(true);
     expect(fs.existsSync(path.join(invokingRepoPath, 'node_modules'))).toBe(true);
-    if (honorsPermissions) expect(fs.existsSync(path.join(lockedRepoPath, 'target'))).toBe(true);
+    if (honorsPermissions) {
+      expect(fs.existsSync(path.join(lockedRepoPath, 'target'))).toBe(true);
+      expect(result.stderr).toContain(`skipped ${path.join(invokingRepoPath, '.tmp')} because it cannot be listed`);
+      expect(result.stderr).toContain(`skipped ${path.join(lockedRepoPath, '.tmp')} because git cannot list`);
+    }
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'tracked', 'keep.txt'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'recent'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, 'node_modules'))).toBe(true);

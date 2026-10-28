@@ -189,8 +189,11 @@ function removeStaleTmpEntries(repoPath: string, context: GcContext): void {
   if (!tryLstat(tmpPath)?.isDirectory()) return;
 
   const trackedFiles = runGit(repoPath, ['ls-files', '-z', '--', '.tmp']);
-  // Without the tracked file list, tracked files cannot be told apart from disposable ones.
-  if (trackedFiles === undefined) return;
+  if (trackedFiles === undefined) {
+    // Without the tracked file list, tracked files cannot be told apart from disposable ones.
+    console.error(`wb gc: skipped ${tmpPath} because git cannot list its tracked files.`);
+    return;
+  }
 
   const trackedEntryNames = new Set(
     trackedFiles
@@ -497,10 +500,14 @@ function listChildPaths(dirPath: string): string[] {
   return listDirEntries(dirPath).map((entry) => path.join(dirPath, entry.name));
 }
 
+/** An unlistable directory is skipped, never cleaned, and logged so that its owner can fix it. */
 function listDirEntries(dirPath: string): fs.Dirent[] {
   try {
     return fs.readdirSync(dirPath, { withFileTypes: true });
-  } catch {
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.error(`wb gc: skipped ${dirPath} because it cannot be listed.`);
+    }
     return [];
   }
 }
