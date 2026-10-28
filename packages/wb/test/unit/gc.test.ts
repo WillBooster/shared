@@ -35,6 +35,16 @@ describe('wb gc', () => {
     const cloneWorktreePath = path.join(activeRepoPath, '.tmp', 'clone\n\nworktree');
     git(cloneRepoPath, 'worktree', 'add', '-q', '--detach', cloneWorktreePath);
     git(cloneWorktreePath, 'commit', '-q', '--allow-empty', '-m', 'detached');
+    const branchCloneRepoPath = createRepository(path.join(activeRepoPath, '.tmp', 'a-branch-clone'));
+    git(
+      branchCloneRepoPath,
+      'worktree',
+      'add',
+      '-q',
+      '-b',
+      'feature',
+      path.join(activeRepoPath, '.tmp', 'b-branch-worktree')
+    );
     const submoduleSourcePath = createRepository(path.join(tempDirPath, 'submodule-source'));
     const superprojectPath = createRepository(path.join(activeRepoPath, '.tmp', 'superproject'));
     git(superprojectPath, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', submoduleSourcePath, 'sub');
@@ -90,6 +100,8 @@ describe('wb gc', () => {
     expect(fs.existsSync(cloneRepoPath)).toBe(true);
     expect(fs.existsSync(cloneWorktreePath)).toBe(true);
     expect(fs.existsSync(superprojectPath)).toBe(true);
+    expect(fs.existsSync(branchCloneRepoPath)).toBe(false);
+    expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'b-branch-worktree'))).toBe(false);
     expect(fs.existsSync(path.join(invokingRepoPath, 'node_modules'))).toBe(true);
     if (honorsPermissions) {
       expect(fs.existsSync(path.join(lockedRepoPath, 'target'))).toBe(true);

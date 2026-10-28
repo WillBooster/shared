@@ -284,6 +284,16 @@ function isGitDir(entries: fs.Dirent[]): boolean {
 }
 
 function findLinkedWorktreeBlocker(worktreePath: string): string | undefined {
+  const gitDirPath = resolveGitDirPath(worktreePath);
+  if (!gitDirPath) return `git cannot inspect ${worktreePath}`;
+  try {
+    fs.lstatSync(gitDirPath);
+  } catch (error) {
+    // An orphan whose repository was removed (e.g., earlier in this run) holds no commits.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    return `git cannot inspect ${worktreePath}`;
+  }
+
   const branch = runGit(worktreePath, ['rev-parse', '--abbrev-ref', 'HEAD']);
   if (branch === undefined) return `git cannot inspect ${worktreePath}`;
   return branch.trim() === 'HEAD' ? findUnreachableCommitBlocker(worktreePath, [], 'HEAD', worktreePath) : undefined;
