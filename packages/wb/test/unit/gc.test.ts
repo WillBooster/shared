@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { createTempDir } from '../helpers/shared.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Root bypasses permission bits, so unreadable fixtures stay readable for it.
+const honorsPermissions = process.getuid?.() !== 0;
 const cliPath = fileURLToPath(new URL('../../src/index.ts', import.meta.url));
 
 describe('wb gc', () => {
@@ -75,15 +77,17 @@ describe('wb gc', () => {
     expect(git(activeRepoPath, 'branch', '--list', 'feature')).toContain('feature');
     expect(fs.existsSync(detachedWorktreePath)).toBe(true);
     expect(fs.existsSync(foreignWorktreePath)).toBe(true);
-    expect(fs.existsSync(lockedDirPath)).toBe(true);
-    expect(result.stderr).toContain(
-      `kept what contains ${path.join(lockedDirPath, 'inner')} because it cannot be inspected`
-    );
+    if (honorsPermissions) {
+      expect(fs.existsSync(lockedDirPath)).toBe(true);
+      expect(result.stderr).toContain(
+        `kept what contains ${path.join(lockedDirPath, 'inner')} because it cannot be inspected`
+      );
+    }
     expect(fs.existsSync(cloneRepoPath)).toBe(true);
     expect(fs.existsSync(cloneWorktreePath)).toBe(true);
     expect(fs.existsSync(superprojectPath)).toBe(true);
     expect(fs.existsSync(path.join(invokingRepoPath, 'node_modules'))).toBe(true);
-    expect(fs.existsSync(path.join(lockedRepoPath, 'target'))).toBe(true);
+    if (honorsPermissions) expect(fs.existsSync(path.join(lockedRepoPath, 'target'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'tracked', 'keep.txt'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'recent'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, 'node_modules'))).toBe(true);
@@ -122,7 +126,7 @@ describe('wb gc', () => {
     expect(fs.existsSync(currentWorkspacePath)).toBe(true);
     expect(fs.existsSync(path.join(workRootPath, 'recent'))).toBe(true);
     expect(fs.existsSync(path.join(workRootPath, '_tool'))).toBe(true);
-    expect(fs.existsSync(path.join(workRootPath, 'locked'))).toBe(true);
+    if (honorsPermissions) expect(fs.existsSync(path.join(workRootPath, 'locked'))).toBe(true);
 
     createRepository(path.join(workRootPath, 'another', 'another'));
     setOld(path.join(workRootPath, 'another'), 10);

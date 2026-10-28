@@ -376,26 +376,33 @@ function resolveGitDirPath(repoPath: string): string | undefined {
   }
 }
 
-/** Anything that cannot be inspected counts as modified: it may hide a recent change. */
-function isModifiedSince(entryPath: string, cutoffMs: number): boolean {
-  let stat: fs.Stats;
-  try {
-    stat = fs.lstatSync(entryPath);
-  } catch (error) {
-    // A vanished entry holds nothing; any other failure (e.g., a parent without the execute bit) hides one.
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    return keepUninspectable(entryPath);
-  }
-  if (stat.mtimeMs >= cutoffMs) return true;
-  if (!stat.isDirectory()) return false;
+/**
+ * Anything that cannot be inspected counts as modified: it may hide a recent change. Breadth-first,
+ * so shallow recent metadata (e.g., `.git`) short-circuits before deep unchanged trees such as
+ * `node_modules`.
+ */
+function isModifiedSince(rootPath: string, cutoffMs: number): boolean {
+  const queue = [rootPath];
+  for (let index = 0; index < queue.length; index++) {
+    const entryPath = queue[index] as string;
+    let stat: fs.Stats;
+    try {
+      stat = fs.lstatSync(entryPath);
+    } catch (error) {
+      // A vanished entry holds nothing; any other failure (e.g., a parent without the execute bit) hides one.
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      return keepUninspectable(entryPath);
+    }
+    if (stat.mtimeMs >= cutoffMs) return true;
+    if (!stat.isDirectory()) continue;
 
-  let childNames: string[];
-  try {
-    childNames = fs.readdirSync(entryPath);
-  } catch {
-    return keepUninspectable(entryPath);
+    try {
+      for (const childName of fs.readdirSync(entryPath)) queue.push(path.join(entryPath, childName));
+    } catch {
+      return keepUninspectable(entryPath);
+    }
   }
-  return childNames.some((childName) => isModifiedSince(path.join(entryPath, childName), cutoffMs));
+  return false;
 }
 
 /** Logs the path so that its owner can fix its permissions or remove it manually. */
