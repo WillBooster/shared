@@ -137,8 +137,9 @@ export function runGc(mode: GcMode, dryRun: boolean): void {
   // Last, so that versions referenced only by the removed directories' configs are pruned too.
   pruneMise(dryRun);
 
-  if (!dryRun) {
-    const freedGb = (getAvailableBytes(rootPath) - availableBytesBefore) / 1024 ** 3;
+  const availableBytesAfter = getAvailableBytes(rootPath);
+  if (!dryRun && availableBytesBefore !== undefined && availableBytesAfter !== undefined) {
+    const freedGb = (availableBytesAfter - availableBytesBefore) / 1024 ** 3;
     console.error(`wb gc: freed ${Math.max(freedGb, 0).toFixed(1)} GB.`);
   }
 }
@@ -394,7 +395,8 @@ function resolveGitDirPath(repoPath: string): string | undefined {
   if (!tryLstat(gitPath)?.isFile()) return gitPath;
 
   try {
-    const gitDir = /^gitdir: (.+)$/m.exec(fs.readFileSync(gitPath, 'utf8'))?.[1];
+    // Only a CRLF's `\r` is stripped: other trailing whitespace may belong to the path.
+    const gitDir = /^gitdir: (.+?)\r?$/m.exec(fs.readFileSync(gitPath, 'utf8'))?.[1];
     return gitDir ? path.resolve(repoPath, gitDir) : undefined;
   } catch {
     return undefined;
@@ -542,7 +544,12 @@ function tryLstat(targetPath: string): fs.Stats | undefined {
   }
 }
 
-function getAvailableBytes(targetPath: string): number {
-  const stat = fs.statfsSync(targetPath);
-  return stat.bavail * stat.bsize;
+/** The freed amount is informational, so a failure only omits it instead of stopping the cleanup. */
+function getAvailableBytes(targetPath: string): number | undefined {
+  try {
+    const stat = fs.statfsSync(targetPath);
+    return stat.bavail * stat.bsize;
+  } catch {
+    return undefined;
+  }
 }
