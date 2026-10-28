@@ -183,11 +183,9 @@ function removeStaleTmpEntries(repoPath: string, context: GcContext): void {
     const entryPath = path.join(tmpPath, entryName);
     if (trackedEntryNames.has(entryName) || isModifiedSince(entryPath, cutoffMs)) continue;
 
-    const worktreePath = findWorktreeWithUnreachableHead(entryPath);
-    if (worktreePath) {
-      console.error(
-        `wb gc: kept ${entryPath} because ${worktreePath} has commits on no branch, remote-tracking branch, or tag.`
-      );
+    const blocker = tryLstat(entryPath)?.isDirectory() ? findRemovalBlocker(entryPath) : undefined;
+    if (blocker) {
+      console.error(`wb gc: kept ${entryPath} because ${blocker}.`);
       continue;
     }
     removedAny = removePath(entryPath, '.tmp entry unmodified for 7 days', context) || removedAny;
@@ -223,17 +221,29 @@ function findBuildArtifactDirPaths(dirPath: string, depth: number): string[] {
 /**
  * Removing a worktree keeps its branch commits in its main repository (which may be any
  * repository, not only the enclosing one), but loses commits reachable only from a detached HEAD.
+ * A directory that cannot be listed may hide such a worktree, so it blocks removal as well.
  */
-function findWorktreeWithUnreachableHead(dirPath: string): string | undefined {
-  if (tryLstat(path.join(dirPath, '.git'))?.isFile() && hasUnreachableDetachedHead(dirPath)) return dirPath;
+function findRemovalBlocker(dirPath: string): string | undefined {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  } catch {
+    return `${dirPath} cannot be read`;
+  }
+  // Read `.git` from the listing: lstat fails in a directory without the execute bit.
+  if (entries.some((entry) => entry.name === '.git' && !entry.isDirectory()) && hasUnreachableDetachedHead(dirPath)) {
+    return `${dirPath} has commits on no branch, remote-tracking branch, or tag`;
+  }
 
-  for (const childPath of listChildDirPaths(dirPath)) {
-    const worktreePath = findWorktreeWithUnreachableHead(childPath);
-    if (worktreePath) return worktreePath;
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const blocker = findRemovalBlocker(path.join(dirPath, entry.name));
+    if (blocker) return blocker;
   }
   return undefined;
 }
 
+/** A failed git command counts as unreachable, so an unreadable worktree is kept. */
 function hasUnreachableDetachedHead(worktreePath: string): boolean {
   if (runGit(worktreePath, ['symbolic-ref', '-q', 'HEAD']) !== undefined) return false;
 

@@ -26,6 +26,8 @@ describe('wb gc', () => {
     git(foreignWorktreePath, 'commit', '-q', '--allow-empty', '-m', 'detached');
     writeFile(path.join(activeRepoPath, '.tmp', 'stale', 'log.txt'));
     writeFile(path.join(activeRepoPath, '.tmp', 'stale.log'));
+    const lockedDirPath = path.join(activeRepoPath, '.tmp', 'unreadable', 'locked');
+    writeFile(path.join(lockedDirPath, 'inner', 'file'));
     fs.symlinkSync(path.join(tempDirPath, 'missing'), path.join(activeRepoPath, '.tmp', 'dangling'));
     writeFile(path.join(activeRepoPath, '.tmp', 'tracked', 'keep.txt'));
     git(activeRepoPath, 'add', '-f', '.tmp/tracked/keep.txt');
@@ -37,7 +39,9 @@ describe('wb gc', () => {
     writeFile(path.join(activeRepoPath, '.tmp', 'recent', 'log.txt'));
     for (const fileName of ['index', 'HEAD']) setNow(path.join(activeRepoPath, '.git', fileName));
 
+    fs.chmodSync(lockedDirPath, 0o600);
     const result = runWbGc(tempDirPath, { GHQ_ROOT: ghqRootPath, HOME: tempDirPath });
+    fs.chmodSync(lockedDirPath, 0o700);
 
     expect(result.status).toBe(0);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'stale'))).toBe(false);
@@ -48,6 +52,7 @@ describe('wb gc', () => {
     expect(git(activeRepoPath, 'branch', '--list', 'feature')).toContain('feature');
     expect(fs.existsSync(detachedWorktreePath)).toBe(true);
     expect(fs.existsSync(foreignWorktreePath)).toBe(true);
+    expect(fs.existsSync(lockedDirPath)).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'tracked', 'keep.txt'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'recent'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, 'node_modules'))).toBe(true);
