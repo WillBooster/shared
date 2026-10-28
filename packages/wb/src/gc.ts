@@ -308,7 +308,8 @@ function resolveWithoutLastSymlink(targetPath: string): string {
 
 function isSameOrInside(childPath: string, parentPath: string): boolean {
   const relativePath = path.relative(parentPath, childPath);
-  return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+  // A child component may itself start with `..` (e.g., `..worktree`).
+  return relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath);
 }
 
 function makeOwnerAccessible(targetPath: string): void {
