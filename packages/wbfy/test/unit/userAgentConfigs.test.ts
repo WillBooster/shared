@@ -105,7 +105,7 @@ test('renders the Claude Code and Antigravity CLI status lines in the same forma
         },
       })
     ).toBe(
-      `${homePath}-sibling [Gemini 4 Argon (medium)] [ctx 100%] [Gemini: 5h 85% (2h54m) | week 89% (5d1h)] [Other: 5h 100% (4h59m) | week 100% (6d23h)]`
+      `${homePath}-sibling [Gemini 4 Argon (medium)] [ctx 100%] [G: 5h 85% (2h54m) | week 89% (5d1h)] [3rd: 5h 100% (4h59m) | week 100% (6d23h)]`
     );
     expect(
       await render({

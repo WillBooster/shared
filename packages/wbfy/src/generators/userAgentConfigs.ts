@@ -113,8 +113,8 @@ export async function generateUserAgentConfigs(): Promise<boolean> {
 
 // Claude Code and Antigravity CLI pipe differently shaped session JSON to the same script, so each
 // part reads whichever agent's keys are present. Antigravity CLI meters Gemini and other models
-// separately, so it shows a Gemini and an Other pair where Claude Code shows one. Every percentage
-// is what is left, followed by the time until it resets.
+// separately, so it shows a Gemini (G) and a third-party (3rd) pair where Claude Code shows one.
+// Every percentage is what is left, followed by the time until it resets.
 const statusLineScriptContent = String.raw`#!/bin/sh
 input=$(cat)
 cwd=$(printf '%s' "$input" | jq -r '.cwd')
@@ -138,8 +138,8 @@ printf '%s' "$input" | jq -j --arg home "$HOME" --arg git "$git_info" '
     | .model.display_name | if . == null then "" else " [\(sub(" \\([^)]*\\)$"; ""))\($effort)]" end)
   + (.context_window.used_percentage | if . == null then "" else " [ctx \(100 - . | round)%]" end)
   + limits(""; .rate_limits.five_hour | claudeLimit; .rate_limits.seven_day | claudeLimit)
-  + limits("Gemini: "; .quota["gemini-5h"] | antigravityLimit; .quota["gemini-weekly"] | antigravityLimit)
-  + limits("Other: "; .quota["3p-5h"] | antigravityLimit; .quota["3p-weekly"] | antigravityLimit)'
+  + limits("G: "; .quota["gemini-5h"] | antigravityLimit; .quota["gemini-weekly"] | antigravityLimit)
+  + limits("3rd: "; .quota["3p-5h"] | antigravityLimit; .quota["3p-weekly"] | antigravityLimit)'
 `;
 
 async function mergeAgentSettings(
