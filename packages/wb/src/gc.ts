@@ -252,43 +252,61 @@ function findRemovalBlocker(dirPath: string): string | undefined {
   } catch {
     return `${dirPath} cannot be read`;
   }
-  // Read `.git` from the listing: lstat fails in a directory without the execute bit.
-  const gitEntry = entries.find((entry) => entry.name === '.git');
-  const gitBlocker =
-    gitEntry && (gitEntry.isDirectory() ? findMainRepositoryBlocker(dirPath) : findLinkedWorktreeBlocker(dirPath));
-  if (gitBlocker) return gitBlocker;
+  const blocker = isGitDir(entries)
+    ? findGitDirBlocker(dirPath)
+    : // Read `.git` from the listing: lstat fails in a directory without the execute bit.
+      entries.some((entry) => entry.name === '.git' && !entry.isDirectory())
+      ? findLinkedWorktreeBlocker(dirPath)
+      : undefined;
+  if (blocker) return blocker;
 
+  // Git directories are scanned too: submodules keep theirs under `.git/modules/<name>`.
   for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name === '.git') continue;
-    const blocker = findRemovalBlocker(path.join(dirPath, entry.name));
-    if (blocker) return blocker;
+    if (!entry.isDirectory()) continue;
+    const childBlocker = findRemovalBlocker(path.join(dirPath, entry.name));
+    if (childBlocker) return childBlocker;
   }
   return undefined;
+}
+
+/** A repository's own `.git`, a submodule's `.git/modules/<name>`, or a bare repository. */
+function isGitDir(entries: fs.Dirent[]): boolean {
+  return (
+    entries.some((entry) => entry.name === 'HEAD' && entry.isFile()) &&
+    entries.some((entry) => entry.name === 'objects' && entry.isDirectory())
+  );
 }
 
 function findLinkedWorktreeBlocker(worktreePath: string): string | undefined {
   const branch = runGit(worktreePath, ['rev-parse', '--abbrev-ref', 'HEAD']);
   if (branch === undefined) return `git cannot inspect ${worktreePath}`;
-  return branch.trim() === 'HEAD' ? findUnreachableCommitBlocker(worktreePath, 'HEAD', worktreePath) : undefined;
+  return branch.trim() === 'HEAD' ? findUnreachableCommitBlocker(worktreePath, [], 'HEAD', worktreePath) : undefined;
 }
 
-function findMainRepositoryBlocker(repoPath: string): string | undefined {
-  const output = runGit(repoPath, ['worktree', 'list', '--porcelain']);
-  if (output === undefined) return `git cannot inspect ${repoPath}`;
+function findGitDirBlocker(gitDirPath: string): string | undefined {
+  const gitDirArgs = ['--git-dir=.'];
+  const output = runGit(gitDirPath, [...gitDirArgs, 'worktree', 'list', '--porcelain']);
+  if (output === undefined) return `git cannot inspect ${gitDirPath}`;
 
   for (const block of output.split('\n\n')) {
     const worktreePath = /^worktree (.+)$/m.exec(block)?.[1];
     const head = /^HEAD ([\da-f]+)$/m.exec(block)?.[1];
     if (!worktreePath || !head || !/^detached$/m.test(block)) continue;
 
-    const blocker = findUnreachableCommitBlocker(repoPath, head, worktreePath);
+    const blocker = findUnreachableCommitBlocker(gitDirPath, gitDirArgs, head, worktreePath);
     if (blocker) return blocker;
   }
   return undefined;
 }
 
-function findUnreachableCommitBlocker(gitCwd: string, commit: string, worktreePath: string): string | undefined {
+function findUnreachableCommitBlocker(
+  gitCwd: string,
+  gitDirArgs: string[],
+  commit: string,
+  worktreePath: string
+): string | undefined {
   const containingRef = runGit(gitCwd, [
+    ...gitDirArgs,
     'for-each-ref',
     '--count=1',
     `--contains=${commit}`,

@@ -31,6 +31,12 @@ describe('wb gc', () => {
     const cloneWorktreePath = path.join(activeRepoPath, '.tmp', 'clone-worktree');
     git(cloneRepoPath, 'worktree', 'add', '-q', '--detach', cloneWorktreePath);
     git(cloneWorktreePath, 'commit', '-q', '--allow-empty', '-m', 'detached');
+    const submoduleSourcePath = createRepository(path.join(tempDirPath, 'submodule-source'));
+    const superprojectPath = createRepository(path.join(activeRepoPath, '.tmp', 'superproject'));
+    git(superprojectPath, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', submoduleSourcePath, 'sub');
+    const submoduleWorktreePath = path.join(tempDirPath, 'submodule-worktree');
+    git(path.join(superprojectPath, 'sub'), 'worktree', 'add', '-q', '--detach', submoduleWorktreePath);
+    git(submoduleWorktreePath, 'commit', '-q', '--allow-empty', '-m', 'detached');
     const lockedDirPath = path.join(activeRepoPath, '.tmp', 'unreadable', 'locked');
     writeFile(path.join(lockedDirPath, 'inner', 'file'));
     fs.symlinkSync(path.join(tempDirPath, 'missing'), path.join(activeRepoPath, '.tmp', 'dangling'));
@@ -67,6 +73,7 @@ describe('wb gc', () => {
     expect(fs.existsSync(lockedDirPath)).toBe(true);
     expect(fs.existsSync(cloneRepoPath)).toBe(true);
     expect(fs.existsSync(cloneWorktreePath)).toBe(true);
+    expect(fs.existsSync(superprojectPath)).toBe(true);
     expect(fs.existsSync(path.join(invokingRepoPath, 'node_modules'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'tracked', 'keep.txt'))).toBe(true);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'recent'))).toBe(true);
