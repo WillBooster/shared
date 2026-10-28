@@ -40,7 +40,13 @@ describe('wb gc', () => {
     for (const fileName of ['index', 'HEAD']) setNow(path.join(activeRepoPath, '.git', fileName));
 
     fs.chmodSync(lockedDirPath, 0o600);
-    const result = runWbGc(tempDirPath, { GHQ_ROOT: ghqRootPath, HOME: tempDirPath });
+    // As exported by a Git hook of another repository that runs wb.
+    const result = runWbGc(tempDirPath, {
+      GHQ_ROOT: ghqRootPath,
+      GIT_DIR: path.join(foreignRepoPath, '.git'),
+      GIT_INDEX_FILE: path.join(foreignRepoPath, '.git', 'index'),
+      HOME: tempDirPath,
+    });
     fs.chmodSync(lockedDirPath, 0o700);
 
     expect(result.status).toBe(0);

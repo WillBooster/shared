@@ -73,14 +73,26 @@ function detectAutoGcMode(): GcMode | undefined {
   return isTruthyEnvValue(process.env.WB_AUTO_GC) ? 'local' : undefined;
 }
 
+/**
+ * Exclusively creates the stamp of the current interval, so exactly one of concurrently starting wb
+ * processes runs GC in each interval.
+ */
 function claimAutoGcRun(mode: GcMode): boolean {
-  // Runners sharing a machine have separate work directories, so each one keeps its own stamp.
+  // Runners sharing a machine have separate work directories, so each one keeps its own stamps.
   const rootHash = crypto.createHash('sha256').update(getGcRootPath(mode)).digest('hex').slice(0, 16);
-  const stampPath = path.join(getWbCacheDirPath(), `gc-${mode}-${rootHash}`);
-  const lastRunMs = getMtimeMs(stampPath);
-  if (lastRunMs !== undefined && Date.now() - lastRunMs < autoGcIntervalMs[mode]) return false;
+  const stampPrefix = `gc-${mode}-${rootHash}-`;
+  const stampName = `${stampPrefix}${Math.floor(Date.now() / autoGcIntervalMs[mode])}`;
+  const cacheDirPath = getWbCacheDirPath();
+  try {
+    fs.closeSync(fs.openSync(path.join(cacheDirPath, stampName), 'wx'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw error;
+  }
 
-  fs.writeFileSync(stampPath, '');
+  for (const { name } of listDirEntries(cacheDirPath)) {
+    if (name.startsWith(stampPrefix) && name !== stampName) fs.rmSync(path.join(cacheDirPath, name), { force: true });
+  }
   return true;
 }
 
@@ -343,7 +355,10 @@ function pruneMise(dryRun: boolean): void {
 }
 
 function runGit(cwd: string, args: string[]): string | undefined {
-  const result = childProcess.spawnSync('git', args, { cwd, encoding: 'utf8' });
+  // Git hooks export GIT_DIR, GIT_INDEX_FILE, and the like, which would redirect every call to the
+  // hook's repository instead of `cwd`'s.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GIT_')));
+  const result = childProcess.spawnSync('git', args, { cwd, encoding: 'utf8', env });
   return result.status === 0 ? result.stdout : undefined;
 }
 
