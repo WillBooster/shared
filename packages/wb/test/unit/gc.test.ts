@@ -68,9 +68,9 @@ describe('wb gc', () => {
       GIT_INDEX_FILE: path.join(foreignRepoPath, '.git', 'index'),
       HOME: tempDirPath,
     });
-    fs.chmodSync(lockedDirPath, 0o700);
-    fs.chmodSync(path.join(lockedRepoPath, '.git'), 0o700);
-    fs.chmodSync(path.join(invokingRepoPath, '.tmp'), 0o700);
+    unlock(lockedDirPath);
+    unlock(path.join(lockedRepoPath, '.git'));
+    unlock(path.join(invokingRepoPath, '.tmp'));
 
     expect(result.status).toBe(0);
     expect(fs.existsSync(path.join(activeRepoPath, '.tmp', 'stale'))).toBe(false);
@@ -127,7 +127,7 @@ describe('wb gc', () => {
 
     const firstRunHour = getCurrentHour();
     const result = runWb(currentCheckoutPath, ['kill-port-if-non-ci'], env);
-    fs.chmodSync(lockedGitPath, 0o700);
+    unlock(lockedGitPath);
 
     expect(result.status).toBe(0);
     expect(fs.existsSync(path.join(workRootPath, 'stale'))).toBe(false);
@@ -201,6 +201,11 @@ function setOld(targetPath: string, days: number): void {
     fs.lutimesSync(path.join(entry.parentPath, entry.name), time, time);
   }
   fs.lutimesSync(targetPath, time, time);
+}
+
+/** Root may have removed the fixture, since permission bits do not stop it. */
+function unlock(targetPath: string): void {
+  if (fs.existsSync(targetPath)) fs.chmodSync(targetPath, 0o700);
 }
 
 function setNow(targetPath: string): void {
