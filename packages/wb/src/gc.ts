@@ -316,19 +316,36 @@ function findUnreachableCommitBlocker(
   return containingRef.trim() ? undefined : `${worktreePath} has commits on no branch, remote-tracking branch, or tag`;
 }
 
+/** Metadata that cannot be inspected counts as recent use, so its repository keeps its artifacts. */
 function getRepositoryLastUsedMs(repoPath: string): number {
   // The directory's own mtime is no usage signal: removing an entry such as `.tmp` updates it.
   const gitDirPath = resolveGitDirPath(repoPath);
-  return Math.max(0, ...gitActivityFileNames.map((fileName) => getMtimeMs(path.join(gitDirPath, fileName)) ?? 0));
+  if (!gitDirPath) return Number.POSITIVE_INFINITY;
+
+  return Math.max(
+    0,
+    ...gitActivityFileNames.map((fileName) => {
+      try {
+        return fs.lstatSync(path.join(gitDirPath, fileName)).mtimeMs;
+      } catch (error) {
+        // Not every repository has `FETCH_HEAD` or `logs/HEAD`.
+        return (error as NodeJS.ErrnoException).code === 'ENOENT' ? 0 : Number.POSITIVE_INFINITY;
+      }
+    })
+  );
 }
 
 /** A worktree's `.git` is a file pointing to its git directory. */
-function resolveGitDirPath(repoPath: string): string {
+function resolveGitDirPath(repoPath: string): string | undefined {
   const gitPath = path.join(repoPath, '.git');
   if (!tryLstat(gitPath)?.isFile()) return gitPath;
 
-  const gitDir = /^gitdir: (.+)$/m.exec(fs.readFileSync(gitPath, 'utf8'))?.[1];
-  return gitDir ? path.resolve(repoPath, gitDir) : gitPath;
+  try {
+    const gitDir = /^gitdir: (.+)$/m.exec(fs.readFileSync(gitPath, 'utf8'))?.[1];
+    return gitDir ? path.resolve(repoPath, gitDir) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Anything that cannot be inspected counts as modified: it may hide a recent change. */
@@ -444,10 +461,6 @@ function listDirEntries(dirPath: string): fs.Dirent[] {
   } catch {
     return [];
   }
-}
-
-function getMtimeMs(targetPath: string): number | undefined {
-  return tryLstat(targetPath)?.mtimeMs;
 }
 
 /** `throwIfNoEntry: false` still throws for other errors, such as ENOTDIR below a regular file. */
