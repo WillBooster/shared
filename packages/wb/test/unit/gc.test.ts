@@ -94,6 +94,7 @@ describe('wb gc', () => {
       RUNNER_WORKSPACE: currentWorkspacePath,
     };
 
+    const firstRunHour = getCurrentHour();
     const result = runWb(currentCheckoutPath, ['kill-port-if-non-ci'], env);
 
     expect(result.status).toBe(0);
@@ -105,9 +106,14 @@ describe('wb gc', () => {
     createRepository(path.join(workRootPath, 'another', 'another'));
     setOld(path.join(workRootPath, 'another'), 10);
     expect(runWb(currentCheckoutPath, ['kill-port-if-non-ci'], env).status).toBe(0);
-    expect(fs.existsSync(path.join(workRootPath, 'another'))).toBe(true);
+    // CI intervals are clock-aligned hours, so a second run in the next hour legitimately cleans again.
+    if (getCurrentHour() === firstRunHour) expect(fs.existsSync(path.join(workRootPath, 'another'))).toBe(true);
   }, 60_000);
 });
+
+function getCurrentHour(): number {
+  return Math.floor(Date.now() / (60 * 60 * 1000));
+}
 
 function runWbGc(cwd: string, env: Record<string, string>): childProcess.SpawnSyncReturns<string> {
   return runWb(cwd, ['gc'], { CI: '', ...env });
