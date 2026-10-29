@@ -88,7 +88,7 @@ export function collectPlaintextFnoxValues(
     for (const settingName of ['default_provider', 'env', 'import'] as const) {
       if (config[settingName] !== undefined) {
         throw new Error(
-          `${configPath} uses the top-level ${settingName} setting, which is outside the canonical wbfy fnox.toml layout; remove it or keep such values out of the Docker bake.`
+          `${configPath} uses the top-level ${settingName} setting, which is outside the canonical wbfy fnox.toml layout, so its values cannot be read without decrypting; remove it.`
         );
       }
     }
@@ -123,7 +123,7 @@ export function collectPlaintextFnoxValues(
     if (typeof defaultValue !== 'string') continue;
     if (json_path !== undefined || line !== undefined || as_file !== undefined) {
       throw new Error(
-        `The entry ${keyName} uses a fnox value transformation (json_path/line/as_file), so its exported value differs from its raw default; keep such values out of the Docker bake.`
+        `The entry ${keyName} uses a fnox value transformation (json_path/line/as_file), so its exported value differs from its raw default; replace it with a plain default.`
       );
     }
     values[keyName] = defaultValue;
@@ -168,7 +168,7 @@ function resolvePlaintextReferences(values: Record<string, string>): Record<stri
       const referencedRawValue = values[referencedKeyName];
       if (referencedRawValue === undefined) {
         throw new Error(
-          `The value of ${keyName} references ${referencedKeyName}, which is not a bakeable plaintext fnox entry; only plaintext-to-plaintext references can be baked into a Docker image.`
+          `The value of ${keyName} references ${referencedKeyName}, which is not a bakeable plaintext fnox entry; only plaintext-to-plaintext references are resolved without decrypting.`
         );
       }
       return resolve(referencedKeyName, referencedRawValue, [...stack, keyName]);
