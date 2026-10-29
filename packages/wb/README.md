@@ -164,7 +164,7 @@ The directory wb runs in and its ancestors are never removed. Anything wb gc can
 Every other wb command starts `wb gc` once per interval from the outermost wb process:
 
 - On a developer machine, once a day in the background, logging to `~/.cache/wb/gc.log`.
-- On a CI runner, once an hour per work directory, synchronously, because the job end kills background processes.
+- On a CI runner that sets `RUNNER_WORKSPACE` (e.g., GitHub Actions), once an hour per work directory, synchronously, because the job end kills background processes. Without it, GC logs that it skipped.
 
 ## Running relevant tests
 
