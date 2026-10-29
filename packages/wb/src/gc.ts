@@ -240,22 +240,17 @@ function getTmpEntryRemovalReason(entryPath: string, nowMs: number): string | un
 /**
  * Removing a linked worktree without changes or untracked files loses only ignored files: its
  * stash lives in its main repository, and `findRemovalBlocker` guards its commits. A standalone
- * clone is excluded because its local branches and stash would go with it.
+ * clone is excluded because its local branches and stash would go with it, and a worktree with
+ * submodules because `submodule.<name>.ignore`, at any nesting depth, hides their edits from
+ * `git status`.
  */
 function isCleanLinkedWorktree(entryPath: string): boolean {
-  if (!tryLstat(path.join(entryPath, '.git'))?.isFile()) return false;
+  if (!tryLstat(path.join(entryPath, '.git'))?.isFile() || tryLstat(path.join(entryPath, '.gitmodules'))) {
+    return false;
+  }
 
-  // `--no-optional-locks` keeps the check from refreshing the index of a worktree in use, and
-  // `--ignore-submodules=none` overrides `submodule.<name>.ignore`, which would hide submodule edits.
-  return (
-    runGit(entryPath, [
-      '--no-optional-locks',
-      'status',
-      '--porcelain',
-      '--untracked-files=all',
-      '--ignore-submodules=none',
-    ]) === ''
-  );
+  // `--no-optional-locks` keeps the check from refreshing the index of a worktree in use.
+  return runGit(entryPath, ['--no-optional-locks', 'status', '--porcelain', '--untracked-files=all']) === '';
 }
 
 function removeStaleBuildArtifacts(repoPath: string, context: GcContext): void {
