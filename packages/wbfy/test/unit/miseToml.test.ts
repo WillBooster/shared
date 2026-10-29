@@ -58,6 +58,11 @@ test('updates Node.js 26, Bun, and fnox without downgrading newer pins or rewrit
   expect(content).toBe(miseToml(tools.node, tools.bun, `fnox = "${latestFnox}"\n`));
   expect(await generateFrom({ 'mise.toml': content, 'fnox.toml': '' })).toBe(content);
 
+  const otherSettings = '[tools]\npython = "3.12.0"\n\n# Tasks\n[tasks.hello]\nrun = "echo hello"\n';
+  const inserted = await generateFrom({ 'mise.toml': otherSettings });
+  expect(Bun.TOML.parse(inserted)).toMatchObject({ tools: { node: tools.node, bun: tools.bun } });
+  expect(inserted.replaceAll(/^(?:node|bun) = "[^"]*"\n/gmu, '')).toBe(otherSettings);
+
   const newerNode = semver.inc(tools.node, 'patch');
   const newerBun = semver.inc(tools.bun, 'patch');
   const newerFnox = semver.inc(latestFnox, 'patch');
