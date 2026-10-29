@@ -19,12 +19,8 @@ export const minimumBunVersion = '1.4.4';
 // Pinned even while `mise latest` still hides it behind its release-age filter.
 export const minimumPinnedBunVersion = '1.4.4';
 
-/**
- * Pins Node.js, the latest Bun (at least `minimumPinnedBunVersion`), and (when fnox.toml exists)
- * fnox versions. Only the changed pin lines are edited in place: re-serializing the parsed TOML
- * would drop every comment and collapse multi-line strings (e.g. mise task scripts) in the rest of
- * the file.
- */
+export const minimumPinnedNodeVersion = '26.13.0';
+
 export async function generateMiseToml(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateMiseToml', async () => {
     const miseTomlPath = path.resolve(config.dirPath, 'mise.toml');
@@ -33,14 +29,7 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
     const tools = (Bun.TOML.parse(content) as MiseToml).tools ?? {};
 
     const pins: Record<string, unknown> = {
-      // Ensure Node.js is always pinned: generated hooks and CI run `mise install`, and an unpinned
-      // Node would come from whatever happens to be on PATH.
-      // The lift only touches exact pins and the pin only touches selectors, so they never both resolve.
-      node: await pinConcreteToolVersion(
-        'node',
-        await liftOutdatedToolVersionWithinMajor('node', tools.node, config.dirPath),
-        config.dirPath
-      ),
+      node: await pinLatestToolVersion('node@lts', tools.node, config.dirPath, minimumPinnedNodeVersion),
       bun: await pinLatestToolVersion('bun', tools.bun, config.dirPath, minimumPinnedBunVersion),
     };
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
@@ -85,10 +74,6 @@ function parseTools(content: string): Record<string, unknown> | undefined {
   }
 }
 
-/**
- * Updates to the latest release across major versions, or to `minimumVersion` when that is newer, without
- * downgrading existing exact pins.
- */
 async function pinLatestToolVersion(
   tool: string,
   version: unknown,
@@ -102,47 +87,6 @@ async function pinLatestToolVersion(
     (candidate): candidate is string => typeof candidate === 'string' && semver.valid(candidate) !== null
   );
   return semver.rsort(candidates)[0] ?? version ?? 'latest';
-}
-
-/**
- * Lifts an exact tool pin to the latest release of its own major (e.g. node 22.20.0 to 22.23.4):
- * Renovate does not manage mise.toml pins, so without this a repository keeps running a release
- * line's patch versions that security releases have superseded. The major stays as pinned because
- * it is a deliberate compatibility choice. Non-exact and non-string forms are kept, as is the pin
- * when mise cannot resolve the major (e.g. offline).
- */
-async function liftOutdatedToolVersionWithinMajor(tool: string, version: unknown, cwd: string): Promise<unknown> {
-  if (typeof version !== 'string' || !semver.valid(version)) return version;
-  const latestVersion = await spawnAndReturnStdout(
-    'mise',
-    ['--no-config', 'latest', `${tool}@${semver.major(version)}`],
-    cwd
-  );
-  return semver.valid(latestVersion) && semver.lt(version, latestVersion) ? latestVersion : version;
-}
-
-/**
- * Replaces an unpinned selector (`latest`, a range such as "24", an alias, or a missing entry)
- * with the newest concrete version mise resolves for it, because the repository-structure
- * standard requires concrete pins: CI installs whatever an unpinned selector resolves to at run
- * time, so builds drift across runs. Exact versions are kept as-is, and non-string forms (mise's
- * array and `{ version = "…" }` forms) are user-managed and left untouched. When mise is
- * unavailable or cannot resolve the selector (e.g. offline), the original selector is kept —
- * an unpinned tool is better than a broken configuration.
- */
-async function pinConcreteToolVersion(tool: string, version: unknown, cwd: string): Promise<unknown> {
-  if (version !== undefined && (typeof version !== 'string' || semver.valid(version))) return version;
-  // Normalize selector forms `mise latest` cannot resolve even though mise configuration accepts
-  // them: `prefix:24` is rejected outright while `24` resolves, and `lts/*` yields empty output
-  // while `lts` resolves. Modifier selectors such as `sub-2:lts` stay unresolvable and fall back
-  // to the original selector below.
-  const range = typeof version === 'string' ? version.replace(/^prefix:/u, '').replace(/\/\*$/u, '') : undefined;
-  // With no meaningful selector, Node.js pins to the latest LTS (matching the reusable workflows'
-  // `lts/*` fallback) rather than the newest release.
-  const defaultSelector = tool === 'node' ? 'node@lts' : tool;
-  const selector = range && range !== 'latest' ? `${tool}@${range}` : defaultSelector;
-  const resolvedVersion = await spawnAndReturnStdout('mise', ['--no-config', 'latest', selector], cwd);
-  return semver.valid(resolvedVersion) ? resolvedVersion : (version ?? 'latest');
 }
 
 function readMiseToml(miseTomlPath: string): string {
