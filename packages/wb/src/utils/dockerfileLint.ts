@@ -9,12 +9,21 @@
 //   supported", before any build output.
 // - An `ENV`/`ARG` age identity persists in image layers, and a registry reader can decrypt every
 //   profile of the committed fnox.toml with it.
+// - Railway passes every service variable named by an `ARG` into the build, and `wb deploy` syncs
+//   encrypted fnox values to service variables, so such an `ARG` exposes the decrypted secret to
+//   the build (and to the image history when a layer records it).
 // - `COPY` of the root `.env` (or `.env.<mode>` / `.env*` globs) bakes decrypted secrets; only
 //   the generated non-secret `.docker.env` may be baked.
-export function lintDockerfile(dockerfileText: string, options: { railwayConfigured: boolean }): string[] {
+export function lintDockerfile(
+  dockerfileText: string,
+  options: { railwayConfigured: boolean; encryptedFnoxKeyNames?: ReadonlySet<string> }
+): string[] {
   return parseLogicalInstructions(dockerfileText).flatMap(([instruction, args]) => {
     if (instruction === 'RUN') return options.railwayConfigured ? lintRunMounts(args) : [];
-    if (instruction === 'ENV' || instruction === 'ARG') return lintAgeIdentity(args);
+    if (instruction === 'ENV') return lintAgeIdentity(args);
+    if (instruction === 'ARG') {
+      return [...lintAgeIdentity(args), ...lintSecretArgs(args, options.encryptedFnoxKeyNames ?? new Set())];
+    }
     // ADD copies build-context files into a layer exactly like COPY, so it gets the same check.
     if (instruction === 'COPY' || instruction === 'ADD') return lintCopiedEnvFiles(instruction, args);
     return [];
@@ -45,6 +54,16 @@ function lintAgeIdentity(args: string): string[] {
   return [
     'Never persist an age identity in an image: remove the FNOX_AGE_KEY / MISE_AGE_KEY ENV/ARG (pass it as a BuildKit secret where the builder supports one).',
   ];
+}
+
+function lintSecretArgs(args: string, encryptedFnoxKeyNames: ReadonlySet<string>): string[] {
+  return tokenizeRespectingQuotes(args)
+    .map((token) => token.split('=')[0] ?? '')
+    .filter((name) => encryptedFnoxKeyNames.has(name))
+    .map(
+      (name) =>
+        `\`ARG ${name}\` names an encrypted fnox secret, which a builder supplying service variables as build arguments (e.g. Railway) passes into the build; rename the ARG or read the secret at runtime.`
+    );
 }
 
 function lintCopiedEnvFiles(instruction: string, args: string): string[] {

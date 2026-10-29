@@ -29,6 +29,20 @@ RUN --mount=target=/tmp/x true
     ).toHaveLength(0);
   });
 
+  it('rejects ARGs named after encrypted fnox entries', () => {
+    const encryptedFnoxKeyNames = new Set(['AUTH_SECRET', 'NPM_TOKEN']);
+    const problems = lintDockerfile(
+      'ARG WB_ENV\nARG NODE_IMAGE=node:24 NPM_TOKEN\nARG AUTH_SECRET=x\nENV AUTH_SECRET=\n',
+      {
+        railwayConfigured: true,
+        encryptedFnoxKeyNames,
+      }
+    );
+    expect(problems).toHaveLength(2);
+    expect(problems[0]).toContain('ARG NPM_TOKEN');
+    expect(problems[1]).toContain('ARG AUTH_SECRET');
+  });
+
   it('rejects COPY of the root .env and .env globs but allows .docker.env and dist/.env', () => {
     expect(lintDockerfile('COPY .env ./\n', { railwayConfigured: false })).toHaveLength(1);
     expect(lintDockerfile('COPY .env .env.* package.json ./\n', { railwayConfigured: false })).toHaveLength(2);
