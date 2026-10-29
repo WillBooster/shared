@@ -355,8 +355,10 @@ async function buildWorker({
   const deployConfigPath = isVinext ? path.join('dist', 'server', 'wrangler.json') : wranglerConfigPath;
   if (isVinext) {
     const buildEnv = createVinextBuildEnv(project, envName, resolvedConfig.usesEnvSection);
+    // gen-code keeps project.env: it may need a secret to fetch private inputs (e.g. prompt-study
+    // clones a private repository), and it emits sources that the restricted build compiles.
     if (project.packageJson.scripts?.['gen-code']) {
-      await runWithSpawn('YARN run gen-code', project, argv, { env: buildEnv });
+      await runWithSpawn('YARN run gen-code', project, argv);
     }
     await runWithSpawn('YARN vinext build', project, argv, { env: buildEnv });
     // On dry runs the vinext build above is a printed no-op, so the built config is
