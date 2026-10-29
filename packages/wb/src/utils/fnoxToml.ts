@@ -58,6 +58,25 @@ export function collectFnoxKeyNamesForProfile(
     .toSorted((a, b) => a.localeCompare(b));
 }
 
+/**
+ * The names of the entries that are encrypted (provider-backed) in the base table or any profile
+ * of every `fnox.toml` from `projectDirPath` up to `rootDirPath`. Reads the files only, so it
+ * needs no age key.
+ */
+export function collectEncryptedFnoxKeyNames(projectDirPath: string, rootDirPath: string): Set<string> {
+  const keyNames = new Set<string>();
+  for (const configPath of findAncestorFnoxConfigPaths(projectDirPath, rootDirPath)) {
+    const config = parseFnoxConfig(configPath);
+    const tables = [config.secrets, ...Object.values(config.profiles ?? {}).map((profile) => profile?.secrets)];
+    for (const [keyName, entry] of tables.flatMap((table) => Object.entries(table ?? {}))) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const { provider, value } = entry as { provider?: unknown; value?: unknown };
+      if (provider !== undefined || value !== undefined) keyNames.add(keyName);
+    }
+  }
+  return keyNames;
+}
+
 export function parseFnoxConfig(configPath: string): FnoxConfig {
   return parseToml(fs.readFileSync(configPath, 'utf8')) as FnoxConfig;
 }
@@ -88,7 +107,7 @@ export function collectPlaintextFnoxValues(
     for (const settingName of ['default_provider', 'env', 'import'] as const) {
       if (config[settingName] !== undefined) {
         throw new Error(
-          `${configPath} uses the top-level ${settingName} setting, which is outside the canonical wbfy fnox.toml layout; remove it or keep such values out of the Docker bake.`
+          `${configPath} uses the top-level ${settingName} setting, which is outside the canonical wbfy fnox.toml layout, so wb cannot reproduce the values fnox exports from the plaintext defaults; remove it.`
         );
       }
     }
@@ -123,7 +142,7 @@ export function collectPlaintextFnoxValues(
     if (typeof defaultValue !== 'string') continue;
     if (json_path !== undefined || line !== undefined || as_file !== undefined) {
       throw new Error(
-        `The entry ${keyName} uses a fnox value transformation (json_path/line/as_file), so its exported value differs from its raw default; keep such values out of the Docker bake.`
+        `The entry ${keyName} uses a fnox value transformation (json_path/line/as_file), so its exported value differs from its raw default; replace it with a plain default.`
       );
     }
     values[keyName] = defaultValue;
@@ -168,7 +187,7 @@ function resolvePlaintextReferences(values: Record<string, string>): Record<stri
       const referencedRawValue = values[referencedKeyName];
       if (referencedRawValue === undefined) {
         throw new Error(
-          `The value of ${keyName} references ${referencedKeyName}, which is not a bakeable plaintext fnox entry; only plaintext-to-plaintext references can be baked into a Docker image.`
+          `The value of ${keyName} references ${referencedKeyName}, which is not a bakeable plaintext fnox entry; only plaintext-to-plaintext references are resolved without decrypting.`
         );
       }
       return resolve(referencedKeyName, referencedRawValue, [...stack, keyName]);
