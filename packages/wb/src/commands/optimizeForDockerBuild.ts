@@ -19,6 +19,7 @@ import {
 } from '../project.js';
 import { isCI, isDockerEnabled } from '../utils/ci.js';
 import { lintDockerfile } from '../utils/dockerfileLint.js';
+import { collectEncryptedFnoxKeyNames } from '../utils/fnoxToml.js';
 import {
   isPrivateGitDependency,
   isPrivateRegistryDependency,
@@ -177,7 +178,10 @@ function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { roo
     const railwayConfigured = candidateDirPaths.some((dirPath) =>
       ['railway.toml', 'railway.json', RAILWAY_IAC_FILE_PATH].some((name) => fs.existsSync(path.join(dirPath, name)))
     );
-    const problems = lintDockerfile(dockerfileText, { railwayConfigured });
+    const problems = lintDockerfile(dockerfileText, {
+      railwayConfigured,
+      encryptedFnoxKeyNames: collectEncryptedFnoxKeyNames(projects.self.dirPath, projects.self.rootDirPath),
+    });
     if (problems.length > 0) {
       throw new Error(`Dockerfile problems:\n- ${problems.join('\n- ')}`);
     }

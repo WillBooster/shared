@@ -58,6 +58,25 @@ export function collectFnoxKeyNamesForProfile(
     .toSorted((a, b) => a.localeCompare(b));
 }
 
+/**
+ * The names of the entries that are encrypted (provider-backed) in the base table or any profile
+ * of every `fnox.toml` from `projectDirPath` up to `rootDirPath`. Reads the files only, so it
+ * needs no age key.
+ */
+export function collectEncryptedFnoxKeyNames(projectDirPath: string, rootDirPath: string): Set<string> {
+  const keyNames = new Set<string>();
+  for (const configPath of findAncestorFnoxConfigPaths(projectDirPath, rootDirPath)) {
+    const config = parseFnoxConfig(configPath);
+    const tables = [config.secrets, ...Object.values(config.profiles ?? {}).map((profile) => profile?.secrets)];
+    for (const [keyName, entry] of tables.flatMap((table) => Object.entries(table ?? {}))) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const { provider, value } = entry as { provider?: unknown; value?: unknown };
+      if (provider !== undefined || value !== undefined) keyNames.add(keyName);
+    }
+  }
+  return keyNames;
+}
+
 export function parseFnoxConfig(configPath: string): FnoxConfig {
   return parseToml(fs.readFileSync(configPath, 'utf8')) as FnoxConfig;
 }

@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'bun:test';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 import { consumesDockerEnv } from '@willbooster/shared-lib-node/src';
 
 import { lintDockerfile } from '../../src/utils/dockerfileLint.js';
+import { collectEncryptedFnoxKeyNames } from '../../src/utils/fnoxToml.js';
 
 describe('lintDockerfile', () => {
   it('rejects non-cache RUN mounts only when a Railway config exists', () => {
@@ -27,6 +31,31 @@ RUN --mount=target=/tmp/x true
         railwayConfigured: false,
       })
     ).toHaveLength(0);
+  });
+
+  it('rejects ARGs named after encrypted entries of any fnox.toml profile up to the root', async () => {
+    const rootDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-dockerfile-lint-'));
+    try {
+      const appDirPath = path.join(rootDirPath, 'packages', 'app');
+      await fs.mkdir(appDirPath, { recursive: true });
+      await fs.writeFile(
+        path.join(rootDirPath, 'fnox.toml'),
+        '[secrets]\nROOT_SECRET = { provider = "age", value = "x" }\n'
+      );
+      await fs.writeFile(
+        path.join(appDirPath, 'fnox.toml'),
+        '[secrets]\nPLAIN = { default = "x" }\n[profiles.production.secrets]\nPROFILE_SECRET = { provider = "age", value = "x" }\n'
+      );
+      const problems = lintDockerfile('ARG PLAIN\nARG NODE_IMAGE=node:24 ROOT_SECRET\nARG PROFILE_SECRET=x\n', {
+        railwayConfigured: false,
+        encryptedFnoxKeyNames: collectEncryptedFnoxKeyNames(appDirPath, rootDirPath),
+      });
+      expect(problems).toHaveLength(2);
+      expect(problems[0]).toContain('ARG ROOT_SECRET');
+      expect(problems[1]).toContain('ARG PROFILE_SECRET');
+    } finally {
+      await fs.rm(rootDirPath, { force: true, recursive: true });
+    }
   });
 
   it('rejects COPY of the root .env and .env globs but allows .docker.env and dist/.env', () => {
