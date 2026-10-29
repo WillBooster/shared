@@ -32,7 +32,7 @@ export function createSecretFreeBuildEnv(project: Project, envName: string): Rec
     // Not project.env's values: an exported value of a key with a plaintext placeholder (e.g.
     // `OPENAI_API_KEY = { default = "" }`) is a real secret.
     ...collectPlaintextFnoxValues(project.dirPath, project.rootDirPath, envName),
-    // A nested `wb` (e.g. in gen-code) would otherwise decrypt with an identity file that fnox
+    // A `wb` or fnox run inside the build would otherwise decrypt with an identity file that fnox
     // finds on the host (~/.config/fnox) even without FNOX_AGE_KEY.
     FNOX_AGE_KEY_FILE: '/nonexistent',
   };
