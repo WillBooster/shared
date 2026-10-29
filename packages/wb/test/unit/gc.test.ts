@@ -133,6 +133,8 @@ describe('wb gc', () => {
     fs.writeFileSync(path.join(repoPath, '.tmp', 'modified', 'tracked.txt'), 'changed');
     writeFile(path.join(repoPath, '.tmp', 'untracked', 'new.txt'));
     writeFile(path.join(repoPath, '.tmp', 'stale-log', 'log.txt'));
+    const separateClonePath = path.join(repoPath, '.tmp', 'separate-clone');
+    git(repoPath, 'clone', '-q', '--separate-git-dir', path.join(tempDirPath, 'separate.git'), '.', separateClonePath);
     const submoduleSourcePath = createRepository(path.join(tempDirPath, 'submodule-source'));
     const submoduleWorktreePath = path.join(repoPath, '.tmp', 'submodule');
     git(repoPath, 'worktree', 'add', '-q', '-b', 'submodule', submoduleWorktreePath);
@@ -165,6 +167,7 @@ describe('wb gc', () => {
     expect(fs.existsSync(path.join(repoPath, '.tmp', 'recent'))).toBe(true);
     expect(fs.existsSync(path.join(repoPath, '.tmp', 'stale-log'))).toBe(true);
     expect(fs.existsSync(submoduleWorktreePath)).toBe(true);
+    expect(fs.existsSync(separateClonePath)).toBe(true);
   }, 60_000);
 
   it('removes stale workspaces of other jobs on a CI runner once per interval', () => {
