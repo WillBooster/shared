@@ -398,7 +398,12 @@ function createVinextBuildEnv(project: Project, envName: string, usesEnvSection:
   if (dotenvFiles.length > 0) {
     exitWithError(`Remove ${dotenvFiles.join(', ')}: vinext build would load them into the deployed build.`);
   }
-  const buildEnv = createSecretFreeBuildEnv(project, envName);
+  let buildEnv: Record<string, string>;
+  try {
+    buildEnv = createSecretFreeBuildEnv(project, envName);
+  } catch (error) {
+    exitWithError(`The vinext build gets only plaintext fnox values: ${getErrorMessage(error)}`);
+  }
   if (buildEnv.WB_VERSION) buildEnv.NEXT_PUBLIC_WB_VERSION ||= buildEnv.WB_VERSION;
   if (usesEnvSection) buildEnv.CLOUDFLARE_ENV = envName;
   return buildEnv;
