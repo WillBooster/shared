@@ -4,8 +4,9 @@ import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import semver from 'semver';
+import { z } from 'zod';
 
-import { generateMiseToml } from '../../src/generators/miseToml.js';
+import { generateMiseToml, minimumPinnedBunVersion, minimumPinnedNodeVersion } from '../../src/generators/miseToml.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -44,12 +45,21 @@ test('updates Node.js 26, Bun, and fnox without downgrading newer pins or rewrit
   const latestBun = latestBunOutput.trim();
   const latestFnox = latestFnoxOutput.trim();
   const content = await generateFrom({ 'mise.toml': miseToml('24.22.1', '0.1.0', ''), 'fnox.toml': '' });
+  const { tools } = z.object({ tools: z.object({ node: z.string(), bun: z.string() }) }).parse(Bun.TOML.parse(content));
 
-  expect(content).toBe(miseToml(latestNode, latestBun, `fnox = "${latestFnox}"\n`));
+  for (const [pinned, latest, minimum] of [
+    [tools.node, latestNode, minimumPinnedNodeVersion],
+    [tools.bun, latestBun, minimumPinnedBunVersion],
+  ] as const) {
+    expect(semver.gte(pinned, latest)).toBe(true);
+    expect(semver.gte(pinned, minimum)).toBe(true);
+    expect([latest, minimum]).toContain(pinned);
+  }
+  expect(content).toBe(miseToml(tools.node, tools.bun, `fnox = "${latestFnox}"\n`));
   expect(await generateFrom({ 'mise.toml': content, 'fnox.toml': '' })).toBe(content);
 
-  const newerNode = semver.inc(latestNode, 'patch');
-  const newerBun = semver.inc(latestBun, 'patch');
+  const newerNode = semver.inc(tools.node, 'patch');
+  const newerBun = semver.inc(tools.bun, 'patch');
   const newerFnox = semver.inc(latestFnox, 'patch');
   const newerContent = await generateFrom({
     'mise.toml': `[tools]\nnode = "${newerNode}"\nbun = "${newerBun}"\nfnox = "${newerFnox}"\n`,
