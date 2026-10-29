@@ -248,10 +248,10 @@ function isCleanLinkedWorktree(entryPath: string): boolean {
   if (!tryLstat(path.join(entryPath, '.git'))?.isFile() || tryLstat(path.join(entryPath, '.gitmodules'))) {
     return false;
   }
-  // A clone made with `--separate-git-dir` also has a `.git` file, but its Git directory is its own.
-  const gitDirs = runGit(entryPath, ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir']);
-  const [gitDirPath, commonDirPath] = gitDirs?.trim().split('\n') ?? [];
-  if (!gitDirPath || gitDirPath === commonDirPath) return false;
+  // Only a linked worktree's Git directory has `commondir`: a clone made with `--separate-git-dir`
+  // also has a `.git` file, but its Git directory is its own.
+  const gitDirPath = resolveGitDirPath(entryPath);
+  if (!gitDirPath || !tryLstat(path.join(gitDirPath, 'commondir'))?.isFile()) return false;
 
   // `--no-optional-locks` keeps the check from refreshing the index of a worktree in use.
   return runGit(entryPath, ['--no-optional-locks', 'status', '--porcelain', '--untracked-files=all']) === '';
