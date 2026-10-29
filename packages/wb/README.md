@@ -35,8 +35,7 @@ Commands:
                                  command.
   wb gc                          Remove stale temporary files, worktrees, and
                                  build artifacts: under the ghq root locally, or
-                                 stale job workspaces on a self-hosted CI
-                                 runner.
+                                 stale job workspaces on a CI runner.
   wb gen-code                    Generate code for the current project
   wb gen-dev-vars [path]         Generate a .dev.vars file for `wrangler dev`
                                  from the environment variables loaded from fnox

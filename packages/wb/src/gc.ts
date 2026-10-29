@@ -232,8 +232,8 @@ function removeStaleTmpEntries(repoPath: string, context: GcContext): void {
 }
 
 function getTmpEntryRemovalReason(entryPath: string, nowMs: number): string | undefined {
-  if (isModifiedSince(entryPath, nowMs - localCleanWorktreeMaxAgeMs)) return;
   if (!isModifiedSince(entryPath, nowMs - localTmpEntryMaxAgeMs)) return '.tmp entry unmodified for 7 days';
+  if (isModifiedSince(entryPath, nowMs - localCleanWorktreeMaxAgeMs)) return;
   if (isCleanLinkedWorktree(entryPath)) return 'clean worktree unmodified for 1 day';
 }
 
@@ -245,8 +245,17 @@ function getTmpEntryRemovalReason(entryPath: string, nowMs: number): string | un
 function isCleanLinkedWorktree(entryPath: string): boolean {
   if (!tryLstat(path.join(entryPath, '.git'))?.isFile()) return false;
 
-  // `--no-optional-locks` keeps the check from refreshing the index of a worktree in use.
-  return runGit(entryPath, ['--no-optional-locks', 'status', '--porcelain', '--untracked-files=all']) === '';
+  // `--no-optional-locks` keeps the check from refreshing the index of a worktree in use, and
+  // `--ignore-submodules=none` overrides `submodule.<name>.ignore`, which would hide submodule edits.
+  return (
+    runGit(entryPath, [
+      '--no-optional-locks',
+      'status',
+      '--porcelain',
+      '--untracked-files=all',
+      '--ignore-submodules=none',
+    ]) === ''
+  );
 }
 
 function removeStaleBuildArtifacts(repoPath: string, context: GcContext): void {
