@@ -116,7 +116,61 @@ describe('wb gc', () => {
     expect(fs.existsSync(path.join(unusedRepoPath, 'native'))).toBe(true);
   }, 60_000);
 
-  it('removes stale workspaces of other jobs on a self-hosted CI runner once per interval', () => {
+  it('removes clean worktrees in .tmp after 1 day but keeps changed and recent ones', () => {
+    const tempDirPath = createTempDir();
+    const ghqRootPath = path.join(tempDirPath, 'ghq');
+    const repoPath = createRepository(path.join(ghqRootPath, 'github.com', 'owner', 'repo'));
+    for (const name of ['clean', 'modified', 'untracked', 'recent']) {
+      git(repoPath, 'worktree', 'add', '-q', '-b', name, `.tmp/${name}`);
+      writeFile(path.join(repoPath, '.tmp', name, 'tracked.txt'));
+      git(path.join(repoPath, '.tmp', name), 'add', 'tracked.txt');
+      git(path.join(repoPath, '.tmp', name), 'commit', '-q', '-m', 'add');
+    }
+    fs.writeFileSync(path.join(repoPath, '.tmp', 'clean', '.gitignore'), 'node_modules\n');
+    git(path.join(repoPath, '.tmp', 'clean'), 'add', '.gitignore');
+    git(path.join(repoPath, '.tmp', 'clean'), 'commit', '-q', '-m', 'ignore');
+    writeFile(path.join(repoPath, '.tmp', 'clean', 'node_modules', 'pkg', 'index.js'));
+    fs.writeFileSync(path.join(repoPath, '.tmp', 'modified', 'tracked.txt'), 'changed');
+    writeFile(path.join(repoPath, '.tmp', 'untracked', 'new.txt'));
+    writeFile(path.join(repoPath, '.tmp', 'stale-log', 'log.txt'));
+    const separateClonePath = path.join(repoPath, '.tmp', 'separate-clone');
+    git(repoPath, 'clone', '-q', '--separate-git-dir', path.join(tempDirPath, 'separate.git'), '.', separateClonePath);
+    const submoduleSourcePath = createRepository(path.join(tempDirPath, 'submodule-source'));
+    const submoduleWorktreePath = path.join(repoPath, '.tmp', 'submodule');
+    git(repoPath, 'worktree', 'add', '-q', '-b', 'submodule', submoduleWorktreePath);
+    git(
+      submoduleWorktreePath,
+      '-c',
+      'protocol.file.allow=always',
+      'submodule',
+      'add',
+      '-q',
+      submoduleSourcePath,
+      'sub'
+    );
+    // `ignore = all` hides the submodule's edits from a plain `git status`.
+    git(submoduleWorktreePath, 'config', '-f', '.gitmodules', 'submodule.sub.ignore', 'all');
+    git(submoduleWorktreePath, 'add', '.gitmodules', 'sub');
+    git(submoduleWorktreePath, 'commit', '-q', '-m', 'add submodule');
+    writeFile(path.join(submoduleWorktreePath, 'sub', 'edited.txt'));
+    git(path.join(submoduleWorktreePath, 'sub'), 'add', 'edited.txt');
+    setOld(path.join(repoPath, '.tmp'), 2);
+    setNow(path.join(repoPath, '.tmp', 'recent', 'tracked.txt'));
+
+    const result = runWbGc(repoPath, { GHQ_ROOT: ghqRootPath, HOME: tempDirPath });
+
+    expect(result.status).toBe(0);
+    expect(fs.existsSync(path.join(repoPath, '.tmp', 'clean'))).toBe(false);
+    expect(git(repoPath, 'branch', '--list', 'clean')).toContain('clean');
+    expect(fs.existsSync(path.join(repoPath, '.tmp', 'modified'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, '.tmp', 'untracked'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, '.tmp', 'recent'))).toBe(true);
+    expect(fs.existsSync(path.join(repoPath, '.tmp', 'stale-log'))).toBe(true);
+    expect(fs.existsSync(submoduleWorktreePath)).toBe(true);
+    expect(fs.existsSync(separateClonePath)).toBe(true);
+  }, 60_000);
+
+  it('removes stale workspaces of other jobs on a CI runner once per interval', () => {
     const tempDirPath = createTempDir();
     const workRootPath = path.join(tempDirPath, '_work');
     const currentWorkspacePath = path.join(workRootPath, 'current');
@@ -133,7 +187,6 @@ describe('wb gc', () => {
     const env = {
       CI: 'true',
       HOME: tempDirPath,
-      RUNNER_ENVIRONMENT: 'self-hosted',
       RUNNER_TEMP: path.join(workRootPath, '_temp'),
       RUNNER_WORKSPACE: currentWorkspacePath,
     };
