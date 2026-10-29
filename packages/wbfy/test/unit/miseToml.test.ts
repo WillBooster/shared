@@ -4,8 +4,9 @@ import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import semver from 'semver';
+import { z } from 'zod';
 
-import { generateMiseToml, minimumPinnedBunVersion } from '../../src/generators/miseToml.js';
+import { generateMiseToml, minimumPinnedBunVersion, minimumPinnedNodeVersion } from '../../src/generators/miseToml.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -35,34 +36,41 @@ function miseToml(node: string, bun: string, fnoxLine: string): string {
   return `# Toolchain\n[tools]\nnode = "${node}"\nbun = "${bun}" # inline\npython = "3.12.0"\n${fnoxLine}\n# Tasks\n[tasks.hello]\n# Multi-line on purpose.\nrun = """\necho hello\n"""\n`;
 }
 
-test('pins the concrete version behind an lts/* mise selector and adds a concrete Bun pin', async () => {
-  const content = await generateFrom({ 'mise.toml': '[tools]\nnode = "lts/*"\n' });
-
-  expect(content).not.toContain('lts/*');
-  expect(content).toMatch(/node = "\d+\.\d+\.\d+"/u);
-  expect(content).toMatch(/bun = "\d+\.\d+\.\d+"/u);
-}, 60_000);
-
-test('updates Node.js within its major, Bun, and fnox without downgrading newer pins or rewriting the rest of the file', async () => {
+test('updates Node.js 26, Bun, and fnox without downgrading newer pins or rewriting the rest of the file', async () => {
   // Require successful live lookups: accepting original pins would let a broken updater pass.
-  const { stdout: latestNode22Output } = await spawnAsync('mise', ['--no-config', 'latest', 'node@22']);
+  const { stdout: latestNodeOutput } = await spawnAsync('mise', ['--no-config', 'latest', 'node@26']);
   const { stdout: latestBunOutput } = await spawnAsync('mise', ['--no-config', 'latest', 'bun']);
   const { stdout: latestFnoxOutput } = await spawnAsync('mise', ['--no-config', 'latest', 'fnox']);
-  const latestNode22 = latestNode22Output.trim();
-  const latestBun = semver.rsort([latestBunOutput.trim(), minimumPinnedBunVersion])[0] ?? '';
+  const latestNode = latestNodeOutput.trim();
+  const latestBun = latestBunOutput.trim();
   const latestFnox = latestFnoxOutput.trim();
-  const content = await generateFrom({ 'mise.toml': miseToml('22.0.0', '0.1.0', ''), 'fnox.toml': '' });
+  const content = await generateFrom({ 'mise.toml': miseToml('24.22.1', '0.1.0', ''), 'fnox.toml': '' });
+  const { tools } = z.object({ tools: z.object({ node: z.string(), bun: z.string() }) }).parse(Bun.TOML.parse(content));
 
-  expect(content).toBe(miseToml(latestNode22, latestBun, `fnox = "${latestFnox}"\n`));
+  for (const [pinned, latest, minimum] of [
+    [tools.node, latestNode, minimumPinnedNodeVersion],
+    [tools.bun, latestBun, minimumPinnedBunVersion],
+  ] as const) {
+    expect(semver.gte(pinned, latest)).toBe(true);
+    expect(semver.gte(pinned, minimum)).toBe(true);
+    expect([latest, minimum]).toContain(pinned);
+  }
+  expect(content).toBe(miseToml(tools.node, tools.bun, `fnox = "${latestFnox}"\n`));
+  expect(await generateFrom({ 'mise.toml': content, 'fnox.toml': '' })).toBe(content);
 
-  const newerNode22 = semver.inc(latestNode22, 'patch');
-  const newerBun = semver.inc(latestBun, 'patch');
+  const otherSettings = '[tools]\npython = "3.12.0"\n\n# Tasks\n[tasks.hello]\nrun = "echo hello"\n';
+  const inserted = await generateFrom({ 'mise.toml': otherSettings });
+  expect(Bun.TOML.parse(inserted)).toMatchObject({ tools: { node: tools.node, bun: tools.bun } });
+  expect(inserted.replaceAll(/^(?:node|bun) = "[^"]*"\n/gmu, '')).toBe(otherSettings);
+
+  const newerNode = semver.inc(tools.node, 'patch');
+  const newerBun = semver.inc(tools.bun, 'patch');
   const newerFnox = semver.inc(latestFnox, 'patch');
   const newerContent = await generateFrom({
-    'mise.toml': `[tools]\nnode = "${newerNode22}"\nbun = "${newerBun}"\nfnox = "${newerFnox}"\n`,
+    'mise.toml': `[tools]\nnode = "${newerNode}"\nbun = "${newerBun}"\nfnox = "${newerFnox}"\n`,
     'fnox.toml': '',
   });
   expect(Bun.TOML.parse(newerContent)).toEqual({
-    tools: { node: newerNode22, bun: newerBun, fnox: newerFnox },
+    tools: { node: newerNode, bun: newerBun, fnox: newerFnox },
   });
 }, 60_000);
