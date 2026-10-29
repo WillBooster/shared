@@ -5,7 +5,7 @@ import path from 'node:path';
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import semver from 'semver';
 
-import { generateMiseToml, minimumPinnedBunVersion, minimumPinnedNodeVersion } from '../../src/generators/miseToml.js';
+import { generateMiseToml } from '../../src/generators/miseToml.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -35,13 +35,13 @@ function miseToml(node: string, bun: string, fnoxLine: string): string {
   return `# Toolchain\n[tools]\nnode = "${node}"\nbun = "${bun}" # inline\npython = "3.12.0"\n${fnoxLine}\n# Tasks\n[tasks.hello]\n# Multi-line on purpose.\nrun = """\necho hello\n"""\n`;
 }
 
-test('updates Node.js to LTS, Bun, and fnox without downgrading newer pins or rewriting the rest of the file', async () => {
+test('updates Node.js 26, Bun, and fnox without downgrading newer pins or rewriting the rest of the file', async () => {
   // Require successful live lookups: accepting original pins would let a broken updater pass.
-  const { stdout: latestNodeOutput } = await spawnAsync('mise', ['--no-config', 'latest', 'node@lts']);
+  const { stdout: latestNodeOutput } = await spawnAsync('mise', ['--no-config', 'latest', 'node@26']);
   const { stdout: latestBunOutput } = await spawnAsync('mise', ['--no-config', 'latest', 'bun']);
   const { stdout: latestFnoxOutput } = await spawnAsync('mise', ['--no-config', 'latest', 'fnox']);
-  const latestNode = semver.rsort([latestNodeOutput.trim(), minimumPinnedNodeVersion])[0] ?? '';
-  const latestBun = semver.rsort([latestBunOutput.trim(), minimumPinnedBunVersion])[0] ?? '';
+  const latestNode = latestNodeOutput.trim();
+  const latestBun = latestBunOutput.trim();
   const latestFnox = latestFnoxOutput.trim();
   const content = await generateFrom({ 'mise.toml': miseToml('24.22.1', '0.1.0', ''), 'fnox.toml': '' });
 

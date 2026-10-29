@@ -29,7 +29,12 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
     const tools = (Bun.TOML.parse(content) as MiseToml).tools ?? {};
 
     const pins: Record<string, unknown> = {
-      node: await pinLatestToolVersion('node@lts', tools.node, config.dirPath, minimumPinnedNodeVersion),
+      node: await pinLatestToolVersion(
+        `node@${semver.major(minimumPinnedNodeVersion)}`,
+        tools.node,
+        config.dirPath,
+        minimumPinnedNodeVersion
+      ),
       bun: await pinLatestToolVersion('bun', tools.bun, config.dirPath, minimumPinnedBunVersion),
     };
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
