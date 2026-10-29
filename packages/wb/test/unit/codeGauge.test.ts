@@ -52,6 +52,18 @@ it('limits the check to a path and names the parts adding the most cognitive com
   );
 }, 60_000);
 
+it('prints a directive problem as a warning without failing', async () => {
+  const dir = await createRepository({
+    'allowed.ts': `// code-gauge-allow functionParameterCount 8 -- mirrors a vendor API\n${violatingFunction('allowed')}// code-gauge-allow functionNcss 20 -- nothing to allow\nexport function small(): number {\n  return 1;\n}\n`,
+  });
+  const result = await runCli(dir, ['code-gauge']);
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  expect(stripVTControlCharacters(result.stdout)).toBe(
+    'code-gauge: 0 errors, 1 warnings (0 functions, 0 files, 0 duplicated blocks, 1 directives)\n' +
+      'warning: allowed.ts:5: code-gauge-allow functionNcss 20: allows no warning; remove the directive\n'
+  );
+}, 60_000);
+
 it('says so when a path holds no file to check, and prints a path with a space as one argument', async () => {
   const dir = await createFixture();
   await fs.mkdir(path.join(dir, 'my dir', 'test'), { recursive: true });
