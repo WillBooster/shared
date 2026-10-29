@@ -155,17 +155,17 @@ Options:
 `wb gc` removes what is safe to lose and prints each removed path to stderr. `--dry-run` only lists them.
 
 - Locally, under `$GHQ_ROOT` (default `~/ghq`, laid out as `<host>/<owner>/<repo>`):
-  - `.tmp` entries unmodified for 7 days, then `git worktree prune`. An entry is kept when it contains Git-tracked files or, at any depth, a worktree whose detached HEAD has commits on no branch, remote-tracking branch, or tag, a repository with such a worktree anywhere, or a directory or repository that cannot be inspected. A path that cannot be removed is logged and skipped. Uncommitted changes in a stale entry are removed.
+  - `.tmp` entries unmodified for 7 days, and linked worktrees directly under `.tmp` with no changes or untracked files unmodified for 1 day, then `git worktree prune`. An entry is kept when it contains Git-tracked files or, at any depth, a worktree whose detached HEAD has commits on no branch, remote-tracking branch, or tag, a repository with such a worktree anywhere, or a directory or repository that cannot be inspected. A path that cannot be removed is logged and skipped. Uncommitted changes in a stale entry are removed.
   - `node_modules` and directories marked by `CACHEDIR.TAG` (e.g., Cargo's `target`) up to three levels deep, unmodified for 30 days in a repository whose Git metadata (`index`, `HEAD`, `FETCH_HEAD`, `logs/HEAD`) is also older than 30 days, except in the repository wb runs in.
-- On a self-hosted CI runner: every job workspace (`<work>/<repo>`) other than the current one in which nothing was modified for 3 days. The runner's own `_`-prefixed directories are kept, and nothing is removed unless `RUNNER_TEMP` is `<work>/_temp`, as the runner sets it.
+- On a CI runner: every job workspace (`<work>/<repo>`) other than the current one in which nothing was modified for 3 days. The runner's own `_`-prefixed directories are kept, and nothing is removed unless `RUNNER_TEMP` is `<work>/_temp`, as the runner sets it.
 - Both: `mise prune --yes` and `mise cache prune`.
 
 The directory wb runs in and its ancestors are never removed. Anything wb gc cannot inspect (an unreadable directory, a failed git check) is kept, and freshness counts it as modified.
 
 Every other wb command starts `wb gc` once per interval from the outermost wb process:
 
-- On a developer machine, once a day in the background when `WB_AUTO_GC` is truthy, logging to `~/.cache/wb/gc.log`.
-- On a self-hosted CI runner (`RUNNER_ENVIRONMENT=self-hosted`), once an hour per work directory, synchronously, because the job end kills background processes. GitHub-hosted runners are skipped.
+- On a developer machine, once a day in the background, logging to `~/.cache/wb/gc.log`.
+- On a CI runner, once an hour per work directory, synchronously, because the job end kills background processes.
 
 ## Running relevant tests
 

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { isCI, isTruthyEnvValue } from './utils/ci.js';
+import { isCI } from './utils/ci.js';
 
 export type GcMode = 'local' | 'ci';
 
@@ -20,6 +20,8 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const autoGcIntervalMs: Record<GcMode, number> = { local: DAY_MS, ci: HOUR_MS };
 const localTmpEntryMaxAgeMs = 7 * DAY_MS;
+// A clean linked worktree loses only ignored files, but an agent may still be working in it.
+const localCleanWorktreeMaxAgeMs = DAY_MS;
 const localArtifactMaxAgeMs = 30 * DAY_MS;
 const ciWorkspaceMaxAgeMs = 3 * DAY_MS;
 // Deep enough for `packages/<name>/node_modules` and `<dir>/native/target`.
@@ -30,8 +32,7 @@ const gitActivityFileNames = ['index', 'HEAD', 'FETCH_HEAD', path.join('logs', '
 
 /**
  * Starts `wb gc` once per interval from the outermost wb process: in the background on a developer
- * machine with `WB_AUTO_GC` enabled, and synchronously on a self-hosted CI runner, whose job end
- * kills background processes.
+ * machine, and synchronously on CI, whose job end kills background processes.
  */
 export function startAutoGcIfDue(command: unknown): void {
   if (command === 'gc' || process.env.WB_GC_CHECKED) return;
@@ -39,7 +40,7 @@ export function startAutoGcIfDue(command: unknown): void {
 
   // Cleanup is best effort: a failure must never fail the command that triggered it.
   try {
-    const mode = detectAutoGcMode();
+    const mode = detectGcMode();
     if (!mode || !claimAutoGcRun(mode)) return;
 
     if (mode === 'ci') {
@@ -70,12 +71,11 @@ function startBackgroundGc(): void {
   }
 }
 
-function detectAutoGcMode(): GcMode | undefined {
-  if (isCI(process.env.CI)) {
-    // GitHub-hosted runners are discarded after each job.
-    return process.env.RUNNER_ENVIRONMENT === 'self-hosted' && process.env.RUNNER_WORKSPACE ? 'ci' : undefined;
-  }
-  return isTruthyEnvValue(process.env.WB_AUTO_GC) ? 'local' : undefined;
+export function detectGcMode(): GcMode | undefined {
+  if (!isCI(process.env.CI)) return 'local';
+  if (process.env.RUNNER_WORKSPACE) return 'ci';
+  console.error('wb gc: skipped because RUNNER_WORKSPACE is not set on CI.');
+  return undefined;
 }
 
 /**
@@ -213,20 +213,40 @@ function removeStaleTmpEntries(repoPath: string, context: GcContext): void {
       .filter(Boolean)
       .map((filePath) => filePath.split('/')[1])
   );
-  const cutoffMs = context.nowMs - localTmpEntryMaxAgeMs;
   let removedAny = false;
   for (const { name: entryName } of listDirEntries(tmpPath)) {
+    if (trackedEntryNames.has(entryName)) continue;
+
     const entryPath = path.join(tmpPath, entryName);
-    if (trackedEntryNames.has(entryName) || isModifiedSince(entryPath, cutoffMs)) continue;
+    const reason = getTmpEntryRemovalReason(entryPath, context.nowMs);
+    if (!reason) continue;
 
     const blocker = tryLstat(entryPath)?.isDirectory() ? findRemovalBlocker(entryPath) : undefined;
     if (blocker) {
       console.error(`wb gc: kept ${entryPath} because ${blocker}.`);
       continue;
     }
-    removedAny = removePath(entryPath, '.tmp entry unmodified for 7 days', context) || removedAny;
+    removedAny = removePath(entryPath, reason, context) || removedAny;
   }
   if (removedAny && !context.dryRun) runGit(repoPath, ['worktree', 'prune']);
+}
+
+function getTmpEntryRemovalReason(entryPath: string, nowMs: number): string | undefined {
+  if (isModifiedSince(entryPath, nowMs - localCleanWorktreeMaxAgeMs)) return;
+  if (!isModifiedSince(entryPath, nowMs - localTmpEntryMaxAgeMs)) return '.tmp entry unmodified for 7 days';
+  if (isCleanLinkedWorktree(entryPath)) return 'clean worktree unmodified for 1 day';
+}
+
+/**
+ * Removing a linked worktree without changes or untracked files loses only ignored files: its
+ * stash lives in its main repository, and `findRemovalBlocker` guards its commits. A standalone
+ * clone is excluded because its local branches and stash would go with it.
+ */
+function isCleanLinkedWorktree(entryPath: string): boolean {
+  if (!tryLstat(path.join(entryPath, '.git'))?.isFile()) return false;
+
+  // `--no-optional-locks` keeps the check from refreshing the index of a worktree in use.
+  return runGit(entryPath, ['--no-optional-locks', 'status', '--porcelain', '--untracked-files=all']) === '';
 }
 
 function removeStaleBuildArtifacts(repoPath: string, context: GcContext): void {
