@@ -11,6 +11,8 @@ import { isCapturingVerificationOutput } from '../utils/verificationOutput.js';
 
 interface Options {
   ci?: boolean;
+  /** Replaces `project.env` as the environment of the script. */
+  env?: Record<string, string | undefined>;
   exitIfFailed?: boolean;
   /** Kill the processes the script started that are still running when it exits. */
   killLeftoverProcesses?: boolean;
@@ -68,7 +70,7 @@ export async function runWithSpawn(
   let killingLeftovers: Promise<string[]> | undefined;
   const ret = await spawnAsync(normalizedScript.runnable, undefined, {
     cwd: project.dirPath,
-    env: configureEnv(project.env, {
+    env: configureEnv(opts.env ?? project.env, {
       ...opts,
       preserveColor: opts.preserveColor ?? (captureOutput || argv.silent ? true : undefined),
     }),

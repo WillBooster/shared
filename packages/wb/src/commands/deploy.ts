@@ -16,7 +16,8 @@ import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isCI } from '../utils/ci.js';
 import { exitWithError } from '../utils/exit.js';
-import { buildShellEnvironmentAssignment, shellEscapeArgument } from '../utils/shell.js';
+import { createSecretFreeBuildEnv } from '../utils/secretFreeEnv.js';
+import { shellEscapeArgument } from '../utils/shell.js';
 import { findWranglerConfigPath } from '../utils/wrangler.js';
 import type { D1MigrationMechanisms, ResolvedWranglerConfig, WranglerD1Database } from '../utils/wranglerConfig.js';
 import {
@@ -352,17 +353,12 @@ async function buildWorker({
   //    the old Worker. Plain Workers have no build step; wrangler bundles the entry itself.
   const isVinext = usesVinext(project);
   const deployConfigPath = isVinext ? path.join('dist', 'server', 'wrangler.json') : wranglerConfigPath;
-  const cloudflareEnvAssignment = resolvedConfig.usesEnvSection
-    ? `${buildShellEnvironmentAssignment('CLOUDFLARE_ENV', envName)} `
-    : '';
   if (isVinext) {
-    if (project.env.WB_VERSION) {
-      project.env.NEXT_PUBLIC_WB_VERSION ||= project.env.WB_VERSION;
-    }
+    const buildEnv = createVinextBuildEnv(project, envName, resolvedConfig.usesEnvSection);
     if (project.packageJson.scripts?.['gen-code']) {
-      await runWithSpawn('YARN run gen-code', project, argv);
+      await runWithSpawn('YARN run gen-code', project, argv, { env: buildEnv });
     }
-    await runWithSpawn(`${cloudflareEnvAssignment}YARN vinext build`, project, argv);
+    await runWithSpawn('YARN vinext build', project, argv, { env: buildEnv });
     // On dry runs the vinext build above is a printed no-op, so the built config is
     // legitimately absent and must not abort the run.
     if (!argv.dryRun && !fs.existsSync(path.resolve(project.dirPath, deployConfigPath))) {
@@ -388,6 +384,24 @@ async function buildWorker({
     );
   }
   return deployConfigPath;
+}
+
+/**
+ * dist/client ships as public assets and vinext inlines every NEXT_PUBLIC_* variable (and
+ * next.config `env`) it sees, so the build gets no secret to inline in the first place.
+ */
+function createVinextBuildEnv(project: Project, envName: string, usesEnvSection: boolean): Record<string, string> {
+  // vinext loads these dotenv files itself, bypassing the environment it is given.
+  const dotenvFiles = ['.env', '.env.local', '.env.production', '.env.production.local'].filter((fileName) =>
+    fs.existsSync(path.join(project.dirPath, fileName))
+  );
+  if (dotenvFiles.length > 0) {
+    exitWithError(`Remove ${dotenvFiles.join(', ')}: vinext build would load them into the deployed build.`);
+  }
+  const buildEnv = createSecretFreeBuildEnv(project, envName);
+  if (buildEnv.WB_VERSION) buildEnv.NEXT_PUBLIC_WB_VERSION ||= buildEnv.WB_VERSION;
+  if (usesEnvSection) buildEnv.CLOUDFLARE_ENV = envName;
+  return buildEnv;
 }
 
 async function applyD1Migrations(
