@@ -88,7 +88,7 @@ export function collectPlaintextFnoxValues(
     for (const settingName of ['default_provider', 'env', 'import'] as const) {
       if (config[settingName] !== undefined) {
         throw new Error(
-          `${configPath} uses the top-level ${settingName} setting, which is outside the canonical wbfy fnox.toml layout, so its values cannot be read without decrypting; remove it.`
+          `${configPath} uses the top-level ${settingName} setting, which is outside the canonical wbfy fnox.toml layout, so wb cannot reproduce the values fnox exports from the plaintext defaults; remove it.`
         );
       }
     }
