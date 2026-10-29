@@ -194,7 +194,7 @@ async function spawnWithMergedOutput(
   const printing = isCapturingVerificationOutput() || opts.printRawOutput;
   const ret = await spawnAsync(runnableScript, undefined, {
     cwd: project.dirPath,
-    env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? true }),
+    env: configureEnv(opts.env ?? project.env, { ...opts, preserveColor: opts.preserveColor ?? true }),
     shell: true,
     timeout: opts.timeout,
     mergeOutAndError: true,
