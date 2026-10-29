@@ -60,16 +60,18 @@ const reportSchema = z.object({
     checkedFileCount: z.number(),
   }),
   violations: z.array(violationSchema),
+  directiveProblems: z.array(z.object({ file: z.string(), line: z.number(), message: z.string() })),
   errors: z.array(z.string()),
   warnings: z.array(z.string()),
 });
 
 type Location = z.infer<typeof locationSchema>;
 type Violation = z.infer<typeof violationSchema>;
+type Report = z.infer<typeof reportSchema>;
 
 interface CodeGaugeCheck {
   /** Absent when code-gauge printed no report, e.g. for a base ref that does not exist. */
-  report?: z.infer<typeof reportSchema>;
+  report?: Report;
   /** code-gauge's exit code: 0 no errors (warnings may remain), 1 errors, 2 incomplete check. */
   status: number;
   stderr: string;
@@ -91,7 +93,10 @@ export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> =
       return;
     }
     const check = await runCodeGaugeCheck(project, argv.base, argv.target);
-    const report = formatReport(check, formatViolationLines(check.report?.violations ?? []));
+    const report = formatReport(check, [
+      ...formatViolationLines(check.report?.violations ?? []),
+      ...formatDirectiveProblemLines(check.report),
+    ]);
     if (report) {
       console.info(report);
     } else if (argv.target !== undefined && argv.base === undefined && check.report?.summary.checkedFileCount === 0) {
@@ -123,8 +128,9 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
     ...branchViolations,
     ...violations.filter((violation) => !branchViolations.includes(violation)),
   ];
-  const lines = formatViolationLines(orderedViolations.slice(0, MAX_VERIFY_VIOLATION_LINES));
-  const omittedCount = orderedViolations.length - lines.length;
+  const allLines = [...formatViolationLines(orderedViolations), ...formatDirectiveProblemLines(check.report)];
+  const lines = allLines.slice(0, MAX_VERIFY_VIOLATION_LINES);
+  const omittedCount = allLines.length - lines.length;
   if (omittedCount > 0) {
     const command = `${project.packageManagerCommand} wb code-gauge`;
     lines.push(
@@ -215,7 +221,7 @@ function parseReport(stdout: string): CodeGaugeCheck['report'] {
   }
 }
 
-function formatReport(check: CodeGaugeCheck, violationLines: string[], branchSummary?: string): string | undefined {
+function formatReport(check: CodeGaugeCheck, lines: string[], branchSummary?: string): string | undefined {
   const sections: string[] = [];
   if (!check.report || (check.status !== 0 && check.status !== 1)) {
     // With `--json`, code-gauge reports the files it could not measure in the report, not on stderr.
@@ -230,15 +236,19 @@ function formatReport(check: CodeGaugeCheck, violationLines: string[], branchSum
     sections.push(chalk.yellow('code-gauge: some files were not fully measured'), ...measurementWarnings);
   }
   const summary = check.report?.summary;
-  if (summary?.violationCount) {
+  const directiveProblemCount = check.report?.directiveProblems.length ?? 0;
+  if (summary && summary.violationCount + directiveProblemCount > 0) {
     sections.push(
       chalk.yellow(
-        `code-gauge: ${summary.errorViolationCount} errors, ${summary.warningViolationCount} warnings ` +
+        `code-gauge: ${summary.errorViolationCount} errors, ` +
+          `${summary.warningViolationCount + directiveProblemCount} warnings ` +
           `(${summary.functionViolationCount} functions, ` +
-          `${summary.fileViolationCount} files, ${summary.duplicationViolationCount} duplicated blocks)` +
+          `${summary.fileViolationCount} files, ${summary.duplicationViolationCount} duplicated blocks` +
+          (directiveProblemCount > 0 ? `, ${directiveProblemCount} directives` : '') +
+          ')' +
           (branchSummary ? `, ${branchSummary}` : '')
       ),
-      ...violationLines
+      ...lines
     );
   }
   return sections.filter(Boolean).join('\n') || undefined;
@@ -246,6 +256,10 @@ function formatReport(check: CodeGaugeCheck, violationLines: string[], branchSum
 
 function formatViolationLines(violations: Violation[]): string[] {
   return violations.map((violation) => `${violation.level}: ${describeViolation(violation)}`);
+}
+
+function formatDirectiveProblemLines(report: Report | undefined): string[] {
+  return (report?.directiveProblems ?? []).map(({ file, line, message }) => `warning: ${file}:${line}: ${message}`);
 }
 
 function describeViolation(violation: Violation): string {
