@@ -276,7 +276,7 @@ ${config.doesContainPubspecYaml ? String.raw`dart_files="$(printf '%s\n' {staged
 
 for file in {staged_files}; do
   case "$file" in
-    ${extensions.bunFmt.map((extension) => `*.${extension}`).join('|')}) bun fmt --no-script --no-error-on-unmatched-pattern -- "$file" || exit ;;
+    ${extensions.bunFmt.map((extension) => `*.${extension}`).join('|')}) bun fmt --no-script --no-config --no-error-on-unmatched-pattern -- "$file" || exit ;;
   esac
 done
 ${
