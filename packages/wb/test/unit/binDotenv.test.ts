@@ -20,6 +20,25 @@ setDefaultTimeout(30_000);
 
 const isFnoxAvailable = Bun.which('fnox') !== null;
 
+it('runs the canonical Bun command without a Node executable on PATH', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-bun-entry-'));
+  try {
+    const binDir = path.join(dir, 'node_modules', '.bin');
+    await fs.mkdir(binDir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'package.json'), '{"private":true}');
+    await fs.symlink(binIndexPath, path.join(binDir, 'wb'));
+    await fs.symlink(process.execPath, path.join(binDir, 'bun'));
+    const result = await spawnAsync(process.execPath, ['wb', '--version'], {
+      cwd: dir,
+      env: { PATH: binDir, WB_GC_CHECKED: '1' },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/u);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
 describe.each(['node', 'bun'])('%s: bin/index.js dotenv fast path', (runtime) => {
   const runtimePath = Bun.which(runtime);
   if (!runtimePath) throw new Error(`${runtime} must be on PATH.`);
