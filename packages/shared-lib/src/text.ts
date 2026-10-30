@@ -66,7 +66,7 @@ export function unwrapFencedReply(text: string, fence: string): string | undefin
   if (fence.length < 3 || countLeading(fence, '~') !== fence.length) {
     throw new RangeError(`fence must be a run of at least three tildes: ${fence}`);
   }
-  const lines = (text.startsWith('﻿') ? text.slice(1) : text).replaceAll('\r\n', '\n').split('\n');
+  const lines = (text.startsWith('\uFEFF') ? text.slice(1) : text).replaceAll('\r\n', '\n').split('\n');
   return unwrapTildeWrapper(lines, fence.length) ?? unwrapBacktickWrapper(lines);
 }
 
