@@ -38,10 +38,17 @@ test.each(['bun', 'node'].flatMap((runtime) => smallProjectFixtures.map((fixture
 
       await runCommand('git', ['init'], tempDirPath);
       await runCommand('mise', ['trust', path.join(tempDirPath, 'mise.toml')], tempDirPath);
+      const callerBinDirPath = path.join(tempDirPath, '.tmp', 'caller-bin');
+      fs.mkdirSync(callerBinDirPath, { recursive: true });
+      const callerNode = await runCommand('node', ['-p', 'process.execPath'], packageDirPath);
+      const installedNodePath = callerNode.stdout.trim();
+      fs.copyFileSync(installedNodePath, path.join(callerBinDirPath, 'node'), fs.constants.COPYFILE_FICLONE);
+      fs.symlinkSync(path.resolve(path.dirname(installedNodePath), '../lib'), path.join(callerBinDirPath, '../lib'));
       const applied = await runCommand(
         fixture.runtime,
         [path.join(packageDirPath, 'bin/wbfy.js'), tempDirPath],
-        packageDirPath
+        packageDirPath,
+        { PATH: `${callerBinDirPath}${path.delimiter}${process.env.PATH}` }
       );
       expect(applied.stdout + applied.stderr).not.toContain('Error occurred');
       expect(fs.existsSync(path.join(tempDirPath, 'oxfmt.config.ts'))).toBe(false);
@@ -54,7 +61,9 @@ test.each(['bun', 'node'].flatMap((runtime) => smallProjectFixtures.map((fixture
         .object({ tools: z.object({ bun: z.string(), node: z.string() }) })
         .parse(Bun.TOML.parse(fs.readFileSync(path.join(tempDirPath, 'mise.toml'), 'utf8')));
       expect(runtime.stdout.trim()).toBe(tools.tools.bun);
-      expect(fs.readFileSync(path.join(tempDirPath, 'node-version.txt'), 'utf8').trim()).toBe(tools.tools.node);
+      const pinnedNode = await runCommand('mise', ['which', 'node'], tempDirPath);
+      const installedWithNode = fs.readFileSync(path.join(tempDirPath, 'node-exec-path.txt'), 'utf8').trim();
+      expect(fs.realpathSync(installedWithNode)).toBe(fs.realpathSync(pinnedNode.stdout.trim()));
 
       await runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
       await runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
@@ -189,7 +198,7 @@ function writeSmallProjectFixture(dirPath: string, fixture: (typeof smallProject
         ...(fixture.isEsm ? { type: 'module' } : {}),
         description: 'Temporary fixture for wbfy cleanup idempotency tests',
         repository: 'github:example/small-project',
-        scripts: { postinstall: 'node -p process.versions.node > node-version.txt' },
+        scripts: { postinstall: 'node -p process.execPath > node-exec-path.txt' },
         ...(fixture.isEsm ? { dependencies: { oxfmt: '0.73.0' } } : {}),
         devDependencies: { '@willbooster/oxfmt-config': '1.2.2' },
       },
