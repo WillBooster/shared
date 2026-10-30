@@ -91,8 +91,9 @@ export async function generateBunfigToml(
         fs.existsSync(path.join(packageConfig.dirPath, '.prettierrc.json')) ||
         Boolean(packageConfig.packageJson?.prettier)
     );
-    // A Prettier config makes Bun route TOML through Prettier, which has no TOML parser, even
-    // with the oxfmt flavor selected. Java repositories receive that config on this same run.
+    // In a `bun fmt` run without `--no-config`, a Prettier config makes Bun route TOML through
+    // Prettier, which has no TOML parser, even with the oxfmt flavor selected. Java repositories
+    // receive that config on this same run.
     const managedIgnorePatterns = usesPrettierConfig ? [...fmtIgnorePatterns, '**/*.toml'] : fmtIgnorePatterns;
     const existingIgnoreLines = extractProjectFmtIgnoreLines(existingContent);
     const projectIgnoreLines = (
@@ -138,7 +139,8 @@ const fmtIgnorePatterns = [
   '**/.pnp.js',
   '**/*/mount/*.hash',
   '**/*.d.ts',
-  // Prettier formats Java; `bun fmt` would run it a second time through a Prettier config's plugin.
+  // Prettier formats Java; a `bun fmt` run without `--no-config` would run it a second time through
+  // a Prettier config's plugin.
   '**/*.java',
   '**/*.min.*js',
   // Tree-sitter owns these JSON files' layout, including their missing final newline.

@@ -495,7 +495,16 @@ export function buildWorkspaceIgnorePatterns(
 
 export function buildBunFmtCommand(files?: string[]): string {
   // Without `--no-script`, `bun fmt` runs a package script named `fmt` instead.
-  return buildShellCommand(['bun', 'fmt', '--no-script', '--no-error-on-unmatched-pattern', ...(files ?? [])]);
+  // `--no-config` keeps the bunfig.toml `[fmt]` section but stops the search for Prettier and oxfmt config files,
+  // which climbs past the git root, so a worktree nested in another checkout would load that checkout's config.
+  return buildShellCommand([
+    'bun',
+    'fmt',
+    '--no-script',
+    '--no-config',
+    '--no-error-on-unmatched-pattern',
+    ...(files ?? []),
+  ]);
 }
 
 export function buildPoetryFormatCommand(files?: string[]): string {

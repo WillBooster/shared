@@ -136,8 +136,17 @@ async function core(
 
 async function formatPackageJson(config: PackageConfig): Promise<void> {
   // Without `--no-script`, a `fmt` script would run instead. A manifest that the `[fmt]` ignore
-  // patterns exclude stays unformatted, as `wb lint --format` leaves it.
-  const args = ['fmt', '--no-script', '--no-error-on-unmatched-pattern', '--sort-package-json', '--', 'package.json'];
+  // patterns exclude stays unformatted, as `wb lint --format` leaves it. `--no-config` matches
+  // `wb lint --format`, which formats only by the bunfig.toml `[fmt]` section.
+  const args = [
+    'fmt',
+    '--no-script',
+    '--no-config',
+    '--no-error-on-unmatched-pattern',
+    '--sort-package-json',
+    '--',
+    'package.json',
+  ];
   if ((await spawnAndReturnStatus('bun', args, config.dirPath)) !== 0) {
     throw new Error(`Failed to format ${path.join(config.dirPath, 'package.json')} with \`bun fmt\`.`);
   }

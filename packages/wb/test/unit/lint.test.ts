@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test';
+import childProcess from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   buildDartFormatCommand,
@@ -13,6 +15,9 @@ import {
   getLintTargetFileKind,
   getLintTargetFiles,
 } from '../../src/commands/lint.js';
+import { createTempDir } from '../helpers/shared.js';
+
+const cliPath = fileURLToPath(new URL('../../src/index.ts', import.meta.url));
 
 describe('lint', () => {
   it('builds an oxlint command for oxlint projects', () => {
@@ -104,5 +109,38 @@ describe('lint', () => {
       { lintPath: '/repo/packages/a', project: { dirPath: '/repo/packages/a', preferredLinter: 'oxlint' } },
       { lintPath: '/repo/packages/b', project: { dirPath: '/repo/packages/b', preferredLinter: 'oxlint' } },
     ]);
+  });
+
+  it('formats a worktree nested in a checkout without loading the formatter config of the checkout', async () => {
+    const parentPath = createTempDir();
+    const git = (...args: string[]): void => {
+      childProcess.execFileSync('git', ['-c', 'user.name=wb', '-c', 'user.email=wb@example.com', ...args], {
+        cwd: parentPath,
+      });
+    };
+    git('init', '-q', '-b', 'main');
+    await fs.writeFile(path.join(parentPath, 'package.json'), '{ "name": "repo", "private": true }\n');
+    await fs.writeFile(path.join(parentPath, 'bunfig.toml'), '[fmt]\nsingleQuote = true\n');
+    await fs.writeFile(path.join(parentPath, 'a.ts'), "const a = 'x';\n");
+    git('add', '-A');
+    git('commit', '-q', '-m', 'init');
+    const worktreePath = path.join(parentPath, '.tmp', 'worktree');
+    git('worktree', 'add', '-q', '-b', 'feature', worktreePath);
+    // The checkout stays on a branch whose config imports a package that is not installed.
+    await fs.writeFile(
+      path.join(parentPath, 'oxfmt.config.ts'),
+      "import config from '@willbooster/oxfmt-config';\nexport default config;\n"
+    );
+    await fs.writeFile(path.join(worktreePath, 'a.ts'), 'const a = "x";\n');
+
+    const result = childProcess.spawnSync(
+      'bun',
+      [cliPath, '--working-dir', worktreePath, 'lint', '--format', '--', 'a.ts'],
+      { encoding: 'utf8' }
+    );
+
+    expect(result.stdout + result.stderr).not.toContain('oxfmt.config.ts');
+    expect(result.status).toBe(0);
+    expect(await fs.readFile(path.join(worktreePath, 'a.ts'), 'utf8')).toBe("const a = 'x';\n");
   });
 });
