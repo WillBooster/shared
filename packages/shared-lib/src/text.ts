@@ -57,37 +57,23 @@ function getFence(fenceChar: string, text: string): string {
  * beginning of a line. The result is the lines strictly between the wrapper's fence lines joined with LF, untrimmed,
  * so a final newline of the document is not kept.
  * - Tilde wrapper: the first line starting with at least `fence.length` tildes, followed by any info string, opens it,
- *   and the last later line of only tildes, at least as many as the opening run, closes it. Text around it is dropped.
- *   When that opening line lies inside a block opened by a line starting with three or more backticks, e.g. a backtick
- *   wrapper around a document whose fences the LLM turned into tildes, the reply is ambiguous and yields `undefined`.
- * - Without such an opening line, backtick wrapper: the first nonblank line is a run of at least three backticks with
- *   no info string or one whose first word is `md` or `markdown` (case-insensitively), the last nonblank line is only
- *   backticks, at least as many, and no line between them starts with that many backticks.
+ *   and the last later line of only tildes, at least as many as the opening run, closes it. Text around it, backtick
+ *   fence lines included, is dropped.
+ * - Otherwise, backtick wrapper: the first nonblank line is a run of at least three backticks with no info string or
+ *   one whose first word is `md` or `markdown` (case-insensitively), the last nonblank line is only backticks, at least
+ *   as many, and no line between them starts with that many backticks.
  */
 export function unwrapFencedReply(text: string, fence: string): string | undefined {
   if (fence.length < 3 || countLeading(fence, '~') !== fence.length) {
     throw new RangeError(`fence must be a run of at least three tildes: ${fence}`);
   }
   const lines = (text.startsWith('\uFEFF') ? text.slice(1) : text).replaceAll('\r\n', '\n').split('\n');
-  const start = lines.findIndex((line) => countLeading(line, '~') >= fence.length);
-  if (start === -1) return unwrapBacktickWrapper(lines);
-  return isInBacktickBlock(lines, start) ? undefined : unwrapTildeWrapper(lines, start);
+  return unwrapTildeWrapper(lines, fence.length) ?? unwrapBacktickWrapper(lines);
 }
 
-function isInBacktickBlock(lines: readonly string[], end: number): boolean {
-  let openingLength = 0;
-  for (const line of lines.slice(0, end)) {
-    if (openingLength === 0) {
-      const length = countLeading(line, '`');
-      if (length >= 3) openingLength = length;
-    } else if (isFenceOnly(line, '`', openingLength)) {
-      openingLength = 0;
-    }
-  }
-  return openingLength > 0;
-}
-
-function unwrapTildeWrapper(lines: readonly string[], start: number): string | undefined {
+function unwrapTildeWrapper(lines: readonly string[], minLength: number): string | undefined {
+  const start = lines.findIndex((line) => countLeading(line, '~') >= minLength);
+  if (start === -1) return;
   const openingLength = countLeading(lines[start] ?? '', '~');
   const end = lines.findLastIndex((line, index) => index > start && isFenceOnly(line, '~', openingLength));
   if (end === -1) return;

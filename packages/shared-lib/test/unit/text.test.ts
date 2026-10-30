@@ -64,6 +64,10 @@ test('unwrapFencedReply drops a preamble and a postamble around a tilde wrapper'
   expect(unwrapFencedReply(reply, documentFence)).toBe(fencedDocument);
 });
 
+test('unwrapFencedReply applies the tilde wrapper first, even inside a backtick wrapper', () => {
+  expect(unwrapFencedReply('```md\n~~~~md\n# A\n~~~~\n```', '~~~~')).toBe('# A');
+});
+
 test('unwrapFencedReply accepts longer tilde fences when the closing fence is at least as long as the opening one', () => {
   expect(unwrapFencedReply(`~~~~~md\n${fencedDocument}\n~~~~~`, documentFence)).toBe(fencedDocument);
   expect(unwrapFencedReply(`~~~~md\n${fencedDocument}\n~~~~~~`, documentFence)).toBe(fencedDocument);
@@ -82,14 +86,6 @@ test('unwrapFencedReply accepts a backtick wrapper only when nothing inside coul
   expect(unwrapFencedReply(`Here it is:\n\`\`\`\`md\n${fencedDocument}\n\`\`\`\``, documentFence)).toBeUndefined();
   expect(unwrapFencedReply(`\`\`\`\`md\n${fencedDocument}\n\`\`\`\`\nDone.`, documentFence)).toBeUndefined();
   expect(unwrapFencedReply('```java\nclass A {}\n```', '~~~')).toBeUndefined();
-});
-
-test('unwrapFencedReply rejects a tilde wrapper opening inside a backtick block', () => {
-  const tildeFenced = '# Title\n\n~~~ts\nconst x = 1;\n~~~\n\n# Next';
-  expect(unwrapFencedReply(`\`\`\`md\n${tildeFenced}\n\`\`\``, '~~~')).toBeUndefined();
-  expect(unwrapFencedReply(`Here it is:\n\`\`\`md\n${tildeFenced}\n\`\`\`\nHope that helps.`, '~~~')).toBeUndefined();
-  expect(unwrapFencedReply('````md\n~~~~md\n# A\n~~~~\n````', '~~~~')).toBeUndefined();
-  expect(unwrapFencedReply('Like this:\n```sh\nrun\n```\n~~~md\n# A\n~~~', '~~~')).toBe('# A');
 });
 
 test('unwrapFencedReply rejects a reply without a closed wrapper', () => {
