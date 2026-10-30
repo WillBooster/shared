@@ -84,6 +84,11 @@ test('unwrapFencedReply accepts a backtick wrapper only when nothing inside coul
   expect(unwrapFencedReply('```java\nclass A {}\n```', '~~~')).toBeUndefined();
 });
 
+test('unwrapFencedReply rejects a reply holding both a backtick and a tilde wrapper', () => {
+  expect(unwrapFencedReply('```md\n# Title\n\n~~~ts\nconst x = 1;\n~~~\n\n# Next\n```', '~~~')).toBeUndefined();
+  expect(unwrapFencedReply('````md\n~~~~md\n# A\n~~~~\n````', '~~~~')).toBeUndefined();
+});
+
 test('unwrapFencedReply rejects a reply without a closed wrapper', () => {
   expect(unwrapFencedReply(fencedDocument, documentFence)).toBeUndefined();
   expect(unwrapFencedReply('```sh\nrun\n```\n\n# Title', '~~~')).toBeUndefined();

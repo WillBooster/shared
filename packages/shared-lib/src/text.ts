@@ -61,13 +61,18 @@ function getFence(fenceChar: string, text: string): string {
  * - Otherwise, backtick wrapper: the first nonblank line is a run of at least three backticks with no info string or
  *   one whose first word is `md` or `markdown` (case-insensitively), the last nonblank line is only backticks, at least
  *   as many, and no line between them starts with that many backticks.
+ * - A reply holding both wrappers, e.g. a backtick wrapper around a document whose fences the LLM turned into tildes,
+ *   is ambiguous and yields `undefined`.
  */
 export function unwrapFencedReply(text: string, fence: string): string | undefined {
   if (fence.length < 3 || countLeading(fence, '~') !== fence.length) {
     throw new RangeError(`fence must be a run of at least three tildes: ${fence}`);
   }
   const lines = (text.startsWith('\uFEFF') ? text.slice(1) : text).replaceAll('\r\n', '\n').split('\n');
-  return unwrapTildeWrapper(lines, fence.length) ?? unwrapBacktickWrapper(lines);
+  const tildeWrapped = unwrapTildeWrapper(lines, fence.length);
+  const backtickWrapped = unwrapBacktickWrapper(lines);
+  if (tildeWrapped !== undefined && backtickWrapped !== undefined) return;
+  return tildeWrapped ?? backtickWrapped;
 }
 
 function unwrapTildeWrapper(lines: readonly string[], minLength: number): string | undefined {
