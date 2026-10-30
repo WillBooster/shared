@@ -7,6 +7,7 @@ import {
   extractTaggedCodeBlock,
   parseMarkdownSections,
 } from '../../src/markdown.js';
+import { getTildeFence, toTildeCodeBlock } from '../../src/text.js';
 
 test('extractCodeBlocks reads backtick and tilde fences of any length', () => {
   expect(
@@ -53,6 +54,26 @@ test('extractIfSingleOutermostCodeBlock returns the text unless it starts with a
   expect(extractIfSingleOutermostCodeBlock(prose)).toBe(prose);
   expect(extractIfSingleOutermostCodeBlock('```js\nx\n```', ['md', 'markdown'])).toBe('```js\nx\n```');
   expect(extractIfSingleOutermostCodeBlock('```Markdown\n# A\n```', ['md', 'markdown'])).toBe('# A');
+});
+
+test('extractIfSingleOutermostCodeBlock with the sent fence drops a preamble and a postamble around the block', () => {
+  const source = '# A\n~~~ts\nx\n~~~\n\n~~~~\ny\n~~~~';
+  const fence = getTildeFence(source);
+  const block = toTildeCodeBlock(source, 'md');
+  const options = { languages: ['md'], fence };
+  expect(extractIfSingleOutermostCodeBlock(`Here is the translation:\n\n${block}`, options)).toBe(source);
+  expect(extractIfSingleOutermostCodeBlock(`${block}\nLet me know if ~~~ needs changes.`, options)).toBe(source);
+  expect(extractIfSingleOutermostCodeBlock(`Sure:\n${block}\n\nDone.\n`, options)).toBe(source);
+  expect(extractIfSingleOutermostCodeBlock(`Sure:\n${block}`, { fence })).toBe(source);
+});
+
+test('extractIfSingleOutermostCodeBlock falls back to the leading block without a pair of the sent fence', () => {
+  const fence = getTildeFence('x');
+  expect(extractIfSingleOutermostCodeBlock('~~~~\nx\n~~~~', { fence })).toBe('x');
+  expect(extractIfSingleOutermostCodeBlock('Sure:\n~~~js\nx\n~~~', { languages: ['md'], fence })).toBe(
+    'Sure:\n~~~js\nx\n~~~'
+  );
+  expect(extractIfSingleOutermostCodeBlock('~~~md\nx', { languages: ['md'], fence })).toBe('x');
 });
 
 test('parseMarkdownSections returns every ATX heading at the start of a line outside fences, with its source', () => {

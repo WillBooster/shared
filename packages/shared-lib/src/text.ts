@@ -24,7 +24,19 @@ export function toCodeBlock(text: string, language = ''): string {
   return toFencedCodeBlock('`', text, language);
 }
 
+/** Returns the tilde fence `toTildeCodeBlock` wraps `text` in: at least `~~~`, longer than any run of tildes in it. */
+export function getTildeFence(text: string): string {
+  return getFence('~', text);
+}
+
 function toFencedCodeBlock(fenceChar: string, text: string, language: string): string {
+  let languageStart = 0;
+  while (language[languageStart] === fenceChar) languageStart++;
+  const fence = getFence(fenceChar, text) + fenceChar.repeat(languageStart);
+  return `${fence}${language.slice(languageStart)}\n${text}${text.endsWith('\n') ? '' : '\n'}${fence}`;
+}
+
+function getFence(fenceChar: string, text: string): string {
   const shortestFence = fenceChar.repeat(3);
   let longestRun = 2;
   let start = text.indexOf(shortestFence);
@@ -34,10 +46,7 @@ function toFencedCodeBlock(fenceChar: string, text: string, language: string): s
     longestRun = Math.max(longestRun, end - start);
     start = text.indexOf(shortestFence, end);
   }
-  let languageStart = 0;
-  while (language[languageStart] === fenceChar) languageStart++;
-  const fence = fenceChar.repeat(longestRun + 1 + languageStart);
-  return `${fence}${language.slice(languageStart)}\n${text}${text.endsWith('\n') ? '' : '\n'}${fence}`;
+  return fenceChar.repeat(longestRun + 1);
 }
 
 /**
