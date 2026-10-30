@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { parse as parseToml } from 'smol-toml';
+
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -59,23 +61,19 @@ function requiresNextPublicWbEnv(config: PackageConfig): boolean {
 export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolean): string | undefined {
   let settings: FnoxTomlSubtree;
   try {
-    settings = Bun.TOML.parse(content) as FnoxTomlSubtree;
+    settings = parseToml(content) as FnoxTomlSubtree;
   } catch {
     console.warn('Skipped inserting WB_ENV into fnox.toml because it is not parsable as TOML.');
     return undefined;
   }
 
   const keyNames = needsNextPublic ? ['WB_ENV', 'NEXT_PUBLIC_WB_ENV'] : ['WB_ENV'];
+  const modes = wbEnvModes.filter((mode) => mode !== 'staging' || settings.profiles?.staging);
   let updatedContent = content;
-  for (const mode of wbEnvModes) {
-    // The staging mode is optional: complete it only when the repository already declares the profile.
-    if (mode === 'staging' && !settings.profiles?.staging) continue;
-    const definedKeys = mode === 'development' ? settings.secrets : settings.profiles?.[mode]?.secrets;
+  for (const mode of modes) {
+    const definedKeys = getWbEnvSecrets(settings, mode);
     for (const keyName of keyNames) {
-      const defined = definedKeys?.[keyName];
-      const definedValue =
-        typeof defined === 'string' ? defined : (defined as { default?: unknown } | undefined)?.default;
-      warnOnUnexpectedWbEnvValue(keyName, definedValue, mode);
+      warnOnUnexpectedWbEnvDefinition(keyName, definedKeys?.[keyName], mode);
     }
     const missingLines = keyNames
       .filter((keyName) => definedKeys?.[keyName] === undefined)
@@ -92,14 +90,11 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
   // Re-parse before returning: an unusual layout (e.g. dotted keys without a table header) could
   // make the textual edit produce a duplicate table; fail safely instead of corrupting the file.
   try {
-    const updatedSettings = Bun.TOML.parse(updatedContent) as FnoxTomlSubtree;
-    for (const mode of wbEnvModes) {
-      if (mode === 'staging' && !settings.profiles?.staging) continue;
-      const definedKeys = mode === 'development' ? updatedSettings.secrets : updatedSettings.profiles?.[mode]?.secrets;
-      if (keyNames.some((keyName) => definedKeys?.[keyName] === undefined)) {
-        throw new Error(`the inserted ${mode} entries did not take effect`);
-      }
-    }
+    const updatedSettings = parseToml(updatedContent) as FnoxTomlSubtree;
+    const missingMode = modes.find((mode) =>
+      keyNames.some((keyName) => getWbEnvSecrets(updatedSettings, mode)?.[keyName] === undefined)
+    );
+    if (missingMode) throw new Error(`the inserted ${missingMode} entries did not take effect`);
   } catch (error) {
     console.warn(`Skipped inserting WB_ENV into fnox.toml because ${(error as Error).message}.`);
     return undefined;
@@ -107,14 +102,19 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
   return updatedContent;
 }
 
+function getWbEnvSecrets(settings: FnoxTomlSubtree, mode: WbEnvMode): FnoxTomlSubtree['secrets'] {
+  return mode === 'development' ? settings.secrets : settings.profiles?.[mode]?.secrets;
+}
+
 /**
  * Warns when an existing WB_ENV-family definition names a different mode than the one it is
  * defined for (a typo like `prodcution` or `production1`, or a copy-pasted wrong mode): wb
  * rejects non-standard values at runtime, so surfacing the mismatch during wbfy is the earliest
- * possible signal. The passed value is always plaintext (a fnox `default` field) — encrypted
- * fnox entries are `{ provider, value }` objects whose `default` is absent.
+ * possible signal. Encrypted fnox entries have no `default` field and are not inspected.
  */
-function warnOnUnexpectedWbEnvValue(keyName: string, value: unknown, mode: WbEnvMode): void {
+function warnOnUnexpectedWbEnvDefinition(keyName: string, definition: unknown, mode: WbEnvMode): void {
+  const value =
+    typeof definition === 'string' ? definition : (definition as { default?: unknown } | undefined)?.default;
   // An EMPTY value counts as unset (wb supplies the fallback mode), not as a mismatching mode.
   if (typeof value !== 'string' || value === '' || value === mode) return;
   // A dynamic value (e.g. `NEXT_PUBLIC_WB_ENV=${WB_ENV}`) may legitimately resolve to the mode

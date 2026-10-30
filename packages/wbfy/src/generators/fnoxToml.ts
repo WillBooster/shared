@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
+import { parse as parseToml } from 'smol-toml';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -398,7 +399,7 @@ async function synchronizeFnoxAgeRecipients(
     failFnoxSync(`Failed to synchronize fnox age recipients because ${fnoxTomlPath} ${layoutIssue}.`);
     return 'failed';
   }
-  const settings = Bun.TOML.parse(originalContent) as FnoxToml;
+  const settings = parseToml(originalContent) as FnoxToml;
   const profileNames = Object.keys(settings.profiles ?? {});
   const currentRecipients = readFnoxAgeRecipients(originalContent);
 
@@ -461,7 +462,7 @@ async function synchronizeFnoxAgeRecipients(
  */
 function findFnoxLayoutIssue(fnoxTomlContent: string): string | undefined {
   try {
-    const settings = Bun.TOML.parse(fnoxTomlContent) as FnoxToml;
+    const settings = parseToml(fnoxTomlContent) as FnoxToml;
     if (settings.import !== undefined) return 'uses the unsupported `import` setting';
     const nonStandardAgeProviderNames = Object.entries(settings.providers ?? {})
       .filter(([name, provider]) => (provider?.type === 'age') !== (name === 'age'))
@@ -487,7 +488,7 @@ function findFnoxLayoutIssue(fnoxTomlContent: string): string | undefined {
  */
 export function readFnoxAgeRecipients(fnoxTomlContent: string): Set<string> | undefined {
   try {
-    const settings = Bun.TOML.parse(fnoxTomlContent) as FnoxToml;
+    const settings = parseToml(fnoxTomlContent) as FnoxToml;
     if (!settings.providers?.age) return undefined;
     const recipients = settings.providers.age.recipients;
     return new Set(Array.isArray(recipients) ? recipients.filter((r): r is string => typeof r === 'string') : []);
@@ -799,7 +800,7 @@ function failFnoxSync(message: string): void {
 function findFnoxLocalTomlIssue(dirPath: string): string | undefined {
   const localTomlPath = path.resolve(dirPath, 'fnox.local.toml');
   if (!fs.existsSync(localTomlPath)) return undefined;
-  const localSettings = Bun.TOML.parse(fs.readFileSync(localTomlPath, 'utf8')) as FnoxToml;
+  const localSettings = parseToml(fs.readFileSync(localTomlPath, 'utf8')) as FnoxToml;
   const definesProviders =
     localSettings.import !== undefined ||
     localSettings.providers !== undefined ||
@@ -837,7 +838,7 @@ function declaresFnoxAgeProvider(filePath: string): boolean {
     return true;
   }
   try {
-    return Boolean((Bun.TOML.parse(content) as FnoxToml).providers?.age);
+    return Boolean((parseToml(content) as FnoxToml).providers?.age);
   } catch {
     // Fail closed: an unparsable config might declare an age provider.
     return true;

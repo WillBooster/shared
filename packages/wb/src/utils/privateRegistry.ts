@@ -138,23 +138,17 @@ export async function downloadAndExtractRegistryPackage(
   }
 
   const response = await fetchFromRegistry(auth, tarballUrl);
-  const tarballPath = path.join(
-    await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wb-private-package-')),
-    'package.tgz'
-  );
-  try {
-    await fs.promises.writeFile(tarballPath, Buffer.from(await response.arrayBuffer()));
-    await fs.promises.rm(targetDirPath, { force: true, recursive: true });
-    await fs.promises.mkdir(targetDirPath, { recursive: true });
-    // npm tarballs place the content under a top-level `package/` directory.
-    const ret = child_process.spawnSync('tar', ['-xzf', tarballPath, '-C', targetDirPath, '--strip-components=1'], {
-      stdio: 'inherit',
-    });
-    if (ret.status !== 0) {
-      throw new Error(`Failed to extract ${packageName}@${version} (${tarballUrl}).`);
-    }
-  } finally {
-    await fs.promises.rm(path.dirname(tarballPath), { force: true, recursive: true });
+  await using tempDir = await fs.promises.mkdtempDisposable(path.join(os.tmpdir(), 'wb-private-package-'));
+  const tarballPath = path.join(tempDir.path, 'package.tgz');
+  await fs.promises.writeFile(tarballPath, Buffer.from(await response.arrayBuffer()));
+  await fs.promises.rm(targetDirPath, { force: true, recursive: true });
+  await fs.promises.mkdir(targetDirPath, { recursive: true });
+  // npm tarballs place the content under a top-level `package/` directory.
+  const ret = child_process.spawnSync('tar', ['-xzf', tarballPath, '-C', targetDirPath, '--strip-components=1'], {
+    stdio: 'inherit',
+  });
+  if (ret.status !== 0) {
+    throw new Error(`Failed to extract ${packageName}@${version} (${tarballUrl}).`);
   }
 }
 

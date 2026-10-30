@@ -1151,12 +1151,7 @@ function getDependencySections(jsonObj: PackageJson): Partial<Record<string, str
 }
 
 function getLatestDependencyVersion(dependency: string): Promise<string> {
-  let version = latestDependencyVersionCache.get(dependency);
-  if (!version) {
-    version = getDependencyVersionFromNpm(dependency);
-    latestDependencyVersionCache.set(dependency, version);
-  }
-  return version;
+  return latestDependencyVersionCache.getOrInsertComputed(dependency, getDependencyVersionFromNpm);
 }
 
 async function getDependencyVersionFromNpm(dependency: string): Promise<string> {

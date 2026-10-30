@@ -83,14 +83,11 @@ const wranglerConfigPathCache = new WeakMap<object, { configPath: string | undef
 export function findWranglerConfigPath(project: Pick<Project, 'dirPath'>): string | undefined {
   // Tests may pass partial Project objects without dirPath.
   if (!project.dirPath) return;
-  const cached = wranglerConfigPathCache.get(project);
-  if (cached) return cached.configPath;
-
-  const configPath = wranglerConfigFileNames
-    .map((fileName) => path.join(project.dirPath, fileName))
-    .find((filePath) => fs.existsSync(filePath));
-  wranglerConfigPathCache.set(project, { configPath });
-  return configPath;
+  return wranglerConfigPathCache.getOrInsertComputed(project, () => ({
+    configPath: wranglerConfigFileNames
+      .map((fileName) => path.join(project.dirPath, fileName))
+      .find((filePath) => fs.existsSync(filePath)),
+  })).configPath;
 }
 
 /**

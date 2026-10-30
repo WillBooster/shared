@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+if (!process.versions.bun && Number(process.versions.node.split('.')[0]) < 26) {
+  throw new Error('wb requires Node.js >= 26 or Bun >= 1.4.4.');
+}
+
 import { protectRunScriptArgs } from './runArgs.js';
 
 protectRunScriptArgs(process.argv);

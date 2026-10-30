@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import merge from 'deepmerge';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -41,7 +42,7 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
     const oldContent = await fsUtil.readFileConfinedIfExists(configFilePath);
     if (oldContent !== undefined) {
       try {
-        const oldConfig = Bun.YAML.parse(oldContent);
+        const oldConfig = parseYaml(oldContent);
         // Merge only a mapping: empty, comment-only, or scalar YAML would either throw in
         // merge.all or pollute the config with index keys.
         if (oldConfig && typeof oldConfig === 'object' && !Array.isArray(oldConfig)) {
@@ -52,7 +53,7 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
       }
     }
 
-    const yamlContent = Bun.YAML.stringify(newConfig, undefined, 2);
+    const yamlContent = stringifyYaml(newConfig);
 
     const extraContent = await readAgentsExtraContent(config.dirPath);
     const codingRuleExtraContent = extraContent?.trimStart().startsWith('#') ? undefined : extraContent;

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import semver from 'semver';
+import { parse as parseToml } from 'smol-toml';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -26,7 +27,7 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
     const miseTomlPath = path.resolve(config.dirPath, 'mise.toml');
     const content = readMiseToml(miseTomlPath);
     // A parse failure must abort: editing pins in a broken mise.toml would hide the breakage.
-    const tools = (Bun.TOML.parse(content) as MiseToml).tools ?? {};
+    const tools = (parseToml(content) as MiseToml).tools ?? {};
 
     const pins: Record<string, unknown> = {
       node: await pinLatestToolVersion(
@@ -73,7 +74,7 @@ function setToolVersion(content: string, tool: string, version: string): string 
 
 function parseTools(content: string): Record<string, unknown> | undefined {
   try {
-    return (Bun.TOML.parse(content) as MiseToml).tools;
+    return (parseToml(content) as MiseToml).tools;
   } catch {
     return undefined;
   }

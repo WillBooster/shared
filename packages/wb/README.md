@@ -4,7 +4,7 @@
 
 ## Supported Platforms
 
-`wb` does not support Windows. Use it on macOS, Linux, or another POSIX-compatible environment.
+`wb` runs on macOS and Linux with Bun >= 1.4.4 or Node.js >= 26. Use `bun wb <command>` to invoke it through the project tooling. Keep real Node.js 26 on `PATH` for tools such as Playwright, Wrangler, and vinext.
 
 ## Usage
 

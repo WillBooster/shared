@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { normalizeBunLockfile } from '@willbooster/shared-lib-node/src';
 import { ignoreError, ignoreErrorAsync } from '@willbooster/shared-lib/src';
+import { lt } from 'semver';
 import yargs from 'yargs';
 
 import { fixChakraToaster } from './fixers/chakraToaster.js';
@@ -144,14 +145,8 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
   // config yet, and that protection must work before the supported-version check.
   await ensureGlobalReleaseAgeGates();
 
-  // wbfy manages repositories through Bun + mise and uses Bun 1.4 runtime APIs. The version floor
-  // also ensures the generated bunfig.toml options produce the install layout wbfy validates, and
-  // excludes Bun 1.4.2, whose synchronous spawns can hang under `bun test --parallel`
-  // (oven-sh/bun#34069). It stays unconditional even though the already-applied check below can
-  // make a run a no-op: an outdated Bun is a broken environment wbfy must report, and hiding it
-  // whenever every path happens to be skipped would surface it only later.
-  const bunVersion = Bun.version;
-  if (Bun.semver.order(bunVersion, minimumBunVersion) < 0) {
+  const bunVersion = await spawnAndReturnStdout('bun', ['--version'], process.cwd());
+  if (!bunVersion || lt(bunVersion, minimumBunVersion)) {
     console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${bunVersion}). Upgrade Bun and re-run.`);
     return true;
   }

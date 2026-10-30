@@ -27,8 +27,8 @@ const smallProjectFixtures = [
   },
 ];
 
-test.each(smallProjectFixtures)(
-  'applying wbfy keeps a small $name project clean after rerunning cleanup',
+test.each(['bun', 'node'].flatMap((runtime) => smallProjectFixtures.map((fixture) => ({ ...fixture, runtime }))))(
+  'applying wbfy under $runtime keeps a small $name project clean after rerunning cleanup',
   async (fixture) => {
     await ensureBuiltCli();
 
@@ -38,7 +38,11 @@ test.each(smallProjectFixtures)(
 
       await runCommand('git', ['init'], tempDirPath);
       await runCommand('mise', ['trust', path.join(tempDirPath, 'mise.toml')], tempDirPath);
-      const applied = await runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
+      const applied = await runCommand(
+        fixture.runtime,
+        [path.join(packageDirPath, 'bin/wbfy.js'), tempDirPath],
+        packageDirPath
+      );
       expect(applied.stdout + applied.stderr).not.toContain('Error occurred');
       expect(fs.existsSync(path.join(tempDirPath, 'oxfmt.config.ts'))).toBe(false);
       if (fixture.isEsm) {
