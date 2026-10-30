@@ -15,7 +15,7 @@
 #   .npmrc, so the organization keeps nothing else in this file.
 #
 # A failed write aborts the run instead of moving on: leaving some package managers ungated must be
-# reported, not silently downgraded. Only up-to-date package managers are supported: npm >= 12
+# reported, not silently downgraded. Only up-to-date package managers are supported: npm >= 11.17
 # (`min-release-age-exclude`), Yarn Berry >= 4.10.3 (`npmMinimalAgeGate`) and bun >= 1.3
 # (`minimumReleaseAge`) — older ones must be upgraded instead of accommodated.
 

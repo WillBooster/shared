@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { normalizeBunLockfile } from '@willbooster/shared-lib-node/src';
 import { ignoreError, ignoreErrorAsync } from '@willbooster/shared-lib/src';
+import { lt } from 'semver';
 import yargs from 'yargs';
 
 import { fixChakraToaster } from './fixers/chakraToaster.js';
@@ -144,14 +145,8 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
   // config yet, and that protection must work before the supported-version check.
   await ensureGlobalReleaseAgeGates();
 
-  // wbfy manages repositories through Bun + mise and uses Bun 1.4 runtime APIs. The version floor
-  // also ensures the generated bunfig.toml options produce the install layout wbfy validates, and
-  // excludes Bun 1.4.2, whose synchronous spawns can hang under `bun test --parallel`
-  // (oven-sh/bun#34069). It stays unconditional even though the already-applied check below can
-  // make a run a no-op: an outdated Bun is a broken environment wbfy must report, and hiding it
-  // whenever every path happens to be skipped would surface it only later.
-  const bunVersion = Bun.version;
-  if (Bun.semver.order(bunVersion, minimumBunVersion) < 0) {
+  const bunVersion = process.versions.bun;
+  if (bunVersion && lt(bunVersion, minimumBunVersion)) {
     console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${bunVersion}). Upgrade Bun and re-run.`);
     return true;
   }
@@ -271,23 +266,38 @@ async function setUpMiseTools(rootDirPath: string): Promise<boolean> {
   if ((await spawnAndReturnStatus('mise', ['trust', path.join(rootDirPath, 'mise.toml')], rootDirPath)) !== 0) {
     return false;
   }
-  // generateMiseToml may have raised the Bun pin, and a Bun of another version writes a different
-  // bun.lock layout, so install the pinned tools and run every later `bun` through the pinned one.
-  // A failed install (e.g. of an unrelated global tool, or an unparsable mise.toml that wbfy leaves
-  // untouched) does not abort the run, and an installed Bun pin still applies.
+  // Lifecycle scripts also invoke Node through shebangs, so both newly installed pins must
+  // precede the caller's PATH before any dependency installation runs.
   await spawnAndReturnStatus('mise', ['install'], rootDirPath);
-  if (!(await preferPinnedBun(rootDirPath))) {
-    console.warn(`mise could not resolve the Bun pinned in ${rootDirPath}, so bun commands run with the Bun on PATH.`);
+  await preferPinnedTools(rootDirPath);
+  const bunVersion = await spawnAndReturnStdout('bun', ['--version'], rootDirPath);
+  if (!bunVersion || lt(bunVersion, minimumBunVersion)) {
+    console.error(
+      `wbfy requires the Bun >= ${minimumBunVersion} pinned in ${rootDirPath}/mise.toml (found ${bunVersion}). Fix mise installation and re-run.`
+    );
+    return false;
   }
   return true;
 }
 
-/** Returns whether mise resolved the pinned Bun. */
-async function preferPinnedBun(rootDirPath: string): Promise<boolean> {
-  const bunPath = await spawnAndReturnStdout('mise', ['which', 'bun'], rootDirPath);
-  // The spawn helpers pass process.env to every child, so `bun` and `bunx` resolve to this directory.
-  process.env.PATH = bunPath ? `${path.dirname(bunPath)}${path.delimiter}${callerPath}` : callerPath;
-  return !!bunPath;
+async function preferPinnedTools(rootDirPath: string): Promise<void> {
+  const resolved = await Promise.all(
+    ['bun', 'node'].map(async (tool) => ({
+      tool,
+      toolPath: await spawnAndReturnStdout('mise', ['which', tool], rootDirPath),
+    }))
+  );
+  process.env.PATH = [
+    ...resolved.filter(({ toolPath }) => toolPath).map(({ toolPath }) => path.dirname(toolPath)),
+    callerPath,
+  ].join(path.delimiter);
+  for (const { tool, toolPath } of resolved) {
+    if (!toolPath) {
+      console.warn(
+        `mise could not resolve the ${tool} pinned in ${rootDirPath}, so ${tool} commands run with the ${tool} on PATH.`
+      );
+    }
+  }
 }
 
 function findUnknownVisibilityError(rootConfig: PackageConfig): string | undefined {

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { getGlobIgnore } from '@willbooster/shared-lib-node/src';
 import { escapeRegExp } from '@willbooster/shared-lib/src';
 import fg from 'fast-glob';
+import { parse as parseToml } from 'smol-toml';
 import type { PackageJson } from 'type-fest';
 import { z } from 'zod';
 
@@ -789,7 +790,7 @@ async function readMiseTasks(dirPath: string): Promise<Record<string, string>> {
   for (const fileName of ['mise.toml', '.mise.toml']) {
     const filePath = path.resolve(dirPath, fileName);
     try {
-      const settings = Bun.TOML.parse(await fsp.readFile(filePath, 'utf8')) as { tasks?: Record<string, unknown> };
+      const settings = parseToml(await fsp.readFile(filePath, 'utf8')) as { tasks?: Record<string, unknown> };
       for (const [name, value] of Object.entries(settings.tasks ?? {})) {
         tasks[name] = readMiseTaskCommand(value);
       }

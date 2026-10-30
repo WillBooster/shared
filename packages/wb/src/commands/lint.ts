@@ -287,9 +287,7 @@ function addFormatterPathsOfLintTarget(
 }
 
 function appendPath(filePathsByProject: Map<Project, string[]>, project: Project, filePath: string): void {
-  const filePaths = filePathsByProject.get(project) ?? [];
-  filePaths.push(filePath);
-  filePathsByProject.set(project, filePaths);
+  filePathsByProject.getOrInsertComputed(project, () => []).push(filePath);
 }
 
 function buildExplicitLintCommands(

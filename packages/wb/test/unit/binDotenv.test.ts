@@ -11,7 +11,6 @@ import { buildWb } from '../helpers/build.js';
 
 const binIndexPath = fileURLToPath(new URL('../../bin/index.js', import.meta.url));
 const sourceIndexPath = fileURLToPath(new URL('../../src/index.ts', import.meta.url));
-// The released CLI runs under node (bin/index.js's shebang), not the bun test runner's runtime.
 const nodePath = Bun.which('node');
 if (!nodePath) throw new Error('node must be on PATH.');
 
@@ -21,7 +20,28 @@ setDefaultTimeout(30_000);
 
 const isFnoxAvailable = Bun.which('fnox') !== null;
 
-describe('bin/index.js dotenv fast path', () => {
+it('runs the canonical Bun command without a Node executable on PATH', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-bun-entry-'));
+  try {
+    const binDir = path.join(dir, 'node_modules', '.bin');
+    await fs.mkdir(binDir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'package.json'), '{"private":true}');
+    await fs.symlink(binIndexPath, path.join(binDir, 'wb'));
+    await fs.symlink(process.execPath, path.join(binDir, 'bun'));
+    const result = await spawnAsync(process.execPath, ['wb', '--version'], {
+      cwd: dir,
+      env: { PATH: binDir, WB_GC_CHECKED: '1' },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/u);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+describe.each(['node', 'bun'])('%s: bin/index.js dotenv fast path', (runtime) => {
+  const runtimePath = Bun.which(runtime);
+  if (!runtimePath) throw new Error(`${runtime} must be on PATH.`);
   let projectDirPath: string;
 
   beforeEach(async () => {
@@ -42,7 +62,7 @@ describe('bin/index.js dotenv fast path', () => {
     const probePath = path.join(binDirPath, 'review-probe');
     await fs.writeFile(probePath, '#!/bin/sh\necho probe-ok\n', { mode: 0o755 });
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'dotenv', '--', 'review-probe'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'dotenv', '--', 'review-probe'], {
       cwd: projectDirPath,
       // A yarn-like environment: the temporary bin folder is the only PATH entry yarn adds,
       // and wb dotenv strips it before spawning.
@@ -55,7 +75,7 @@ describe('bin/index.js dotenv fast path', () => {
 
   it('does not rewrite dotenv child arguments containing run', async () => {
     const result = await spawnAsync(
-      nodePath,
+      runtimePath,
       [binIndexPath, 'dotenv', '--', 'node', '-e', 'console.log(process.argv.slice(1).join(","))', 'run', 'first'],
       {
         cwd: projectDirPath,
@@ -75,10 +95,14 @@ describe('bin/index.js dotenv fast path', () => {
       '[secrets]\nENV = { default = "fnox-value" }\nFNOX_ONLY = { default = "fnox-only" }\n\n[profiles.development]\n'
     );
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$ENV" "$FNOX_ONLY"'], {
-      cwd: projectDirPath,
-      env: { PATH: process.env.PATH },
-    });
+    const result = await spawnAsync(
+      runtimePath,
+      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$ENV" "$FNOX_ONLY"'],
+      {
+        cwd: projectDirPath,
+        env: { PATH: process.env.PATH },
+      }
+    );
     expect(result.stderr).toBe('');
     expect(result.stdout).toBe('fnox-value fnox-only\n');
     expect(result.status).toBe(0);
@@ -95,7 +119,7 @@ describe('bin/index.js dotenv fast path', () => {
     );
 
     const result = await spawnAsync(
-      nodePath,
+      runtimePath,
       [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$BASE_ONLY" "$DEV_ONLY"'],
       {
         cwd: projectDirPath,
@@ -117,7 +141,7 @@ describe('bin/index.js dotenv fast path', () => {
       '[secrets]\nSELECTED = { default = "base" }\n\n[profiles.development.secrets]\nSELECTED = { default = "development" }\n\n[profiles.test.secrets]\nSELECTED = { default = "test" }\n'
     );
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$SELECTED"'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$SELECTED"'], {
       cwd: projectDirPath,
       env: { PATH: process.env.PATH, FNOX_PROFILE: 'test' },
     });
@@ -136,7 +160,7 @@ describe('bin/index.js dotenv fast path', () => {
       '[secrets]\nPORT = { default = "3000" }\n\n[profiles.test.secrets]\nPORT = { default = "3000" }\n'
     );
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$PORT"'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$PORT"'], {
       cwd: projectDirPath,
       env: { PATH: process.env.PATH, WB_ENV: 'test', PORT: '9999' },
     });
@@ -154,7 +178,7 @@ describe('bin/index.js dotenv fast path', () => {
       '[secrets]\nDB_HOST = { default = "localhost" }\nDATABASE_URL = { default = "postgres://${DB_HOST}/app" }\n\n[profiles.test.secrets]\nDB_HOST = { default = "test-db" }\n'
     );
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$DATABASE_URL"'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$DATABASE_URL"'], {
       cwd: projectDirPath,
       env: { PATH: process.env.PATH, WB_ENV: 'test', DATABASE_URL: 'postgres://localhost/dev' },
     });
@@ -172,7 +196,7 @@ describe('bin/index.js dotenv fast path', () => {
       '[secrets]\nHOST = { default = "example.com" }\nPORT = { default = "3000" }\n\n[profiles.test.secrets]\nPORT = { default = "6002" }\nURL = { default = "https://${HOST}/x" }\n'
     );
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$PORT"'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$PORT"'], {
       cwd: projectDirPath,
       env: { PATH: process.env.PATH, WB_ENV: 'test', PORT: '9999' },
     });
@@ -195,7 +219,7 @@ describe('bin/index.js dotenv fast path', () => {
         '[secrets]\nWB_ENV = { default = "production" }\n\n[profiles.development]\n'
       );
 
-      const result = await spawnAsync(nodePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo should-not-run'], {
+      const result = await spawnAsync(runtimePath, [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo should-not-run'], {
         cwd: projectDirPath,
         env: { PATH: process.env.PATH },
       });
@@ -216,7 +240,7 @@ describe('bin/index.js dotenv fast path', () => {
     );
 
     const result = await spawnAsync(
-      nodePath,
+      runtimePath,
       [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$WB_ENV" "$SELECTED"'],
       {
         cwd: projectDirPath,
@@ -236,7 +260,7 @@ describe('bin/index.js dotenv fast path', () => {
     await fs.mkdir(berryBinDirPath, { recursive: true });
     await fs.writeFile(path.join(berryBinDirPath, 'review-probe'), '#!/bin/sh\necho pnp-ok\n', { mode: 0o755 });
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'dotenv', '--', 'review-probe'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'dotenv', '--', 'review-probe'], {
       cwd: projectDirPath,
       env: { PATH: `${berryBinDirPath}:/usr/bin:/bin`, BERRY_BIN_FOLDER: berryBinDirPath },
     });
@@ -246,7 +270,9 @@ describe('bin/index.js dotenv fast path', () => {
   });
 });
 
-describe('bin/index.js run command', () => {
+describe.each(['node', 'bun'])('%s: bin/index.js run command', (runtime) => {
+  const runtimePath = Bun.which(runtime);
+  if (!runtimePath) throw new Error(`${runtime} must be on PATH.`);
   let projectDirPath: string;
 
   beforeEach(async () => {
@@ -269,7 +295,7 @@ describe('bin/index.js run command', () => {
     );
 
     const result = await spawnAsync(
-      nodePath,
+      runtimePath,
       [binIndexPath, 'run', '--quiet-env', 'probe.ts', 'first', '--', '--second'],
       {
         cwd: projectDirPath,
@@ -285,7 +311,7 @@ describe('bin/index.js run command', () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
     const result = await spawnAsync(
-      nodePath,
+      runtimePath,
       // "test" is both a wb command name and a standard mode: the option must consume it as its
       // value, leaving the following "run" as the command.
       [binIndexPath, '--working-dir', projectDirPath, '--quiet-env', '--cascade-env', 'test', 'run', 'probe.js'],
@@ -306,7 +332,7 @@ describe('bin/index.js run command', () => {
     );
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'run', 'probe.js'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'run', 'probe.js'], {
       cwd: projectDirPath,
       env: { PATH: process.env.PATH, CI: 'true' },
     });
@@ -321,7 +347,7 @@ describe('bin/index.js run command', () => {
       "console.log(`executed:${process.argv.slice(2).join(',')}`);\n"
     );
 
-    const dryRunResult = await spawnAsync(nodePath, [binIndexPath, 'run', '--quiet-env', '--dry-run', 'probe.js'], {
+    const dryRunResult = await spawnAsync(runtimePath, [binIndexPath, 'run', '--quiet-env', '--dry-run', 'probe.js'], {
       cwd: projectDirPath,
       env: { PATH: process.env.PATH },
     });
@@ -329,15 +355,19 @@ describe('bin/index.js run command', () => {
     expect(dryRunResult.stdout).not.toContain('executed:');
     expect(dryRunResult.status).toBe(0);
 
-    const forwardedResult = await spawnAsync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe.js', '--dry-run'], {
-      cwd: projectDirPath,
-      env: { PATH: process.env.PATH },
-    });
+    const forwardedResult = await spawnAsync(
+      runtimePath,
+      [binIndexPath, 'run', '--quiet-env', 'probe.js', '--dry-run'],
+      {
+        cwd: projectDirPath,
+        env: { PATH: process.env.PATH },
+      }
+    );
     expect(forwardedResult.stdout).toBe('executed:--dry-run\n');
     expect(forwardedResult.status).toBe(0);
 
     const separatedResult = await spawnAsync(
-      nodePath,
+      runtimePath,
       [binIndexPath, 'run', '--quiet-env', 'probe.js', '--dry-run', '--', '--child'],
       {
         cwd: projectDirPath,
@@ -352,7 +382,7 @@ describe('bin/index.js run command', () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
     const negatedResult = await spawnAsync(
-      nodePath,
+      runtimePath,
       [binIndexPath, 'run', '--no-auto-cascade-env', '--quiet-env', 'probe.js'],
       {
         cwd: projectDirPath,
@@ -362,7 +392,7 @@ describe('bin/index.js run command', () => {
     expect(negatedResult.stdout).toBe('executed\n');
     expect(negatedResult.status).toBe(0);
 
-    const groupedResult = await spawnAsync(nodePath, [binIndexPath, 'run', '-dv', 'probe.js'], {
+    const groupedResult = await spawnAsync(runtimePath, [binIndexPath, 'run', '-dv', 'probe.js'], {
       cwd: projectDirPath,
       env: { PATH: process.env.PATH },
     });
@@ -371,7 +401,7 @@ describe('bin/index.js run command', () => {
     expect(groupedResult.status).toBe(0);
 
     const attachedValueResult = await spawnAsync(
-      nodePath,
+      runtimePath,
       [binIndexPath, 'run', `-w${projectDirPath}`, '--quiet-env', 'probe.js'],
       {
         env: { PATH: process.env.PATH },
@@ -385,7 +415,7 @@ describe('bin/index.js run command', () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
     for (const optionArgs of [['--dry-run', 'false'], ['-d=false'], ['-d', 'false']]) {
-      const result = await spawnAsync(nodePath, [binIndexPath, 'run', '--quiet-env', ...optionArgs, 'probe.js'], {
+      const result = await spawnAsync(runtimePath, [binIndexPath, 'run', '--quiet-env', ...optionArgs, 'probe.js'], {
         cwd: projectDirPath,
         env: { PATH: process.env.PATH },
       });
@@ -399,7 +429,7 @@ describe('bin/index.js run command', () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(process.argv.slice(2).join(","));\n');
 
     const result = await spawnAsync(
-      nodePath,
+      runtimePath,
       [binIndexPath, 'run', '--quiet-env', 'probe.js', '--', '__WB_RUN_SCRIPT_ARGS__', 'omega'],
       {
         cwd: projectDirPath,
@@ -417,7 +447,7 @@ describe('bin/index.js run command', () => {
     );
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
       cwd: projectDirPath,
       env: { PATH: process.env.PATH },
     });
@@ -430,7 +460,7 @@ describe('bin/index.js run command', () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(process.env.WB_ENV);\n');
 
     const result = await spawnAsync(
-      nodePath,
+      runtimePath,
       [binIndexPath, 'run', '--quiet-env', '--cascade-env', 'production', 'probe.js'],
       {
         cwd: projectDirPath,
@@ -445,10 +475,14 @@ describe('bin/index.js run command', () => {
   it('preserves numeric-looking child arguments', async () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(JSON.stringify(process.argv.slice(2)));\n');
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe.js', '001', '1e3', '0x10'], {
-      cwd: projectDirPath,
-      env: { PATH: process.env.PATH },
-    });
+    const result = await spawnAsync(
+      runtimePath,
+      [binIndexPath, 'run', '--quiet-env', 'probe.js', '001', '1e3', '0x10'],
+      {
+        cwd: projectDirPath,
+        env: { PATH: process.env.PATH },
+      }
+    );
     expect(result.stdout).toBe('["001","1e3","0x10"]\n');
     expect(result.status).toBe(0);
   });
@@ -462,7 +496,7 @@ describe('bin/index.js run command', () => {
       "import { execFileSync } from 'node:child_process';\nprocess.stdout.write(execFileSync('run-probe'));\n"
     );
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
       cwd: projectDirPath,
       env: { PATH: `${berryBinDirPath}:${process.env.PATH}`, BERRY_BIN_FOLDER: berryBinDirPath },
     });
@@ -478,7 +512,7 @@ describe('bin/index.js run command', () => {
     await fs.mkdir(shimDirPath);
     await fs.writeFile(path.join(shimDirPath, 'node'), `#!/bin/sh\nexec "${nodePath}" "$@"\n`, { mode: 0o755 });
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
       cwd: projectDirPath,
       env: { PATH: `${shimDirPath}:${process.env.PATH}` },
     });
@@ -501,7 +535,7 @@ describe('bin/index.js run command', () => {
     await fs.mkdir(fallbackDirPath);
     await fs.symlink(nodePath, path.join(fallbackDirPath, 'node'));
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
       cwd: projectDirPath,
       env: { PATH: `${realNodeDirPath}:${process.env.PATH}:${fallbackDirPath}` },
     });
@@ -550,7 +584,7 @@ describe('bin/index.js run command', () => {
       "console.log(`bun-script:${process.argv.slice(2).join(',')}`);\n"
     );
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe', 'argument'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'run', '--quiet-env', 'probe', 'argument'], {
       cwd: projectDirPath,
       env: { PATH: process.env.PATH },
     });
@@ -569,7 +603,7 @@ describe('bin/index.js run command', () => {
     await fs.mkdir(binDirPath, { recursive: true });
     await fs.writeFile(path.join(binDirPath, 'probe'), '#!/bin/sh\necho "bin:$@"\n', { mode: 0o755 });
 
-    const result = await spawnAsync(nodePath, [binIndexPath, 'run', '--quiet-env', 'probe', 'argument'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'run', '--quiet-env', 'probe', 'argument'], {
       cwd: projectDirPath,
       // Simulate being spawned from the "probe" package script, where `bun run probe` would
       // re-enter the script itself forever.
@@ -593,7 +627,7 @@ describe('bin/index.js run command', () => {
     await fs.writeFile(path.join(binDirPath, 'probe'), '#!/bin/sh\necho "bin:$@"\n', { mode: 0o755 });
 
     const result = await spawnAsync(
-      nodePath,
+      runtimePath,
       [binIndexPath, '--working-dir', subDirPath, '--quiet-env', 'run', 'probe', 'argument'],
       {
         cwd: projectDirPath,
@@ -620,7 +654,7 @@ describe('bin/index.js run command', () => {
     );
 
     const result = await spawnAsync(
-      nodePath,
+      runtimePath,
       [binIndexPath, '--working-dir', childDirPath, '--quiet-env', 'run', 'probe'],
       {
         cwd: projectDirPath,
@@ -638,7 +672,7 @@ describe('bin/index.js run command', () => {
   });
 
   it('prints usage instead of starting a runtime without a script', async () => {
-    const result = await spawnAsync(nodePath, [binIndexPath, 'run'], {
+    const result = await spawnAsync(runtimePath, [binIndexPath, 'run'], {
       cwd: projectDirPath,
       env: { PATH: process.env.PATH },
     });

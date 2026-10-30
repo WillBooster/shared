@@ -24,14 +24,7 @@ export function getOctokit(owner: string): Octokit {
   // GitHub owner names are case-insensitive, so credential selection (and the cache key) must
   // not depend on how a remote URL happens to spell the organization.
   const key = owner.toLowerCase();
-  const cached = octokitCache.get(key);
-  if (cached) return cached;
-
-  const octokit = new Octokit({
-    auth: getGitHubToken(owner) || undefined,
-  });
-  octokitCache.set(key, octokit);
-  return octokit;
+  return octokitCache.getOrInsertComputed(key, () => new Octokit({ auth: getGitHubToken(owner) || undefined }));
 }
 
 let anonymousOctokit: Octokit | undefined;

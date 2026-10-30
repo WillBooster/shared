@@ -12,7 +12,6 @@ import { buildWb } from '../helpers/build.js';
 
 const binIndexPath = fileURLToPath(new URL('../../bin/index.js', import.meta.url));
 const wbPackageDirPath = fileURLToPath(new URL('../..', import.meta.url));
-// The released CLI runs under node (bin/index.js's shebang), not the bun test runner's runtime.
 const nodePath = Bun.which('node');
 if (!nodePath) throw new Error('node must be on PATH.');
 
