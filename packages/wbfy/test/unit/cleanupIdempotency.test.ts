@@ -51,9 +51,10 @@ test.each(['bun', 'node'].flatMap((runtime) => smallProjectFixtures.map((fixture
       }
       const runtime = await runCommand('mise', ['exec', '--', 'bun', '--version'], tempDirPath);
       const tools = z
-        .object({ tools: z.object({ bun: z.string() }) })
+        .object({ tools: z.object({ bun: z.string(), node: z.string() }) })
         .parse(Bun.TOML.parse(fs.readFileSync(path.join(tempDirPath, 'mise.toml'), 'utf8')));
       expect(runtime.stdout.trim()).toBe(tools.tools.bun);
+      expect(fs.readFileSync(path.join(tempDirPath, 'node-version.txt'), 'utf8').trim()).toBe(tools.tools.node);
 
       await runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
       await runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
@@ -117,7 +118,7 @@ test('rejects a linked mise configuration without modifying the repository or tr
     expect(result.stdout + result.stderr).toContain('a managed config file is a symlink');
     const after = await runCommand('git', ['status', '--short'], repoDirPath);
     expect(after.stdout.trim()).toBe('');
-    expect(fs.readFileSync(externalPath, 'utf8')).toBe('[tools]\nbun = "0.1.0"\n');
+    expect(fs.readFileSync(externalPath, 'utf8')).toBe('[tools]\nnode = "24"\nbun = "0.1.0"\n');
 
     const runtime = await spawnAsync('mise', ['exec', '--', 'bun', '--version'], {
       cwd: repoDirPath,
@@ -188,6 +189,7 @@ function writeSmallProjectFixture(dirPath: string, fixture: (typeof smallProject
         ...(fixture.isEsm ? { type: 'module' } : {}),
         description: 'Temporary fixture for wbfy cleanup idempotency tests',
         repository: 'github:example/small-project',
+        scripts: { postinstall: 'node -p process.versions.node > node-version.txt' },
         ...(fixture.isEsm ? { dependencies: { oxfmt: '0.73.0' } } : {}),
         devDependencies: { '@willbooster/oxfmt-config': '1.2.2' },
       },
@@ -200,7 +202,7 @@ function writeSmallProjectFixture(dirPath: string, fixture: (typeof smallProject
     path.join(dirPath, 'oxfmt.config.ts'),
     "import config from '@willbooster/oxfmt-config';\nexport default config;\n"
   );
-  fs.writeFileSync(path.join(dirPath, 'mise.toml'), '[tools]\nbun = "0.1.0"\n');
+  fs.writeFileSync(path.join(dirPath, 'mise.toml'), '[tools]\nnode = "24"\nbun = "0.1.0"\n');
   fs.writeFileSync(path.join(dirPath, 'src', fixture.sourceFileName), fixture.source);
 }
 

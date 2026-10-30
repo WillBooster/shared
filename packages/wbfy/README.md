@@ -16,7 +16,7 @@ This tool must keep idempotency, i.e., it always yields the same result when a u
 
 ## How to Use
 
-Run with Bun >= 1.4.4 or Node.js >= 26 on macOS or Linux. Bun >= 1.4.4 and mise must be on `PATH` with either runtime. `bunx @willbooster/wbfy` and `npx @willbooster/wbfy` use its Node.js entry point. To run the CLI with Bun, invoke its `bin/wbfy.js` with `bun`.
+Run with Bun >= 1.4.4 or Node.js >= 26 on macOS or Linux. Bun >= 1.4.4 and mise must be on `PATH` with either runtime. `bunx @willbooster/wbfy` uses its Bun entry point, including when the target repository still pins Node.js 24. To run the CLI with Node.js, invoke its `bin/wbfy.js` with `node`. After updating `mise.toml`, wbfy uses the pinned Node.js and Bun for dependency installation and cleanup.
 
 `bunx @willbooster/wbfy` is the canonical package; `bunx wbfy` runs the same CLI through a wrapper that depends on the exact same version of `@willbooster/wbfy`. The wrapper is published only after npm makes that version installable, so it skips a version npm holds for over an hour, and `wbfy@latest` then stays on the previous release.
 
