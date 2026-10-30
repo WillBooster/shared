@@ -39,19 +39,71 @@ export function extractCodeBlocks(markdown: string): CodeBlock[] {
   return blocks;
 }
 
+export interface ExtractCodeBlockOptions {
+  /** Allowed languages, compared case-insensitively; an omitted or empty list allows any language. */
+  languages?: readonly string[];
+  /** The exact fence the caller asked the LLM to wrap its response in, e.g. `getTildeFence(text)`. */
+  fence?: string;
+}
+
 /**
  * Returns the contents of the code block that an LLM wrapped its whole response in, or `text` itself when the
- * response does not start with a fence or the fence's language is not one of a nonempty `languages` list
- * (compared case-insensitively). An omitted or empty list allows any language.
+ * response does not start with a fence or the fence's language is not allowed. A plain array is taken as `languages`.
  * When the response also ends with a matching closing fence, everything between its first and last lines is returned,
  * so fences the LLM nested without lengthening the outer fence stay in the contents. Otherwise the first block is
  * returned and text after it is dropped; an unclosed block runs to the end of the text.
+ * With `fence`, a preamble and a postamble around the block are dropped first: everything between the first line
+ * holding exactly `fence` and an allowed language or none, outside blocks of other languages, and the last later line
+ * holding exactly `fence` is returned. Without such a pair, the rules above apply.
  */
-export function extractIfSingleOutermostCodeBlock(text: string, languages?: readonly string[]): string {
+export function extractIfSingleOutermostCodeBlock(
+  text: string,
+  languagesOrOptions?: readonly string[] | ExtractCodeBlockOptions
+): string {
+  const { languages, fence }: ExtractCodeBlockOptions = isLanguageList(languagesOrOptions)
+    ? { languages: languagesOrOptions }
+    : (languagesOrOptions ?? {});
+  const isAllowed = (language: string): boolean =>
+    !languages?.length || languages.some((allowed) => allowed.toLowerCase() === language);
+  const known = fence === undefined ? undefined : findBlockWithKnownFence(text, fence, isAllowed);
+  if (known !== undefined) return known;
   const block = findOutermostCodeBlock(text);
-  if (!block) return text;
-  if (languages?.length && !languages.some((language) => language.toLowerCase() === block.language)) return text;
+  if (!block || !isAllowed(block.language)) return text;
   return block.code;
+}
+
+function isLanguageList(value: readonly string[] | ExtractCodeBlockOptions | undefined): value is readonly string[] {
+  return Array.isArray(value);
+}
+
+function findBlockWithKnownFence(
+  text: string,
+  fence: string,
+  isAllowed: (language: string) => boolean
+): string | undefined {
+  const lines = splitLines(text);
+  const end = lines.findLastIndex((line) => line.trimEnd() === fence);
+  const start = findSentOpeningFence(lines, end, fence, isAllowed);
+  if (start === undefined) return;
+  return lines.slice(start + 1, end).join('\n');
+}
+
+/** Returns the index of the first line before `end` opening `fence` with an allowed language or none, skipping other blocks. */
+function findSentOpeningFence(
+  lines: readonly string[],
+  end: number,
+  fence: string,
+  isAllowed: (language: string) => boolean
+): number | undefined {
+  for (let index = 0; index < end; index++) {
+    const line = lines[index] ?? '';
+    const trimmed = line.trimEnd();
+    const isSentFence = trimmed.startsWith(fence) && trimmed.charAt(fence.length) !== fence.charAt(0);
+    const language = trimmed.slice(fence.length).trim().split(/\s/u)[0]?.toLowerCase() ?? '';
+    if (isSentFence && (language === '' || isAllowed(language))) return index;
+    const opener = parseOpeningFence(line);
+    if (opener) index = findClosingFence(lines, index + 1, opener);
+  }
 }
 
 const WRAPPED_MARKDOWN_LANGUAGES = new Set(['', 'markdown', 'md']);

@@ -55,7 +55,15 @@ export { recoverJson } from './recoverJson.js';
 export type { JsonRepair, RecoveredJson, JsonRecovery } from './recoverJson.js';
 export { sleep } from './sleep.js';
 export { escapeLikePattern, getConnectionLevelSqlitePragmas, getPersistentSqlitePragmas } from './sqlite.js';
-export { escapeHtml, escapeRegExp, quoteForShell, toCodeBlock, toTildeCodeBlock, truncate } from './text.js';
+export {
+  escapeHtml,
+  escapeRegExp,
+  getTildeFence,
+  quoteForShell,
+  toCodeBlock,
+  toTildeCodeBlock,
+  truncate,
+} from './text.js';
 export { TEST_WRITING_RULES } from './testingRules.js';
 export { createThrottledFetch } from './throttledFetch.js';
 export { raceWithTimeout } from './timeout.js';
@@ -66,7 +74,7 @@ export { zenkakuAlphanumericalsToHankaku } from './zenkaku.js';
 export type { AppEnv } from './appEnv.js';
 export type { RetryOptions } from './error.js';
 export type { ForeignCjkLanguage } from './foreignCjk.js';
-export type { CodeBlock, MarkdownSection } from './markdown.js';
+export type { CodeBlock, ExtractCodeBlockOptions, MarkdownSection } from './markdown.js';
 export type { TemplateSection } from './githubTemplates.js';
 export type { ThrottledFetchOptions } from './throttledFetch.js';
 export type { RaceWithTimeoutResult } from './timeout.js';
