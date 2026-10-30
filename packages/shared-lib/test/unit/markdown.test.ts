@@ -76,6 +76,9 @@ test('extractIfSingleOutermostCodeBlock with the sent fence skips example blocks
   expect(
     extractIfSingleOutermostCodeBlock(`Like this:\n~~~\nexample\n~~~\n\n${answer}`, { fence: options.fence })
   ).toBe('answer');
+  expect(extractIfSingleOutermostCodeBlock('Sure:\n~~~\nanswer\n~~~\n\nExample:\n~~~md\n# cut', options)).toBe(
+    'answer'
+  );
 });
 
 test('extractIfSingleOutermostCodeBlock falls back to the leading block without a pair of the sent fence', () => {

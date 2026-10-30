@@ -82,23 +82,23 @@ function findBlockWithKnownFence(
   isAllowed: (language: string) => boolean
 ): string | undefined {
   const lines = splitLines(text);
+  const end = lines.findLastIndex((line) => line.trimEnd() === fence);
   // An explicitly allowed language identifies the wrapper better than a bare fence, which an example may also use.
   const start =
-    findSentOpeningFence(lines, fence, (language) => language !== '' && isAllowed(language)) ??
-    findSentOpeningFence(lines, fence, (language) => language === '');
+    findSentOpeningFence(lines, end, fence, (language) => language !== '' && isAllowed(language)) ??
+    findSentOpeningFence(lines, end, fence, (language) => language === '');
   if (start === undefined) return;
-  const end = lines.findLastIndex((line) => line.trimEnd() === fence);
-  if (end <= start) return;
   return lines.slice(start + 1, end).join('\n');
 }
 
-/** Returns the index of the first line opening `fence` with an accepted language, skipping other fenced blocks. */
+/** Returns the index of the first line before `end` opening `fence` with an accepted language, skipping other fenced blocks. */
 function findSentOpeningFence(
   lines: readonly string[],
+  end: number,
   fence: string,
   accepts: (language: string) => boolean
 ): number | undefined {
-  for (let index = 0; index < lines.length; index++) {
+  for (let index = 0; index < end; index++) {
     const line = lines[index] ?? '';
     const trimmed = line.trimEnd();
     const isSentFence = trimmed.startsWith(fence) && trimmed.charAt(fence.length) !== fence.charAt(0);
