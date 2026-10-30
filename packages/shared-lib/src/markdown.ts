@@ -85,7 +85,8 @@ function findBlockWithKnownFence(
   const start = lines.findIndex((line) => {
     const trimmed = line.trimEnd();
     if (!trimmed.startsWith(fence) || trimmed.charAt(fence.length) === fence.charAt(0)) return false;
-    return isAllowed(trimmed.slice(fence.length).trim().split(/\s/u)[0]?.toLowerCase() ?? '');
+    const language = trimmed.slice(fence.length).trim().split(/\s/u)[0]?.toLowerCase() ?? '';
+    return language === '' || isAllowed(language);
   });
   const end = lines.findLastIndex((line) => line.trimEnd() === fence);
   if (start === -1 || end <= start) return;

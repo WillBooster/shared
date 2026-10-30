@@ -65,6 +65,7 @@ test('extractIfSingleOutermostCodeBlock with the sent fence drops a preamble and
   expect(extractIfSingleOutermostCodeBlock(`${block}\nLet me know if ~~~ needs changes.`, options)).toBe(source);
   expect(extractIfSingleOutermostCodeBlock(`Sure:\n${block}\n\nDone.\n`, options)).toBe(source);
   expect(extractIfSingleOutermostCodeBlock(`Sure:\n${block}`, { fence })).toBe(source);
+  expect(extractIfSingleOutermostCodeBlock(`Sure:\n${toTildeCodeBlock(source)}`, options)).toBe(source);
 });
 
 test('extractIfSingleOutermostCodeBlock falls back to the leading block without a pair of the sent fence', () => {
