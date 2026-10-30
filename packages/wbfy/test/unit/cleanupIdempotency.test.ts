@@ -38,6 +38,8 @@ test.each(['bun', 'node'].flatMap((runtime) => smallProjectFixtures.map((fixture
 
       await runCommand('git', ['init'], tempDirPath);
       await runCommand('mise', ['trust', path.join(tempDirPath, 'mise.toml')], tempDirPath);
+      await runCommand('mise', ['install', 'bun'], tempDirPath);
+      const oldBun = await runCommand('mise', ['which', 'bun'], tempDirPath);
       const callerBinDirPath = path.join(tempDirPath, '.tmp', 'caller-bin');
       fs.mkdirSync(callerBinDirPath, { recursive: true });
       const callerNode = await runCommand('node', ['-p', 'process.execPath'], packageDirPath);
@@ -45,10 +47,10 @@ test.each(['bun', 'node'].flatMap((runtime) => smallProjectFixtures.map((fixture
       fs.copyFileSync(installedNodePath, path.join(callerBinDirPath, 'node'), fs.constants.COPYFILE_FICLONE);
       fs.symlinkSync(path.resolve(path.dirname(installedNodePath), '../lib'), path.join(callerBinDirPath, '../lib'));
       const applied = await runCommand(
-        fixture.runtime,
+        fixture.runtime === 'bun' ? process.execPath : path.join(callerBinDirPath, 'node'),
         [path.join(packageDirPath, 'bin/wbfy.js'), tempDirPath],
-        packageDirPath,
-        { PATH: `${callerBinDirPath}${path.delimiter}${process.env.PATH}` }
+        tempDirPath,
+        { PATH: [callerBinDirPath, path.dirname(oldBun.stdout.trim()), process.env.PATH].join(path.delimiter) }
       );
       expect(applied.stdout + applied.stderr).not.toContain('Error occurred');
       expect(fs.existsSync(path.join(tempDirPath, 'oxfmt.config.ts'))).toBe(false);
@@ -127,7 +129,7 @@ test('rejects a linked mise configuration without modifying the repository or tr
     expect(result.stdout + result.stderr).toContain('a managed config file is a symlink');
     const after = await runCommand('git', ['status', '--short'], repoDirPath);
     expect(after.stdout.trim()).toBe('');
-    expect(fs.readFileSync(externalPath, 'utf8')).toBe('[tools]\nnode = "24"\nbun = "0.1.0"\n');
+    expect(fs.readFileSync(externalPath, 'utf8')).toBe('[tools]\nnode = "24"\nbun = "1.4.3"\n');
 
     const runtime = await spawnAsync('mise', ['exec', '--', 'bun', '--version'], {
       cwd: repoDirPath,
@@ -211,7 +213,7 @@ function writeSmallProjectFixture(dirPath: string, fixture: (typeof smallProject
     path.join(dirPath, 'oxfmt.config.ts'),
     "import config from '@willbooster/oxfmt-config';\nexport default config;\n"
   );
-  fs.writeFileSync(path.join(dirPath, 'mise.toml'), '[tools]\nnode = "24"\nbun = "0.1.0"\n');
+  fs.writeFileSync(path.join(dirPath, 'mise.toml'), '[tools]\nnode = "24"\nbun = "1.4.3"\n');
   fs.writeFileSync(path.join(dirPath, 'src', fixture.sourceFileName), fixture.source);
 }
 

@@ -145,8 +145,8 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
   // config yet, and that protection must work before the supported-version check.
   await ensureGlobalReleaseAgeGates();
 
-  const bunVersion = await spawnAndReturnStdout('bun', ['--version'], process.cwd());
-  if (!bunVersion || lt(bunVersion, minimumBunVersion)) {
+  const bunVersion = process.versions.bun;
+  if (bunVersion && lt(bunVersion, minimumBunVersion)) {
     console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${bunVersion}). Upgrade Bun and re-run.`);
     return true;
   }
@@ -270,6 +270,13 @@ async function setUpMiseTools(rootDirPath: string): Promise<boolean> {
   // precede the caller's PATH before any dependency installation runs.
   await spawnAndReturnStatus('mise', ['install'], rootDirPath);
   await preferPinnedTools(rootDirPath);
+  const bunVersion = await spawnAndReturnStdout('bun', ['--version'], rootDirPath);
+  if (!bunVersion || lt(bunVersion, minimumBunVersion)) {
+    console.error(
+      `wbfy requires the Bun >= ${minimumBunVersion} pinned in ${rootDirPath}/mise.toml (found ${bunVersion}). Fix mise installation and re-run.`
+    );
+    return false;
+  }
   return true;
 }
 
