@@ -11,7 +11,6 @@ import { buildWb } from '../helpers/build.js';
 
 const wbDirPath = fileURLToPath(new URL('../..', import.meta.url));
 const semanticReleaseBinPath = createRequire(import.meta.url).resolve('semantic-release/bin/semantic-release.js');
-// The released CLI runs under node (bin/index.js's shebang), not the bun test runner's runtime.
 const nodePath = Bun.which('node');
 if (!nodePath) throw new Error('node must be on PATH.');
 // Every case creates git repositories and runs wb (and semantic-release) in child processes, which takes seconds on
