@@ -73,6 +73,9 @@ test('extractIfSingleOutermostCodeBlock with the sent fence skips example blocks
   const answer = toTildeCodeBlock('answer', 'md');
   expect(extractIfSingleOutermostCodeBlock(`Like this:\n~~~js\nexample()\n~~~\n\n${answer}`, options)).toBe('answer');
   expect(extractIfSingleOutermostCodeBlock(`Like this:\n~~~\nexample\n~~~\n\n${answer}`, options)).toBe('answer');
+  expect(
+    extractIfSingleOutermostCodeBlock(`Like this:\n~~~\nexample\n~~~\n\n${answer}`, { fence: options.fence })
+  ).toBe('answer');
 });
 
 test('extractIfSingleOutermostCodeBlock falls back to the leading block without a pair of the sent fence', () => {

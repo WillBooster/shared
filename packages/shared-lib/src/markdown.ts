@@ -84,7 +84,8 @@ function findBlockWithKnownFence(
   const lines = splitLines(text);
   // An explicitly allowed language identifies the wrapper better than a bare fence, which an example may also use.
   const start =
-    findSentOpeningFence(lines, fence, isAllowed) ?? findSentOpeningFence(lines, fence, (language) => language === '');
+    findSentOpeningFence(lines, fence, (language) => language !== '' && isAllowed(language)) ??
+    findSentOpeningFence(lines, fence, (language) => language === '');
   if (start === undefined) return;
   const end = lines.findLastIndex((line) => line.trimEnd() === fence);
   if (end <= start) return;
