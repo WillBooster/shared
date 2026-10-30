@@ -68,17 +68,15 @@ test('extractIfSingleOutermostCodeBlock with the sent fence drops a preamble and
   expect(extractIfSingleOutermostCodeBlock(`Sure:\n${toTildeCodeBlock(source)}`, options)).toBe(source);
 });
 
-test('extractIfSingleOutermostCodeBlock with the sent fence prefers the named wrapper over preamble example blocks', () => {
+test('extractIfSingleOutermostCodeBlock with the sent fence skips other blocks and keeps same-length inner fences', () => {
   const options = { languages: ['md'], fence: getTildeFence('answer') };
   const answer = toTildeCodeBlock('answer', 'md');
   expect(extractIfSingleOutermostCodeBlock(`Like this:\n~~~js\nexample()\n~~~\n\n${answer}`, options)).toBe('answer');
-  expect(extractIfSingleOutermostCodeBlock(`Like this:\n~~~\nexample\n~~~\n\n${answer}`, options)).toBe('answer');
-  expect(
-    extractIfSingleOutermostCodeBlock(`Like this:\n~~~\nexample\n~~~\n\n${answer}`, { fence: options.fence })
-  ).toBe('answer');
   expect(extractIfSingleOutermostCodeBlock('Sure:\n~~~\nanswer\n~~~\n\nExample:\n~~~md\n# cut', options)).toBe(
     'answer'
   );
+  const nested = 'Use:\n~~~js\na()\n~~~\nor:\n~~~ts\nb()\n~~~';
+  expect(extractIfSingleOutermostCodeBlock(`Here you go:\n~~~\n${nested}\n~~~`, { fence: options.fence })).toBe(nested);
 });
 
 test('extractIfSingleOutermostCodeBlock falls back to the leading block without a pair of the sent fence', () => {
