@@ -53,8 +53,8 @@ export interface ExtractCodeBlockOptions {
  * so fences the LLM nested without lengthening the outer fence stay in the contents. Otherwise the first block is
  * returned and text after it is dropped; an unclosed block runs to the end of the text.
  * With `fence`, a preamble and a postamble around the block are dropped first: everything between the first line
- * holding exactly `fence` and an allowed language (or none) and the last later line holding exactly `fence` is
- * returned. Without such a pair, the rules above apply.
+ * holding exactly `fence` and an allowed language (or, failing that, no language) outside other fenced blocks and the
+ * last later line holding exactly `fence` is returned. Without such a pair, the rules above apply.
  */
 export function extractIfSingleOutermostCodeBlock(
   text: string,
@@ -82,15 +82,29 @@ function findBlockWithKnownFence(
   isAllowed: (language: string) => boolean
 ): string | undefined {
   const lines = splitLines(text);
-  const start = lines.findIndex((line) => {
-    const trimmed = line.trimEnd();
-    if (!trimmed.startsWith(fence) || trimmed.charAt(fence.length) === fence.charAt(0)) return false;
-    const language = trimmed.slice(fence.length).trim().split(/\s/u)[0]?.toLowerCase() ?? '';
-    return language === '' || isAllowed(language);
-  });
+  // An explicitly allowed language identifies the wrapper better than a bare fence, which an example may also use.
+  const start =
+    findSentOpeningFence(lines, fence, isAllowed) ?? findSentOpeningFence(lines, fence, (language) => language === '');
+  if (start === undefined) return;
   const end = lines.findLastIndex((line) => line.trimEnd() === fence);
-  if (start === -1 || end <= start) return;
+  if (end <= start) return;
   return lines.slice(start + 1, end).join('\n');
+}
+
+/** Returns the index of the first line opening `fence` with an accepted language, skipping other fenced blocks. */
+function findSentOpeningFence(
+  lines: readonly string[],
+  fence: string,
+  accepts: (language: string) => boolean
+): number | undefined {
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index] ?? '';
+    const trimmed = line.trimEnd();
+    const isSentFence = trimmed.startsWith(fence) && trimmed.charAt(fence.length) !== fence.charAt(0);
+    if (isSentFence && accepts(trimmed.slice(fence.length).trim().split(/\s/u)[0]?.toLowerCase() ?? '')) return index;
+    const opener = parseOpeningFence(line);
+    if (opener) index = findClosingFence(lines, index + 1, opener);
+  }
 }
 
 const WRAPPED_MARKDOWN_LANGUAGES = new Set(['', 'markdown', 'md']);
