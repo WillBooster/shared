@@ -63,6 +63,7 @@ export {
   toCodeBlock,
   toTildeCodeBlock,
   truncate,
+  unwrapFencedReply,
 } from './text.js';
 export { TEST_WRITING_RULES } from './testingRules.js';
 export { createThrottledFetch } from './throttledFetch.js';
@@ -74,7 +75,7 @@ export { zenkakuAlphanumericalsToHankaku } from './zenkaku.js';
 export type { AppEnv } from './appEnv.js';
 export type { RetryOptions } from './error.js';
 export type { ForeignCjkLanguage } from './foreignCjk.js';
-export type { CodeBlock, ExtractCodeBlockOptions, MarkdownSection } from './markdown.js';
+export type { CodeBlock, MarkdownSection } from './markdown.js';
 export type { TemplateSection } from './githubTemplates.js';
 export type { ThrottledFetchOptions } from './throttledFetch.js';
 export type { RaceWithTimeoutResult } from './timeout.js';
