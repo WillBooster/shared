@@ -77,6 +77,9 @@ test('extractIfSingleOutermostCodeBlock with the sent fence skips other blocks a
   );
   const nested = 'Use:\n~~~js\na()\n~~~\nor:\n~~~ts\nb()\n~~~';
   expect(extractIfSingleOutermostCodeBlock(`Here you go:\n~~~\n${nested}\n~~~`, { fence: options.fence })).toBe(nested);
+  const longer = 'Sure:\n~~~~md\n# A\n~~~\n# B\n~~~~ Let me know.';
+  expect(extractIfSingleOutermostCodeBlock(longer, { fence: options.fence })).toBe(longer);
+  expect(extractIfSingleOutermostCodeBlock('Sure:\n~~~MD\n# A\n~~~  ', options)).toBe('# A');
 });
 
 test('extractIfSingleOutermostCodeBlock falls back to the leading block without a pair of the sent fence', () => {
