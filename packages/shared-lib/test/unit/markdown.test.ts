@@ -68,7 +68,7 @@ test('extractIfSingleOutermostCodeBlock with the sent fence drops a preamble and
   expect(extractIfSingleOutermostCodeBlock(`Sure:\n${toTildeCodeBlock(source)}`, options)).toBe(source);
 });
 
-test('extractIfSingleOutermostCodeBlock with the sent fence skips example blocks in the preamble', () => {
+test('extractIfSingleOutermostCodeBlock with the sent fence prefers the named wrapper over preamble example blocks', () => {
   const options = { languages: ['md'], fence: getTildeFence('answer') };
   const answer = toTildeCodeBlock('answer', 'md');
   expect(extractIfSingleOutermostCodeBlock(`Like this:\n~~~js\nexample()\n~~~\n\n${answer}`, options)).toBe('answer');
