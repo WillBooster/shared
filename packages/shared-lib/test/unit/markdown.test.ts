@@ -7,7 +7,7 @@ import {
   extractTaggedCodeBlock,
   parseMarkdownSections,
 } from '../../src/markdown.js';
-import { getTildeFence, toTildeCodeBlock } from '../../src/text.js';
+import { getTildeFence, toCodeBlock, toTildeCodeBlock } from '../../src/text.js';
 
 test('extractCodeBlocks reads backtick and tilde fences of any length', () => {
   expect(
@@ -80,6 +80,35 @@ test('extractIfSingleOutermostCodeBlock with the sent fence skips other blocks a
   const longer = 'Sure:\n~~~~md\n# A\n~~~\n# B\n~~~~ Let me know.';
   expect(extractIfSingleOutermostCodeBlock(longer, { fence: options.fence })).toBe(longer);
   expect(extractIfSingleOutermostCodeBlock('Sure:\n~~~MD\n# A\n~~~  ', options)).toBe('# A');
+});
+
+test('extractIfSingleOutermostCodeBlock with the sent fence drops prose around a longer or indented tilde wrapper', () => {
+  const source = '# A\n~~~ts\nx\n~~~\n\nB';
+  const fence = getTildeFence(source);
+  expect(
+    extractIfSingleOutermostCodeBlock(`Here is the translation:\n~~~~~md\n${source}\n~~~~~\nDone.`, { fence })
+  ).toBe(source);
+  const indented = source
+    .split('\n')
+    .map((line) => `   ${line}`)
+    .join('\n');
+  expect(
+    extractIfSingleOutermostCodeBlock(`Here is the translation:\n   ~~~~md\n${indented}\n   ~~~~`, { fence })
+  ).toBe(source);
+  expect(extractIfSingleOutermostCodeBlock(`Sure:\n ~~~~\n${source}\n  ~~~~~~`, { fence })).toBe(source);
+  const deep = `Sure:\n    ~~~~md\n    ${source}\n    ~~~~`;
+  expect(extractIfSingleOutermostCodeBlock(deep, { fence })).toBe(deep);
+  const deepCloser = `Sure:\n~~~~md\n${source}\n    ~~~~`;
+  expect(extractIfSingleOutermostCodeBlock(deepCloser, { fence })).toBe(deepCloser);
+});
+
+test('extractIfSingleOutermostCodeBlock with the sent fence unwraps a backtick wrapper only when nesting is unambiguous', () => {
+  const source = '# A\n```ts\nx\n```\n\nB';
+  const fence = getTildeFence(source);
+  const wrapped = `Here is the translation:\n\n${toCodeBlock(source, 'md')}\nDone.`;
+  expect(extractIfSingleOutermostCodeBlock(wrapped, { fence })).toBe(source);
+  const ambiguous = `Here is the translation:\n\n\`\`\`md\n${source}\n\`\`\`\n`;
+  expect(extractIfSingleOutermostCodeBlock(ambiguous, { fence })).toBe(ambiguous);
 });
 
 test('extractIfSingleOutermostCodeBlock falls back to the leading block without a pair of the sent fence', () => {

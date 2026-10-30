@@ -42,7 +42,10 @@ export function extractCodeBlocks(markdown: string): CodeBlock[] {
 export interface ExtractCodeBlockOptions {
   /** Allowed languages, compared case-insensitively; an omitted or empty list allows any language. */
   languages?: readonly string[];
-  /** The exact fence the caller asked the LLM to wrap its response in, e.g. `getTildeFence(text)`. */
+  /**
+   * The fence the caller asked the LLM to wrap its response in, longer than any run of its character in the wrapped
+   * text, e.g. `getTildeFence(text)`.
+   */
   fence?: string;
 }
 
@@ -52,9 +55,11 @@ export interface ExtractCodeBlockOptions {
  * When the response also ends with a matching closing fence, everything between its first and last lines is returned,
  * so fences the LLM nested without lengthening the outer fence stay in the contents. Otherwise the first block is
  * returned and text after it is dropped; an unclosed block runs to the end of the text.
- * With `fence`, a preamble and a postamble around the block are dropped first: everything between the first line
- * holding exactly `fence` and an allowed language or none, outside blocks of other languages, and the last later line
- * holding exactly `fence` is returned. Without such a pair, the rules above apply.
+ * With `fence`, a preamble and a postamble around a wrapper with an allowed language or none are dropped first,
+ * skipping other blocks before it. The wrapper is the first fence of `fence`'s character at least as long as `fence`,
+ * up to the last line closing it, since the wrapped text holds no such line. Failing that, it is the first fence
+ * of the other character, but only when no later line could close it, i.e. CommonMark nesting is unambiguous.
+ * Without such a wrapper, the rules above apply.
  */
 export function extractIfSingleOutermostCodeBlock(
   text: string,
@@ -81,28 +86,49 @@ function findBlockWithKnownFence(
   fence: string,
   isAllowed: (language: string) => boolean
 ): string | undefined {
+  const sent = parseOpeningFence(fence);
+  if (!sent) return;
   const lines = splitLines(text);
-  const end = lines.findLastIndex((line) => line.trimEnd() === fence);
-  const start = findSentOpeningFence(lines, end, fence, isAllowed);
-  if (start === undefined) return;
-  return lines.slice(start + 1, end).join('\n');
+  const isWrapper = (opener: Fence): boolean => opener.language === '' || isAllowed(opener.language);
+  const findLastEnd = (start: number, opener: Fence): number | undefined => {
+    const end = lines.findLastIndex((line, index) => index > start && isClosingFence(line, opener));
+    return end === -1 ? undefined : end;
+  };
+  return (
+    findWrapper(
+      lines,
+      (opener) => isWrapper(opener) && opener.char === sent.char && opener.length >= sent.length,
+      findLastEnd
+    ) ??
+    findWrapper(
+      lines,
+      (opener) => isWrapper(opener) && opener.char !== sent.char,
+      (start, opener) => {
+        const end = findClosingFence(lines, start + 1, opener);
+        return end === findLastEnd(start, opener) ? end : undefined;
+      }
+    )
+  );
 }
 
-/** Returns the index of the first line before `end` opening `fence` with an allowed language or none, skipping other blocks. */
-function findSentOpeningFence(
+/** Returns the contents of the first block opened by a fence satisfying `isCandidate`, skipping other blocks. */
+function findWrapper(
   lines: readonly string[],
-  end: number,
-  fence: string,
-  isAllowed: (language: string) => boolean
-): number | undefined {
-  for (let index = 0; index < end; index++) {
-    const line = lines[index] ?? '';
-    const trimmed = line.trimEnd();
-    const isSentFence = trimmed.startsWith(fence) && trimmed.charAt(fence.length) !== fence.charAt(0);
-    const language = trimmed.slice(fence.length).trim().split(/\s/u)[0]?.toLowerCase() ?? '';
-    if (isSentFence && (language === '' || isAllowed(language))) return index;
-    const opener = parseOpeningFence(line);
-    if (opener) index = findClosingFence(lines, index + 1, opener);
+  isCandidate: (opener: Fence) => boolean,
+  findEnd: (start: number, opener: Fence) => number | undefined
+): string | undefined {
+  for (let index = 0; index < lines.length; index++) {
+    const opener = parseOpeningFence(lines[index] ?? '');
+    if (!opener) continue;
+    if (isCandidate(opener)) {
+      const end = findEnd(index, opener);
+      if (end === undefined) return;
+      return lines
+        .slice(index + 1, end)
+        .map((line) => stripIndent(line, opener.indent))
+        .join('\n');
+    }
+    index = findClosingFence(lines, index + 1, opener);
   }
 }
 
@@ -282,16 +308,14 @@ function findHeadings(lines: readonly string[]): { index: number; depth: number;
 }
 
 function parseOpeningFence(line: string): Fence | undefined {
-  const match = /^( {0,3})(`{3,}|~{3,})(.*)$/u.exec(line);
-  const fence = match?.[2];
-  const info = match?.[3] ?? '';
+  const fence = scanFence(line);
   // A backtick in the info string makes the line inline code instead of a fence.
-  if (!fence || (fence.startsWith('`') && info.includes('`'))) return;
+  if (!fence || (fence.char === '`' && fence.info.includes('`'))) return;
   return {
-    char: fence.charAt(0),
+    char: fence.char,
     length: fence.length,
-    indent: match[1]?.length ?? 0,
-    language: info.trim().split(/\s/u)[0]?.toLowerCase() ?? '',
+    indent: fence.indent,
+    language: fence.info.trim().split(/\s/u)[0]?.toLowerCase() ?? '',
   };
 }
 
@@ -303,8 +327,20 @@ function findClosingFence(lines: readonly string[], start: number, fence: Fence)
 }
 
 function isClosingFence(line: string, fence: Fence): boolean {
-  const closer = /^ {0,3}(`{3,}|~{3,})[ \t]*$/u.exec(line)?.[1];
-  return closer?.charAt(0) === fence.char && closer.length >= fence.length;
+  const closer = scanFence(line);
+  return closer?.char === fence.char && closer.length >= fence.length && closer.info.trim() === '';
+}
+
+/** Reads a line as a fence: at most three spaces, then a run of at least three backticks or tildes, then the info string. */
+function scanFence(line: string): { char: string; length: number; indent: number; info: string } | undefined {
+  let indent = 0;
+  while (line[indent] === ' ') indent++;
+  const char = line.charAt(indent);
+  if (indent > 3 || (char !== '`' && char !== '~')) return;
+  let end = indent;
+  while (line[end] === char) end++;
+  if (end - indent < 3) return;
+  return { char, length: end - indent, indent, info: line.slice(end) };
 }
 
 function stripIndent(line: string, indent: number): string {
