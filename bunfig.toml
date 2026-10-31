@@ -76,6 +76,7 @@ minimumReleaseAgeExcludes = [
   "code-gauge-linux-arm64-musl",
   "code-gauge-linux-x64-gnu",
   "code-gauge-linux-x64-musl",
+  "code-gauge-win32-x64-msvc",
   "commitkv",
   "gen-i18n-ts",
   "minimal-promise-pool",
