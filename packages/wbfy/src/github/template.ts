@@ -28,7 +28,6 @@ ${renderSectionTemplate(PULL_REQUEST_SECTIONS)}
 name: Bug / Problem
 about: Something behaves wrongly
 title: 'fix: '
-labels: 't: fix :bug:'
 ---
 
 <!-- Keep Problem and Proposal; delete Evidence or Impact when they add nothing.${issueLanguageNote} Delete these comments. -->
@@ -40,7 +39,6 @@ ${renderSectionTemplate(BUG_ISSUE_SECTIONS)}
 name: Change / Feature
 about: Propose a change that a third party could implement without asking a question
 title: 'feat: '
-labels: 't: feat :sparkles:'
 ---
 
 <!-- Keep the first three sections for any change and add the others as the change grows; a large change fills all of them (spec-booster reviews against this list).${issueLanguageNote} Delete these comments. -->

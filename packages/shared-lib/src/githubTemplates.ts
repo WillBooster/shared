@@ -69,8 +69,8 @@ export const PULL_REQUEST_BODY_RULES = `${PULL_REQUEST_TEMPLATE_RULES}\n${PULL_R
  * the comments) is deliberately not repeated here, since the writer reads the template anyway.
  */
 export const ISSUE_TEMPLATE_RULES = `- Follow the closest template under \`.github/ISSUE_TEMPLATE/\`: \`bug.md\` for wrong behavior, \`change.md\` for anything to build or alter; a question or note fitting neither, or a repository without templates, needs no template.
-- Title: a Conventional Commits prefix for the type that fits the change (\`feat:\`, \`fix:\`, \`refactor:\`, \`docs:\`, \`chore:\`, ...); when it differs from the template's \`title\` prefix, replace the template's type label (\`t: ...\`) with the one matching the type.
-- The YAML front matter between the \`---\` lines is metadata, not body text: pass its \`labels\` via \`--label\` and submit only the content below the closing \`---\` as the body.`;
+- Title: a Conventional Commits prefix for the type that fits the change (\`feat:\`, \`fix:\`, \`refactor:\`, \`docs:\`, \`chore:\`, ...).
+- The YAML front matter between the \`---\` lines is metadata, not body text: submit only the content below the closing \`---\` as the body.`;
 
 /** Sections of a bug report, in the order they appear in the issue template. */
 export const BUG_ISSUE_SECTIONS: readonly TemplateSection[] = [

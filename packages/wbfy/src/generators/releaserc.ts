@@ -47,8 +47,8 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
                 // cf. https://github.com/semantic-release/semantic-release/issues/2204#issuecomment-1508417704
                 successCommentCondition: false,
                 failCommentCondition: false,
-                labels: ['r: semantic-release'],
-                releasedLabels: ['released :bookmark:'],
+                labels: false,
+                releasedLabels: false,
               },
             ],
             { arrayMerge: overwriteMerge }
