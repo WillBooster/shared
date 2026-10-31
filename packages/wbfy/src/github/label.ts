@@ -10,6 +10,9 @@ const priorityLabels: [name: string, color: string][] = [
   ['p3: important :fire:', 'FCA5A5'],
   ['p4: nice to have :droplet:', 'FECACA'],
 ];
+// Labels that agent tooling applies itself (e.g., review-booster's retrospect reports), so wbfy keeps
+// them where they exist instead of creating them in every repository.
+const agentLabelNames = ['retrospect'];
 
 export async function setupLabels(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('setupLabels', async () => {
@@ -25,9 +28,9 @@ export async function setupLabels(config: PackageConfig): Promise<void> {
         repo,
         per_page: 100,
       });
-      const names = new Set(priorityLabels.map(([name]) => name));
+      const keptNames = new Set([...priorityLabels.map(([name]) => name), ...agentLabelNames]);
       for (const { name } of existingLabels) {
-        if (!names.has(name))
+        if (!keptNames.has(name))
           await octokit.request('DELETE /repos/{owner}/{repo}/labels/{name}', { owner, repo, name });
       }
       for (const [name, color] of priorityLabels) await setupLabel(octokit, owner, repo, name, color);
