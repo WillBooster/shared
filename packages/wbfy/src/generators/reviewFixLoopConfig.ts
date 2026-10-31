@@ -29,8 +29,13 @@ export async function generateReviewFixLoopConfig(config: PackageConfig): Promis
       console.warn(`Skipped generating ${filePath} because the existing content is not parsable as JSONC.`);
       return;
     }
-    const { content } = jsoncUtil.stringifyPreservingTrivia(oldContent, { rflAgent: rflAgentSettings });
+    const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(oldContent, {
+      rflAgent: rflAgentSettings,
+    });
     if (content.trim() === oldContent?.trim()) return;
-    await fsUtil.generateFile(filePath, content);
+    if (!(await fsUtil.generateFile(filePath, content))) return;
+    for (const key of keysLosingComments) {
+      console.warn(`Comments inside "${key}" were dropped while rewriting it in ${filePath}.`);
+    }
   });
 }
