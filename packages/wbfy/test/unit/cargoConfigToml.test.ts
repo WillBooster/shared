@@ -39,4 +39,7 @@ test('gates crates by publish age while keeping the rest of an existing .cargo/c
   expect(await generateFrom(generated)).toBe(generated);
 
   expect(await generateFrom(`[registry]\nglobal-min-publish-age = "0"\n`)).toBe(`[registry]\n${gateLine}\n`);
+
+  const commentedHeader = `[registry] # crates.io only\ndefault = "crates-io"\n`;
+  expect(await generateFrom(commentedHeader)).toBe(`${commentedHeader}${gateLine}\n`);
 });
