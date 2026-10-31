@@ -9,6 +9,7 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { spawnAndReturnStdout } from '../utils/spawnUtil.js';
+import { setTomlTableString } from '../utils/tomlUtil.js';
 
 interface MiseToml {
   tools?: Record<string, unknown>;
@@ -46,38 +47,10 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
     for (const [tool, version] of Object.entries(pins)) {
       if (version === tools[tool]) continue;
       assert.ok(typeof version === 'string', `The resolved ${tool} pin must be a version string.`);
-      newContent = setToolVersion(newContent, tool, version);
-      // A line edit breaks pins written in any other form (a multi-line value, a `tools.bun`
-      // dotted key, a `[tools.bun]` sub-table), so never write a result the parser disagrees with.
-      assert.ok(
-        parseTools(newContent)?.[tool] === version,
-        `Write the ${tool} pin in mise.toml as one \`${tool} = ...\` line under [tools].`
-      );
+      newContent = setTomlTableString(newContent, 'tools', tool, version);
     }
     await fsUtil.generateFile(miseTomlPath, newContent);
   });
-}
-
-function setToolVersion(content: string, tool: string, version: string): string {
-  const pin = `${tool} = "${version}"`;
-  const section = /^\[tools\](?![^\n])(?:\n(?!\[).*)*/mu.exec(content)?.[0];
-  if (section === undefined) return `${content && `${content.trimEnd()}\n\n`}[tools]\n${pin}\n`;
-
-  const pinPattern = new RegExp(`^${tool} = .*?(\\s*#.*)?$`, 'mu');
-  // Blank lines and comments that end the section lead the next table, so a new pin goes above them.
-  const pinsEnd = /(?:\n[\t ]*(?:#.*)?)*$/u.exec(section)?.index ?? section.length;
-  const newSection = pinPattern.test(section)
-    ? section.replace(pinPattern, `${pin}$1`)
-    : `${section.slice(0, pinsEnd)}\n${pin}${section.slice(pinsEnd)}`;
-  return content.replace(section, () => newSection);
-}
-
-function parseTools(content: string): Record<string, unknown> | undefined {
-  try {
-    return (parseToml(content) as MiseToml).tools;
-  } catch {
-    return undefined;
-  }
 }
 
 async function pinLatestToolVersion(
