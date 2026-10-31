@@ -18,6 +18,7 @@ import {
   readBunGlobalStore,
   resolveBunGlobalStore,
 } from './generators/bunfig.js';
+import { generateCargoConfigToml } from './generators/cargoConfigToml.js';
 import { generateDockerignore } from './generators/dockerignore.js';
 import { generateEditorconfig } from './generators/editorconfig.js';
 import { generateFnoxToml } from './generators/fnoxToml.js';
@@ -449,6 +450,7 @@ async function generateRepositoryLevelFiles(
     rootConfig.isRoot;
   await Promise.all([
     generateReadme(rootConfig),
+    ...(rootConfig.isRoot && rootConfig.cargoTomlDirPaths.length > 0 ? [generateCargoConfigToml(rootConfig)] : []),
     generateDockerignore(rootConfig),
     generateEditorconfig(rootConfig),
     generateGeminiConfig(rootConfig, allPackageConfigs),
