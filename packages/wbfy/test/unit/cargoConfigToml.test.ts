@@ -11,11 +11,11 @@ afterEach(() => {
   fsUtil.setRootDirPath(undefined);
 });
 
-async function generateFrom(content: string | undefined): Promise<string> {
+async function generateFrom(content: string | undefined, fileName = 'config.toml'): Promise<string> {
   fs.mkdirSync('.tmp', { recursive: true });
   const dirPath = fs.mkdtempSync(path.resolve('.tmp', 'wbfy-cargo-config-'));
   try {
-    const filePath = path.join(dirPath, '.cargo', 'config.toml');
+    const filePath = path.join(dirPath, '.cargo', fileName);
     if (content !== undefined) {
       fs.mkdirSync(path.dirname(filePath));
       fs.writeFileSync(filePath, content);
@@ -42,4 +42,7 @@ test('gates crates by publish age while keeping the rest of an existing .cargo/c
 
   const commentedHeader = `[registry] # crates.io only\ndefault = "crates-io"\n`;
   expect(await generateFrom(commentedHeader)).toBe(`${commentedHeader}${gateLine}\n`);
+
+  // Cargo prefers the legacy extensionless file, so the gate has to go there.
+  expect(await generateFrom(`[build]\njobs = 2\n`, 'config')).toBe(`[build]\njobs = 2\n\n[registry]\n${gateLine}\n`);
 });
