@@ -23,6 +23,7 @@ export async function setupLabels(config: PackageConfig): Promise<void> {
     const octokit = getOctokit(owner);
 
     try {
+      for (const [name, color] of priorityLabels) await setupLabel(octokit, owner, repo, name, color);
       const { data: existingLabels } = await octokit.request('GET /repos/{owner}/{repo}/labels', {
         owner,
         repo,
@@ -30,10 +31,8 @@ export async function setupLabels(config: PackageConfig): Promise<void> {
       });
       const keptNames = new Set([...priorityLabels.map(([name]) => name), ...agentLabelNames]);
       for (const { name } of existingLabels) {
-        if (!keptNames.has(name))
-          await octokit.request('DELETE /repos/{owner}/{repo}/labels/{name}', { owner, repo, name });
+        if (!keptNames.has(name)) await deleteLabel(octokit, owner, repo, name);
       }
-      for (const [name, color] of priorityLabels) await setupLabel(octokit, owner, repo, name, color);
     } catch (error) {
       console.warn('Skip setupLabels due to:', (error as Error | undefined)?.stack ?? error);
     }
@@ -55,5 +54,14 @@ async function setupLabel(octokit: Octokit, owner: string, repo: string, name: s
       name,
       color,
     });
+  }
+}
+
+async function deleteLabel(octokit: Octokit, owner: string, repo: string, name: string): Promise<void> {
+  try {
+    await octokit.request('DELETE /repos/{owner}/{repo}/labels/{name}', { owner, repo, name });
+  } catch (error) {
+    // Another wbfy run or a person may delete the same label between the listing and this request.
+    if ((error as { status?: number }).status !== 404) throw error;
   }
 }
