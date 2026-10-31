@@ -9,10 +9,12 @@ import { setTomlTableString } from '../utils/tomlUtil.js';
 
 /**
  * Applies the organization's minimum-release-age policy to Cargo through `.cargo/config.toml` (or the
- * legacy `.cargo/config`, which Cargo prefers) at the repository root. Cargo reads config files from the current directory upward, not from the
- * manifest's directory, and Renovate runs `cargo update --manifest-path <dir>/Cargo.toml` from the
- * repository root, so a config next to a nested Cargo.toml (e.g. src-tauri/) would not gate it.
- * Cargo honors the key from 1.100 and only warns that it is ignored before that.
+ * legacy `.cargo/config`, which Cargo prefers) at the repository root. Cargo reads config files from
+ * the current directory upward, not from the manifest's directory, and Renovate runs
+ * `cargo update --manifest-path <dir>/Cargo.toml` from the repository root, so a config next to a
+ * nested Cargo.toml (e.g. src-tauri/) would not gate it.
+ * Cargo honors the key from 1.100; 1.98 and 1.99 warn that they ignore it, and older versions ignore
+ * it silently, so writing it never breaks an older toolchain.
  */
 export async function generateCargoConfigToml(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateCargoConfigToml', async () => {
