@@ -52,6 +52,6 @@ function getGitHubToken(owner: string): string | undefined {
   if (normalizedOwner === 'willboosterlab') {
     return process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB || process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   }
-  // An organization PAT has no write access to another owner's repository (e.g. for labels).
+  // An organization PAT has no access to another owner's repository.
   return process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
 }
