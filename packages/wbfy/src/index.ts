@@ -38,6 +38,7 @@ import { fixRailwayignore } from './generators/railwayignore.js';
 import { generateReadme, readAppliedWbfyVersionLabel } from './generators/readme.js';
 import { generateReleaserc } from './generators/releaserc.js';
 import { generateRenovateJsonc } from './generators/renovateJsonc.js';
+import { generateReviewFixLoopConfig } from './generators/reviewFixLoopConfig.js';
 import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
 import { generateTsconfig } from './generators/tsconfig.js';
 import { generateUserAgentConfigs } from './generators/userAgentConfigs.js';
@@ -460,6 +461,7 @@ async function generateRepositoryLevelFiles(
     fixRailwayignore(rootConfig),
     generateRenovateJsonc(rootConfig, allPackageConfigs),
     generateReleaserc(rootConfig),
+    ...(rootConfig.isWillBoosterRepo && rootConfig.isRoot ? [generateReviewFixLoopConfig(rootConfig)] : []),
     ...(shouldRunWorkflows ? [generateWorkflows(rootConfig)] : []),
     ...(shouldRunSelfContainedWorkflows ? [generateSelfContainedWorkflows(rootConfig, allPackageConfigs)] : []),
     setupLabels(rootConfig),
