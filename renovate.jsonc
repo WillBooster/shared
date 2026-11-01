@@ -5,6 +5,7 @@
     // 11.0.0: Version 11 requires web-tree-sitter ^15 (https://github.com/WillBooster/tree-sitter-bash/blob/v11.0.0/package.json), but wbfy uses 2.0.33; loading the grammar fails with an incompatible language ABI.
     { "matchPackageNames": ["@willbooster/tree-sitter-bash"], "allowedVersions": "!/^11\\.0\\.0$/" },
     // 16.0.2: Version 16.0.2 rejects the pinned Bash grammar ABI 0x57420001 at startup; it requires ABI 0x5742000b (https://github.com/WillBooster/tree-sitter/pull/278).
-    { "matchPackageNames": ["@willbooster/web-tree-sitter"], "allowedVersions": "!/^16\\.0\\.2$/" },
+    // 16.0.1: Version 16.0.1 requires grammar ABI 0x5742000b and rejects the Bash 4.0.4 grammar pinned by wbfy (ABI 0x57420001), preventing shell parser initialization; https://github.com/WillBooster/tree-sitter/pull/278 and https://github.com/WillBooster/shared/pull/1591.
+    { "matchPackageNames": ["@willbooster/web-tree-sitter"], "allowedVersions": "!/^(16\\.0\\.2|16\\.0\\.1)$/" },
   ],
 }
