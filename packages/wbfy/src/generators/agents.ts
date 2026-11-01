@@ -255,7 +255,7 @@ export function generateAgentCodingStyle(
 - Use camelCase file names for JavaScript/TypeScript (PascalCase for React components).
 - In code your change touches, eliminate redundancy without changing behavior.
 - Design modules and directories with high cohesion and low coupling; split large modules when needed.
-- Place calling functions above the functions they call (top-down order), including functions assigned to a const unless called during module evaluation; place other variable and type declarations above their usage.
+- Place calling functions above the functions they call (top-down order), including functions assigned to a const unless referenced during module evaluation; place other variable and type declarations above their usage.
 ${commentInstruction}
 - Never explain how WillBooster's in-house tools (e.g., \`wb\`, \`wbfy\`) work in code comments or documents outside the tool's own package, except in instructions for AI agents (e.g., do not note that \`PORT\` is unset because \`wb\` picks a free port).
 - If lint errors or warnings cannot be fixed, use ignore comments with reasons (e.g., \`// oxlint-disable-next-line <rule> -- <reason>\`).
