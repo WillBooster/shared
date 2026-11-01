@@ -245,8 +245,8 @@ violations after the recap: the totals per level, how many are in code changed s
 with `origin/HEAD`, and at most 10 violations: those in the changed code first, then the rest, each
 group with its errors before its warnings. A limit milder than its line's level names its own, as in
 `error: ... function cognitive complexity 56 (max 30; largest parts L12-31 19, L33-40 isLegacy 8), function ncss 41 (warning max 30)`,
-where the largest parts are the lines adding the most to the cognitive complexity. The step never
-fails verification.
+where the largest parts are the lines adding the most to the cognitive complexity. After the
+violations come the instructions for handling them. The step never fails verification.
 
 wb uses its own `code-gauge` and code-gauge's default thresholds; a `code-gauge.config.json` in the
 repository overrides them.

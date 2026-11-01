@@ -80,6 +80,12 @@ interface CodeGaugeCheck {
 const VERIFY_BASE_REF = 'origin/HEAD';
 const MAX_VERIFY_VIOLATION_LINES = 10;
 const MAX_PARTNER_LOCATIONS = 3;
+const VIOLATION_HANDLING_INSTRUCTIONS = `How to handle these violations:
+- In code your change touches, fix every error, and each warning whose fix makes the code easier to read, with behavior-preserving changes (e.g., extract a helper, flatten branching, reuse the code it duplicates).
+- Leave a violation whose only fix moves complexity elsewhere (e.g., splitting a function mechanically), restructures far more code than your change touches, or removes an intentional duplicate (e.g., a file mirroring another by design).
+- Allow each warning left with a \`code-gauge-allow <metric> <max> -- <reason>\` comment on its own line right above the function's reported start line; for a duplicated block, above the start line of its enclosing function, separately for each copy (\`code-gauge-allow-file\` for the whole file or a block outside a function), where <metric> is the camelCase metric name (e.g., functionParameterCount) and <max> the reported value.
+- List each error left, which no comment can allow, with the reason, in the PR body's Notes, proposing a \`code-gauge.config.json\` exclusion there for an intentional duplicate. Never edit \`code-gauge.config.json\` to silence a violation unless asked.
+- When a violation measures the code incorrectly (e.g., misparsed syntax, unrelated code reported as duplicated), search the issues of WillBooster/code-gauge and, if none covers it, create one with a freshly written minimal reproduction, the command, and its output.`;
 
 export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> = {
   command: 'code-gauge [target]',
@@ -143,7 +149,8 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
   const branchSummary = branchReport
     ? describeBranchViolations(branchViolations.length)
     : `not ordered by this branch's changes (no report for --base ${VERIFY_BASE_REF})`;
-  return formatReport(check, lines, branchSummary);
+  const report = formatReport(check, lines, branchSummary);
+  return allLines.length > 0 ? `${report}\n${VIOLATION_HANDLING_INSTRUCTIONS}` : report;
 }
 
 export function printCodeGaugeCommandsForVerify(project: Project): void {
