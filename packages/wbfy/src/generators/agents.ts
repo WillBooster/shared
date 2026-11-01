@@ -274,7 +274,7 @@ ${
 ${
   allConfigs.some((c) => c.depending.react || c.depending.next || c.depending.vinext)
     ? `- Prefer lambda over \`function\` for React components, e.g., \`const Button: React.FC = () => {\`.
-- Use \`useImmer\` instead of \`useState\` for arrays and objects in code you write or change, declaring \`use-immer\` and \`immer\` in the importing \`package.json\` if missing; call \`enableMapSet()\` for a \`Map\` or \`Set\`.
+- Use \`useImmer\` instead of \`useState\` for arrays and objects in code you write or change, declaring \`use-immer\` in the importing \`package.json\` if missing; for a \`Map\` or \`Set\`, also declare \`immer\` and call its \`enableMapSet()\`.
 - Use \`autoFocus\` only on the first field of a form or dialog whose main purpose is text entry.`
     : ''
 }
