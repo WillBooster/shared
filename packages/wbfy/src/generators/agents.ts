@@ -99,14 +99,14 @@ function generateAgentInstruction(
 ${TEST_WRITING_RULES}
 - When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
 - Before raising a concern, a conditional ("if X, ..."), or a question to the user, settle its premise yourself from the code, documentation, issues, and primary sources, and cite that evidence. Ask the user only about what those cannot settle (e.g., the requester's intent or business facts), stating what you checked; never present a premise you could have checked as a possibility.
-- After making changes, run locally only \`${packageManager} run verify\` (type checking and linting; up to 10 minutes) and the relevant tests; leave the full suite (\`${packageManager} run verify-full\`; up to 1 hour) to the PR's CI, or run it locally if PR CI does not. Fix errors, including CI failures, and re-run until they pass.
+- After making changes, run locally only \`${packageManager} run verify\` (type checking and linting; up to 10 minutes) and the relevant tests; leave the full suite (\`${packageManager} run verify-full\`; up to 1 hour) to the PR's CI, or run it locally if PR CI does not. Fix errors your change caused, including CI failures, and re-run until they pass. Report a failure that also occurs on the base branch or comes from infrastructure, with its evidence, instead of working around it.
   - Run relevant tests with \`${packageManager} wb test test/unit/example.test.ts --grep 'case name'\` (omit \`--grep\` for the whole file${workspaceOption}). \`${packageManager} wb verify --full <test-path> --grep 'case name'\` combines verification with selected tests.
   - Wait for it to finish without restarting it: prefer completion notifications, otherwise the longest permitted wait; no output does not mean it has stopped. If the displayed excerpt is insufficient, read the indicated log file before rerunning. If the environment kills long-running commands, run them detached with a saved log and exit status.
-  - \`verify\` also prints \`code-gauge\` errors and warnings without failing. In code your change touches, fix every error, and each warning whose fix makes the code easier to read, with behavior-preserving changes (e.g., extract a helper, flatten branching, reuse the code it duplicates). Leave a violation whose only fix moves complexity elsewhere (e.g., splitting a function mechanically), restructures far more code than your change touches, or removes an intentional duplicate (e.g., a file mirroring another by design); allow each warning left with a \`code-gauge-allow <metric> <max> -- <reason>\` comment on its own line right above the function's reported start line; for a duplicated block, above the start line of its enclosing function, separately for each copy (\`code-gauge-allow-file\` for the whole file or a block outside a function), where \`<metric>\` is the camelCase metric name (e.g., \`functionParameterCount\`) and \`<max>\` the reported value, and list each error left, which no comment can allow, with the reason, in the PR body's Notes, proposing a \`code-gauge.config.json\` exclusion there for an intentional duplicate. Never edit \`code-gauge.config.json\` to silence a violation unless asked. When a violation measures the code incorrectly (e.g., misparsed syntax, unrelated code reported as duplicated), search the issues of \`WillBooster/code-gauge\` and, if none covers it, create one with a freshly written minimal reproduction, the command, and its output.
-- Once verified, commit and push to the current branch, and create a PR via \`gh\` if none exists for the branch.
+  - \`verify\` also prints \`code-gauge\` errors and warnings without failing; when it does, follow the handling instructions printed after them.
+- Once verified, commit and push to the current branch, and create a PR via \`gh\` if none exists for the branch, unless the user asked only for an investigation, an experiment, or a local change.
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
   - Always create new commits; avoid \`--amend\`.${prTemplateInstruction}${issueTemplateInstruction}
-- In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.) other than the PR body's Requirements section, describe only the current implementation: drop any statement naming an identifier, feature, or concept you cannot confirm exists in the final diff or the current codebase (e.g., one added and later removed or renamed along the way). Whenever documentation or comments no longer match the current implementation, delete or rewrite them, even in files you are not otherwise changing. Mention a past state only where it is needed to understand why the current design is as it is, or when explicitly asked; files that record history by design (e.g., a changelog) are exempt.
+- In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.) other than the PR body's Requirements section, describe only the current implementation: drop any statement naming an identifier, feature, or concept you cannot confirm exists in the final diff or the current codebase (e.g., one added and later removed or renamed along the way). Whenever your change invalidates documentation or comments, or you find ones that no longer match the current implementation, delete or rewrite them, even in files you are not otherwise changing. Mention a past state only where it is needed to understand why the current design is as it is, or when explicitly asked; files that record history by design (e.g., a changelog) are exempt.
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`, \`gh issue create --body-file -\`).
 - Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.
 - Before finishing, delete every temporary file, backup, and external resource (e.g., databases, deployed Workers, branches) you created during the task for experiments or verification, without asking, after recording any findings worth keeping in your final response or in a file you keep. Keep an item only when a next step the user requested needs it or it holds the only copy of pre-task data the task was not meant to discard (e.g., a backup a tool kept because restoring it conflicted), and then state in your final response why and the command that deletes it.
@@ -247,35 +247,15 @@ export function generateAgentCodingStyle(
     : hasDesktopApp
       ? '- Ensure compatibility with Windows, macOS, and Linux.'
       : '- Ensure compatibility only with macOS and Linux; do not include Windows-specific code.';
-  // Cloudflare Workers execute across many ephemeral isolates and two requests are not guaranteed
-  // to hit the same instance, so the single-instance simplification silently loses state there —
-  // but Workers deliberately reuse execution contexts, so best-effort isolate-local caches stay
-  // legitimate (https://developers.cloudflare.com/workers/reference/how-workers-works/). The
-  // signals are correlated PER PACKAGE: a monorepo can host a single-instance server app next to
-  // an unrelated Worker, and neither may override the other's rule. doesContainWranglerConfig is
-  // the accurate Workers signal (isCloudflare also matches a mere wrangler mention in a script or
-  // workflow).
-  const hasWorkersApp = allConfigs.some((c) => c.doesContainWranglerConfig);
-  const hasSingleInstanceServerApp = allConfigs.some(
-    (c) => (c.depending.next || c.depending.vinext) && !c.doesContainWranglerConfig
-  );
-  const workersInstruction =
-    '- Cloudflare Workers run across many ephemeral isolates, so two requests may hit different instances: never let correctness depend on module-level mutable state; persist authoritative shared state in bindings (D1, KV, R2, Durable Objects). Best-effort isolate-local caches of non-request-scoped data are fine.';
-  const serverInstanceInstruction = hasWorkersApp
-    ? hasSingleInstanceServerApp
-      ? `${workersInstruction} This applies to all code running on Cloudflare Workers (the wrangler-configured packages and any workspace package they import); assume a single server instance for the other server apps.`
-      : workersInstruction
-    : hasSingleInstanceServerApp
-      ? '- Assume a single server instance.'
-      : '';
+  const serverInstanceInstruction = generateServerInstanceInstruction(allConfigs);
   // Keep top-down ordering guidance function-only because classes are not hoisted and can fail when inheritance or top-level instantiation depends on declaration order.
   return `
 ## Coding Style
 
 - Use camelCase file names for JavaScript/TypeScript (PascalCase for React components).
-- Simplify code as much as possible to eliminate redundancy.
+- In code your change touches, eliminate redundancy without changing behavior.
 - Design modules and directories with high cohesion and low coupling; split large modules when needed.
-- Place calling functions above the functions they call (top-down order); place variable and type declarations above their usage.
+- Place calling functions above the functions they call (top-down order), including functions assigned to a const unless referenced during module evaluation; place other variable and type declarations above their usage.
 ${commentInstruction}
 - Never explain how WillBooster's in-house tools (e.g., \`wb\`, \`wbfy\`) work in code comments or documents outside the tool's own package, except in instructions for AI agents (e.g., do not note that \`PORT\` is unset because \`wb\` picks a free port).
 - If lint errors or warnings cannot be fixed, use ignore comments with reasons (e.g., \`// oxlint-disable-next-line <rule> -- <reason>\`).
@@ -294,8 +274,8 @@ ${
 ${
   allConfigs.some((c) => c.depending.react || c.depending.next || c.depending.vinext)
     ? `- Prefer lambda over \`function\` for React components, e.g., \`const Button: React.FC = () => {\`.
-- Prefer \`useImmer\` over \`useState\` for arrays and objects.
-- Use \`autoFocus\` where it reduces user effort.`
+- Use \`useImmer\` instead of \`useState\` for arrays and objects in code you write or change, declaring \`use-immer\` in the importing \`package.json\` if missing; for a \`Map\` or \`Set\`, also declare \`immer\` and call its \`enableMapSet()\`.
+- Use \`autoFocus\` only on the first field of a form or dialog whose main purpose is text entry.`
     : ''
 }
 ${
@@ -310,6 +290,30 @@ ${serverInstanceInstruction}
     .replaceAll(/\.\n\n+-/g, '.\n-')
     .replaceAll(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function generateServerInstanceInstruction(allConfigs: PackageConfig[]): string {
+  // Cloudflare Workers execute across many ephemeral isolates and two requests are not guaranteed
+  // to hit the same instance, so the single-instance simplification silently loses state there —
+  // but Workers deliberately reuse execution contexts, so best-effort isolate-local caches stay
+  // legitimate (https://developers.cloudflare.com/workers/reference/how-workers-works/). The
+  // signals are correlated PER PACKAGE: a monorepo can host a single-instance server app next to
+  // an unrelated Worker, and neither may override the other's rule. doesContainWranglerConfig is
+  // the accurate Workers signal (isCloudflare also matches a mere wrangler mention in a script or
+  // workflow).
+  const hasWorkersApp = allConfigs.some((c) => c.doesContainWranglerConfig);
+  const hasSingleInstanceServerApp = allConfigs.some(
+    (c) => (c.depending.next || c.depending.vinext) && !c.doesContainWranglerConfig
+  );
+  const workersInstruction =
+    '- Cloudflare Workers run across many ephemeral isolates, so two requests may hit different instances: never let correctness depend on module-level mutable state; persist authoritative shared state in bindings (D1, KV, R2, Durable Objects). Best-effort isolate-local caches of non-request-scoped data are fine.';
+  if (!hasWorkersApp)
+    return hasSingleInstanceServerApp
+      ? '- Assume a single server instance, but never keep durable data only in memory.'
+      : '';
+  return hasSingleInstanceServerApp
+    ? `${workersInstruction} This applies to all code running on Cloudflare Workers (the wrangler-configured packages and any workspace package they import); assume a single server instance for the other server apps, but never keep durable data only in memory.`
+    : workersInstruction;
 }
 
 function hasPlaywrightTestServer(configs: PackageConfig[]): boolean {

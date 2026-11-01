@@ -89,7 +89,7 @@ it('shows the violations after the verification recap without failing', async ()
   const header = 'code-gauge: 0 errors, 2 warnings (2 functions, 0 files, 0 duplicated blocks)';
   expect(stdout.indexOf('Verified in')).toBeLessThan(stdout.indexOf(header));
   expect(stdout).toContain(
-    `${header}, 1 in code this branch changed (listed first)\n${addedViolation}\n${committedViolation}\n`
+    `${header}, 1 in code this branch changed (listed first)\n${addedViolation}\n${committedViolation}\nHow to handle these violations:\n`
   );
   expect(stripVTControlCharacters(await fs.readFile(path.join(dir, '.wb/verify.log'), 'utf8'))).toContain(
     addedViolation
