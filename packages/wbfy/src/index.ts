@@ -195,7 +195,7 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   const preflightError =
     (await findUnwritableManagedFileError(rootDirPath, subDirPaths)) ??
     findInvalidPackageJsonError(rootDirPath, subDirPaths) ??
-    findInvalidWbfyConfigError(rootDirPath, subDirPaths);
+    findInvalidWbfyConfigError(rootDirPath);
   if (preflightError) {
     console.error(preflightError);
     return false;
@@ -375,16 +375,13 @@ function findInvalidPackageJsonError(rootDirPath: string, subDirPaths: string[])
   return preflightErrors.length > 0 ? `Skip ${rootDirPath}:\n${preflightErrors.join('\n')}` : undefined;
 }
 
-function findInvalidWbfyConfigError(rootDirPath: string, subDirPaths: string[]): string | undefined {
-  const preflightErrors = [rootDirPath, ...subDirPaths].flatMap((dirPath) => {
-    try {
-      readWbfyConfig(dirPath);
-      return [];
-    } catch (error) {
-      return [`${path.resolve(dirPath, 'wbfy.yaml')} is invalid: ${String(error)}`];
-    }
-  });
-  return preflightErrors.length > 0 ? `Skip ${rootDirPath}:\n${preflightErrors.join('\n')}` : undefined;
+function findInvalidWbfyConfigError(rootDirPath: string): string | undefined {
+  try {
+    readWbfyConfig(rootDirPath);
+    return undefined;
+  } catch (error) {
+    return `Skip ${rootDirPath}:\n${path.resolve(rootDirPath, 'wbfy.yaml')} is invalid: ${String(error)}`;
+  }
 }
 
 /** Returns undefined, after reporting the reason, when the root or a workspace package.json is invalid. */

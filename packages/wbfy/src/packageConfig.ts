@@ -177,7 +177,7 @@ export async function getPackageConfig(
     // skip the fetch — they inherit the enclosing root's visibility via rootConfig instead.
     const repoInfo = options?.isRoot === false ? undefined : await fetchRepoInfo(dirPath, packageJson);
     const dockerfile = await readDockerfile(dirPath);
-    const wbfyConfig = readWbfyConfig(dirPath);
+    const wbfyConfig = options?.isRoot === false ? undefined : readWbfyConfig(dirPath);
     const [repoAuthor, repoName] = await resolveRepoIdentity(dirPath, packageJson, repoInfo);
     // Built from the RESOLVED identity so workspace packages and offline runs also get it; consumers derive
     // the owner from this field (e.g. to set `author`).
