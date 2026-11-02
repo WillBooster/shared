@@ -96,10 +96,10 @@ export function fixTyposInCode(content: string): string {
 }
 
 function replaceWithConfig(newContent: string, packageConfig: PackageConfig, propName: 'doc' | 'ts' | 'text'): string {
-  for (const [before, after] of Object.entries(packageConfig.wbfyJson?.typos?.all ?? {})) {
+  for (const [before, after] of Object.entries(packageConfig.wbfyConfig?.typos?.all ?? {})) {
     newContent = newContent.replaceAll(before, after);
   }
-  for (const [before, after] of Object.entries(packageConfig.wbfyJson?.typos?.[propName] ?? {})) {
+  for (const [before, after] of Object.entries(packageConfig.wbfyConfig?.typos?.[propName] ?? {})) {
     newContent = newContent.replaceAll(before, after);
   }
   return newContent;

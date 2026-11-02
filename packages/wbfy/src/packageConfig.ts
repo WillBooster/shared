@@ -1,3 +1,4 @@
+// code-gauge-allow-file fileNcss 427 -- All detection feeding PackageConfig stays together until it is split by concern.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -5,6 +6,7 @@ import path from 'node:path';
 import { getGlobIgnore } from '@willbooster/shared-lib-node/src';
 import { escapeRegExp } from '@willbooster/shared-lib/src';
 import fg from 'fast-glob';
+import * as yaml from 'js-yaml';
 import { parse as parseToml } from 'smol-toml';
 import type { PackageJson } from 'type-fest';
 import { z } from 'zod';
@@ -103,14 +105,18 @@ export interface PackageConfig {
   };
   miseTasks: Record<string, string>;
   packageJson?: PackageJson;
-  wbfyJson?: WbfyJson;
+  wbfyConfig?: WbfyConfig;
 }
 
-type WbfyJson = z.infer<typeof wbfyJsonSchema>;
+type WbfyConfig = z.infer<typeof wbfyConfigSchema>;
 
-const wbfyJsonSchema = z.object({
+const singleLineTextSchema = z.string().trim().min(1).regex(/^.+$/u, 'Must be a single line');
+
+const wbfyConfigSchema = z.strictObject({
+  purpose: singleLineTextSchema.optional(),
+  goals: z.array(singleLineTextSchema).min(1).optional(),
   typos: z
-    .object({
+    .strictObject({
       all: z.record(z.string(), z.string()).optional(),
       doc: z.record(z.string(), z.string()).optional(),
       ts: z.record(z.string(), z.string()).optional(),
@@ -171,7 +177,7 @@ export async function getPackageConfig(
     // skip the fetch — they inherit the enclosing root's visibility via rootConfig instead.
     const repoInfo = options?.isRoot === false ? undefined : await fetchRepoInfo(dirPath, packageJson);
     const dockerfile = await readDockerfile(dirPath);
-    const wbfyJson = await readWbfyJson(dirPath);
+    const wbfyConfig = readWbfyConfig(dirPath);
     const [repoAuthor, repoName] = await resolveRepoIdentity(dirPath, packageJson, repoInfo);
     // Built from the RESOLVED identity so workspace packages and offline runs also get it; consumers derive
     // the owner from this field (e.g. to set `author`).
@@ -267,7 +273,7 @@ export async function getPackageConfig(
       },
       miseTasks: await readMiseTasks(dirPath),
       packageJson,
-      wbfyJson,
+      wbfyConfig,
     };
     if (isProjectDir(config)) return config;
   } catch {
@@ -385,13 +391,11 @@ async function readDockerfile(dirPath: string): Promise<string> {
   }
 }
 
-async function readWbfyJson(dirPath: string): Promise<WbfyJson | undefined> {
-  try {
-    const wbfyJsonText = await fsp.readFile(path.resolve(dirPath, 'wbfy.json'), 'utf8');
-    return wbfyJsonSchema.parse(JSON.parse(wbfyJsonText));
-  } catch {
-    return undefined;
-  }
+/** Throws when `wbfy.yaml` is invalid, which the CLI reports before changing anything. */
+export function readWbfyConfig(dirPath: string): WbfyConfig | undefined {
+  const wbfyConfigPath = path.resolve(dirPath, 'wbfy.yaml');
+  if (!fs.existsSync(wbfyConfigPath)) return undefined;
+  return wbfyConfigSchema.parse(yaml.load(fs.readFileSync(wbfyConfigPath, 'utf8')));
 }
 
 async function resolveRepoIdentity(

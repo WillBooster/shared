@@ -1,8 +1,10 @@
 import { expect, test } from 'bun:test';
+import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { generateAgentInstructions } from '../../src/generators/agents.js';
+import { getPackageConfig } from '../../src/packageConfig.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -96,3 +98,65 @@ test('describes wb deploy only when the package script invokes it', async () => 
     await fs.promises.rm(dirPath, { force: true, recursive: true });
   }
 });
+
+test('lists the purpose and goals from wbfy.yaml under Project Information', async () => {
+  const tempRootPath = path.join(process.cwd(), '.tmp');
+  await fs.promises.mkdir(tempRootPath, { recursive: true });
+  const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'wbfy-config-'));
+
+  try {
+    fsUtil.setRootDirPath(dirPath);
+    await fs.promises.writeFile(path.join(dirPath, 'package.json'), '{ "name": "example" }');
+    await fs.promises.writeFile(
+      path.join(dirPath, 'wbfy.yaml'),
+      'purpose: Make reviews faster\ngoals:\n  - Review within an hour\n  - Keep false positives rare\n'
+    );
+    const config = await getPackageConfig(dirPath, { isRoot: true });
+    assert.ok(config);
+    await generateAgentInstructions(config, [config]);
+
+    expect(await fs.promises.readFile(path.join(dirPath, 'AGENTS.md'), 'utf8')).toContain(
+      `- Package Manager: bun
+- Purpose: Make reviews faster
+- Goals:
+  - Review within an hour
+  - Keep false positives rare
+
+## General Instructions`
+    );
+  } finally {
+    fsUtil.setRootDirPath(undefined);
+    await fs.promises.rm(dirPath, { force: true, recursive: true });
+  }
+});
+
+test.each([
+  ['a multi-line value', 'purpose: |\n  Line one\n  ## Line two\n'],
+  ['an unknown key', 'goal:\n  - Review within an hour\n'],
+  ['an empty list', 'goals: []\n'],
+  ['broken YAML', 'purpose: Make reviews faster: always\n'],
+])(
+  'stops before changing anything when wbfy.yaml has %s',
+  async (_name, wbfyYaml) => {
+    const tempRootPath = path.join(process.cwd(), '.tmp');
+    await fs.promises.mkdir(tempRootPath, { recursive: true });
+    const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'invalid-wbfy-config-'));
+
+    try {
+      await fs.promises.writeFile(path.join(dirPath, 'package.json'), '{ "name": "example" }');
+      await fs.promises.writeFile(path.join(dirPath, 'wbfy.yaml'), wbfyYaml);
+      const spawned = Bun.spawn(['bun', path.join(import.meta.dir, '../../src/index.ts'), dirPath], {
+        stderr: 'pipe',
+        stdout: 'pipe',
+      });
+      const [exitCode, stderr] = await Promise.all([spawned.exited, new Response(spawned.stderr).text()]);
+
+      expect(exitCode).not.toBe(0);
+      expect(stderr).toContain('wbfy.yaml is invalid');
+      expect(fs.existsSync(path.join(dirPath, 'AGENTS.md'))).toBe(false);
+    } finally {
+      await fs.promises.rm(dirPath, { force: true, recursive: true });
+    }
+  },
+  60_000
+);

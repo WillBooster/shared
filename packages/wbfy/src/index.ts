@@ -52,7 +52,7 @@ import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
 import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
-import { getPackageConfig, getWorkerTypesScriptError } from './packageConfig.js';
+import { getPackageConfig, getWorkerTypesScriptError, readWbfyConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { hasGitHubToken } from './utils/githubUtil.js';
@@ -189,11 +189,13 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
 }
 
 /** Returns whether the repository was processed without an error. */
+// code-gauge-allow functionNcss 39 -- Generator ordering is the point of this function; splitting it would hide that order.
 async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean): Promise<boolean> {
   const subDirPaths = await listSubPackageDirPaths(rootDirPath);
   const preflightError =
     (await findUnwritableManagedFileError(rootDirPath, subDirPaths)) ??
-    findInvalidPackageJsonError(rootDirPath, subDirPaths);
+    findInvalidPackageJsonError(rootDirPath, subDirPaths) ??
+    findInvalidWbfyConfigError(rootDirPath, subDirPaths);
   if (preflightError) {
     console.error(preflightError);
     return false;
@@ -368,6 +370,18 @@ function findInvalidPackageJsonError(rootDirPath: string, subDirPaths: string[])
       return error ? [`${dirPath}: ${error}`] : [];
     } catch {
       return [`${packageJsonPath} is invalid`];
+    }
+  });
+  return preflightErrors.length > 0 ? `Skip ${rootDirPath}:\n${preflightErrors.join('\n')}` : undefined;
+}
+
+function findInvalidWbfyConfigError(rootDirPath: string, subDirPaths: string[]): string | undefined {
+  const preflightErrors = [rootDirPath, ...subDirPaths].flatMap((dirPath) => {
+    try {
+      readWbfyConfig(dirPath);
+      return [];
+    } catch (error) {
+      return [`${path.resolve(dirPath, 'wbfy.yaml')} is invalid: ${String(error)}`];
     }
   });
   return preflightErrors.length > 0 ? `Skip ${rootDirPath}:\n${preflightErrors.join('\n')}` : undefined;
