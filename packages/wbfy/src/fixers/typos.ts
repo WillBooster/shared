@@ -46,7 +46,8 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     const textBasedFiles = await fg.glob('**/*.{csv,htm,html,tsv,xml,yaml,yml}', {
       dot: true,
       cwd: dirPath,
-      ignore: globIgnore,
+      // Rewriting wbfy.yaml would apply its `typos` to their own keys and disable them on the next run.
+      ignore: [...globIgnore, 'wbfy.yaml'],
     });
     if (options.isVerbose) {
       console.info(`Found ${textBasedFiles.length} text-based files in ${dirPath}`);

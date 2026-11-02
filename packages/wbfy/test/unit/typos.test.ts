@@ -1,9 +1,11 @@
 import { expect, test } from 'bun:test';
+import assert from 'node:assert';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 import { fixTypos, fixTyposInCode, fixTyposInText } from '../../src/fixers/typos.js';
+import { getPackageConfig } from '../../src/packageConfig.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
 import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
@@ -41,6 +43,26 @@ test('fixTypos resolves only after every file is rewritten, including files queu
     }
   } finally {
     promisePool.concurrency = oldConcurrency;
+    fsUtil.setRootDirPath(undefined);
+    fs.rmSync(dirPath, { force: true, recursive: true });
+  }
+});
+
+test('fixTypos keeps wbfy.yaml intact so its replacements apply on every run', async () => {
+  const dirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-typos-config-')));
+  const wbfyYaml = 'typos:\n  all:\n    teh: the\n';
+  try {
+    fsUtil.setRootDirPath(dirPath);
+    fs.writeFileSync(path.join(dirPath, 'package.json'), '{ "name": "example" }');
+    fs.writeFileSync(path.join(dirPath, 'wbfy.yaml'), wbfyYaml);
+    fs.writeFileSync(path.join(dirPath, 'doc.md'), 'teh example\n');
+    const config = await getPackageConfig(dirPath, { isRoot: true });
+    assert.ok(config);
+    await fixTypos(config);
+
+    expect(fs.readFileSync(path.join(dirPath, 'doc.md'), 'utf8')).toBe('the example\n');
+    expect(fs.readFileSync(path.join(dirPath, 'wbfy.yaml'), 'utf8')).toBe(wbfyYaml);
+  } finally {
     fsUtil.setRootDirPath(undefined);
     fs.rmSync(dirPath, { force: true, recursive: true });
   }
