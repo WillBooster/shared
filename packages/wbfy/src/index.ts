@@ -52,7 +52,7 @@ import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
 import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
-import { getPackageConfig, getWorkerTypesScriptError } from './packageConfig.js';
+import { getPackageConfig, getWorkerTypesScriptError, readWbfyConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { hasGitHubToken } from './utils/githubUtil.js';
@@ -189,11 +189,13 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
 }
 
 /** Returns whether the repository was processed without an error. */
+// code-gauge-allow functionNcss 39 -- Generator ordering is the point of this function; splitting it would hide that order.
 async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean): Promise<boolean> {
   const subDirPaths = await listSubPackageDirPaths(rootDirPath);
   const preflightError =
     (await findUnwritableManagedFileError(rootDirPath, subDirPaths)) ??
-    findInvalidPackageJsonError(rootDirPath, subDirPaths);
+    findInvalidPackageJsonError(rootDirPath, subDirPaths) ??
+    findInvalidWbfyConfigError(rootDirPath);
   if (preflightError) {
     console.error(preflightError);
     return false;
@@ -371,6 +373,15 @@ function findInvalidPackageJsonError(rootDirPath: string, subDirPaths: string[])
     }
   });
   return preflightErrors.length > 0 ? `Skip ${rootDirPath}:\n${preflightErrors.join('\n')}` : undefined;
+}
+
+function findInvalidWbfyConfigError(rootDirPath: string): string | undefined {
+  try {
+    readWbfyConfig(rootDirPath);
+    return undefined;
+  } catch (error) {
+    return `Skip ${rootDirPath}:\n${path.resolve(rootDirPath, 'wbfy.yaml')} is invalid: ${String(error)}`;
+  }
 }
 
 /** Returns undefined, after reporting the reason, when the root or a workspace package.json is invalid. */

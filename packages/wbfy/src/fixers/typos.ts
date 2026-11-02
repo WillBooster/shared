@@ -46,7 +46,8 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     const textBasedFiles = await fg.glob('**/*.{csv,htm,html,tsv,xml,yaml,yml}', {
       dot: true,
       cwd: dirPath,
-      ignore: globIgnore,
+      // Rewriting wbfy.yaml would apply its `typos` to their own keys and disable them on the next run.
+      ignore: [...globIgnore, 'wbfy.yaml'],
     });
     if (options.isVerbose) {
       console.info(`Found ${textBasedFiles.length} text-based files in ${dirPath}`);
@@ -96,10 +97,10 @@ export function fixTyposInCode(content: string): string {
 }
 
 function replaceWithConfig(newContent: string, packageConfig: PackageConfig, propName: 'doc' | 'ts' | 'text'): string {
-  for (const [before, after] of Object.entries(packageConfig.wbfyJson?.typos?.all ?? {})) {
+  for (const [before, after] of Object.entries(packageConfig.wbfyConfig?.typos?.all ?? {})) {
     newContent = newContent.replaceAll(before, after);
   }
-  for (const [before, after] of Object.entries(packageConfig.wbfyJson?.typos?.[propName] ?? {})) {
+  for (const [before, after] of Object.entries(packageConfig.wbfyConfig?.typos?.[propName] ?? {})) {
     newContent = newContent.replaceAll(before, after);
   }
   return newContent;
