@@ -15,7 +15,7 @@ test("replaces the repository's rflAgent while keeping its other settings and co
       filePath,
       `{
   // Keep this repository setting.
-  "exploreReviewers": true,
+  "exploreReviewers": 2,
   "rflAgent": { "custom": { "baseUrl": "http://localhost:11434/v1" } },
 }
 `
@@ -26,7 +26,7 @@ test("replaces the repository's rflAgent while keeping its other settings and co
     const content = fs.readFileSync(filePath, 'utf8');
     expect(content).toContain('// Keep this repository setting.');
     expect(jsoncUtil.parseObjectIgnoringError(content)).toEqual({
-      exploreReviewers: true,
+      exploreReviewers: 2,
       rflAgent: {
         custom: {
           baseUrl: 'https://llm.willbooster.com/v1',

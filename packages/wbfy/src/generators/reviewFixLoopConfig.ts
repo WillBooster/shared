@@ -30,6 +30,7 @@ export async function generateReviewFixLoopConfig(config: PackageConfig): Promis
       return;
     }
     const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(oldContent, {
+      ...(isTreeSitterRepo(config) ? { exploreReviewers: 0 } : {}),
       rflAgent: rflAgentSettings,
     });
     if (content.trim() === oldContent?.trim()) return;
@@ -38,4 +39,9 @@ export async function generateReviewFixLoopConfig(config: PackageConfig): Promis
       console.warn(`Comments inside "${key}" were dropped while rewriting it in ${filePath}.`);
     }
   });
+}
+
+/** Reviews of the `tree-sitter` CLI and grammar repositories add no exploration reviewer to save its model costs. */
+function isTreeSitterRepo(config: PackageConfig): boolean {
+  return /^tree-sitter(?:-|$)/iu.test(config.repoName ?? '');
 }
