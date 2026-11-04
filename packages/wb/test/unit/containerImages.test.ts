@@ -131,6 +131,22 @@ it('changes the image for build variables and resolves staging containers', asyn
   expect(readBuilds()).toHaveLength(2);
 });
 
+it('isolates published image keys between deployment targets', async () => {
+  const first = createProject('target-first');
+  const second = createProject('target-second');
+  const secondConfigPath = path.join(second, 'wrangler.json');
+  const secondConfig = JSON.parse(fs.readFileSync(secondConfigPath, 'utf8'));
+  secondConfig.name = 'another-worker';
+  fs.writeFileSync(secondConfigPath, JSON.stringify(secondConfig));
+  await deploy(first);
+  await deploy(second);
+  await deploy(first);
+  const deployed = readDeployments();
+  expect(deployed[0]?.image).not.toBe(deployed[1]?.image);
+  expect(deployed[0]?.image).toBe(deployed[2]?.image);
+  expect(readBuilds()).toEqual(['original', 'original']);
+});
+
 it.each([{ CLOUDFLARE_CONTAINER_REGISTRY: 'registry.example.invalid' }, { WRANGLER_API_ENVIRONMENT: 'staging' }])(
   'reuses images in the registry selected by Wrangler: %j',
   async (env) => {

@@ -34,6 +34,7 @@ type Container = z.infer<typeof containerSchema>;
 interface ContainerImageDeployment {
   project: Project;
   configPath: string;
+  workerName: string;
   envName?: string;
   deploy: (configPath: string) => Promise<void>;
 }
@@ -41,6 +42,7 @@ interface ContainerImageDeployment {
 export async function withReusableContainerImages({
   project,
   configPath,
+  workerName,
   envName,
   deploy,
 }: ContainerImageDeployment): Promise<void> {
@@ -67,6 +69,7 @@ export async function withReusableContainerImages({
     for (const container of localContainers) {
       await reuseContainerImage(container, {
         configDir: path.dirname(absoluteConfigPath),
+        workerName,
         temporaryDir,
         registry,
         wranglerArgs,
@@ -119,6 +122,7 @@ function createTemporaryImageFiles(configPath: string, cancellation: AbortContro
 
 interface ImageContext {
   configDir: string;
+  workerName: string;
   temporaryDir: string;
   registry: { name: string; tags: string[] }[];
   wranglerArgs: string[];
@@ -154,7 +158,7 @@ async function reuseContainerImage(container: Container, context: ImageContext):
 }
 
 async function resolveCommittedImageSource(container: Container, context: ImageContext): Promise<CommittedImageSource> {
-  const { configDir, run } = context;
+  const { configDir, workerName, run } = context;
   let dockerfile = path.resolve(configDir, container.image);
   if (fs.statSync(dockerfile).isDirectory()) dockerfile = path.join(dockerfile, 'Dockerfile');
   const buildContext = path.resolve(configDir, container.image_build_context ?? path.dirname(dockerfile));
@@ -174,7 +178,7 @@ async function resolveCommittedImageSource(container: Container, context: ImageC
     .toSorted()
     .map((name) => [name, vars[name]] as const);
   const key = createHash('sha256')
-    .update(JSON.stringify({ tree, dockerfilePath, buildVars, platform: 'linux/amd64' }))
+    .update(JSON.stringify({ tree, workerName, dockerfilePath, buildVars, platform: 'linux/amd64' }))
     .digest('hex');
   return { key, revision, contextPath, repository, dockerfilePath, buildVars };
 }
