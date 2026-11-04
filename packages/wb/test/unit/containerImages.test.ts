@@ -28,7 +28,7 @@ const registryHost = () => process.env.CLOUDFLARE_CONTAINER_REGISTRY ?? (process
 const account = () => {
   const configPath = args.includes('--config') ? args[args.indexOf('--config') + 1] : path.resolve('wrangler.json');
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  const envName = args.includes('--env') ? args[args.indexOf('--env') + 1] : undefined;
+  const envName = args.includes('--env') ? args[args.indexOf('--env') + 1] : process.env.CLOUDFLARE_ENV;
   return config.env?.[envName]?.account_id ?? config.account_id ?? process.env.CLOUDFLARE_ACCOUNT_ID;
 };
 if (path.basename(process.argv[1]) === 'docker') {
@@ -41,7 +41,7 @@ if (path.basename(process.argv[1]) === 'docker') {
   }
 } else if (path.basename(process.argv[1]) === 'vinext') {
   const source = JSON.parse(fs.readFileSync('wrangler.json', 'utf8'));
-  const config = { ...source, ...source.env?.[process.env.WB_ENV] };
+  const config = { ...source, ...source.env?.[process.env.CLOUDFLARE_ENV] };
   delete config.env;
   config.main = '../../src.ts';
   config.containers[0].image = '../../agent/Dockerfile';
@@ -61,7 +61,8 @@ if (path.basename(process.argv[1]) === 'docker') {
   const configPath = args[args.indexOf('--config') + 1];
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   const deploys = JSON.parse(fs.readFileSync(path.join(root, 'deployed.json'), 'utf8'));
-  const selected = args.includes('--env') ? config.env[args[args.indexOf('--env') + 1]] : config;
+  const selectedEnv = args.includes('--env') ? args[args.indexOf('--env') + 1] : process.env.CLOUDFLARE_ENV;
+  const selected = config.env?.[selectedEnv] ?? config;
   if (fs.existsSync(path.resolve(path.dirname(configPath), selected.containers[0].image))) {
     require('node:child_process').execFileSync('docker', ['build', path.dirname(path.resolve(path.dirname(configPath), selected.containers[0].image))]);
   }
@@ -190,6 +191,26 @@ it.each(['plain', 'vinext'])('uses the resolved named-environment account for %s
   fs.writeFileSync(configPath, JSON.stringify(config));
   await deploy(project, { WB_ENV: 'staging' });
   expect(readDeployments()[0]?.image).toContain('registry.cloudflare.com/staging-account/');
+});
+
+it.each(['plain', 'vinext'])('ignores an ambient Wrangler environment from a %s project profile', async (mode) => {
+  const project = createProject('ambient');
+  if (mode === 'vinext')
+    fs.writeFileSync(
+      path.join(project, 'package.json'),
+      JSON.stringify({ name: 'fixture', dependencies: { vinext: '1.0.0' } })
+    );
+  const configPath = path.join(project, 'wrangler.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  config.env = { staging: { account_id: 'staging-account', containers: config.containers } };
+  fs.writeFileSync(configPath, JSON.stringify(config));
+  fs.writeFileSync(
+    path.join(project, 'fnox.toml'),
+    '[secrets]\nCLOUDFLARE_ENV = { default = "staging" }\n[profiles.production]\n[profiles.staging]\n'
+  );
+  await deploy(project);
+  expect(readDeployments()[0]?.image).toContain('registry.cloudflare.com/account/');
+  expect(readBuilds()).toEqual(['original']);
 });
 
 it.each(['HOLD_BUILD', 'HOLD_DEPLOY'])(

@@ -9,6 +9,7 @@ import { parse } from 'jsonc-parser';
 import { z } from 'zod';
 
 import type { Project } from '../project.js';
+import { createWranglerDeployEnv } from './wranglerDeployEnv.js';
 
 const execute = promisify(execFile);
 const containerSchema = z
@@ -54,7 +55,7 @@ export async function withReusableContainerImages({
     fs.existsSync(path.resolve(path.dirname(absoluteConfigPath), container.image))
   );
   if (localContainers.length === 0) return deploy(configPath);
-  const env = project.env;
+  const env = createWranglerDeployEnv(project.env);
   const cancellation = new AbortController();
   const wranglerArgs = ['--config', absoluteConfigPath, ...(envName ? ['--env', envName] : [])];
   const run = async (command: string, args: string[], cwd = project.dirPath): Promise<string> => {

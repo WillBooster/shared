@@ -26,6 +26,7 @@ import {
   resolveWranglerConfigForEnv,
   selectD1MigrationMechanisms,
 } from '../utils/wranglerConfig.js';
+import { createWranglerDeployEnv } from '../utils/wranglerDeployEnv.js';
 import { deployRailway, RAILWAY_IAC_FILE_PATH } from './deployRailway.js';
 
 /**
@@ -104,10 +105,6 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     'Deploy to the WB_ENV environment. A Cloudflare Workers app (vinext or plain Worker): validate secrets, build, apply remote D1 migrations, then deploy code and secrets atomically. A Railway service (.railway/railway.ts): check the IaC plan, sync fnox variables, apply the plan, then railway up and wait until the created deployment succeeds; --dry-run only checks the plan of every environment.',
   builder: (yargs) => yargs.options(builder) as unknown as Argv<DeployCommandOptions>,
   async handler(argv: DeployCommandArgv) {
-    // A stray exported CLOUDFLARE_ENV would bake the wrong environment into the build and
-    // apply the environment suffix twice on deploy; it is re-set explicitly where needed.
-    // A dotenv file defining it still surfaces through project.env, which the explicit `--env`
-    // flags of the wrangler commands override.
     delete process.env.CLOUDFLARE_ENV;
 
     const project = findSelfProjectOrExit(argv);
@@ -410,7 +407,8 @@ async function validateWorkerBuild(
   await runWithSpawn(
     `YARN wrangler deploy --dry-run --config ${shellEscapeArgument(deployConfigPath)}${envOption}`,
     project,
-    argv
+    argv,
+    { env: createWranglerDeployEnv(project.env) }
   );
 }
 
@@ -428,7 +426,7 @@ function createVinextBuildEnv(project: Project, envName: string, usesEnvSection:
   }
   let buildEnv: Record<string, string>;
   try {
-    buildEnv = createSecretFreeBuildEnv(project, envName);
+    buildEnv = createWranglerDeployEnv(createSecretFreeBuildEnv(project, envName));
   } catch (error) {
     exitWithError(`The vinext build gets only plaintext fnox values: ${getErrorMessage(error)}`);
   }
@@ -453,7 +451,8 @@ async function applyD1Migrations(
     await runWithSpawn(
       `CI=true YARN wrangler d1 migrations apply ${shellEscapeArgument(databaseName)} --remote --config ${shellEscapeArgument(wranglerConfigPath)}${envOption}`,
       project,
-      argv
+      argv,
+      { env: createWranglerDeployEnv(project.env) }
     );
   }
   if (drizzleD1Database) {
@@ -522,14 +521,15 @@ async function deployCodeAndSecrets(
   return true;
 }
 
+// code-gauge-allow functionCognitiveComplexity 18 -- Signal forwarding and secret cleanup share subprocess state.
+// code-gauge-allow functionNcss 35 -- Keep the subprocess and its signal handlers in one cleanup scope.
 async function runWranglerWithSecretsFile(
   project: Project,
   deployArgs: string[],
   secrets: Record<string, string>
 ): Promise<{ deployStatus: number | undefined; receivedShutdownSignal: NodeJS.Signals | undefined }> {
   prepareLocalBinPath(project);
-  const deployEnv = { ...project.env };
-  delete deployEnv.CLOUDFLARE_ENV;
+  const deployEnv = createWranglerDeployEnv(project.env);
   // 0o700 directory + 0o600 file: readable only by the deploying user, like the dotenv
   // files the CI workflow already writes next to it. wrangler runs through an async spawn
   // (spawnSync would block the event loop, so a shutdown signal would kill the process
@@ -688,7 +688,7 @@ async function listRemoteWorkerSecretNames(
   try {
     ret = await spawnAsync('wrangler', listArgs, {
       cwd: project.dirPath,
-      env: project.env as NodeJS.ProcessEnv,
+      env: createWranglerDeployEnv(project.env) as NodeJS.ProcessEnv,
       stdio: 'pipe',
       killOnExit: true,
       verbose: argv.verbose,
