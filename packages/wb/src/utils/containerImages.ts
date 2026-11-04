@@ -33,7 +33,7 @@ type Container = z.infer<typeof containerSchema>;
 interface ContainerImageDeployment {
   project: Project;
   configPath: string;
-  envName: string;
+  envName?: string;
   accountId?: string;
   deploy: (configPath: string) => Promise<void>;
 }
@@ -47,7 +47,7 @@ export async function withReusableContainerImages({
 }: ContainerImageDeployment): Promise<void> {
   const absoluteConfigPath = path.resolve(project.dirPath, configPath);
   const config = configSchema.parse(parse(fs.readFileSync(absoluteConfigPath, 'utf8')));
-  const selected = config.env?.[envName] ?? config;
+  const selected = (envName ? config.env?.[envName] : undefined) ?? config;
   const containers = selected.containers ?? [];
   const localContainers = containers.filter((container) =>
     fs.existsSync(path.resolve(path.dirname(absoluteConfigPath), container.image))
@@ -56,13 +56,14 @@ export async function withReusableContainerImages({
   if (!accountId) throw new Error('--reuse-container-images requires account_id or CLOUDFLARE_ACCOUNT_ID.');
   const env = { ...project.env, CLOUDFLARE_ACCOUNT_ID: accountId };
   const cancellation = new AbortController();
+  const wranglerArgs = ['--config', absoluteConfigPath, ...(envName ? ['--env', envName] : [])];
   const run = async (command: string, args: string[], cwd = project.dirPath): Promise<string> => {
     const result = await execute(command, args, { cwd, env, signal: cancellation.signal, maxBuffer: 64 * 1024 * 1024 });
     return result.stdout.trim();
   };
   const registry = z
     .array(z.object({ name: z.string(), tags: z.array(z.string()) }))
-    .parse(JSON.parse(await run('wrangler', ['containers', 'images', 'list', '--json'])));
+    .parse(JSON.parse(await run('wrangler', ['containers', 'images', 'list', '--json', ...wranglerArgs])));
   const { temporaryDir, temporaryConfig, dispose } = createTemporaryImageFiles(absoluteConfigPath, cancellation);
   try {
     for (const container of localContainers) {
@@ -71,6 +72,7 @@ export async function withReusableContainerImages({
         temporaryDir,
         accountId,
         registry,
+        wranglerArgs,
         run,
       });
     }
@@ -123,6 +125,7 @@ interface ImageContext {
   temporaryDir: string;
   accountId: string;
   registry: { name: string; tags: string[] }[];
+  wranglerArgs: string[];
   run: (command: string, args: string[], cwd?: string) => Promise<string>;
 }
 
@@ -194,5 +197,5 @@ async function buildAndPushImage(image: string, source: CommittedImageSource, co
     ...buildVars.flatMap(([name, value]) => ['--build-arg', `${name}=${value}`]),
     directory,
   ]);
-  await run('wrangler', ['containers', 'push', image]);
+  await run('wrangler', ['containers', 'push', image, ...context.wranglerArgs]);
 }

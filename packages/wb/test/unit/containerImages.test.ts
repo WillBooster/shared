@@ -24,6 +24,12 @@ const path = require('node:path');
 const args = process.argv.slice(2);
 const root = process.env.FAKE_REGISTRY_DIR ?? ${JSON.stringify(directory)};
 const registryPath = path.join(root, 'registry.json');
+const account = () => {
+  const configPath = args.includes('--config') ? args[args.indexOf('--config') + 1] : path.resolve('wrangler.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  const envName = args.includes('--env') ? args[args.indexOf('--env') + 1] : undefined;
+  return config.env?.[envName]?.account_id ?? config.account_id ?? process.env.CLOUDFLARE_ACCOUNT_ID;
+};
 if (path.basename(process.argv[1]) === 'docker') {
   const context = args.at(-1);
   if (fs.existsSync(path.join(context, 'untracked.txt'))) throw new Error('Untracked input reached Docker');
@@ -33,7 +39,9 @@ if (path.basename(process.argv[1]) === 'docker') {
     setInterval(() => {}, 1000);
   }
 } else if (path.basename(process.argv[1]) === 'vinext') {
-  const config = JSON.parse(fs.readFileSync('wrangler.json', 'utf8'));
+  const source = JSON.parse(fs.readFileSync('wrangler.json', 'utf8'));
+  const config = { ...source, ...source.env?.[process.env.WB_ENV] };
+  delete config.env;
   config.main = '../../src.ts';
   config.containers[0].image = '../../agent/Dockerfile';
   fs.mkdirSync('dist/server', { recursive: true });
@@ -42,11 +50,11 @@ if (path.basename(process.argv[1]) === 'docker') {
   console.log('[]');
 } else if (args[0] === 'containers' && args[1] === 'images') {
   if (process.env.FAIL_REGISTRY) process.exit(7);
-  console.log(fs.readFileSync(registryPath, 'utf8'));
+  console.log(JSON.stringify(JSON.parse(fs.readFileSync(registryPath, 'utf8')).filter((entry) => entry.account === account()).map(({ name, tags }) => ({ name, tags }))));
 } else if (args[0] === 'containers' && args[1] === 'push') {
   const [name, tag] = args[2].split(':');
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-  registry.push({ name, tags: [tag] });
+  registry.push({ name, tags: [tag], account: account() });
   fs.writeFileSync(registryPath, JSON.stringify(registry));
 } else if (args[0] === 'deploy') {
   const configPath = args[args.indexOf('--config') + 1];
@@ -57,6 +65,9 @@ if (path.basename(process.argv[1]) === 'docker') {
     require('node:child_process').execFileSync('docker', ['build', path.dirname(path.resolve(path.dirname(configPath), selected.containers[0].image))]);
   }
   if (args.includes('--dry-run')) process.exit(0);
+  const image = selected.containers[0].image;
+  const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+  if (!registry.some((entry) => entry.account === account() && entry.tags.some((tag) => image === 'registry.cloudflare.com/' + entry.account + '/' + entry.name + ':' + tag))) throw new Error('Image is unavailable in deployment account');
   deploys.push({ image: selected.containers[0].image, configPath, main: path.resolve(path.dirname(configPath), config.main) });
   fs.writeFileSync(path.join(root, 'deployed.json'), JSON.stringify(deploys));
   if (process.env.FAIL_DEPLOY) process.exit(9);
@@ -117,8 +128,13 @@ it('changes the image for build variables and resolves staging containers', asyn
   expect(readBuilds()).toHaveLength(2);
 });
 
-it('uses the resolved named-environment account for registry images', async () => {
+it.each(['plain', 'vinext'])('uses the resolved named-environment account for %s registry images', async (mode) => {
   const project = createProject('account');
+  if (mode === 'vinext')
+    fs.writeFileSync(
+      path.join(project, 'package.json'),
+      JSON.stringify({ name: 'fixture', dependencies: { vinext: '1.0.0' } })
+    );
   const configPath = path.join(project, 'wrangler.json');
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   config.env = { staging: { account_id: 'staging-account', containers: config.containers } };
