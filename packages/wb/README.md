@@ -149,6 +149,12 @@ Options:
       --help              Show help                                    [boolean]
 ```
 
+## Cloudflare Container イメージの再利用
+
+`wb deploy --reuse-container-images` は、コミット済みのビルドコンテキストが同じ場合に公開済みイメージを再利用します。初回のビルドにはDockerが必要です。DockerfileはGitリポジトリ内のコンテキストに含めてコミットしてください。未追跡ファイルと生成物はビルドに含まれず、追跡ファイルに未コミット変更があるとデプロイは失敗します。
+
+再利用のキーには、コンテキストのGitツリー、Dockerfileの相対パス、`image_vars`、`linux/amd64` を使います。追跡済みドキュメントや `.dockerignore` 対象ファイルの変更も再ビルドにつながります。外部の依存先を更新する場合も、コンテキストのコミットを更新してください。同じWorkerのデプロイは直列に実行してください。イメージ以外のコンテナ設定を変更すると、Cloudflareがコンテナを置き換えることがあります。
+
 ## Disk cleanup
 
 `wb gc` removes what is safe to lose and prints each removed path to stderr. `--dry-run` only lists them.
