@@ -23,8 +23,6 @@ const containerSchema = z
   .passthrough();
 const configSchema = z
   .object({
-    name: z.string(),
-    account_id: z.string().optional(),
     containers: z.array(containerSchema).optional(),
     env: z.record(z.string(), z.object({ containers: z.array(containerSchema).optional() }).passthrough()).optional(),
   })

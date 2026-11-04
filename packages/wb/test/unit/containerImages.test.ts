@@ -240,6 +240,20 @@ it.each(['plain', 'vinext'])('ignores an ambient Wrangler environment from a %s 
   expect(readBuilds()).toEqual(['original']);
 });
 
+it('uses a named environment without requiring a root Worker name', async () => {
+  const project = createProject('environment-name');
+  const configPath = path.join(project, 'wrangler.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  delete config.name;
+  config.env = { staging: { name: 'stage-worker', containers: config.containers } };
+  fs.writeFileSync(configPath, JSON.stringify(config));
+  await deploy(project, { WB_ENV: 'staging' });
+  await deploy(project, { WB_ENV: 'staging' });
+  const deployed = readDeployments();
+  expect(deployed[0]?.image).toBe(deployed[1]?.image);
+  expect(readBuilds()).toEqual(['original']);
+});
+
 it.each(['HOLD_BUILD', 'HOLD_DEPLOY'])(
   'cleans temporary resources on SIGTERM during %s',
   async (stage) => {
