@@ -132,8 +132,7 @@ interface ImageContext {
 
 interface CommittedImageSource {
   key: string;
-  revision: string;
-  contextPath: string;
+  treeish: string;
   repository: string;
   dockerfilePath: string;
   buildVars: (readonly [string, string | undefined])[];
@@ -170,7 +169,8 @@ async function resolveCommittedImageSource(container: Container, context: ImageC
     throw new Error('--reuse-container-images requires the Dockerfile inside its committed build context.');
   }
   const revision = await run('git', ['rev-parse', 'HEAD'], repository);
-  const tree = await run('git', ['rev-parse', `${revision}:${contextPath || '.'}`], repository);
+  const treeish = `${revision}:${contextPath}`;
+  const tree = await run('git', ['rev-parse', treeish], repository);
   if (await run('git', ['diff', revision, '--', contextPath || '.'], repository)) {
     throw new Error(`Commit container build context changes before deploying: ${buildContext}`);
   }
@@ -181,16 +181,16 @@ async function resolveCommittedImageSource(container: Container, context: ImageC
   const key = createHash('sha256')
     .update(JSON.stringify({ tree, workerName, dockerfilePath, buildVars, platform: 'linux/amd64' }))
     .digest('hex');
-  return { key, revision, contextPath, repository, dockerfilePath, buildVars };
+  return { key, treeish, repository, dockerfilePath, buildVars };
 }
 
 async function buildAndPushImage(image: string, source: CommittedImageSource, context: ImageContext): Promise<void> {
-  const { key, revision, contextPath, repository, dockerfilePath, buildVars } = source;
+  const { key, treeish, repository, dockerfilePath, buildVars } = source;
   const { temporaryDir, run } = context;
   const archive = path.join(temporaryDir, `${key}.tar`);
   const directory = path.join(temporaryDir, key);
   fs.mkdirSync(directory, { recursive: true });
-  await run('git', ['archive', '--format=tar', `--output=${archive}`, `${revision}:${contextPath || '.'}`], repository);
+  await run('git', ['archive', '--format=tar', `--output=${archive}`, treeish], repository);
   await run('tar', ['-xf', archive, '-C', directory]);
   const stagedDockerfile = path.join(directory, dockerfilePath);
   if (!fs.existsSync(stagedDockerfile)) throw new Error(`Container Dockerfile must be committed: ${dockerfilePath}`);

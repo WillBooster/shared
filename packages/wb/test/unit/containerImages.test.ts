@@ -87,6 +87,33 @@ if (path.basename(process.argv[1]) === 'docker') {
 });
 afterEach(() => fs.rmSync(directory, { recursive: true, force: true }));
 
+it.each([false, true])('deploys a committed root build context (workspace: %s)', async (workspace) => {
+  const project = createProject('root-context');
+  fs.copyFileSync(path.join(project, 'agent', 'Dockerfile'), path.join(project, 'Dockerfile'));
+  fs.copyFileSync(path.join(project, 'agent', 'source.txt'), path.join(project, 'source.txt'));
+  const config = JSON.parse(fs.readFileSync(path.join(project, 'wrangler.json'), 'utf8'));
+  config.containers[0].image = workspace ? '../../Dockerfile' : './Dockerfile';
+  let app = project;
+  if (workspace) {
+    app = path.join(project, 'apps', 'worker');
+    fs.mkdirSync(path.join(app, 'node_modules', '.bin'), { recursive: true });
+    fs.writeFileSync(path.join(app, 'package.json'), JSON.stringify({ name: 'worker-fixture', private: true }));
+    fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({ name: 'fixture', workspaces: ['apps/*'] }));
+    config.main = '../../src.ts';
+  }
+  fs.writeFileSync(path.join(app, 'wrangler.json'), JSON.stringify(config));
+  git(project, [
+    'add',
+    'Dockerfile',
+    'source.txt',
+    ...(workspace ? ['apps/worker/package.json', 'apps/worker/wrangler.json'] : []),
+  ]);
+  commit(project);
+  await deploy(app);
+  expect(readBuilds()).toEqual(['original']);
+  expect(readDeployments()[0]?.image).toContain('registry.cloudflare.com/account/');
+});
+
 it('reuses a published image across checkouts and builds a changed committed context', async () => {
   const first = createProject('first');
   const second = createProject('second');
