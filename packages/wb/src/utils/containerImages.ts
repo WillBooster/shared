@@ -13,10 +13,11 @@ import type { Project } from '../project.js';
 const execute = promisify(execFile);
 const containerSchema = z
   .object({
-    class_name: z.string(),
+    class_name: z.string().optional(),
+    name: z.string().optional(),
     image: z.string(),
     image_build_context: z.string().optional(),
-    image_vars: z.record(z.string(), z.string()).optional(),
+    image_vars: z.record(z.string(), z.coerce.string()).optional(),
   })
   .passthrough();
 const configSchema = z
@@ -139,7 +140,26 @@ interface CommittedImageSource {
 }
 
 async function reuseContainerImage(container: Container, context: ImageContext): Promise<void> {
-  const { configDir, accountId, registry, run } = context;
+  const { accountId, registry } = context;
+  const source = await resolveCommittedImageSource(container, context);
+  const imageName = container.name ?? container.class_name;
+  if (!imageName) throw new Error('Reusable container images require name or class_name.');
+  const repositoryName = `wb-${imageName.toLowerCase().replaceAll(/[^a-z0-9-]/g, '-')}`;
+  const tag = `source-${source.key}`;
+  const image = `${repositoryName}:${tag}`;
+  if (!registry.some((entry) => entry.name === repositoryName && entry.tags.includes(tag))) {
+    await buildAndPushImage(image, source, context);
+    registry.push({ name: repositoryName, tags: [tag] });
+  } else {
+    console.info(`Reusing published container image ${image}.`);
+  }
+  container.image = `registry.cloudflare.com/${accountId}/${image}`;
+  delete container.image_build_context;
+  delete container.image_vars;
+}
+
+async function resolveCommittedImageSource(container: Container, context: ImageContext): Promise<CommittedImageSource> {
+  const { configDir, run } = context;
   let dockerfile = path.resolve(configDir, container.image);
   if (fs.statSync(dockerfile).isDirectory()) dockerfile = path.join(dockerfile, 'Dockerfile');
   const buildContext = path.resolve(configDir, container.image_build_context ?? path.dirname(dockerfile));
@@ -161,18 +181,7 @@ async function reuseContainerImage(container: Container, context: ImageContext):
   const key = createHash('sha256')
     .update(JSON.stringify({ tree, dockerfilePath, buildVars, platform: 'linux/amd64' }))
     .digest('hex');
-  const repositoryName = `wb-${container.class_name.toLowerCase().replaceAll(/[^a-z0-9-]/g, '-')}`;
-  const tag = `source-${key}`;
-  const image = `${repositoryName}:${tag}`;
-  if (!registry.some((entry) => entry.name === repositoryName && entry.tags.includes(tag))) {
-    await buildAndPushImage(image, { key, revision, contextPath, repository, dockerfilePath, buildVars }, context);
-    registry.push({ name: repositoryName, tags: [tag] });
-  } else {
-    console.info(`Reusing published container image ${image}.`);
-  }
-  container.image = `registry.cloudflare.com/${accountId}/${image}`;
-  delete container.image_build_context;
-  delete container.image_vars;
+  return { key, revision, contextPath, repository, dockerfilePath, buildVars };
 }
 
 async function buildAndPushImage(image: string, source: CommittedImageSource, context: ImageContext): Promise<void> {
