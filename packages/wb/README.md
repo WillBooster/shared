@@ -149,11 +149,11 @@ Options:
       --help              Show help                                    [boolean]
 ```
 
-## Cloudflare Container イメージの再利用
+## Reusing Cloudflare Container images
 
-`wb deploy --reuse-container-images` は、コミット済みのビルドコンテキストが同じ場合に公開済みイメージを再利用します。初回のビルドにはDockerが必要です。DockerfileはGitリポジトリ内のコンテキストに含めてコミットしてください。未追跡ファイルと生成物はビルドに含まれず、追跡ファイルに未コミット変更があるとデプロイは失敗します。
+`wb deploy --reuse-container-images` reuses a published image when its committed build context is unchanged. Docker is required on a cache miss. Commit the Dockerfile inside its Git build context. Builds exclude untracked and generated files and reject uncommitted changes to tracked context files.
 
-再利用のキーには、コンテキストのGitツリー、Dockerfileの相対パス、`image_vars`、`linux/amd64` を使います。追跡済みドキュメントや `.dockerignore` 対象ファイルの変更も再ビルドにつながります。外部の依存先を更新する場合も、コンテキストのコミットを更新してください。同じWorkerのデプロイは直列に実行してください。イメージ以外のコンテナ設定を変更すると、Cloudflareがコンテナを置き換えることがあります。
+The reuse key includes the context's Git tree, the relative Dockerfile path, `image_vars`, and `linux/amd64`. Changes to tracked documentation or files excluded by `.dockerignore` also rebuild the image. To refresh external dependencies, update the committed context. Serialize deployments of the same Worker. Changes to other container settings can still trigger replacement by Cloudflare.
 
 ## Disk cleanup
 

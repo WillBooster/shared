@@ -167,7 +167,7 @@ async function deployBuiltWorker(
     await runPostDeployHook(context, accountId);
   };
   await (argv.reuseContainerImages && !argv.dryRun
-    ? withReusableContainerImages(project, deployConfigPath, envName, deploy)
+    ? withReusableContainerImages({ project, configPath: deployConfigPath, envName, accountId, deploy })
     : deploy(deployConfigPath));
 }
 

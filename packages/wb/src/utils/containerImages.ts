@@ -30,12 +30,21 @@ const configSchema = z
 
 type Container = z.infer<typeof containerSchema>;
 
-export async function withReusableContainerImages(
-  project: Project,
-  configPath: string,
-  envName: string,
-  deploy: (configPath: string) => Promise<void>
-): Promise<void> {
+interface ContainerImageDeployment {
+  project: Project;
+  configPath: string;
+  envName: string;
+  accountId?: string;
+  deploy: (configPath: string) => Promise<void>;
+}
+
+export async function withReusableContainerImages({
+  project,
+  configPath,
+  envName,
+  accountId,
+  deploy,
+}: ContainerImageDeployment): Promise<void> {
   const absoluteConfigPath = path.resolve(project.dirPath, configPath);
   const config = configSchema.parse(parse(fs.readFileSync(absoluteConfigPath, 'utf8')));
   const selected = config.env?.[envName] ?? config;
@@ -44,23 +53,17 @@ export async function withReusableContainerImages(
     fs.existsSync(path.resolve(path.dirname(absoluteConfigPath), container.image))
   );
   if (localContainers.length === 0) return deploy(configPath);
-  const accountId = config.account_id ?? project.env.CLOUDFLARE_ACCOUNT_ID;
   if (!accountId) throw new Error('--reuse-container-images requires account_id or CLOUDFLARE_ACCOUNT_ID.');
   const env = { ...project.env, CLOUDFLARE_ACCOUNT_ID: accountId };
+  const cancellation = new AbortController();
   const run = async (command: string, args: string[], cwd = project.dirPath): Promise<string> => {
-    const result = await execute(command, args, { cwd, env, maxBuffer: 64 * 1024 * 1024 });
+    const result = await execute(command, args, { cwd, env, signal: cancellation.signal, maxBuffer: 64 * 1024 * 1024 });
     return result.stdout.trim();
   };
   const registry = z
     .array(z.object({ name: z.string(), tags: z.array(z.string()) }))
     .parse(JSON.parse(await run('wrangler', ['containers', 'images', 'list', '--json'])));
-  const temporaryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-container-images-'));
-  const temporaryConfig = path.join(path.dirname(absoluteConfigPath), `.wb-deploy-${randomUUID()}.json`);
-  const cleanup = (): void => {
-    fs.rmSync(temporaryDir, { recursive: true, force: true });
-    fs.rmSync(temporaryConfig, { force: true });
-  };
-  process.on('exit', cleanup);
+  const { temporaryDir, temporaryConfig, dispose } = createTemporaryImageFiles(absoluteConfigPath, cancellation);
   try {
     for (const container of localContainers) {
       await reuseContainerImage(container, {
@@ -74,9 +77,45 @@ export async function withReusableContainerImages(
     fs.writeFileSync(temporaryConfig, JSON.stringify(config));
     await deploy(temporaryConfig);
   } finally {
-    process.off('exit', cleanup);
-    cleanup();
+    dispose();
   }
+}
+
+interface TemporaryImageFiles {
+  temporaryDir: string;
+  temporaryConfig: string;
+  dispose: () => void;
+}
+
+function createTemporaryImageFiles(configPath: string, cancellation: AbortController): TemporaryImageFiles {
+  const temporaryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-container-images-'));
+  const temporaryConfig = path.join(path.dirname(configPath), `.wb-deploy-${randomUUID()}.json`);
+  const cleanup = (): void => {
+    fs.rmSync(temporaryDir, { recursive: true, force: true });
+    fs.rmSync(temporaryConfig, { force: true });
+  };
+  const handlers = (['SIGHUP', 'SIGINT', 'SIGTERM', 'SIGQUIT'] as const).map(
+    (signal) =>
+      [
+        signal,
+        (): void => {
+          cancellation.abort();
+          cleanup();
+          if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+        },
+      ] as const
+  );
+  process.on('exit', cleanup);
+  for (const [signal, handler] of handlers) process.once(signal, handler);
+  return {
+    temporaryDir,
+    temporaryConfig,
+    dispose: (): void => {
+      process.off('exit', cleanup);
+      for (const [signal, handler] of handlers) process.off(signal, handler);
+      cleanup();
+    },
+  };
 }
 
 interface ImageContext {

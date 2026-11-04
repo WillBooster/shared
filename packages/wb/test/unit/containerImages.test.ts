@@ -28,6 +28,10 @@ if (path.basename(process.argv[1]) === 'docker') {
   const context = args.at(-1);
   if (fs.existsSync(path.join(context, 'untracked.txt'))) throw new Error('Untracked input reached Docker');
   fs.appendFileSync(path.join(root, 'builds.jsonl'), JSON.stringify(fs.readFileSync(path.join(context, 'source.txt'), 'utf8')) + '\\n');
+  if (process.env.HOLD_BUILD) {
+    fs.writeFileSync(path.join(root, 'active.json'), JSON.stringify({ artifact: path.dirname(context) }));
+    setInterval(() => {}, 1000);
+  }
 } else if (path.basename(process.argv[1]) === 'vinext') {
   const config = JSON.parse(fs.readFileSync('wrangler.json', 'utf8'));
   config.main = '../../src.ts';
@@ -56,6 +60,10 @@ if (path.basename(process.argv[1]) === 'docker') {
   deploys.push({ image: selected.containers[0].image, configPath, main: path.resolve(path.dirname(configPath), config.main) });
   fs.writeFileSync(path.join(root, 'deployed.json'), JSON.stringify(deploys));
   if (process.env.FAIL_DEPLOY) process.exit(9);
+  if (process.env.HOLD_DEPLOY) {
+    fs.writeFileSync(path.join(root, 'active.json'), JSON.stringify({ artifact: configPath }));
+    setInterval(() => {}, 1000);
+  }
 }
 `;
   for (const name of ['docker', 'wrangler', 'vinext']) {
@@ -108,6 +116,40 @@ it('changes the image for build variables and resolves staging containers', asyn
   expect(deployed[1]?.image).not.toBe(deployed[0]?.image);
   expect(readBuilds()).toHaveLength(2);
 });
+
+it('uses the resolved named-environment account for registry images', async () => {
+  const project = createProject('account');
+  const configPath = path.join(project, 'wrangler.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  config.env = { staging: { account_id: 'staging-account', containers: config.containers } };
+  fs.writeFileSync(configPath, JSON.stringify(config));
+  await deploy(project, { WB_ENV: 'staging' });
+  expect(readDeployments()[0]?.image).toContain('registry.cloudflare.com/staging-account/');
+});
+
+it.each(['HOLD_BUILD', 'HOLD_DEPLOY'])(
+  'cleans temporary resources on SIGTERM during %s',
+  async (stage) => {
+    const project = createProject('termination');
+    const subprocess = spawnDeploy(project, { [stage]: '1' });
+    try {
+      const activePath = path.join(directory, 'active.json');
+      const deadline = Date.now() + 10_000;
+      while (!fs.existsSync(activePath) && subprocess.exitCode === null && Date.now() < deadline) {
+        await Bun.sleep(20);
+      }
+      expect(fs.existsSync(activePath)).toBe(true);
+      const { artifact } = JSON.parse(fs.readFileSync(activePath, 'utf8'));
+      subprocess.kill('SIGTERM');
+      expect(await subprocess.exited).toBe(143);
+      expect(fs.existsSync(artifact)).toBe(false);
+      expect(fs.readdirSync(project).filter((name) => name.startsWith('.wb-deploy-'))).toEqual([]);
+    } finally {
+      subprocess.kill();
+    }
+  },
+  20_000
+);
 
 it('preserves built vinext config paths while reusing its container image', async () => {
   const project = createProject('vinext');
@@ -185,7 +227,18 @@ async function deploy(
   env: Record<string, string> = {},
   succeeds = true
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const subprocess = Bun.spawn(['node', cli, 'deploy', '--reuse-container-images'], {
+  const subprocess = spawnDeploy(project, env);
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(subprocess.stdout).text(),
+    new Response(subprocess.stderr).text(),
+    subprocess.exited,
+  ]);
+  if (succeeds) expect(exitCode, stdout + stderr).toBe(0);
+  return { stdout, stderr, exitCode };
+}
+
+function spawnDeploy(project: string, env: Record<string, string>): Bun.Subprocess<'ignore', 'pipe', 'pipe'> {
+  return Bun.spawn(['node', cli, 'deploy', '--reuse-container-images'], {
     cwd: project,
     env: {
       PATH: `${path.join(directory, 'bin')}:${process.env.PATH}`,
@@ -196,16 +249,10 @@ async function deploy(
       FAKE_REGISTRY_DIR: directory,
       ...env,
     },
+    stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
   });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(subprocess.stdout).text(),
-    new Response(subprocess.stderr).text(),
-    subprocess.exited,
-  ]);
-  if (succeeds) expect(exitCode, stdout + stderr).toBe(0);
-  return { stdout, stderr, exitCode };
 }
 
 function readDeployments(): { image: string; configPath: string; main: string }[] {
