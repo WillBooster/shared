@@ -168,7 +168,7 @@ async function deployBuiltWorker(
   };
   const imageEnvName = !usesVinext(project) && resolvedConfig.usesEnvSection ? envName : undefined;
   await (argv.reuseContainerImages && !argv.dryRun
-    ? withReusableContainerImages({ project, configPath: deployConfigPath, envName: imageEnvName, accountId, deploy })
+    ? withReusableContainerImages({ project, configPath: deployConfigPath, envName: imageEnvName, deploy })
     : deploy(deployConfigPath));
 }
 

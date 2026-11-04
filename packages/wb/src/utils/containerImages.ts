@@ -35,7 +35,6 @@ interface ContainerImageDeployment {
   project: Project;
   configPath: string;
   envName?: string;
-  accountId?: string;
   deploy: (configPath: string) => Promise<void>;
 }
 
@@ -43,7 +42,6 @@ export async function withReusableContainerImages({
   project,
   configPath,
   envName,
-  accountId,
   deploy,
 }: ContainerImageDeployment): Promise<void> {
   const absoluteConfigPath = path.resolve(project.dirPath, configPath);
@@ -54,8 +52,7 @@ export async function withReusableContainerImages({
     fs.existsSync(path.resolve(path.dirname(absoluteConfigPath), container.image))
   );
   if (localContainers.length === 0) return deploy(configPath);
-  if (!accountId) throw new Error('--reuse-container-images requires account_id or CLOUDFLARE_ACCOUNT_ID.');
-  const env = { ...project.env, CLOUDFLARE_ACCOUNT_ID: accountId };
+  const env = project.env;
   const cancellation = new AbortController();
   const wranglerArgs = ['--config', absoluteConfigPath, ...(envName ? ['--env', envName] : [])];
   const run = async (command: string, args: string[], cwd = project.dirPath): Promise<string> => {
@@ -71,7 +68,6 @@ export async function withReusableContainerImages({
       await reuseContainerImage(container, {
         configDir: path.dirname(absoluteConfigPath),
         temporaryDir,
-        accountId,
         registry,
         wranglerArgs,
         run,
@@ -124,7 +120,6 @@ function createTemporaryImageFiles(configPath: string, cancellation: AbortContro
 interface ImageContext {
   configDir: string;
   temporaryDir: string;
-  accountId: string;
   registry: { name: string; tags: string[] }[];
   wranglerArgs: string[];
   run: (command: string, args: string[], cwd?: string) => Promise<string>;
@@ -140,11 +135,11 @@ interface CommittedImageSource {
 }
 
 async function reuseContainerImage(container: Container, context: ImageContext): Promise<void> {
-  const { accountId, registry } = context;
+  const { registry } = context;
   const source = await resolveCommittedImageSource(container, context);
   const imageName = container.name ?? container.class_name;
   if (!imageName) throw new Error('Reusable container images require name or class_name.');
-  const repositoryName = `wb-${imageName.toLowerCase().replaceAll(/[^a-z0-9-]/g, '-')}`;
+  const repositoryName = `wb/${imageName.toLowerCase().replaceAll(/[^a-z0-9-]/g, '-')}`;
   const tag = `source-${source.key}`;
   const image = `${repositoryName}:${tag}`;
   if (!registry.some((entry) => entry.name === repositoryName && entry.tags.includes(tag))) {
@@ -153,7 +148,7 @@ async function reuseContainerImage(container: Container, context: ImageContext):
   } else {
     console.info(`Reusing published container image ${image}.`);
   }
-  container.image = `registry.cloudflare.com/${accountId}/${image}`;
+  container.image = image;
   delete container.image_build_context;
   delete container.image_vars;
 }
@@ -197,6 +192,8 @@ async function buildAndPushImage(image: string, source: CommittedImageSource, co
   console.info(`Building container image ${image} from committed context.`);
   await run('docker', [
     'build',
+    '--load',
+    '--provenance=false',
     '--platform',
     'linux/amd64',
     '-f',

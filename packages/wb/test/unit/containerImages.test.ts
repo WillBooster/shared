@@ -24,6 +24,7 @@ const path = require('node:path');
 const args = process.argv.slice(2);
 const root = process.env.FAKE_REGISTRY_DIR ?? ${JSON.stringify(directory)};
 const registryPath = path.join(root, 'registry.json');
+const registryHost = () => process.env.CLOUDFLARE_CONTAINER_REGISTRY ?? (process.env.WRANGLER_API_ENVIRONMENT === 'staging' ? 'staging.registry.cloudflare.com' : 'registry.cloudflare.com');
 const account = () => {
   const configPath = args.includes('--config') ? args[args.indexOf('--config') + 1] : path.resolve('wrangler.json');
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -50,25 +51,27 @@ if (path.basename(process.argv[1]) === 'docker') {
   console.log('[]');
 } else if (args[0] === 'containers' && args[1] === 'images') {
   if (process.env.FAIL_REGISTRY) process.exit(7);
-  console.log(JSON.stringify(JSON.parse(fs.readFileSync(registryPath, 'utf8')).filter((entry) => entry.account === account()).map(({ name, tags }) => ({ name, tags }))));
+  console.log(JSON.stringify(JSON.parse(fs.readFileSync(registryPath, 'utf8')).filter((entry) => entry.account === account() && entry.host === registryHost()).map(({ name, tags }) => ({ name, tags }))));
 } else if (args[0] === 'containers' && args[1] === 'push') {
   const [name, tag] = args[2].split(':');
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-  registry.push({ name, tags: [tag], account: account() });
+  registry.push({ name, tags: [tag], account: account(), host: registryHost() });
   fs.writeFileSync(registryPath, JSON.stringify(registry));
 } else if (args[0] === 'deploy') {
   const configPath = args[args.indexOf('--config') + 1];
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   const deploys = JSON.parse(fs.readFileSync(path.join(root, 'deployed.json'), 'utf8'));
   const selected = args.includes('--env') ? config.env[args[args.indexOf('--env') + 1]] : config;
-  if (!selected.containers[0].image.startsWith('registry.cloudflare.com/')) {
+  if (fs.existsSync(path.resolve(path.dirname(configPath), selected.containers[0].image))) {
     require('node:child_process').execFileSync('docker', ['build', path.dirname(path.resolve(path.dirname(configPath), selected.containers[0].image))]);
   }
   if (args.includes('--dry-run')) process.exit(0);
-  const image = selected.containers[0].image;
+  const rawImage = selected.containers[0].image;
+  const imageHost = rawImage.split('/')[0];
+  const image = imageHost.includes('.') || imageHost.includes(':') ? rawImage : registryHost() + '/' + account() + '/' + rawImage;
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-  if (!registry.some((entry) => entry.account === account() && entry.tags.some((tag) => image === 'registry.cloudflare.com/' + entry.account + '/' + entry.name + ':' + tag))) throw new Error('Image is unavailable in deployment account');
-  deploys.push({ image: selected.containers[0].image, configPath, main: path.resolve(path.dirname(configPath), config.main) });
+  if (!registry.some((entry) => entry.account === account() && entry.host === registryHost() && entry.tags.some((tag) => image === entry.host + '/' + entry.account + '/' + entry.name + ':' + tag))) throw new Error('Image is unavailable in deployment account');
+  deploys.push({ image, configPath, main: path.resolve(path.dirname(configPath), config.main) });
   fs.writeFileSync(path.join(root, 'deployed.json'), JSON.stringify(deploys));
   if (process.env.FAIL_DEPLOY) process.exit(9);
   if (process.env.HOLD_DEPLOY) {
@@ -127,6 +130,18 @@ it('changes the image for build variables and resolves staging containers', asyn
   expect(deployed[1]?.image).not.toBe(deployed[0]?.image);
   expect(readBuilds()).toHaveLength(2);
 });
+
+it.each([{ CLOUDFLARE_CONTAINER_REGISTRY: 'registry.example.invalid' }, { WRANGLER_API_ENVIRONMENT: 'staging' }])(
+  'reuses images in the registry selected by Wrangler: %j',
+  async (env) => {
+    const project = createProject('registry');
+    await deploy(project, env);
+    await deploy(project, env);
+    const deployed = readDeployments();
+    expect(deployed[0]?.image).toBe(deployed[1]?.image);
+    expect(readBuilds()).toEqual(['original']);
+  }
+);
 
 it('reuses named single-image containers with equivalent scalar build arguments', async () => {
   const project = createProject('named');
@@ -255,7 +270,7 @@ function git(project: string, args: string[]): void {
 
 async function deploy(
   project: string,
-  env: Record<string, string> = {},
+  env: Record<string, string | undefined> = {},
   succeeds = true
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const subprocess = spawnDeploy(project, env);
@@ -268,7 +283,10 @@ async function deploy(
   return { stdout, stderr, exitCode };
 }
 
-function spawnDeploy(project: string, env: Record<string, string>): Bun.Subprocess<'ignore', 'pipe', 'pipe'> {
+function spawnDeploy(
+  project: string,
+  env: Record<string, string | undefined>
+): Bun.Subprocess<'ignore', 'pipe', 'pipe'> {
   return Bun.spawn(['node', cli, 'deploy', '--reuse-container-images'], {
     cwd: project,
     env: {
