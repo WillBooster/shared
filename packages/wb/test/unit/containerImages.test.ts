@@ -159,20 +159,23 @@ it.each([{ CLOUDFLARE_CONTAINER_REGISTRY: 'registry.example.invalid' }, { WRANGL
   }
 );
 
-it('reuses named single-image containers with equivalent scalar build arguments', async () => {
-  const project = createProject('named');
-  const configPath = path.join(project, 'wrangler.json');
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  config.containers = [{ name: 'service', image: './agent/Dockerfile', image_vars: { PORT: 8080 } }];
-  fs.writeFileSync(configPath, JSON.stringify(config));
-  await deploy(project);
-  config.containers[0].image_vars.PORT = '8080';
-  fs.writeFileSync(configPath, JSON.stringify(config));
-  await deploy(project);
-  const deployed = readDeployments();
-  expect(deployed[0]?.image).toBe(deployed[1]?.image);
-  expect(readBuilds()).toEqual(['original']);
-});
+it.each([{ name: 'service' }, { name: 'service', class_name: 'Agent' }, { name: '', class_name: 'Agent' }])(
+  'reuses single-image identifiers %j with equivalent scalar build arguments',
+  async (identifier) => {
+    const project = createProject('named');
+    const configPath = path.join(project, 'wrangler.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    config.containers = [{ ...identifier, image: './agent/Dockerfile', image_vars: { PORT: 8080 } }];
+    fs.writeFileSync(configPath, JSON.stringify(config));
+    await deploy(project);
+    config.containers[0].image_vars.PORT = '8080';
+    fs.writeFileSync(configPath, JSON.stringify(config));
+    await deploy(project);
+    const deployed = readDeployments();
+    expect(deployed[0]?.image).toBe(deployed[1]?.image);
+    expect(readBuilds()).toEqual(['original']);
+  }
+);
 
 it.each(['plain', 'vinext'])('uses the resolved named-environment account for %s registry images', async (mode) => {
   const project = createProject('account');

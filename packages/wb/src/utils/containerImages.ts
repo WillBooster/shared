@@ -141,7 +141,7 @@ interface CommittedImageSource {
 async function reuseContainerImage(container: Container, context: ImageContext): Promise<void> {
   const { registry } = context;
   const source = await resolveCommittedImageSource(container, context);
-  const imageName = container.name ?? container.class_name;
+  const imageName = container.name || container.class_name;
   if (!imageName) throw new Error('Reusable container images require name or class_name.');
   const repositoryName = `wb/${imageName.toLowerCase().replaceAll(/[^a-z0-9-]/g, '-')}`;
   const tag = `source-${source.key}`;
