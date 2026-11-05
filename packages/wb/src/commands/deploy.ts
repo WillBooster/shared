@@ -79,10 +79,10 @@ function isNonSecretKey(key: string): boolean {
 }
 
 const builder = {
-  'reuse-container-images': {
-    type: 'boolean',
-    default: false,
-    description: 'Reuse published Cloudflare container images built from the same committed Git context.',
+  'containers-rollout': {
+    type: 'string',
+    choices: ['none', 'gradual', 'immediate'],
+    description: 'Select Cloudflare container rollout; gradual/immediate reuse images from committed Git contexts.',
   },
 } as const;
 
@@ -164,7 +164,7 @@ async function deployBuiltWorker(
     await runPostDeployHook(context, accountId);
   };
   const imageEnvName = !usesVinext(project) && resolvedConfig.usesEnvSection ? envName : undefined;
-  await (argv.reuseContainerImages && !argv.dryRun
+  await (argv.containersRollout && argv.containersRollout !== 'none' && !argv.dryRun
     ? withReusableContainerImages({
         project,
         configPath: deployConfigPath,
@@ -402,10 +402,11 @@ async function validateWorkerBuild(
 ): Promise<void> {
   // Wrangler's dry run builds Dockerfile images too, so substitute reusable registry
   // references before validating; otherwise even a cache hit rebuilds the image.
+  const rolloutOption = argv.containersRollout ? ` --containers-rollout=${argv.containersRollout}` : '';
   const envOption =
     !usesVinext(project) && resolvedConfig.usesEnvSection ? ` --env ${shellEscapeArgument(envName)}` : '';
   await runWithSpawn(
-    `YARN wrangler deploy --dry-run --config ${shellEscapeArgument(deployConfigPath)}${envOption}`,
+    `YARN wrangler deploy --dry-run --config ${shellEscapeArgument(deployConfigPath)}${envOption}${rolloutOption}`,
     project,
     argv,
     { env: createWranglerDeployEnv(project.env) }
@@ -502,6 +503,7 @@ async function deployCodeAndSecrets(
     // apply the environment suffix twice.
     ...(!usesVinext(project) && resolvedConfig.usesEnvSection ? ['--env', envName] : []),
     ...(project.env.WB_VERSION ? ['--var', `WB_VERSION:${project.env.WB_VERSION}`] : []),
+    ...(argv.containersRollout ? [`--containers-rollout=${argv.containersRollout}`] : []),
     '--secrets-file',
   ];
   console.info(chalk.cyan(`Running: wrangler ${deployArgs.join(' ')} <temporary secrets file>`));
