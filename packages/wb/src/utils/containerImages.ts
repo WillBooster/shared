@@ -164,7 +164,7 @@ async function resolveCommittedImageSource(container: Container, context: ImageC
   const contextPath = path.relative(repository, buildContext).split(path.sep).join('/');
   const dockerfilePath = path.relative(buildContext, dockerfile);
   if (dockerfilePath.startsWith('..') || path.isAbsolute(dockerfilePath)) {
-    throw new Error('--reuse-container-images requires the Dockerfile inside its committed build context.');
+    throw new Error('Container image reuse requires the Dockerfile inside its committed build context.');
   }
   const revision = await run('git', ['rev-parse', 'HEAD'], repository);
   const treeish = `${revision}:${contextPath}`;

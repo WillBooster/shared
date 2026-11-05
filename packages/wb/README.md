@@ -149,9 +149,16 @@ Options:
       --help              Show help                                    [boolean]
 ```
 
-## Reusing Cloudflare Container images
+## Cloudflare Container rollouts
 
-`wb deploy --reuse-container-images` reuses a published image when its committed build context is unchanged. It supports single-image container entries with `image` and either `name` or `class_name`. Docker is required on a cache miss. Commit the Dockerfile inside its Git build context. Builds exclude untracked and generated files and reject uncommitted changes to tracked context files.
+`wb deploy --containers-rollout=<mode>` forwards the selected mode to Wrangler for build validation and deployment:
+
+- `none` deploys Worker code and secrets without container image lookup, build, push, or reuse.
+- `gradual` and `immediate` reuse published images from unchanged committed build contexts before deploying with the selected rollout mode.
+
+Omitting the option uses the normal Wrangler deployment without image reuse.
+
+Image reuse supports single-image container entries with `image` and either `name` or `class_name`. Docker is required on a cache miss. Commit the Dockerfile inside its Git build context. Builds exclude untracked and generated files and reject uncommitted changes to tracked context files.
 
 The reuse key includes the deployment's Worker name, the context's Git tree, the relative Dockerfile path, `image_vars`, and `linux/amd64`. Changes to tracked documentation or files excluded by `.dockerignore` also rebuild the image. To refresh external dependencies, update the committed context. Serialize deployments of the same Worker. Changes to other container settings can still trigger replacement by Cloudflare.
 
