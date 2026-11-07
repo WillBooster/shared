@@ -180,7 +180,7 @@
       "dependencies": {
         "@octokit/core": "7.0.8",
         "@willbooster/tree-sitter-bash": "4.0.4",
-        "@willbooster/web-tree-sitter": "18.0.1",
+        "@willbooster/web-tree-sitter": "2.0.33",
         "deepmerge": "4.3.1",
         "fast-glob": "3.3.3",
         "js-yaml": "5.5.0",
@@ -1166,7 +1166,7 @@
 
     "@willbooster/wbfy": ["@willbooster/wbfy@workspace:packages/wbfy"],
 
-    "@willbooster/web-tree-sitter": ["@willbooster/web-tree-sitter@18.0.1", "", { "dependencies": { "@types/emscripten": "^1.41.5" } }, "sha512-fegv1eviIpZth1q5UDWhCHEObfmkfMVXaRQyeC3g1PrMAKiwPFKtfnj4Tb9c8ZQOFsxuywn1CDAy49PeQg4Qzg=="],
+    "@willbooster/web-tree-sitter": ["@willbooster/web-tree-sitter@2.0.33", "", { "dependencies": { "@types/emscripten": "^1.41.5" } }, "sha512-S9WB1hQUIS8FJ3OIWG/q8JJJi/3+R7JZnOQTVxED+5KkEfHkVgvIzLGuONcL1qpsEN41qOFPdnFKEZGyMFGlhQ=="],
 
     "acorn": ["acorn@8.19.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw=="],
 
