@@ -58,12 +58,13 @@ if (path.basename(process.argv[1]) === 'docker') {
   registry.push({ name, tags: [tag], account: account(), host: registryHost() });
   fs.writeFileSync(registryPath, JSON.stringify(registry));
 } else if (args[0] === 'deploy') {
+  const rollout = args.find((arg) => arg.startsWith('--containers-rollout='))?.split('=')[1];
   const configPath = args[args.indexOf('--config') + 1];
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   const deploys = JSON.parse(fs.readFileSync(path.join(root, 'deployed.json'), 'utf8'));
   const selectedEnv = args.includes('--env') ? args[args.indexOf('--env') + 1] : process.env.CLOUDFLARE_ENV;
   const selected = config.env?.[selectedEnv] ?? config;
-  if (fs.existsSync(path.resolve(path.dirname(configPath), selected.containers[0].image))) {
+  if (rollout !== 'none' && fs.existsSync(path.resolve(path.dirname(configPath), selected.containers[0].image))) {
     require('node:child_process').execFileSync('docker', ['build', path.dirname(path.resolve(path.dirname(configPath), selected.containers[0].image))]);
   }
   if (args.includes('--dry-run')) process.exit(0);
@@ -71,8 +72,8 @@ if (path.basename(process.argv[1]) === 'docker') {
   const imageHost = rawImage.split('/')[0];
   const image = imageHost.includes('.') || imageHost.includes(':') ? rawImage : registryHost() + '/' + account() + '/' + rawImage;
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-  if (!registry.some((entry) => entry.account === account() && entry.host === registryHost() && entry.tags.some((tag) => image === entry.host + '/' + entry.account + '/' + entry.name + ':' + tag))) throw new Error('Image is unavailable in deployment account');
-  deploys.push({ image, configPath, main: path.resolve(path.dirname(configPath), config.main) });
+  if (rollout !== 'none' && !fs.existsSync(path.resolve(path.dirname(configPath), selected.containers[0].image)) && !registry.some((entry) => entry.account === account() && entry.host === registryHost() && entry.tags.some((tag) => image === entry.host + '/' + entry.account + '/' + entry.name + ':' + tag))) throw new Error('Image is unavailable in deployment account');
+  deploys.push({ image, rollout, configPath, main: path.resolve(path.dirname(configPath), config.main) });
   fs.writeFileSync(path.join(root, 'deployed.json'), JSON.stringify(deploys));
   if (process.env.FAIL_DEPLOY) process.exit(9);
   if (process.env.HOLD_DEPLOY) {
@@ -86,6 +87,24 @@ if (path.basename(process.argv[1]) === 'docker') {
   }
 });
 afterEach(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+it('deploys Worker code without accessing dirty container sources or the registry in none mode', async () => {
+  const project = createProject('worker-only');
+  fs.writeFileSync(path.join(project, 'agent', 'source.txt'), 'uncommitted');
+  await deploy(project, { FAIL_REGISTRY: '1' }, true, ['--containers-rollout=none']);
+  expect(readBuilds()).toEqual([]);
+  expect(readDeployments()).toHaveLength(1);
+  expect(readDeployments()[0]?.rollout).toBe('none');
+  expect(readDeployments()[0]?.configPath).toBe(path.join(project, 'wrangler.json'));
+});
+
+it('preserves normal Docker builds when the rollout option is omitted', async () => {
+  const project = createProject('normal');
+  fs.writeFileSync(path.join(project, 'agent', 'source.txt'), 'uncommitted');
+  await deploy(project, { FAIL_REGISTRY: '1' }, true, []);
+  expect(readBuilds()).toEqual(['uncommitted', 'uncommitted']);
+  expect(readDeployments()[0]?.rollout).toBeUndefined();
+});
 
 it.each([false, true])('deploys a committed root build context (workspace: %s)', async (workspace) => {
   const project = createProject('root-context');
@@ -114,26 +133,31 @@ it.each([false, true])('deploys a committed root build context (workspace: %s)',
   expect(readDeployments()[0]?.image).toContain('registry.cloudflare.com/account/');
 });
 
-it('reuses a published image across checkouts and builds a changed committed context', async () => {
-  const first = createProject('first');
-  const second = createProject('second');
-  fs.writeFileSync(path.join(second, 'agent', 'untracked.txt'), 'local generated output');
-  await deploy(first);
-  await deploy(second);
-  let deployed = readDeployments();
-  expect(deployed[0]?.image).toBe(deployed[1]?.image);
-  expect(readBuilds()).toEqual(['original']);
-  fs.writeFileSync(path.join(second, 'agent', 'source.txt'), 'updated');
-  commit(second);
-  await deploy(second);
-  deployed = readDeployments();
-  expect(deployed[2]?.image).not.toBe(deployed[1]?.image);
-  expect(readBuilds()).toEqual(['original', 'updated']);
-  for (const deployment of deployed) {
-    expect(fs.existsSync(deployment.configPath)).toBe(false);
-    expect(fs.existsSync(deployment.main)).toBe(true);
-  }
-}, 60_000);
+it.each(['gradual', 'immediate'])(
+  'reuses a published image across checkouts and builds changed committed context (%s)',
+  async (mode) => {
+    const first = createProject('first');
+    const second = createProject('second');
+    fs.writeFileSync(path.join(second, 'agent', 'untracked.txt'), 'local generated output');
+    await deploy(first, {}, true, [`--containers-rollout=${mode}`]);
+    await deploy(second, {}, true, [`--containers-rollout=${mode}`]);
+    let deployed = readDeployments();
+    expect(deployed[0]?.image).toBe(deployed[1]?.image);
+    expect(readBuilds()).toEqual(['original']);
+    fs.writeFileSync(path.join(second, 'agent', 'source.txt'), 'updated');
+    commit(second);
+    await deploy(second, {}, true, [`--containers-rollout=${mode}`]);
+    deployed = readDeployments();
+    expect(deployed.every((deployment) => deployment.rollout === mode)).toBe(true);
+    expect(deployed[2]?.image).not.toBe(deployed[1]?.image);
+    expect(readBuilds()).toEqual(['original', 'updated']);
+    for (const deployment of deployed) {
+      expect(fs.existsSync(deployment.configPath)).toBe(false);
+      expect(fs.existsSync(deployment.main)).toBe(true);
+    }
+  },
+  60_000
+);
 
 it.each([false, true])('rejects tracked context edits (staged: %s)', async (staged) => {
   const project = createProject('dirty');
@@ -352,9 +376,10 @@ function git(project: string, args: string[]): void {
 async function deploy(
   project: string,
   env: Record<string, string | undefined> = {},
-  succeeds = true
+  succeeds = true,
+  args = ['--containers-rollout=gradual']
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const subprocess = spawnDeploy(project, env);
+  const subprocess = spawnDeploy(project, env, args);
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(subprocess.stdout).text(),
     new Response(subprocess.stderr).text(),
@@ -366,9 +391,10 @@ async function deploy(
 
 function spawnDeploy(
   project: string,
-  env: Record<string, string | undefined>
+  env: Record<string, string | undefined>,
+  args = ['--containers-rollout=gradual']
 ): Bun.Subprocess<'ignore', 'pipe', 'pipe'> {
-  return Bun.spawn(['node', cli, 'deploy', '--reuse-container-images'], {
+  return Bun.spawn(['node', cli, 'deploy', ...args], {
     cwd: project,
     env: {
       PATH: `${path.join(directory, 'bin')}:${process.env.PATH}`,
@@ -385,7 +411,7 @@ function spawnDeploy(
   });
 }
 
-function readDeployments(): { image: string; configPath: string; main: string }[] {
+function readDeployments(): { image: string; rollout?: string; configPath: string; main: string }[] {
   return JSON.parse(fs.readFileSync(path.join(directory, 'deployed.json'), 'utf8'));
 }
 
