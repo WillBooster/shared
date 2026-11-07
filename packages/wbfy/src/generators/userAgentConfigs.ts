@@ -76,9 +76,26 @@ const agentSettings = [
     },
   },
   {
+    relativePath: '.gemini/config/skills.json',
+    // Antigravity CLI strips only full-line `//` comments before `JSON.parse`, so inline and block
+    // comments fail to parse.
+    acceptsComments: 'full-line',
+    // The `skills` CLI installs global skills into `~/.agents/skills` for Codex and the agents that
+    // share that global directory; for Antigravity CLI itself it installs into
+    // `~/.gemini/antigravity-cli/skills/`, which Antigravity CLI already loads, so registering
+    // `~/.agents/skills` makes those shared global skills visible to Antigravity CLI too.
+    settings: {
+      entries: [
+        {
+          path: '~/.agents/skills',
+        },
+      ],
+    },
+  },
+  {
     relativePath: '.gemini/settings.json',
     // Gemini CLI strips comments before parsing its settings file, unlike Claude Code and
-    // Antigravity CLI, which reject a commented file as malformed.
+    // Antigravity CLI's settings.json, which reject a commented file as malformed.
     acceptsComments: true,
     settings: {
       experimental: {
@@ -145,7 +162,7 @@ printf '%s' "$input" | jq -j --arg home "$HOME" --arg git "$git_info" '
 async function mergeAgentSettings(
   relativePath: string,
   newSettings: object,
-  acceptsComments: boolean
+  acceptsComments: boolean | 'full-line'
 ): Promise<boolean> {
   const filePath = path.join(os.homedir(), relativePath);
   const existingContent = await fsUtil.readFileIfExists(filePath);
@@ -156,8 +173,8 @@ async function mergeAgentSettings(
     // file the agent still ignores: comments are tolerated only where the agent strips them, and
     // trailing commas nowhere, since both agents parse with JSON.parse in the end. Comment-only
     // content is checked too, because it is kept as a header above the generated object.
-    if (!acceptsComments && jsoncUtil.containsComment(existingContent)) {
-      console.warn(`Skipped updating ${filePath} because this agent reads it as strict JSON, comments and all.`);
+    if (acceptsComments !== true && jsoncUtil.containsComment(existingContent, acceptsComments === 'full-line')) {
+      console.warn(`Skipped updating ${filePath} because this agent does not strip all comments present in the file.`);
       return false;
     }
     if (!jsoncUtil.isTriviaOnly(existingContent)) {
@@ -171,7 +188,12 @@ async function mergeAgentSettings(
       existingSettings = parsedSettings;
     }
   }
-  const settings = merge(existingSettings, newSettings);
+  const settings = merge(existingSettings, newSettings, {
+    arrayMerge: (target: unknown[], source: unknown[]) => [
+      ...target,
+      ...source.filter((item) => !target.some((existing) => JSON.stringify(existing) === JSON.stringify(item))),
+    ],
+  });
   // Only the properties whose value changes are rewritten, so the file keeps its own formatting
   // and, where the agent allows them, its comments.
   const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(existingContent, settings);

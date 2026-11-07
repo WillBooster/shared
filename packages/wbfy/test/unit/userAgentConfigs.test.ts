@@ -37,12 +37,15 @@ async function generateUserAgentConfigs(files: Record<string, string>): Promise<
   }
 }
 
-test("turns off memory, attribution, and telemetry and sets the status line while keeping the developer's own Claude and Antigravity CLI settings", async () => {
-  const { exitCode, files } = await generateUserAgentConfigs({
+test("turns off memory, attribution, and telemetry, sets the status line, and registers global skills idempotently while keeping the developer's own Claude and Antigravity CLI settings", async () => {
+  const first = await generateUserAgentConfigs({
     '.claude/settings.json': '{\n  "effortLevel": "medium",\n  "attribution": { "commit": "keep me" }\n}\n',
     '.gemini/antigravity-cli/settings.json': '{\n  "trustedWorkspaces": ["/repo"],\n  "enableTelemetry": true\n}\n',
+    '.gemini/config/skills.json': '{\n  "entries": [\n    { "path": "~/personal-skills" }\n  ]\n}\n',
   });
+  const { exitCode, files } = await generateUserAgentConfigs(first.files);
 
+  expect(first.exitCode).toBe(0);
   expect(exitCode).toBe(0);
   expect(JSON.parse(files['.claude/settings.json'] ?? '')).toEqual({
     attribution: { commit: '', pr: '', sessionUrl: false },
@@ -59,6 +62,9 @@ test("turns off memory, attribution, and telemetry and sets the status line whil
       stack_with_default: false,
     },
     trustedWorkspaces: ['/repo'],
+  });
+  expect(JSON.parse(files['.gemini/config/skills.json'] ?? '')).toEqual({
+    entries: [{ path: '~/personal-skills' }, { path: '~/.agents/skills' }],
   });
 });
 
@@ -118,18 +124,38 @@ test('renders the Claude Code and Antigravity CLI status lines in the same forma
   }
 });
 
-test('merges the memory setting into a commented Gemini settings file', async () => {
+test('merges the memory setting into a commented Gemini settings file and global skills into a full-line commented Antigravity skills file', async () => {
   const { exitCode, files } = await generateUserAgentConfigs({
+    '.gemini/config/skills.json':
+      '// user skills config\n{\n  // personal skills\n  "entries": [\n    { "path": "~/personal-skills" }\n  ]\n}\n',
     '.gemini/settings.json': '{\n  // chosen when signing in\n  "security": { "auth": {} }\n}\n',
   });
 
   expect(exitCode).toBe(0);
+  const skillsContent = files['.gemini/config/skills.json'] ?? '';
+  expect(JSON.parse(skillsContent.replaceAll(/^\s*\/\/.*$/gmu, ''))).toEqual({
+    entries: [{ path: '~/personal-skills' }, { path: '~/.agents/skills' }],
+  });
+  expect(skillsContent).toContain('// user skills config');
+  expect(skillsContent).toContain('// personal skills');
   const content = files['.gemini/settings.json'] ?? '';
   expect(JSON.parse(content.replaceAll(/^\s*\/\/.*$/gmu, ''))).toEqual({
     experimental: { autoMemory: false },
     security: { auth: {} },
   });
   expect(content).toContain('// chosen when signing in');
+});
+
+test('leaves an Antigravity skills file with an inline or block comment to the developer', async () => {
+  for (const original of [
+    '{\n  "entries": [] // inline comment\n}\n',
+    '{\n  /* block comment */\n  "entries": []\n}\n',
+  ]) {
+    const { exitCode, files } = await generateUserAgentConfigs({ '.gemini/config/skills.json': original });
+
+    expect(exitCode).toBe(1);
+    expect(files['.gemini/config/skills.json']).toBe(original);
+  }
 });
 
 test('leaves a commented Claude settings file to the developer', async () => {
