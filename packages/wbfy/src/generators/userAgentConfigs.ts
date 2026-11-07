@@ -80,9 +80,9 @@ const agentSettings = [
     // Antigravity CLI strips only full-line `//` comments before `JSON.parse`, so inline and block
     // comments fail to parse.
     acceptsComments: 'full-line',
-    // The `skills` CLI installs global skills into `~/.agents/skills`, whereas Antigravity CLI walks
-    // `.agents/skills` only up to the workspace repository root unless `~/.gemini/config/skills.json`
-    // registers the global directory.
+    // The `skills` CLI installs global skills for `.agents/skills`-based agents (such as Codex)
+    // into `~/.agents/skills`, whereas Antigravity CLI walks `.agents/skills` only up to the
+    // workspace repository root unless `~/.gemini/config/skills.json` registers `~/.agents/skills`.
     settings: {
       entries: [
         {
