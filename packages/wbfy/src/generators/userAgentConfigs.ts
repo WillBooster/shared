@@ -79,7 +79,7 @@ const agentSettings = [
     relativePath: '.gemini/config/skills.json',
     // Antigravity CLI strips only full-line `//` comments before `JSON.parse`, so inline and block
     // comments fail to parse.
-    acceptsComments: false,
+    acceptsComments: 'full-line',
     // The `skills` CLI installs global skills into `~/.agents/skills`, whereas Antigravity CLI walks
     // `.agents/skills` only up to the workspace repository root unless `~/.gemini/config/skills.json`
     // registers the global directory.
@@ -94,7 +94,7 @@ const agentSettings = [
   {
     relativePath: '.gemini/settings.json',
     // Gemini CLI strips comments before parsing its settings file, unlike Claude Code and
-    // Antigravity CLI, which reject a commented file as malformed.
+    // Antigravity CLI's settings.json, which reject a commented file as malformed.
     acceptsComments: true,
     settings: {
       experimental: {
@@ -161,7 +161,7 @@ printf '%s' "$input" | jq -j --arg home "$HOME" --arg git "$git_info" '
 async function mergeAgentSettings(
   relativePath: string,
   newSettings: object,
-  acceptsComments: boolean
+  acceptsComments: boolean | 'full-line'
 ): Promise<boolean> {
   const filePath = path.join(os.homedir(), relativePath);
   const existingContent = await fsUtil.readFileIfExists(filePath);
@@ -172,8 +172,8 @@ async function mergeAgentSettings(
     // file the agent still ignores: comments are tolerated only where the agent strips them, and
     // trailing commas nowhere, since both agents parse with JSON.parse in the end. Comment-only
     // content is checked too, because it is kept as a header above the generated object.
-    if (!acceptsComments && jsoncUtil.containsComment(existingContent)) {
-      console.warn(`Skipped updating ${filePath} because this agent reads it as strict JSON, comments and all.`);
+    if (acceptsComments !== true && jsoncUtil.containsComment(existingContent, acceptsComments === 'full-line')) {
+      console.warn(`Skipped updating ${filePath} because this agent does not strip all comments present in the file.`);
       return false;
     }
     if (!jsoncUtil.isTriviaOnly(existingContent)) {

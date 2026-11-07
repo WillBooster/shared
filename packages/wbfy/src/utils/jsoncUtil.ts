@@ -46,16 +46,27 @@ export const jsoncUtil = {
       ? value
       : undefined;
   },
-  /** Tells whether the content carries at least one comment, i.e. content JSON.stringify would drop. */
-  containsComment(content: string): boolean {
-    const scanner = createScanner(content.replace(/^\uFEFF/, ''));
+  /**
+   * Tells whether the content carries at least one disallowed comment: any comment by default (i.e.
+   * content `JSON.stringify` would drop), or any comment other than a full-line `//` comment when
+   * `allowFullLineComments` is true.
+   */
+  containsComment(content: string, allowFullLineComments = false): boolean {
+    const stripped = content.replace(/^\uFEFF/, '');
+    const scanner = createScanner(stripped);
     for (let kind: number = scanner.scan(); kind !== syntaxKind.eof; kind = scanner.scan()) {
       // A lexical error means the remaining tokens are unreliable; report no comment rather than
       // guessing. A caller that only warns about dropped comments loses nothing, and one that
       // refuses a commented file for a strict-JSON reader still rejects such content when it
       // parses it.
       if ((scanner.getTokenError() as number) !== scanErrorNone) return false;
-      if (kind === syntaxKind.lineCommentTrivia || kind === syntaxKind.blockCommentTrivia) return true;
+      if (kind === syntaxKind.blockCommentTrivia) return true;
+      if (
+        kind === syntaxKind.lineCommentTrivia &&
+        (!allowFullLineComments || !isFullLineComment(stripped, scanner.getTokenOffset(), scanner.getTokenLength()))
+      ) {
+        return true;
+      }
     }
     return false;
   },
@@ -124,6 +135,12 @@ export const jsoncUtil = {
     return { content, keysLosingComments };
   },
 };
+
+function isFullLineComment(content: string, offset: number, length: number): boolean {
+  const lineStart = offset === 0 ? 0 : content.lastIndexOf('\n', offset - 1) + 1;
+  const end = offset + length;
+  return /^[\t ]*$/u.test(content.slice(lineStart, offset)) && (content[end] !== '\r' || content[end + 1] === '\n');
+}
 
 /** Returns the source text of a top-level property's value, comments and all. */
 function valueTextOf(content: string, key: string): string | undefined {
