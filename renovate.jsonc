@@ -26,9 +26,10 @@
     // 11.0.1: Version 11.0.1 requires web-tree-sitter 15 or 16, but wbfy loads the grammar with 2.0.33; the grammar's runtime ABI changed since 4.0.4 (https://github.com/WillBooster/tree-sitter-bash/releases/tag/v5.0.0, https://github.com/WillBooster/tree-sitter-bash/pull/101, https://github.com/WillBooster/tree-sitter-bash/pull/116). Version 12 targets a newer runtime, not version 2 (https://github.com/WillBooster/tree-sitter-bash/pull/117).
     // 10.0.0: Version 10 requires web-tree-sitter ^15.0.0 and uses the runtime 15 parser ABI, but wbfy loads its grammar with web-tree-sitter 2.0.33. The newer version 12 also requires a newer runtime, so it does not fix compatibility with this repository. https://github.com/WillBooster/tree-sitter-bash/pull/101 https://github.com/WillBooster/shared/pull/1613
     // 9.0.0: Version 9 requires @willbooster/web-tree-sitter ^14, but wbfy loads the grammar using 2.0.33; the ABI change requires a coordinated runtime upgrade (https://github.com/WillBooster/tree-sitter-bash/releases/tag/v5.0.0, https://github.com/WillBooster/tree-sitter-bash/blob/v9.0.0/package.json).
+    // 8.0.0: Version 8 requires web-tree-sitter ^13, but wbfy loads the grammar with 2.0.33; the runtime ABI changed in v5. Later v12 requires runtime ^17.0.1 and does not restore compatibility. https://github.com/WillBooster/tree-sitter-bash/blob/v8.0.0/package.json https://github.com/WillBooster/tree-sitter-bash/releases/tag/v5.0.0 https://github.com/WillBooster/tree-sitter-bash/pull/117
     {
       "matchPackageNames": ["@willbooster/tree-sitter-bash"],
-      "allowedVersions": "!/^(11\\.0\\.0|12\\.0\\.0|11\\.0\\.1|10\\.0\\.0|9\\.0\\.0)$/",
+      "allowedVersions": "!/^(11\\.0\\.0|12\\.0\\.0|11\\.0\\.1|10\\.0\\.0|9\\.0\\.0|8\\.0\\.0)$/",
     },
     // 16.0.2: Version 16.0.2 rejects the pinned Bash grammar ABI 0x57420001 at startup; it requires ABI 0x5742000b (https://github.com/WillBooster/tree-sitter/pull/278).
     // 16.0.1: Version 16.0.1 requires grammar ABI 0x5742000b and rejects the Bash 4.0.4 grammar pinned by wbfy (ABI 0x57420001), preventing shell parser initialization; https://github.com/WillBooster/tree-sitter/pull/278 and https://github.com/WillBooster/shared/pull/1591.
