@@ -76,6 +76,22 @@ const agentSettings = [
     },
   },
   {
+    relativePath: '.gemini/config/skills.json',
+    // Antigravity CLI strips only full-line `//` comments before `JSON.parse`, so inline and block
+    // comments fail to parse.
+    acceptsComments: false,
+    // The `skills` CLI installs global skills into `~/.agents/skills`, whereas Antigravity CLI walks
+    // `.agents/skills` only up to the workspace repository root unless `~/.gemini/config/skills.json`
+    // registers the global directory.
+    settings: {
+      entries: [
+        {
+          path: '~/.agents/skills',
+        },
+      ],
+    },
+  },
+  {
     relativePath: '.gemini/settings.json',
     // Gemini CLI strips comments before parsing its settings file, unlike Claude Code and
     // Antigravity CLI, which reject a commented file as malformed.
@@ -171,7 +187,12 @@ async function mergeAgentSettings(
       existingSettings = parsedSettings;
     }
   }
-  const settings = merge(existingSettings, newSettings);
+  const settings = merge(existingSettings, newSettings, {
+    arrayMerge: (target: unknown[], source: unknown[]) => [
+      ...target,
+      ...source.filter((item) => !target.some((existing) => JSON.stringify(existing) === JSON.stringify(item))),
+    ],
+  });
   // Only the properties whose value changes are rewritten, so the file keeps its own formatting
   // and, where the agent allows them, its comments.
   const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(existingContent, settings);
