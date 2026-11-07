@@ -31,9 +31,10 @@
     // 16.0.2: Version 16.0.2 rejects the pinned Bash grammar ABI 0x57420001 at startup; it requires ABI 0x5742000b (https://github.com/WillBooster/tree-sitter/pull/278).
     // 16.0.1: Version 16.0.1 requires grammar ABI 0x5742000b and rejects the Bash 4.0.4 grammar pinned by wbfy (ABI 0x57420001), preventing shell parser initialization; https://github.com/WillBooster/tree-sitter/pull/278 and https://github.com/WillBooster/shared/pull/1591.
     // 18.0.2: Version 18.0.2 rejects wbfy's pinned Bash 4.0.4 grammar: it expects ABI 0x5742000c but the grammar has 0x57420001, preventing shell parser initialization. Earlier ABI incompatibility is documented at https://github.com/WillBooster/shared/pull/1593 and https://github.com/WillBooster/tree-sitter/pull/278.
+    // 18.0.1: Version 18.0.1 rejects wbfy's Bash 4.0.4 grammar: runtime ABI 0x5742000c does not match grammar ABI 0x57420001. Version 18.0.2 has the same incompatibility: https://github.com/WillBooster/shared/pull/1616; ABI changes: https://github.com/WillBooster/tree-sitter/pull/278.
     {
       "matchPackageNames": ["@willbooster/web-tree-sitter"],
-      "allowedVersions": "!/^(16\\.0\\.2|16\\.0\\.1|18\\.0\\.2)$/",
+      "allowedVersions": "!/^(16\\.0\\.2|16\\.0\\.1|18\\.0\\.2|18\\.0\\.1)$/",
     },
   ],
 }
