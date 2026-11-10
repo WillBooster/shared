@@ -5,8 +5,6 @@
 - Purpose: Every WillBooster repository is developed, verified, and released the same way, so people and AI agents move between repositories without relearning each one.
 - Goals:
   - An AI agent develops, verifies, and releases any WillBooster repository without repository-specific guidance from a person.
-  - A change to an organization convention reaches every repository through one `wbfy` run.
-  - Code that two or more WillBooster projects need exists once, in a `shared-lib` package.
 - Non-goals:
   - Supporting repositories outside WillBooster and WillBoosterLab beyond best effort.
   - Running on Windows.

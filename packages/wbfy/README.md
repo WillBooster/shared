@@ -11,8 +11,6 @@ Every WillBooster repository stays on the organization's current conventions wit
 
 ## Goals
 
-- Running `wbfy` on any WillBooster repository yields the current conventional configuration with no manual follow-up.
-- Running `wbfy` again on its own output changes nothing.
 - The agent instructions `wbfy` generates let an AI agent work in a repository without further guidance from a person.
 
 ## Non-goals
@@ -20,6 +18,10 @@ Every WillBooster repository stays on the organization's current conventions wit
 - Supporting repositories outside WillBooster and WillBoosterLab beyond best effort.
 - Accepting hand-written, legacy, or third-party variants of the files `wbfy` generates.
 - Running on Windows.
+
+## Philosophy
+
+This tool must keep idempotency, i.e., it always yields the same result when a user applies this tool to a project even multiple times.
 
 ## How to Use
 

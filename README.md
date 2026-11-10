@@ -13,8 +13,6 @@ Every WillBooster repository is developed, verified, and released the same way, 
 ## Goals
 
 - An AI agent develops, verifies, and releases any WillBooster repository without repository-specific guidance from a person.
-- A change to an organization convention reaches every repository through one `wbfy` run.
-- Code that two or more WillBooster projects need exists once, in a `shared-lib` package.
 
 ## Non-goals
 
