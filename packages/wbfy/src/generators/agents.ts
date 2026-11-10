@@ -85,6 +85,7 @@ function generateAgentInstruction(
 ): string {
   const packageManager = 'bun';
   const description = rootConfig.packageJson?.description;
+  const renderedDirection = renderProjectDirection(direction);
   const goalsInstruction = direction.Goals
     ? '\n- Use `Goals` under Project Information to choose between alternatives, an earlier goal outweighing a later one; they never widen what a task requests.'
     : '';
@@ -106,7 +107,8 @@ function generateAgentInstruction(
 ## Project Information
 
 - Name: \`${projectName}\`${description ? `\n- Description: ${description}` : ''}
-- Package Manager: ${packageManager}${renderProjectDirection(direction)}
+- Package Manager: ${packageManager}${renderedDirection}
+- This codebase is yours: how it's built is your call, and you'll keep building on it; what it's for is set by ${renderedDirection ? 'the Project Information above and ' : ''}the requester.
 
 ## General Instructions
 
