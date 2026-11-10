@@ -2,6 +2,7 @@
 
 - Name: `willbooster-shared`
 - Package Manager: bun
+- This codebase is yours: how it's built is your call, and you'll keep building on it; what it's for is set by the requester.
 
 ## General Instructions
 
