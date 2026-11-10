@@ -11,17 +11,15 @@ Every WillBooster repository stays on the organization's current conventions wit
 
 ## Goals
 
-- The agent instructions `wbfy` generates let an AI agent work in a repository without further guidance from a person.
+- Applying `wbfy` to a repository leaves nothing to fix by hand.
+- Applying `wbfy` again changes nothing.
+- The agent instructions `wbfy` generates are all the guidance an AI agent needs to work in the repository.
 
 ## Non-goals
 
 - Supporting repositories outside WillBooster and WillBoosterLab beyond best effort.
 - Accepting hand-written, legacy, or third-party variants of the files `wbfy` generates.
 - Running on Windows.
-
-## Philosophy
-
-This tool must keep idempotency, i.e., it always yields the same result when a user applies this tool to a project even multiple times.
 
 ## How to Use
 

@@ -8,11 +8,14 @@
 
 ## Purpose
 
-Every WillBooster repository is developed, verified, and released the same way, so people and AI agents move between repositories without relearning each one.
+People and AI agents work on any WillBooster repository without learning it first, because every repository follows the same conventions, runs the same commands, and shares the same code.
 
 ## Goals
 
-- An AI agent develops, verifies, and releases any WillBooster repository without repository-specific guidance from a person.
+- An AI agent develops, verifies, and releases in any WillBooster repository without repository-specific guidance from a person.
+- Every repository stays on the organization's current conventions without anyone configuring it by hand.
+- The same command does the same job in every repository, whatever its framework or deploy target.
+- Code that two or more WillBooster projects need exists once.
 
 ## Non-goals
 
