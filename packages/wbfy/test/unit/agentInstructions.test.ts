@@ -154,6 +154,7 @@ test.each([
   ['only a comment', '---\n# TODO\n---\n'],
   ['an empty mapping', '---\n{}\n---\n'],
   ['keys without values', '---\npurpose:\ngoals: []\nmilestones:\n---\n'],
+  ['blank values', '---\npurpose: ""\ngoals:\n  - " "\n  -\n---\n'],
 ])('lists no project direction when the README front matter holds %s', async (_name, readme) => {
   const tempRootPath = path.join(process.cwd(), '.tmp');
   await fs.promises.mkdir(tempRootPath, { recursive: true });

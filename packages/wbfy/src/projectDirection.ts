@@ -6,11 +6,13 @@ import { z } from 'zod';
 import { matchFrontMatter } from './utils/frontMatter.js';
 import { fsUtil } from './utils/fsUtil.js';
 
-const textSchema = z.string().trim().min(1);
-const listSchema = z.array(textSchema);
+// A value that states nothing (no value, blank text, an empty list, a blank item) is accepted and
+// rendered as absent: only text that would otherwise be dropped unnoticed makes the front matter invalid.
+const textSchema = z.string().trim().nullish();
+const listSchema = z.array(textSchema).transform((items) => items.filter(Boolean) as string[]);
 
 const projectDirectionSchema = z.strictObject({
-  purpose: textSchema.nullish(),
+  purpose: textSchema,
   goals: listSchema.nullish(),
   nonGoals: listSchema.nullish(),
   milestones: listSchema.nullish(),
