@@ -24,7 +24,7 @@ export async function readProjectDirection(rootDirPath: string): Promise<Project
   const frontMatter = matchFrontMatter(readme?.replace(/^﻿/u, '') ?? '');
   if (!frontMatter) return {};
   try {
-    return projectDirectionSchema.parse(yaml.load(frontMatter.body) ?? {});
+    return projectDirectionSchema.parse(yaml.load(frontMatter.body));
   } catch (error) {
     throw new Error(`The front matter of README.md is invalid: ${String(error)}`, { cause: error });
   }

@@ -93,7 +93,7 @@ function generateAgentInstruction(
     ? '\n- Use `Goals` under Project Information to choose between alternatives, an earlier goal outweighing a later one; they never widen what a task requests.'
     : '';
   const milestonesInstruction = direction.milestones
-    ? '\n- `Milestones` under Project Information are not yet reached: never present one as an existing feature or an achieved result (e.g., in announcements), implement one only when a task requests it, and delete it from `README.md` once it is reached.'
+    ? '\n- `Milestones` under Project Information are not yet reached: never present one as an existing feature or an achieved result (e.g., in announcements), implement one only when a task requests it, and delete it from `README.md` once it is reached, together with the `milestones` key when it was the last one.'
     : '';
   const coAuthorInstruction = rootConfig.isWillBoosterRepo
     ? '\n  - End your commit message with a blank line followed by `Co-authored-by: WillBooster (AGENT_NAME) <agent@willbooster.com>`, replacing only `AGENT_NAME` with your agent name (e.g., `Claude Code`), the only AI attribution to add.'
