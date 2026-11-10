@@ -159,6 +159,8 @@ test.each([
     'front matter of README.md is invalid',
   ],
   ['a goal list that is text', 'README.md', '---\ngoals: Be fast\n---\n', 'front matter of README.md is invalid'],
+  ['an empty front matter', 'README.md', '---\n---\n', 'front matter of README.md is invalid'],
+  ['a front matter with no key', 'README.md', '---\n{}\n---\n', 'front matter of README.md is invalid'],
   ['broken front matter', 'README.md', '---\npurpose: Be fast: always\n---\n', 'front matter of README.md is invalid'],
 ])(
   'stops before changing anything when the repository has %s',

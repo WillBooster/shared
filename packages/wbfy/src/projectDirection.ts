@@ -9,12 +9,14 @@ import { fsUtil } from './utils/fsUtil.js';
 const textSchema = z.string().trim().min(1);
 const listSchema = z.array(textSchema).min(1);
 
-const projectDirectionSchema = z.strictObject({
-  purpose: textSchema.optional(),
-  goals: listSchema.optional(),
-  nonGoals: listSchema.optional(),
-  milestones: listSchema.optional(),
-});
+const projectDirectionSchema = z
+  .strictObject({
+    purpose: textSchema.optional(),
+    goals: listSchema.optional(),
+    nonGoals: listSchema.optional(),
+    milestones: listSchema.optional(),
+  })
+  .refine((direction) => Object.keys(direction).length > 0, 'Must have at least one key');
 
 export type ProjectDirection = z.infer<typeof projectDirectionSchema>;
 
