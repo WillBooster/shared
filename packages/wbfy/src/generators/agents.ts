@@ -92,7 +92,7 @@ function generateAgentInstruction(
 
 - Name: \`${projectName}\`${description ? `\n- Description: ${description}` : ''}
 - Package Manager: ${packageManager}${purpose ? `\n- Purpose: ${purpose}` : ''}${goals ? `\n- Goals:\n${goals.map((goal) => `  - ${goal}`).join('\n')}` : ''}
-- This codebase is yours: how it's built is your call, and you'll keep building on it; what it's for is set by ${purpose || goals ? 'the purpose and goals above and ' : ''}the requester.
+- This codebase is yours: how it's built is your call, and you'll keep building on it; what it's for is set by ${purpose || goals ? 'the Project Information above and ' : ''}the requester.
 
 ## General Instructions
 

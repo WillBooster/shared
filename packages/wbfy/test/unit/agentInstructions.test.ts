@@ -121,7 +121,7 @@ test('lists the purpose and goals from wbfy.yaml under Project Information', asy
 - Goals:
   - Review within an hour
   - Keep false positives rare
-- This codebase is yours: how it's built is your call, and you'll keep building on it; what it's for is set by the purpose and goals above and the requester.
+- This codebase is yours: how it's built is your call, and you'll keep building on it; what it's for is set by the Project Information above and the requester.
 
 ## General Instructions`
     );
