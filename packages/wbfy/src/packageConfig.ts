@@ -6,7 +6,6 @@ import path from 'node:path';
 import { getGlobIgnore } from '@willbooster/shared-lib-node/src';
 import { escapeRegExp } from '@willbooster/shared-lib/src';
 import fg from 'fast-glob';
-import * as yaml from 'js-yaml';
 import { parse as parseToml } from 'smol-toml';
 import type { PackageJson } from 'type-fest';
 import { z } from 'zod';
@@ -110,11 +109,7 @@ export interface PackageConfig {
 
 type WbfyConfig = z.infer<typeof wbfyConfigSchema>;
 
-const singleLineTextSchema = z.string().trim().min(1).regex(/^.+$/u, 'Must be a single line');
-
 const wbfyConfigSchema = z.strictObject({
-  purpose: singleLineTextSchema.optional(),
-  goals: z.array(singleLineTextSchema).min(1).optional(),
   typos: z
     .strictObject({
       all: z.record(z.string(), z.string()).optional(),
@@ -391,11 +386,11 @@ async function readDockerfile(dirPath: string): Promise<string> {
   }
 }
 
-/** Throws when `wbfy.yaml` is invalid, which the CLI reports before changing anything. */
+/** Throws when `wbfy.json` is invalid, which the CLI reports before changing anything. */
 export function readWbfyConfig(dirPath: string): WbfyConfig | undefined {
-  const wbfyConfigPath = path.resolve(dirPath, 'wbfy.yaml');
+  const wbfyConfigPath = path.resolve(dirPath, 'wbfy.json');
   if (!fs.existsSync(wbfyConfigPath)) return undefined;
-  return wbfyConfigSchema.parse(yaml.load(fs.readFileSync(wbfyConfigPath, 'utf8')));
+  return wbfyConfigSchema.parse(JSON.parse(fs.readFileSync(wbfyConfigPath, 'utf8')));
 }
 
 async function resolveRepoIdentity(

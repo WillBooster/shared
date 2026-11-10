@@ -6,6 +6,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { matchFrontMatter } from '../utils/frontMatter.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { getOctokit } from '../utils/githubUtil.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -199,6 +200,7 @@ async function hasAnyWorkflowRun(
  * verbatim from the original text through the parser's positional offsets, so no reformatting of the
  * user's content is possible.
  */
+// code-gauge-allow functionCognitiveComplexity 17 -- The steps share the parsed nodes and offsets; splitting them would pass that state around.
 export function writeBadgeBlock(readme: string, managedBadges: string[]): string {
   const lineEnding = getLineEnding(readme);
   // A BOM is not Markdown: left in the text it hides the `#` of the title from the parser, and
@@ -208,9 +210,7 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
   // detached before parsing instead of being told apart afterwards; it also has to stay first in the
   // file, which makes it a prefix in exactly the same way the BOM is.
   const withoutMark = readme.slice(byteOrderMark.length);
-  const frontMatter = withoutMark.startsWith('---')
-    ? (/^---[ \t]*\r?\n[\s\S]*?^---[ \t]*(?:\r?\n|$)/mu.exec(withoutMark)?.[0] ?? '')
-    : '';
+  const frontMatter = matchFrontMatter(withoutMark)?.block ?? '';
   const prefix = `${byteOrderMark}${frontMatter}`;
   // The final newline is set aside rather than parsed as trailing blank space, which the blank-line
   // trimming below would otherwise swallow.

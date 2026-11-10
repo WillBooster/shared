@@ -53,6 +53,7 @@ import { generateGitHubTemplates } from './github/template.js';
 import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
 import { getPackageConfig, getWorkerTypesScriptError, readWbfyConfig } from './packageConfig.js';
+import { readProjectDirection } from './projectDirection.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { hasGitHubToken } from './utils/githubUtil.js';
@@ -195,7 +196,8 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   const preflightError =
     (await findUnwritableManagedFileError(rootDirPath, subDirPaths)) ??
     findInvalidPackageJsonError(rootDirPath, subDirPaths) ??
-    findInvalidWbfyConfigError(rootDirPath);
+    findInvalidWbfyConfigError(rootDirPath) ??
+    (await findInvalidProjectDirectionError(rootDirPath));
   if (preflightError) {
     console.error(preflightError);
     return false;
@@ -380,7 +382,16 @@ function findInvalidWbfyConfigError(rootDirPath: string): string | undefined {
     readWbfyConfig(rootDirPath);
     return undefined;
   } catch (error) {
-    return `Skip ${rootDirPath}:\n${path.resolve(rootDirPath, 'wbfy.yaml')} is invalid: ${String(error)}`;
+    return `Skip ${rootDirPath}:\n${path.resolve(rootDirPath, 'wbfy.json')} is invalid: ${String(error)}`;
+  }
+}
+
+async function findInvalidProjectDirectionError(rootDirPath: string): Promise<string | undefined> {
+  try {
+    await readProjectDirection(rootDirPath);
+    return undefined;
+  } catch (error) {
+    return `Skip ${rootDirPath}:\n${String(error)}`;
   }
 }
 

@@ -99,17 +99,31 @@ test('describes wb deploy only when the package script invokes it', async () => 
   }
 });
 
-test('lists the purpose and goals from wbfy.yaml under Project Information', async () => {
+test('lists the purpose, goals, non-goals, and milestones of the README front matter under Project Information', async () => {
   const tempRootPath = path.join(process.cwd(), '.tmp');
   await fs.promises.mkdir(tempRootPath, { recursive: true });
-  const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'wbfy-config-'));
+  const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'project-direction-'));
 
   try {
     fsUtil.setRootDirPath(dirPath);
     await fs.promises.writeFile(path.join(dirPath, 'package.json'), '{ "name": "example" }');
     await fs.promises.writeFile(
-      path.join(dirPath, 'wbfy.yaml'),
-      'purpose: Make reviews faster\ngoals:\n  - Review within an hour\n  - Keep false positives rare\n'
+      path.join(dirPath, 'README.md'),
+      `---
+milestones:
+  - 10,000 users
+purpose: >
+  Anyone can learn English
+  in a short time.
+goals:
+  - Learners finish a lesson in five minutes
+  - Lessons adapt to each learner
+nonGoals:
+  - Teaching other languages
+---
+
+# example
+`
     );
     const config = await getPackageConfig(dirPath, { isRoot: true });
     assert.ok(config);
@@ -117,10 +131,14 @@ test('lists the purpose and goals from wbfy.yaml under Project Information', asy
 
     expect(await fs.promises.readFile(path.join(dirPath, 'AGENTS.md'), 'utf8')).toContain(
       `- Package Manager: bun
-- Purpose: Make reviews faster
+- Purpose: Anyone can learn English in a short time.
 - Goals:
-  - Review within an hour
-  - Keep false positives rare
+  - Learners finish a lesson in five minutes
+  - Lessons adapt to each learner
+- Non-goals:
+  - Teaching other languages
+- Milestones:
+  - 10,000 users
 - This codebase is yours: how it's built is your call, and you'll keep building on it; what it's for is set by the Project Information above and the requester.
 
 ## General Instructions`
@@ -132,20 +150,54 @@ test('lists the purpose and goals from wbfy.yaml under Project Information', asy
 });
 
 test.each([
-  ['a multi-line value', 'purpose: |\n  Line one\n  ## Line two\n'],
-  ['an unknown key', 'goal:\n  - Review within an hour\n'],
-  ['an empty list', 'goals: []\n'],
-  ['broken YAML', 'purpose: Make reviews faster: always\n'],
+  ['nothing', '---\n---\n'],
+  ['only a comment', '---\n# TODO\n---\n'],
+  ['an empty mapping', '---\n{}\n---\n'],
+  ['keys without values', '---\npurpose:\ngoals: []\nmilestones:\n---\n'],
+  ['blank values', '---\npurpose: ""\ngoals:\n  - " "\n  -\n---\n'],
+])('lists no project direction when the README front matter holds %s', async (_name, readme) => {
+  const tempRootPath = path.join(process.cwd(), '.tmp');
+  await fs.promises.mkdir(tempRootPath, { recursive: true });
+  const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'empty-project-direction-'));
+
+  try {
+    fsUtil.setRootDirPath(dirPath);
+    await fs.promises.writeFile(path.join(dirPath, 'package.json'), '{ "name": "example" }');
+    await fs.promises.writeFile(path.join(dirPath, 'README.md'), readme);
+    const config = await getPackageConfig(dirPath, { isRoot: true });
+    assert.ok(config);
+    await generateAgentInstructions(config, [config]);
+
+    const content = await fs.promises.readFile(path.join(dirPath, 'AGENTS.md'), 'utf8');
+    expect(content).toContain('- Package Manager: bun\n- This codebase is yours');
+    expect(content).not.toContain('under Project Information');
+  } finally {
+    fsUtil.setRootDirPath(undefined);
+    await fs.promises.rm(dirPath, { force: true, recursive: true });
+  }
+});
+
+test.each([
+  ['an unknown key in wbfy.json', 'wbfy.json', '{ "typo": {} }', 'wbfy.json is invalid'],
+  ['broken JSON in wbfy.json', 'wbfy.json', '{ "typos": ', 'wbfy.json is invalid'],
+  [
+    'an unknown front matter key',
+    'README.md',
+    '---\ngoal:\n  - Be fast\n---\n',
+    'front matter of README.md is invalid',
+  ],
+  ['a goal list that is text', 'README.md', '---\ngoals: Be fast\n---\n', 'front matter of README.md is invalid'],
+  ['broken front matter', 'README.md', '---\npurpose: Be fast: always\n---\n', 'front matter of README.md is invalid'],
 ])(
-  'stops before changing anything when wbfy.yaml has %s',
-  async (_name, wbfyYaml) => {
+  'stops before changing anything when the repository has %s',
+  async (_name, fileName, content, expectedError) => {
     const tempRootPath = path.join(process.cwd(), '.tmp');
     await fs.promises.mkdir(tempRootPath, { recursive: true });
-    const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'invalid-wbfy-config-'));
+    const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'invalid-project-input-'));
 
     try {
       await fs.promises.writeFile(path.join(dirPath, 'package.json'), '{ "name": "example" }');
-      await fs.promises.writeFile(path.join(dirPath, 'wbfy.yaml'), wbfyYaml);
+      await fs.promises.writeFile(path.join(dirPath, fileName), content);
       const spawned = Bun.spawn(['bun', path.join(import.meta.dir, '../../src/index.ts'), dirPath], {
         stderr: 'pipe',
         stdout: 'pipe',
@@ -153,7 +205,7 @@ test.each([
       const [exitCode, stderr] = await Promise.all([spawned.exited, new Response(spawned.stderr).text()]);
 
       expect(exitCode).not.toBe(0);
-      expect(stderr).toContain('wbfy.yaml is invalid');
+      expect(stderr).toContain(expectedError);
       expect(fs.existsSync(path.join(dirPath, 'AGENTS.md'))).toBe(false);
     } finally {
       await fs.promises.rm(dirPath, { force: true, recursive: true });
