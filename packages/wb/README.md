@@ -10,6 +10,7 @@ Developers and AI agents run the same commands in every WillBooster repository, 
 
 - One command verifies, tests, starts, or deploys a project on every stack WillBooster uses.
 - The output of a failed command is all an AI agent needs to fix the failure.
+- Commands print to standard output only what an AI agent needs to act on, leaving out everything else.
 
 ## Non-goals
 
