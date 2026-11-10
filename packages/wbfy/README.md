@@ -5,14 +5,21 @@
 
 :books::rocket: A tool for applying WillBooster's conventional configurations to npm packages
 
-## Motivation
+## Purpose
 
-There are some resources for creating a project with conventional configurations like [Yeoman](https://yeoman.io/), GitHub's Template repository, and starter-kit repositories.
-However, we sometimes faced the cases where we wanted to apply conventional configurations to an existing repository, so we've launch this tool!
+Every WillBooster repository stays on the organization's current conventions without anyone configuring it by hand.
 
-## Philosophy
+## Goals
 
-This tool must keep idempotency, i.e., it always yields the same result when a user applies this tool to a project even multiple times.
+- Running `wbfy` on any WillBooster repository yields the current conventional configuration with no manual follow-up.
+- Running `wbfy` again on its own output changes nothing.
+- The agent instructions `wbfy` generates let an AI agent work in a repository without further guidance from a person.
+
+## Non-goals
+
+- Supporting repositories outside WillBooster and WillBoosterLab beyond best effort.
+- Accepting hand-written, legacy, or third-party variants of the files `wbfy` generates.
+- Running on Windows.
 
 ## How to Use
 

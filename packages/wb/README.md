@@ -2,6 +2,19 @@
 
 `wb` offers a collection of reusable npm scripts, designed primarily for WillBooster Inc. but with potential utility for other projects as well.
 
+## Purpose
+
+Developers and AI agents run the same commands in every WillBooster repository, whatever its framework or deploy target.
+
+## Goals
+
+- One command verifies, tests, starts, or deploys a project on every stack WillBooster uses.
+- The output of a failed command tells an AI agent what to fix without a person interpreting it.
+
+## Non-goals
+
+- Running on Windows.
+
 ## Supported Platforms
 
 `wb` runs on macOS and Linux with Bun >= 1.4.4 or Node.js >= 26. The packaged command uses Bun (`bun wb <command>`). To run it with Node.js, invoke `bin/index.js` with `node`. Keep real Node.js 26 on `PATH` for tools such as Playwright, Wrangler, and vinext.
