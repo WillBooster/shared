@@ -1,5 +1,5 @@
 ---
-purpose: WillBooster projects on any JavaScript runtime share one tested implementation of general-purpose code instead of each writing its own.
+purpose: WillBooster projects on any JavaScript runtime share one implementation of general-purpose code instead of each writing its own.
 goals:
   - The package runs on every JavaScript runtime WillBooster uses, with no runtime dependencies.
 ---
