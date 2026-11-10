@@ -89,11 +89,11 @@ function generateAgentInstruction(
   const publicDirectionInstruction = rootConfig.isPublicRepo
     ? ' This repository is public: write there only what may be public.'
     : '';
-  const goalsInstruction = direction.goals
+  const goalsInstruction = direction.goals?.length
     ? '\n- Use `Goals` under Project Information to choose between alternatives, an earlier goal outweighing a later one; they never widen what a task requests.'
     : '';
-  const milestonesInstruction = direction.milestones
-    ? '\n- `Milestones` under Project Information are not yet reached: never present one as an existing feature or an achieved result (e.g., in announcements), implement one only when a task requests it, and delete it from `README.md` once it is reached, together with the `milestones` key when it was the last one.'
+  const milestonesInstruction = direction.milestones?.length
+    ? '\n- `Milestones` under Project Information are not yet reached: never present one as an existing feature or an achieved result (e.g., in announcements), implement one only when a task requests it, and delete it from `README.md` once it is reached.'
     : '';
   const coAuthorInstruction = rootConfig.isWillBoosterRepo
     ? '\n  - End your commit message with a blank line followed by `Co-authored-by: WillBooster (AGENT_NAME) <agent@willbooster.com>`, replacing only `AGENT_NAME` with your agent name (e.g., `Claude Code`), the only AI attribution to add.'
@@ -150,7 +150,7 @@ ${codingStyle}
 
 function renderProjectDirection({ purpose, goals, nonGoals, milestones }: ProjectDirection): string {
   const lists = Object.entries({ Goals: goals, 'Non-goals': nonGoals, Milestones: milestones }).map(([label, items]) =>
-    items ? `\n- ${label}:\n${items.map((item) => `  - ${toSingleLine(item)}`).join('\n')}` : ''
+    items?.length ? `\n- ${label}:\n${items.map((item) => `  - ${toSingleLine(item)}`).join('\n')}` : ''
   );
   return `${purpose ? `\n- Purpose: ${toSingleLine(purpose)}` : ''}${lists.join('')}`;
 }

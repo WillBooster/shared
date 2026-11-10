@@ -7,16 +7,14 @@ import { matchFrontMatter } from './utils/frontMatter.js';
 import { fsUtil } from './utils/fsUtil.js';
 
 const textSchema = z.string().trim().min(1);
-const listSchema = z.array(textSchema).min(1);
+const listSchema = z.array(textSchema);
 
-const projectDirectionSchema = z
-  .strictObject({
-    purpose: textSchema.optional(),
-    goals: listSchema.optional(),
-    nonGoals: listSchema.optional(),
-    milestones: listSchema.optional(),
-  })
-  .refine((direction) => Object.keys(direction).length > 0, 'Must have at least one key');
+const projectDirectionSchema = z.strictObject({
+  purpose: textSchema.nullish(),
+  goals: listSchema.nullish(),
+  nonGoals: listSchema.nullish(),
+  milestones: listSchema.nullish(),
+});
 
 export type ProjectDirection = z.infer<typeof projectDirectionSchema>;
 
@@ -24,9 +22,10 @@ export type ProjectDirection = z.infer<typeof projectDirectionSchema>;
 export async function readProjectDirection(rootDirPath: string): Promise<ProjectDirection> {
   const readme = await fsUtil.readFileConfinedIfExists(path.resolve(rootDirPath, 'README.md'));
   const frontMatter = matchFrontMatter(readme?.replace(/^﻿/u, '') ?? '');
-  if (!frontMatter) return {};
+  // js-yaml throws on a body that holds no document, which states nothing rather than something invalid.
+  if (!frontMatter || /^(?:\s*(?:#.*)?(?:\r?\n|$))*$/u.test(frontMatter.body)) return {};
   try {
-    return projectDirectionSchema.parse(yaml.load(frontMatter.body));
+    return projectDirectionSchema.parse(yaml.load(frontMatter.body) ?? {});
   } catch (error) {
     throw new Error(`The front matter of README.md is invalid: ${String(error)}`, { cause: error });
   }
