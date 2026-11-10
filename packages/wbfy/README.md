@@ -1,25 +1,21 @@
+---
+purpose: Every WillBooster repository stays on the organization's current conventions without anyone configuring it by hand.
+goals:
+  - Applying `wbfy` to a repository leaves nothing to fix by hand.
+  - Applying `wbfy` again changes nothing.
+  - The agent instructions `wbfy` generates are all the guidance an AI agent needs to work in the repository.
+nonGoals:
+  - Supporting repositories outside WillBooster and WillBoosterLab beyond best effort.
+  - Accepting hand-written, legacy, or third-party variants of the files `wbfy` generates.
+  - Running on Windows.
+---
+
 # wbfy
 
 [![Test](https://github.com/WillBooster/shared/actions/workflows/test.yml/badge.svg)](https://github.com/WillBooster/shared/actions/workflows/test.yml)
 [![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg)](https://github.com/semantic-release/semantic-release)
 
 :books::rocket: A tool for applying WillBooster's conventional configurations to npm packages
-
-## Purpose
-
-Every WillBooster repository stays on the organization's current conventions without anyone configuring it by hand.
-
-## Goals
-
-- Applying `wbfy` to a repository leaves nothing to fix by hand.
-- Applying `wbfy` again changes nothing.
-- The agent instructions `wbfy` generates are all the guidance an AI agent needs to work in the repository.
-
-## Non-goals
-
-- Supporting repositories outside WillBooster and WillBoosterLab beyond best effort.
-- Accepting hand-written, legacy, or third-party variants of the files `wbfy` generates.
-- Running on Windows.
 
 ## How to Use
 
