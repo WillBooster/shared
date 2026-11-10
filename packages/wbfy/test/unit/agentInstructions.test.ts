@@ -99,7 +99,7 @@ test('describes wb deploy only when the package script invokes it', async () => 
   }
 });
 
-test('lists the purpose, goals, non-goals, and milestones of README.md under Project Information', async () => {
+test('lists the purpose, goals, non-goals, and milestones of the README front matter under Project Information', async () => {
   const tempRootPath = path.join(process.cwd(), '.tmp');
   await fs.promises.mkdir(tempRootPath, { recursive: true });
   const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'project-direction-'));
@@ -109,28 +109,20 @@ test('lists the purpose, goals, non-goals, and milestones of README.md under Pro
     await fs.promises.writeFile(path.join(dirPath, 'package.json'), '{ "name": "example" }');
     await fs.promises.writeFile(
       path.join(dirPath, 'README.md'),
-      `# example
+      `---
+milestones:
+  - 10,000 users
+purpose: >
+  Anyone can learn English
+  in a short time.
+goals:
+  - Learners finish a lesson in five minutes
+  - Lessons adapt to each learner
+nonGoals:
+  - Teaching other languages
+---
 
-## Milestones
-
-- 10,000 users
-
-## Purpose
-
-Anyone can learn English
-in a short time.
-
-## Usage
-
-## Goals
-
-- Learners finish a lesson in five minutes
-  - On mobile too
-- Lessons adapt to each learner
-
-## Non-goals
-
-- Teaching other languages
+# example
 `
     );
     const config = await getPackageConfig(dirPath, { isRoot: true });
@@ -142,7 +134,6 @@ in a short time.
 - Purpose: Anyone can learn English in a short time.
 - Goals:
   - Learners finish a lesson in five minutes
-    - On mobile too
   - Lessons adapt to each learner
 - Non-goals:
   - Teaching other languages
@@ -161,9 +152,14 @@ in a short time.
 test.each([
   ['an unknown key in wbfy.json', 'wbfy.json', '{ "typo": {} }', 'wbfy.json is invalid'],
   ['broken JSON in wbfy.json', 'wbfy.json', '{ "typos": ', 'wbfy.json is invalid'],
-  ['prose in a list section', 'README.md', '## Goals\n\nBe fast.\n', '`## Goals` section of README.md must consist'],
-  ['two blocks in a section', 'README.md', '## Purpose\n\nOne.\n\nTwo.\n', '`## Purpose` section of README.md must'],
-  ['a repeated section', 'README.md', '## Goals\n\n- A\n\n## Goals\n\n- B\n', 'more than one `## Goals` section'],
+  [
+    'an unknown front matter key',
+    'README.md',
+    '---\ngoal:\n  - Be fast\n---\n',
+    'front matter of README.md is invalid',
+  ],
+  ['a goal list that is text', 'README.md', '---\ngoals: Be fast\n---\n', 'front matter of README.md is invalid'],
+  ['broken front matter', 'README.md', '---\npurpose: Be fast: always\n---\n', 'front matter of README.md is invalid'],
 ])(
   'stops before changing anything when the repository has %s',
   async (_name, fileName, content, expectedError) => {
