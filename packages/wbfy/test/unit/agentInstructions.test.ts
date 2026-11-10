@@ -150,6 +150,34 @@ nonGoals:
 });
 
 test.each([
+  ['nothing', '---\n---\n'],
+  ['only a comment', '---\n# TODO\n---\n'],
+  ['an empty mapping', '---\n{}\n---\n'],
+  ['keys without values', '---\npurpose:\ngoals: []\nmilestones:\n---\n'],
+  ['blank values', '---\npurpose: ""\ngoals:\n  - " "\n  -\n---\n'],
+])('lists no project direction when the README front matter holds %s', async (_name, readme) => {
+  const tempRootPath = path.join(process.cwd(), '.tmp');
+  await fs.promises.mkdir(tempRootPath, { recursive: true });
+  const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'empty-project-direction-'));
+
+  try {
+    fsUtil.setRootDirPath(dirPath);
+    await fs.promises.writeFile(path.join(dirPath, 'package.json'), '{ "name": "example" }');
+    await fs.promises.writeFile(path.join(dirPath, 'README.md'), readme);
+    const config = await getPackageConfig(dirPath, { isRoot: true });
+    assert.ok(config);
+    await generateAgentInstructions(config, [config]);
+
+    const content = await fs.promises.readFile(path.join(dirPath, 'AGENTS.md'), 'utf8');
+    expect(content).toContain('- Package Manager: bun\n- This codebase is yours');
+    expect(content).not.toContain('under Project Information');
+  } finally {
+    fsUtil.setRootDirPath(undefined);
+    await fs.promises.rm(dirPath, { force: true, recursive: true });
+  }
+});
+
+test.each([
   ['an unknown key in wbfy.json', 'wbfy.json', '{ "typo": {} }', 'wbfy.json is invalid'],
   ['broken JSON in wbfy.json', 'wbfy.json', '{ "typos": ', 'wbfy.json is invalid'],
   [

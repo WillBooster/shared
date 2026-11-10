@@ -6,14 +6,16 @@ import { z } from 'zod';
 import { matchFrontMatter } from './utils/frontMatter.js';
 import { fsUtil } from './utils/fsUtil.js';
 
-const textSchema = z.string().trim().min(1);
-const listSchema = z.array(textSchema).min(1);
+// A value that states nothing (no value, blank text, an empty list, a blank item) is accepted and
+// rendered as absent: only text that would otherwise be dropped unnoticed makes the front matter invalid.
+const textSchema = z.string().trim().nullish();
+const listSchema = z.array(textSchema).transform((items) => items.filter(Boolean) as string[]);
 
 const projectDirectionSchema = z.strictObject({
-  purpose: textSchema.optional(),
-  goals: listSchema.optional(),
-  nonGoals: listSchema.optional(),
-  milestones: listSchema.optional(),
+  purpose: textSchema,
+  goals: listSchema.nullish(),
+  nonGoals: listSchema.nullish(),
+  milestones: listSchema.nullish(),
 });
 
 export type ProjectDirection = z.infer<typeof projectDirectionSchema>;
@@ -22,7 +24,8 @@ export type ProjectDirection = z.infer<typeof projectDirectionSchema>;
 export async function readProjectDirection(rootDirPath: string): Promise<ProjectDirection> {
   const readme = await fsUtil.readFileConfinedIfExists(path.resolve(rootDirPath, 'README.md'));
   const frontMatter = matchFrontMatter(readme?.replace(/^﻿/u, '') ?? '');
-  if (!frontMatter) return {};
+  // js-yaml throws on a body that holds no document, which states nothing rather than something invalid.
+  if (!frontMatter || /^(?:\s*(?:#.*)?(?:\r?\n|$))*$/u.test(frontMatter.body)) return {};
   try {
     return projectDirectionSchema.parse(yaml.load(frontMatter.body) ?? {});
   } catch (error) {
