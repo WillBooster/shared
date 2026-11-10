@@ -1,3 +1,9 @@
+---
+purpose: WillBooster projects on any JavaScript runtime share one implementation of general-purpose code instead of each writing its own.
+goals:
+  - The package runs on every JavaScript runtime WillBooster uses, with no runtime dependencies.
+---
+
 # @willbooster/shared-lib
 
 `recoverJson(response)` extracts JSON candidates from text and Markdown without runtime dependencies. It repairs common syntax errors and recovers partial strings and containers. Each candidate includes its parsed `value`, serialized `json`, original `start`/`end` offsets, and `repairs` with original UTF-16 offsets. The range includes consumed source, such as trailing whitespace and removed comments; use `json` or `value`, not the source slice, for parsing.

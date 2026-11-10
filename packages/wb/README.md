@@ -1,3 +1,13 @@
+---
+purpose: Developers and AI agents run the same commands in every WillBooster repository, whatever its framework or deploy target.
+goals:
+  - One command verifies, tests, starts, or deploys a project on every stack WillBooster uses.
+  - The output of a failed command is all an AI agent needs to fix the failure.
+  - Commands print to standard output only what an AI agent needs to act on, leaving out everything else.
+nonGoals:
+  - Running on Windows.
+---
+
 # @willbooster/wb
 
 `wb` offers a collection of reusable npm scripts, designed primarily for WillBooster Inc. but with potential utility for other projects as well.
