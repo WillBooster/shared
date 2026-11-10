@@ -99,17 +99,39 @@ test('describes wb deploy only when the package script invokes it', async () => 
   }
 });
 
-test('lists the purpose and goals from wbfy.yaml under Project Information', async () => {
+test('lists the purpose, goals, non-goals, and milestones of README.md under Project Information', async () => {
   const tempRootPath = path.join(process.cwd(), '.tmp');
   await fs.promises.mkdir(tempRootPath, { recursive: true });
-  const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'wbfy-config-'));
+  const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'project-direction-'));
 
   try {
     fsUtil.setRootDirPath(dirPath);
     await fs.promises.writeFile(path.join(dirPath, 'package.json'), '{ "name": "example" }');
     await fs.promises.writeFile(
-      path.join(dirPath, 'wbfy.yaml'),
-      'purpose: Make reviews faster\ngoals:\n  - Review within an hour\n  - Keep false positives rare\n'
+      path.join(dirPath, 'README.md'),
+      `# example
+
+## Milestones
+
+- 10,000 users
+
+## Purpose
+
+Anyone can learn English
+in a short time.
+
+## Usage
+
+## Goals
+
+- Learners finish a lesson in five minutes
+  - On mobile too
+- Lessons adapt to each learner
+
+## Non-goals
+
+- Teaching other languages
+`
     );
     const config = await getPackageConfig(dirPath, { isRoot: true });
     assert.ok(config);
@@ -117,10 +139,15 @@ test('lists the purpose and goals from wbfy.yaml under Project Information', asy
 
     expect(await fs.promises.readFile(path.join(dirPath, 'AGENTS.md'), 'utf8')).toContain(
       `- Package Manager: bun
-- Purpose: Make reviews faster
+- Purpose: Anyone can learn English in a short time.
 - Goals:
-  - Review within an hour
-  - Keep false positives rare
+  - Learners finish a lesson in five minutes
+    - On mobile too
+  - Lessons adapt to each learner
+- Non-goals:
+  - Teaching other languages
+- Milestones:
+  - 10,000 users
 
 ## General Instructions`
     );
@@ -131,20 +158,21 @@ test('lists the purpose and goals from wbfy.yaml under Project Information', asy
 });
 
 test.each([
-  ['a multi-line value', 'purpose: |\n  Line one\n  ## Line two\n'],
-  ['an unknown key', 'goal:\n  - Review within an hour\n'],
-  ['an empty list', 'goals: []\n'],
-  ['broken YAML', 'purpose: Make reviews faster: always\n'],
+  ['an unknown key in wbfy.json', 'wbfy.json', '{ "typo": {} }', 'wbfy.json is invalid'],
+  ['broken JSON in wbfy.json', 'wbfy.json', '{ "typos": ', 'wbfy.json is invalid'],
+  ['prose in a list section', 'README.md', '## Goals\n\nBe fast.\n', '`## Goals` section of README.md must consist'],
+  ['two blocks in a section', 'README.md', '## Purpose\n\nOne.\n\nTwo.\n', '`## Purpose` section of README.md must'],
+  ['a repeated section', 'README.md', '## Goals\n\n- A\n\n## Goals\n\n- B\n', 'more than one `## Goals` section'],
 ])(
-  'stops before changing anything when wbfy.yaml has %s',
-  async (_name, wbfyYaml) => {
+  'stops before changing anything when the repository has %s',
+  async (_name, fileName, content, expectedError) => {
     const tempRootPath = path.join(process.cwd(), '.tmp');
     await fs.promises.mkdir(tempRootPath, { recursive: true });
-    const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'invalid-wbfy-config-'));
+    const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'invalid-project-input-'));
 
     try {
       await fs.promises.writeFile(path.join(dirPath, 'package.json'), '{ "name": "example" }');
-      await fs.promises.writeFile(path.join(dirPath, 'wbfy.yaml'), wbfyYaml);
+      await fs.promises.writeFile(path.join(dirPath, fileName), content);
       const spawned = Bun.spawn(['bun', path.join(import.meta.dir, '../../src/index.ts'), dirPath], {
         stderr: 'pipe',
         stdout: 'pipe',
@@ -152,7 +180,7 @@ test.each([
       const [exitCode, stderr] = await Promise.all([spawned.exited, new Response(spawned.stderr).text()]);
 
       expect(exitCode).not.toBe(0);
-      expect(stderr).toContain('wbfy.yaml is invalid');
+      expect(stderr).toContain(expectedError);
       expect(fs.existsSync(path.join(dirPath, 'AGENTS.md'))).toBe(false);
     } finally {
       await fs.promises.rm(dirPath, { force: true, recursive: true });

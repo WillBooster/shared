@@ -8,6 +8,8 @@ import { enablesViteReactCompiler } from '../fixers/viteConfig.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { generatesWorkerTypes } from '../packageConfig.js';
+import type { ProjectDirection } from '../projectDirection.js';
+import { projectDirectionTitles, readProjectDirection } from '../projectDirection.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { runAllInPool } from '../utils/promisePool.js';
 import { hasCloudflareDeployWorkflow, invokesWbDeploy } from './workflow.js';
@@ -31,7 +33,14 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     const codingStyle = generateAgentCodingStyle(rootConfig, allConfigs, await usesReactCompiler(allConfigs));
 
     const agentsMdPath = path.resolve(rootConfig.dirPath, 'AGENTS.md');
-    const agentsMdContent = generateAgentInstruction(rootConfig, allConfigs, deployFacts, codingStyle, extraContent);
+    const agentsMdContent = generateAgentInstruction(
+      rootConfig,
+      allConfigs,
+      deployFacts,
+      codingStyle,
+      await readProjectDirection(rootConfig.dirPath),
+      extraContent
+    );
     // Cursor reads AGENTS.md itself, and its CLI applies it alongside `.cursor/rules`, so the
     // former copy in `.cursor/rules/general.mdc` only duplicated these instructions.
     await runAllInPool([
@@ -71,11 +80,15 @@ function generateAgentInstruction(
   allConfigs: PackageConfig[],
   deployFacts: DeployFacts,
   codingStyle: string,
+  direction: ProjectDirection,
   extraContent?: string
 ): string {
   const packageManager = 'bun';
   const description = rootConfig.packageJson?.description;
-  const { purpose, goals } = rootConfig.wbfyConfig ?? {};
+  const directionInstruction =
+    direction.Goals || direction.Milestones
+      ? '\n- `Goals` and `Milestones` under Project Information are not yet achieved: use them to choose between alternatives and to propose work, never to implement beyond what a task requests, and never present them as existing features or achieved results (e.g., in announcements). Delete a line from `README.md` once it is achieved.'
+      : '';
   const coAuthorInstruction = rootConfig.isWillBoosterRepo
     ? '\n  - End your commit message with a blank line followed by `Co-authored-by: WillBooster (AGENT_NAME) <agent@willbooster.com>`, replacing only `AGENT_NAME` with your agent name (e.g., `Claude Code`), the only AI attribution to add.'
     : '';
@@ -91,7 +104,7 @@ function generateAgentInstruction(
 ## Project Information
 
 - Name: \`${projectName}\`${description ? `\n- Description: ${description}` : ''}
-- Package Manager: ${packageManager}${purpose ? `\n- Purpose: ${purpose}` : ''}${goals ? `\n- Goals:\n${goals.map((goal) => `  - ${goal}`).join('\n')}` : ''}
+- Package Manager: ${packageManager}${renderProjectDirection(direction)}
 
 ## General Instructions
 
@@ -107,11 +120,11 @@ ${TEST_WRITING_RULES}
 - Once verified, commit and push to the current branch, and create a PR via \`gh\` if none exists for the branch, unless the user asked only for an investigation, an experiment, or a local change.
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
   - Always create new commits; avoid \`--amend\`.${prTemplateInstruction}${issueTemplateInstruction}
-- In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.) other than the PR body's Requirements section, describe only the current implementation: drop any statement naming an identifier, feature, or concept you cannot confirm exists in the final diff or the current codebase (e.g., one added and later removed or renamed along the way). Whenever your change invalidates documentation or comments, or you find ones that no longer match the current implementation, delete or rewrite them, even in files you are not otherwise changing. Mention a past state only where it is needed to understand why the current design is as it is, or when explicitly asked; files that record history by design (e.g., a changelog) are exempt.
+- In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.) other than the PR body's Requirements section and the \`## Purpose\`, \`## Goals\`, \`## Non-goals\`, and \`## Milestones\` sections of \`README.md\`, describe only the current implementation: drop any statement naming an identifier, feature, or concept you cannot confirm exists in the final diff or the current codebase (e.g., one added and later removed or renamed along the way). Whenever your change invalidates documentation or comments, or you find ones that no longer match the current implementation, delete or rewrite them, even in files you are not otherwise changing. Mention a past state only where it is needed to understand why the current design is as it is, or when explicitly asked; files that record history by design (e.g., a changelog) are exempt.
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`, \`gh issue create --body-file -\`).
 - Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.
 - Before finishing, delete every temporary file, backup, and external resource (e.g., databases, deployed Workers, branches) you created during the task for experiments or verification, without asking, after recording any findings worth keeping in your final response or in a file you keep. Keep an item only when a next step the user requested needs it or it holds the only copy of pre-task data the task was not meant to discard (e.g., a backup a tool kept because restoring it conflicted), and then state in your final response why and the command that deletes it.
-- \`AGENTS.md\` and \`.gemini/styleguide.md\` are generated by \`wbfy\`; edit agent instructions only in \`AGENTS_EXTRA.md\` and the project purpose and goals only in \`wbfy.yaml\`.${generateStackInstructions(rootConfig, allConfigs, deployFacts, packageManager)}
+- \`AGENTS.md\` and \`.gemini/styleguide.md\` are generated by \`wbfy\`; edit agent instructions only in \`AGENTS_EXTRA.md\`, and the project's purpose, goals, non-goals, and milestones only in the \`## Purpose\` (one paragraph), \`## Goals\`, \`## Non-goals\`, and \`## Milestones\` (one list each) sections of \`README.md\`.${directionInstruction}${generateStackInstructions(rootConfig, allConfigs, deployFacts, packageManager)}
 
 ${codingStyle}
 `
@@ -126,6 +139,18 @@ ${codingStyle}
       : '\n' + extraContent
     : '';
   return baseContent + normalizedExtraContent;
+}
+
+function renderProjectDirection(direction: ProjectDirection): string {
+  return projectDirectionTitles
+    .map((title) => {
+      const body = direction[title];
+      if (!body) return '';
+      return title === 'Purpose'
+        ? `\n- Purpose: ${body.replaceAll(/\s*\n\s*/g, ' ')}`
+        : `\n- ${title}:\n${body.replaceAll(/^(?=.)/gm, '  ')}`;
+    })
+    .join('');
 }
 
 function generateStackInstructions(
