@@ -12,7 +12,6 @@ import type { Project } from '../project.js';
 import { createWranglerDeployEnv } from './wranglerDeployEnv.js';
 
 const execute = promisify(execFile);
-// Durable Object-managed containers name their images under `images` and have no application-wide `image`.
 const namedImageSchema = z
   .object({ dockerfile: z.string().optional(), build_context: z.string().optional() })
   .passthrough();
