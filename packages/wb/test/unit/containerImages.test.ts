@@ -73,7 +73,7 @@ if (path.basename(process.argv[1]) === 'docker') {
   const image = imageHost.includes('.') || imageHost.includes(':') ? rawImage : registryHost() + '/' + account() + '/' + rawImage;
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
   if (rollout !== 'none' && !fs.existsSync(path.resolve(path.dirname(configPath), selected.containers[0].image)) && !registry.some((entry) => entry.account === account() && entry.host === registryHost() && entry.tags.some((tag) => image === entry.host + '/' + entry.account + '/' + entry.name + ':' + tag))) throw new Error('Image is unavailable in deployment account');
-  deploys.push({ image, rollout, configPath, main: path.resolve(path.dirname(configPath), config.main) });
+  deploys.push({ image, rollout, configPath, main: path.resolve(path.dirname(configPath), config.main), named: selected.containers.filter((container) => container.images) });
   fs.writeFileSync(path.join(root, 'deployed.json'), JSON.stringify(deploys));
   if (process.env.FAIL_DEPLOY) process.exit(9);
   if (process.env.HOLD_DEPLOY) {
@@ -167,6 +167,25 @@ it.each([false, true])('rejects tracked context edits (staged: %s)', async (stag
   expect(result.exitCode).not.toBe(0);
   expect(result.stderr).toContain('Commit container build context changes');
   expect(readBuilds()).toEqual([]);
+  expect(readDeployments()).toEqual([]);
+});
+
+it('passes Durable Object-managed containers with committed sources through to Wrangler', async () => {
+  const project = createProject('durable-object');
+  const runner = addNamedImageContainer(project);
+  await deploy(project, {}, true, ['--containers-rollout=gradual']);
+  const [deployment] = readDeployments();
+  expect(deployment?.image).toContain('registry.cloudflare.com/account/');
+  expect(deployment?.named).toEqual([runner]);
+});
+
+it('rejects untracked sources of a Durable Object-managed image', async () => {
+  const project = createProject('durable-object-dirty');
+  addNamedImageContainer(project);
+  fs.writeFileSync(path.join(project, 'runner', 'untracked.txt'), 'local generated output');
+  const result = await deploy(project, {}, false, ['--containers-rollout=gradual']);
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr).toContain('Commit container build context changes');
   expect(readDeployments()).toEqual([]);
 });
 
@@ -329,6 +348,23 @@ it('cleans the sibling config after failed deployment and does not build after r
   expect(fs.readdirSync(project).filter((name) => name.startsWith('.wb-deploy-'))).toEqual([]);
 });
 
+function addNamedImageContainer(project: string): Record<string, unknown> {
+  fs.mkdirSync(path.join(project, 'runner'));
+  fs.writeFileSync(path.join(project, 'runner', 'Dockerfile'), 'FROM scratch\n');
+  const runner = {
+    class_name: 'Runner',
+    scheduling_policy: 'durable_object',
+    images: { runner: { dockerfile: './runner/Dockerfile' } },
+  };
+  const configPath = path.join(project, 'wrangler.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  config.containers.push(runner);
+  fs.writeFileSync(configPath, JSON.stringify(config));
+  git(project, ['add', 'runner/Dockerfile']);
+  commit(project);
+  return runner;
+}
+
 function createProject(name: string): string {
   const project = path.join(directory, name);
   fs.mkdirSync(path.join(project, 'agent'), { recursive: true });
@@ -411,7 +447,13 @@ function spawnDeploy(
   });
 }
 
-function readDeployments(): { image: string; rollout?: string; configPath: string; main: string }[] {
+function readDeployments(): {
+  image: string;
+  rollout?: string;
+  configPath: string;
+  main: string;
+  named: Record<string, unknown>[];
+}[] {
   return JSON.parse(fs.readFileSync(path.join(directory, 'deployed.json'), 'utf8'));
 }
 
