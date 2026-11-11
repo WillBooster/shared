@@ -21,7 +21,7 @@ export const minimumBunVersion = '1.4.4';
 // Pinned even while `mise latest` still hides it behind its release-age filter.
 export const minimumPinnedBunVersion = '1.4.4';
 
-export const minimumPinnedNodeVersion = '26.13.0';
+export const minimumPinnedNodeVersion = '26.13.1';
 
 export async function generateMiseToml(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateMiseToml', async () => {
