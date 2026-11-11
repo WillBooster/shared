@@ -12,13 +12,18 @@ import type { Project } from '../project.js';
 import { createWranglerDeployEnv } from './wranglerDeployEnv.js';
 
 const execute = promisify(execFile);
+// Durable Object-managed containers name their images under `images` and have no application-wide `image`.
+const namedImageSchema = z
+  .object({ dockerfile: z.string().optional(), build_context: z.string().optional() })
+  .passthrough();
 const containerSchema = z
   .object({
     class_name: z.string().optional(),
     name: z.string().optional(),
-    image: z.string(),
+    image: z.string().optional(),
     image_build_context: z.string().optional(),
     image_vars: z.record(z.string(), z.coerce.string()).optional(),
+    images: z.record(z.string(), namedImageSchema).optional(),
   })
   .passthrough();
 const configSchema = z
@@ -29,6 +34,7 @@ const configSchema = z
   .passthrough();
 
 type Container = z.infer<typeof containerSchema>;
+type LocalContainer = Container & { image: string };
 
 interface ContainerImageDeployment {
   project: Project;
@@ -49,10 +55,11 @@ export async function withReusableContainerImages({
   const config = configSchema.parse(parse(fs.readFileSync(absoluteConfigPath, 'utf8')));
   const selected = (envName ? config.env?.[envName] : undefined) ?? config;
   const containers = selected.containers ?? [];
-  const localContainers = containers.filter((container) =>
-    fs.existsSync(path.resolve(path.dirname(absoluteConfigPath), container.image))
+  const configDir = path.dirname(absoluteConfigPath);
+  const localContainers = containers.filter(
+    (container): container is LocalContainer =>
+      container.image !== undefined && fs.existsSync(path.resolve(configDir, container.image))
   );
-  if (localContainers.length === 0) return deploy(configPath);
   const env = createWranglerDeployEnv(project.env);
   const cancellation = new AbortController();
   const wranglerArgs = ['--config', absoluteConfigPath, ...(envName ? ['--env', envName] : [])];
@@ -60,6 +67,14 @@ export async function withReusableContainerImages({
     const result = await execute(command, args, { cwd, env, signal: cancellation.signal, maxBuffer: 64 * 1024 * 1024 });
     return result.stdout.trim();
   };
+  // Wrangler builds these itself from the working tree, so only committed sources may be there.
+  for (const container of containers) {
+    for (const image of Object.values(container.images ?? {})) {
+      if (image.dockerfile)
+        await assertCommittedNamedImageSource(configDir, image.dockerfile, image.build_context, run);
+    }
+  }
+  if (localContainers.length === 0) return deploy(configPath);
   const registry = z
     .array(z.object({ name: z.string(), tags: z.array(z.string()) }))
     .parse(JSON.parse(await run('wrangler', ['containers', 'images', 'list', '--json', ...wranglerArgs])));
@@ -67,7 +82,7 @@ export async function withReusableContainerImages({
   try {
     for (const container of localContainers) {
       await reuseContainerImage(container, {
-        configDir: path.dirname(absoluteConfigPath),
+        configDir,
         workerName,
         temporaryDir,
         registry,
@@ -136,7 +151,21 @@ interface CommittedImageSource {
   buildVars: (readonly [string, string | undefined])[];
 }
 
-async function reuseContainerImage(container: Container, context: ImageContext): Promise<void> {
+async function assertCommittedNamedImageSource(
+  configDir: string,
+  dockerfile: string,
+  buildContext: string | undefined,
+  run: ImageContext['run']
+): Promise<void> {
+  const contextDir = path.resolve(configDir, buildContext ?? path.dirname(dockerfile));
+  const repository = await run('git', ['rev-parse', '--show-toplevel'], contextDir);
+  const contextPath = path.relative(repository, contextDir).split(path.sep).join('/') || '.';
+  if (await run('git', ['status', '--porcelain', '--untracked-files=all', '--', contextPath], repository)) {
+    throw new Error(`Commit container build context changes before deploying: ${contextDir}`);
+  }
+}
+
+async function reuseContainerImage(container: LocalContainer, context: ImageContext): Promise<void> {
   const { registry } = context;
   const source = await resolveCommittedImageSource(container, context);
   const imageName = container.name || container.class_name;
@@ -155,7 +184,10 @@ async function reuseContainerImage(container: Container, context: ImageContext):
   delete container.image_vars;
 }
 
-async function resolveCommittedImageSource(container: Container, context: ImageContext): Promise<CommittedImageSource> {
+async function resolveCommittedImageSource(
+  container: LocalContainer,
+  context: ImageContext
+): Promise<CommittedImageSource> {
   const { configDir, workerName, run } = context;
   let dockerfile = path.resolve(configDir, container.image);
   if (fs.statSync(dockerfile).isDirectory()) dockerfile = path.join(dockerfile, 'Dockerfile');
