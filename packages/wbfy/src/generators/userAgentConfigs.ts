@@ -15,6 +15,7 @@ const userAgentInstructionFilePaths = ['.codex/AGENTS.md', '.claude/CLAUDE.md', 
 
 const claudeStatusLineScriptPath = path.join(os.homedir(), '.claude/statusline-command.sh');
 const antigravityStatusLineScriptPath = path.join(os.homedir(), '.gemini/antigravity-cli/statusline-command.sh');
+const sharedGlobalSkillsDirPath = path.join(os.homedir(), '.agents/skills');
 
 // This content is loaded into every agent session, so it is kept as short as it can be while
 // staying unambiguous: e.g., the excluded organizations are written as shell brace expansion, which
@@ -28,6 +29,37 @@ const userAgentInstructionContent = `- Be honest in your responses.
 - In anything written to a public repository (e.g., issues, PRs, comments, commits, branch names, code), never reveal a private repository's name, URL, issue/PR numbers, code, logs, or customer names unless already public or explicitly requested; state the need in general terms with a freshly written minimal reproduction instead. If visibility is unknown, run \`gh repo view <owner>/<repo> --json visibility\`.
 `;
 
+// Claude Code and Antigravity CLI pipe differently shaped session JSON to the same script, so each
+// part reads whichever agent's keys are present. Antigravity CLI meters Gemini and other models
+// separately, so it shows a Gemini (G) and a third-party (3rd) pair where Claude Code shows one.
+// Every percentage is what is left, followed by the time until it resets.
+const statusLineScriptContent = String.raw`#!/bin/sh
+input=$(cat)
+cwd=$(printf '%s' "$input" | jq -r '.cwd')
+git_info=""
+if branch=$(git -C "$cwd" symbolic-ref --short HEAD 2>/dev/null || git -C "$cwd" rev-parse --short HEAD 2>/dev/null); then
+  git_info=" on git:$branch"
+fi
+printf '%s' "$input" | jq -j --arg home "$HOME" --arg git "$git_info" '
+  def duration: floor | if . >= 86400 then "\(. / 86400 | floor)d\(. % 86400 / 3600 | floor)h"
+    elif . >= 3600 then "\(. / 3600 | floor)h\(. % 3600 / 60 | floor)m"
+    else "\(. / 60 | floor)m" end;
+  def claudeLimit: if . == null then null else { left: (100 - .used_percentage), resetsAt: .resets_at } end;
+  def antigravityLimit: if . == null then null else { left: (.remaining_fraction * 100), resetsAt: (now + .reset_in_seconds) } end;
+  def limit($label): if . == null then empty
+    else "\($label) \(.left | round)% (\([.resetsAt - now, 0] | max | duration))" end;
+  def limits($group; $fiveHour; $weekly): [($fiveHour | limit("5h")), ($weekly | limit("week"))]
+    | if length == 0 then "" else " [\($group)\(join(" | "))]" end;
+  (.cwd | if . == $home or startswith($home + "/") then "~" + .[($home | length):] else . end)
+  + $git
+  + ((.effort.level // .model.effort | if . == null then "" else " (\(.))" end) as $effort
+    | .model.display_name | if . == null then "" else " [\(sub(" \\([^)]*\\)$"; ""))\($effort)]" end)
+  + (.context_window.used_percentage | if . == null then "" else " [ctx \(100 - . | round)%]" end)
+  + limits(""; .rate_limits.five_hour | claudeLimit; .rate_limits.seven_day | claudeLimit)
+  + limits("G: "; .quota["gemini-5h"] | antigravityLimit; .quota["gemini-weekly"] | antigravityLimit)
+  + limits("3rd: "; .quota["3p-5h"] | antigravityLimit; .quota["3p-weekly"] | antigravityLimit)'
+`;
+
 /**
  * The user-level settings merged into each agent's JSON settings file, relative to the home
  * directory.
@@ -38,7 +70,12 @@ const userAgentInstructionContent = `- Be honest in your responses.
  * instruction files above. Codex needs no entry because its memories are opt-in
  * (`[features] memories = true` in `~/.codex/config.toml`), so leaving that flag unset is enough.
  */
-const agentSettings = [
+const agentSettings: readonly {
+  acceptsComments: boolean | 'full-line';
+  obsoleteItems?: readonly unknown[];
+  relativePath: string;
+  settings: object;
+}[] = [
   {
     relativePath: '.claude/settings.json',
     acceptsComments: false,
@@ -80,6 +117,9 @@ const agentSettings = [
     // Antigravity CLI strips only full-line `//` comments before `JSON.parse`, so inline and block
     // comments fail to parse.
     acceptsComments: 'full-line',
+    // Antigravity CLI rejects `~/...` in `skills.json` as non-absolute despite its documentation;
+    // drop the `~/.agents/skills` entry written by an earlier wbfy version when writing the resolved path.
+    obsoleteItems: [{ path: '~/.agents/skills' }],
     // The `skills` CLI installs global skills into `~/.agents/skills` for Codex and the agents that
     // share that global directory; for Antigravity CLI itself it installs into
     // `~/.gemini/antigravity-cli/skills/`, which Antigravity CLI already loads, so registering
@@ -87,7 +127,7 @@ const agentSettings = [
     settings: {
       entries: [
         {
-          path: '~/.agents/skills',
+          path: sharedGlobalSkillsDirPath,
         },
       ],
     },
@@ -103,12 +143,11 @@ const agentSettings = [
       },
     },
   },
-] as const;
+];
 
 /**
- * Overwrites the user-level instruction files and status line scripts of every supported agent with
- * the fixed content and merges the fixed settings into each agent's user settings. Returns false
- * when any file was skipped (e.g. a symlinked or unparsable file), so the command can fail loudly.
+ * Returns false when any file was skipped (e.g. a symlinked or unparsable file), so the command can
+ * fail loudly.
  */
 export async function generateUserAgentConfigs(): Promise<boolean> {
   let hasWrittenAll = true;
@@ -120,49 +159,19 @@ export async function generateUserAgentConfigs(): Promise<boolean> {
     const hasWritten = await fsUtil.generateFile(scriptPath, statusLineScriptContent);
     hasWrittenAll &&= hasWritten;
   }
-  for (const { acceptsComments, relativePath, settings } of agentSettings) {
+  for (const { acceptsComments, obsoleteItems, relativePath, settings } of agentSettings) {
     // Awaited separately: `&&=` would skip the merge once an earlier file was skipped.
-    const hasMerged = await mergeAgentSettings(relativePath, settings, acceptsComments);
+    const hasMerged = await mergeAgentSettings(relativePath, settings, acceptsComments, obsoleteItems);
     hasWrittenAll &&= hasMerged;
   }
   return hasWrittenAll;
 }
 
-// Claude Code and Antigravity CLI pipe differently shaped session JSON to the same script, so each
-// part reads whichever agent's keys are present. Antigravity CLI meters Gemini and other models
-// separately, so it shows a Gemini (G) and a third-party (3rd) pair where Claude Code shows one.
-// Every percentage is what is left, followed by the time until it resets.
-const statusLineScriptContent = String.raw`#!/bin/sh
-input=$(cat)
-cwd=$(printf '%s' "$input" | jq -r '.cwd')
-git_info=""
-if branch=$(git -C "$cwd" symbolic-ref --short HEAD 2>/dev/null || git -C "$cwd" rev-parse --short HEAD 2>/dev/null); then
-  git_info=" on git:$branch"
-fi
-printf '%s' "$input" | jq -j --arg home "$HOME" --arg git "$git_info" '
-  def duration: floor | if . >= 86400 then "\(. / 86400 | floor)d\(. % 86400 / 3600 | floor)h"
-    elif . >= 3600 then "\(. / 3600 | floor)h\(. % 3600 / 60 | floor)m"
-    else "\(. / 60 | floor)m" end;
-  def claudeLimit: if . == null then null else { left: (100 - .used_percentage), resetsAt: .resets_at } end;
-  def antigravityLimit: if . == null then null else { left: (.remaining_fraction * 100), resetsAt: (now + .reset_in_seconds) } end;
-  def limit($label): if . == null then empty
-    else "\($label) \(.left | round)% (\([.resetsAt - now, 0] | max | duration))" end;
-  def limits($group; $fiveHour; $weekly): [($fiveHour | limit("5h")), ($weekly | limit("week"))]
-    | if length == 0 then "" else " [\($group)\(join(" | "))]" end;
-  (.cwd | if . == $home or startswith($home + "/") then "~" + .[($home | length):] else . end)
-  + $git
-  + ((.effort.level // .model.effort | if . == null then "" else " (\(.))" end) as $effort
-    | .model.display_name | if . == null then "" else " [\(sub(" \\([^)]*\\)$"; ""))\($effort)]" end)
-  + (.context_window.used_percentage | if . == null then "" else " [ctx \(100 - . | round)%]" end)
-  + limits(""; .rate_limits.five_hour | claudeLimit; .rate_limits.seven_day | claudeLimit)
-  + limits("G: "; .quota["gemini-5h"] | antigravityLimit; .quota["gemini-weekly"] | antigravityLimit)
-  + limits("3rd: "; .quota["3p-5h"] | antigravityLimit; .quota["3p-weekly"] | antigravityLimit)'
-`;
-
 async function mergeAgentSettings(
   relativePath: string,
   newSettings: object,
-  acceptsComments: boolean | 'full-line'
+  acceptsComments: boolean | 'full-line',
+  obsoleteItems: readonly unknown[] = []
 ): Promise<boolean> {
   const filePath = path.join(os.homedir(), relativePath);
   const existingContent = await fsUtil.readFileIfExists(filePath);
@@ -189,10 +198,10 @@ async function mergeAgentSettings(
     }
   }
   const settings = merge(existingSettings, newSettings, {
-    arrayMerge: (target: unknown[], source: unknown[]) => [
-      ...target,
-      ...source.filter((item) => !target.some((existing) => JSON.stringify(existing) === JSON.stringify(item))),
-    ],
+    arrayMerge: (target: unknown[], source: unknown[]) => {
+      const kept = target.filter((item) => !obsoleteItems.some((obsolete) => isSameItem(item, obsolete)));
+      return [...kept, ...source.filter((item) => !kept.some((existing) => isSameItem(existing, item)))];
+    },
   });
   // Only the properties whose value changes are rewritten, so the file keeps its own formatting
   // and, where the agent allows them, its comments.
@@ -203,4 +212,8 @@ async function mergeAgentSettings(
     console.warn(`Comments inside "${key}" were dropped while rewriting it in ${filePath}.`);
   }
   return true;
+}
+
+function isSameItem(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
