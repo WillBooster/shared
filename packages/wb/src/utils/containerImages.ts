@@ -218,7 +218,7 @@ async function resolveCommittedTree(
   run: ImageContext['run']
 ): Promise<CommittedTree> {
   const repository = await run('git', ['rev-parse', '--show-toplevel'], buildContext);
-  const contextPath = path.relative(repository, buildContext).split(path.sep).join('/');
+  const contextPath = path.relative(repository, buildContext);
   const dockerfilePath = path.relative(buildContext, dockerfile);
   if (dockerfilePath.startsWith('..') || path.isAbsolute(dockerfilePath)) {
     throw new Error('Container images require the Dockerfile inside their committed build context.');
