@@ -33,6 +33,7 @@ const configSchema = z
   .passthrough();
 
 type Container = z.infer<typeof containerSchema>;
+type NamedImage = z.infer<typeof namedImageSchema>;
 type LocalContainer = Container & { image: string };
 
 interface ContainerImageDeployment {
@@ -66,28 +67,23 @@ export async function withReusableContainerImages({
     const result = await execute(command, args, { cwd, env, signal: cancellation.signal, maxBuffer: 64 * 1024 * 1024 });
     return result.stdout.trim();
   };
-  // Wrangler builds these itself from the working tree, so only committed sources may be there.
-  for (const container of containers) {
-    for (const image of Object.values(container.images ?? {})) {
-      if (image.dockerfile)
-        await assertCommittedNamedImageSource(configDir, image.dockerfile, image.build_context, run);
-    }
-  }
-  if (localContainers.length === 0) return deploy(configPath);
-  const registry = z
-    .array(z.object({ name: z.string(), tags: z.array(z.string()) }))
-    .parse(JSON.parse(await run('wrangler', ['containers', 'images', 'list', '--json', ...wranglerArgs])));
+  const namedImages = containers
+    .flatMap((container) => Object.values(container.images ?? {}))
+    .filter((image): image is NamedImage & { dockerfile: string } => image.dockerfile !== undefined);
+  if (localContainers.length === 0 && namedImages.length === 0) return deploy(configPath);
   const { temporaryDir, temporaryConfig, dispose } = createTemporaryImageFiles(absoluteConfigPath, cancellation);
   try {
-    for (const container of localContainers) {
-      await reuseContainerImage(container, {
-        configDir,
-        workerName,
-        temporaryDir,
-        registry,
-        wranglerArgs,
-        run,
-      });
+    // Wrangler builds these itself, so it must read an extracted copy of the committed sources, not the working tree.
+    for (const [index, image] of namedImages.entries()) {
+      await stageNamedImage(image, path.join(temporaryDir, `named-${index}`), configDir, run);
+    }
+    if (localContainers.length > 0) {
+      const registry = z
+        .array(z.object({ name: z.string(), tags: z.array(z.string()) }))
+        .parse(JSON.parse(await run('wrangler', ['containers', 'images', 'list', '--json', ...wranglerArgs])));
+      for (const container of localContainers) {
+        await reuseContainerImage(container, { configDir, workerName, temporaryDir, registry, wranglerArgs, run });
+      }
     }
     fs.writeFileSync(temporaryConfig, JSON.stringify(config));
     await deploy(temporaryConfig);
@@ -142,26 +138,28 @@ interface ImageContext {
   run: (command: string, args: string[], cwd?: string) => Promise<string>;
 }
 
-interface CommittedImageSource {
-  key: string;
-  treeish: string;
+interface CommittedTree {
   repository: string;
+  treeish: string;
   dockerfilePath: string;
+}
+
+interface CommittedImageSource extends CommittedTree {
+  key: string;
   buildVars: (readonly [string, string | undefined])[];
 }
 
-async function assertCommittedNamedImageSource(
+async function stageNamedImage(
+  image: NamedImage & { dockerfile: string },
+  directory: string,
   configDir: string,
-  dockerfile: string,
-  buildContext: string | undefined,
   run: ImageContext['run']
 ): Promise<void> {
-  const contextDir = path.resolve(configDir, buildContext ?? path.dirname(dockerfile));
-  const repository = await run('git', ['rev-parse', '--show-toplevel'], contextDir);
-  const contextPath = path.relative(repository, contextDir).split(path.sep).join('/') || '.';
-  if (await run('git', ['status', '--porcelain', '--untracked-files=all', '--', contextPath], repository)) {
-    throw new Error(`Commit container build context changes before deploying: ${contextDir}`);
-  }
+  const dockerfile = resolveDockerfile(path.resolve(configDir, image.dockerfile));
+  const buildContext = path.resolve(configDir, image.build_context ?? path.dirname(dockerfile));
+  const tree = await resolveCommittedTree(dockerfile, buildContext, run);
+  image.dockerfile = await extractCommittedTree(tree, directory, run);
+  image.build_context = directory;
 }
 
 async function reuseContainerImage(container: LocalContainer, context: ImageContext): Promise<void> {
@@ -188,41 +186,66 @@ async function resolveCommittedImageSource(
   context: ImageContext
 ): Promise<CommittedImageSource> {
   const { configDir, workerName, run } = context;
-  let dockerfile = path.resolve(configDir, container.image);
-  if (fs.statSync(dockerfile).isDirectory()) dockerfile = path.join(dockerfile, 'Dockerfile');
+  const dockerfile = resolveDockerfile(path.resolve(configDir, container.image));
   const buildContext = path.resolve(configDir, container.image_build_context ?? path.dirname(dockerfile));
-  const repository = await run('git', ['rev-parse', '--show-toplevel'], buildContext);
-  const contextPath = path.relative(repository, buildContext).split(path.sep).join('/');
-  const dockerfilePath = path.relative(buildContext, dockerfile);
-  if (dockerfilePath.startsWith('..') || path.isAbsolute(dockerfilePath)) {
-    throw new Error('Container image reuse requires the Dockerfile inside its committed build context.');
-  }
-  const revision = await run('git', ['rev-parse', 'HEAD'], repository);
-  const treeish = `${revision}:${contextPath}`;
-  const tree = await run('git', ['rev-parse', treeish], repository);
-  if (await run('git', ['diff', revision, '--', contextPath || '.'], repository)) {
-    throw new Error(`Commit container build context changes before deploying: ${buildContext}`);
-  }
+  const tree = await resolveCommittedTree(dockerfile, buildContext, run);
+  const treeHash = await run('git', ['rev-parse', tree.treeish], tree.repository);
   const vars = container.image_vars ?? {};
   const buildVars = Object.keys(vars)
     .toSorted()
     .map((name) => [name, vars[name]] as const);
   const key = createHash('sha256')
-    .update(JSON.stringify({ tree, workerName, dockerfilePath, buildVars, platform: 'linux/amd64' }))
+    .update(
+      JSON.stringify({
+        tree: treeHash,
+        workerName,
+        dockerfilePath: tree.dockerfilePath,
+        buildVars,
+        platform: 'linux/amd64',
+      })
+    )
     .digest('hex');
-  return { key, treeish, repository, dockerfilePath, buildVars };
+  return { ...tree, key, buildVars };
+}
+
+function resolveDockerfile(dockerfile: string): string {
+  return fs.statSync(dockerfile).isDirectory() ? path.join(dockerfile, 'Dockerfile') : dockerfile;
+}
+
+async function resolveCommittedTree(
+  dockerfile: string,
+  buildContext: string,
+  run: ImageContext['run']
+): Promise<CommittedTree> {
+  const repository = await run('git', ['rev-parse', '--show-toplevel'], buildContext);
+  const contextPath = path.relative(repository, buildContext).split(path.sep).join('/');
+  const dockerfilePath = path.relative(buildContext, dockerfile);
+  if (dockerfilePath.startsWith('..') || path.isAbsolute(dockerfilePath)) {
+    throw new Error('Container images require the Dockerfile inside their committed build context.');
+  }
+  const revision = await run('git', ['rev-parse', 'HEAD'], repository);
+  if (await run('git', ['diff', revision, '--', contextPath || '.'], repository)) {
+    throw new Error(`Commit container build context changes before deploying: ${buildContext}`);
+  }
+  return { repository, treeish: `${revision}:${contextPath}`, dockerfilePath };
+}
+
+/** Extracts the committed build context into `directory` and returns the path of its Dockerfile there. */
+async function extractCommittedTree(tree: CommittedTree, directory: string, run: ImageContext['run']): Promise<string> {
+  const archive = `${directory}.tar`;
+  fs.mkdirSync(directory, { recursive: true });
+  await run('git', ['archive', '--format=tar', `--output=${archive}`, tree.treeish], tree.repository);
+  await run('tar', ['-xf', archive, '-C', directory]);
+  const stagedDockerfile = path.join(directory, tree.dockerfilePath);
+  if (!fs.existsSync(stagedDockerfile))
+    throw new Error(`Container Dockerfile must be committed: ${tree.dockerfilePath}`);
+  return stagedDockerfile;
 }
 
 async function buildAndPushImage(image: string, source: CommittedImageSource, context: ImageContext): Promise<void> {
-  const { key, treeish, repository, dockerfilePath, buildVars } = source;
   const { temporaryDir, run } = context;
-  const archive = path.join(temporaryDir, `${key}.tar`);
-  const directory = path.join(temporaryDir, key);
-  fs.mkdirSync(directory, { recursive: true });
-  await run('git', ['archive', '--format=tar', `--output=${archive}`, treeish], repository);
-  await run('tar', ['-xf', archive, '-C', directory]);
-  const stagedDockerfile = path.join(directory, dockerfilePath);
-  if (!fs.existsSync(stagedDockerfile)) throw new Error(`Container Dockerfile must be committed: ${dockerfilePath}`);
+  const directory = path.join(temporaryDir, source.key);
+  const stagedDockerfile = await extractCommittedTree(source, directory, run);
   console.info(`Building container image ${image} from committed context.`);
   await run('docker', [
     'build',
@@ -234,7 +257,7 @@ async function buildAndPushImage(image: string, source: CommittedImageSource, co
     stagedDockerfile,
     '-t',
     image,
-    ...buildVars.flatMap(([name, value]) => ['--build-arg', `${name}=${value}`]),
+    ...source.buildVars.flatMap(([name, value]) => ['--build-arg', `${name}=${value}`]),
     directory,
   ]);
   await run('wrangler', ['containers', 'push', image, ...context.wranglerArgs]);

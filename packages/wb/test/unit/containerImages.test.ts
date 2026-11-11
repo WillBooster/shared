@@ -73,7 +73,7 @@ if (path.basename(process.argv[1]) === 'docker') {
   const image = imageHost.includes('.') || imageHost.includes(':') ? rawImage : registryHost() + '/' + account() + '/' + rawImage;
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
   if (rollout !== 'none' && !fs.existsSync(path.resolve(path.dirname(configPath), selected.containers[0].image)) && !registry.some((entry) => entry.account === account() && entry.host === registryHost() && entry.tags.some((tag) => image === entry.host + '/' + entry.account + '/' + entry.name + ':' + tag))) throw new Error('Image is unavailable in deployment account');
-  deploys.push({ image, rollout, configPath, main: path.resolve(path.dirname(configPath), config.main), named: selected.containers.filter((container) => container.images) });
+  deploys.push({ image, rollout, configPath, main: path.resolve(path.dirname(configPath), config.main), named: selected.containers.filter((container) => container.images).map((container) => ({ ...container, contexts: Object.values(container.images).map((image) => { const context = path.resolve(path.dirname(configPath), image.build_context ?? path.dirname(image.dockerfile)); return { files: fs.readdirSync(context).toSorted(), dockerfile: fs.readFileSync(path.resolve(path.dirname(configPath), image.dockerfile), 'utf8') }; }) })) });
   fs.writeFileSync(path.join(root, 'deployed.json'), JSON.stringify(deploys));
   if (process.env.FAIL_DEPLOY) process.exit(9);
   if (process.env.HOLD_DEPLOY) {
@@ -170,19 +170,29 @@ it.each([false, true])('rejects tracked context edits (staged: %s)', async (stag
   expect(readDeployments()).toEqual([]);
 });
 
-it('passes Durable Object-managed containers with committed sources through to Wrangler', async () => {
+it('lets Wrangler build Durable Object-managed images from committed sources only', async () => {
   const project = createProject('durable-object');
   const runner = addNamedImageContainer(project);
+  fs.writeFileSync(path.join(project, '.gitignore'), 'runner/.env\n');
+  fs.writeFileSync(path.join(project, 'runner', '.env'), 'SECRET=local');
+  fs.writeFileSync(path.join(project, 'runner', 'untracked.txt'), 'local generated output');
   await deploy(project, {}, true, ['--containers-rollout=gradual']);
   const [deployment] = readDeployments();
   expect(deployment?.image).toContain('registry.cloudflare.com/account/');
-  expect(deployment?.named).toEqual([runner]);
+  expect(deployment?.named).toMatchObject([
+    {
+      class_name: runner.class_name,
+      scheduling_policy: runner.scheduling_policy,
+      contexts: [{ files: ['Dockerfile'], dockerfile: 'FROM scratch\n' }],
+    },
+  ]);
+  expect(fs.readFileSync(path.join(project, 'wrangler.json'), 'utf8')).toContain('./runner/Dockerfile');
 });
 
-it('rejects untracked sources of a Durable Object-managed image', async () => {
+it('rejects tracked edits to the sources of a Durable Object-managed image', async () => {
   const project = createProject('durable-object-dirty');
   addNamedImageContainer(project);
-  fs.writeFileSync(path.join(project, 'runner', 'untracked.txt'), 'local generated output');
+  fs.writeFileSync(path.join(project, 'runner', 'Dockerfile'), 'FROM busybox\n');
   const result = await deploy(project, {}, false, ['--containers-rollout=gradual']);
   expect(result.exitCode).not.toBe(0);
   expect(result.stderr).toContain('Commit container build context changes');
