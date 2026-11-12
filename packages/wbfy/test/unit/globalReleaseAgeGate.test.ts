@@ -15,7 +15,13 @@ test('writes the gate into every global config while keeping the other settings'
   try {
     const homeDirPath = path.join(workDirPath, 'home');
     const xdgDirPath = path.join(workDirPath, 'xdg');
+    const cargoHomeDirPath = path.join(workDirPath, 'cargo');
     await fs.mkdir(homeDirPath);
+    await fs.mkdir(cargoHomeDirPath);
+    await fs.writeFile(
+      path.join(cargoHomeDirPath, 'config.toml'),
+      '[net]\ngit-fetch-with-cli = true\n\n[registry]\nglobal-min-publish-age = "0 days"\ndefault = "crates-io"\n'
+    );
     // npm and Yarn append settings written after a previous run BELOW the gate, so the settings
     // kept here must not depend on their position.
     await fs.writeFile(
@@ -35,7 +41,7 @@ npmRegistries:
 
     const run = async (): Promise<number | null> => {
       const result = await spawnAsync('bash', [scriptPath], {
-        env: { ...process.env, HOME: homeDirPath, XDG_CONFIG_HOME: xdgDirPath },
+        env: { ...process.env, CARGO_HOME: cargoHomeDirPath, HOME: homeDirPath, XDG_CONFIG_HOME: xdgDirPath },
         stdio: 'inherit',
       });
       return result.status;
@@ -54,6 +60,11 @@ npmRegistries:
     expect(yarnrc).not.toContain('stale');
     expect(yarnrc).toContain(`npmMinimalAgeGate: ${bunMinimumReleaseAgeSeconds / 60}\n`);
     expect(yarnrc).toContain("  - '@willbooster/wb'\n");
+
+    const cargoConfig = await fs.readFile(path.join(cargoHomeDirPath, 'config.toml'), 'utf8');
+    expect(cargoConfig).toBe(
+      `[net]\ngit-fetch-with-cli = true\n\n[registry]\nglobal-min-publish-age = "${bunMinimumReleaseAgeSeconds / 86_400} days"\ndefault = "crates-io"\n`
+    );
 
     // bun reads its global configs ONLY from $XDG_CONFIG_HOME once that variable is set, while
     // Yarn always reads $HOME, so no .yarnrc.yml belongs there.
@@ -74,6 +85,7 @@ npmRegistries:
     expect(await run()).toBe(0);
     expect(await fs.readFile(path.join(homeDirPath, '.npmrc'), 'utf8')).toBe(npmrc);
     expect(await fs.readFile(path.join(homeDirPath, '.yarnrc.yml'), 'utf8')).toBe(yarnrc);
+    expect(await fs.readFile(path.join(cargoHomeDirPath, 'config.toml'), 'utf8')).toBe(cargoConfig);
   } finally {
     await fs.rm(workDirPath, { force: true, recursive: true });
   }
@@ -99,13 +111,17 @@ test('exempts temporarily excluded packages only until their date', async () => 
     );
 
     const { status } = await spawnAsync('bash', [path.join(workDirPath, 'applyReleaseAgeGate.sh')], {
-      env: { ...process.env, HOME: homeDirPath, XDG_CONFIG_HOME: '' },
+      env: { ...process.env, CARGO_HOME: path.join(workDirPath, 'cargo'), HOME: homeDirPath, XDG_CONFIG_HOME: '' },
       stdio: 'inherit',
     });
     expect(status).toBe(0);
 
     const bunfig = await fs.readFile(path.join(homeDirPath, '.bunfig.toml'), 'utf8');
     expect(bunfig).toContain('minimumReleaseAgeExcludes = [\n  "@willbooster/wb",\n  "@next/env",\n]\n');
+    // Without an existing Cargo config, the gate becomes its only table.
+    expect(await fs.readFile(path.join(workDirPath, 'cargo', 'config.toml'), 'utf8')).toBe(
+      '[registry]\nglobal-min-publish-age = "7 days"\n'
+    );
   } finally {
     await fs.rm(workDirPath, { force: true, recursive: true });
   }
