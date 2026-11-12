@@ -190,7 +190,8 @@ const workflows = {
       workflow_dispatch: null,
     },
     concurrency: {
-      group: '${{ github.workflow }}',
+      // Per ref, so that a manual run on another branch cannot cancel a default-branch run.
+      group: '${{ github.workflow }}-${{ github.ref }}',
       'cancel-in-progress': true,
     },
     jobs: {
