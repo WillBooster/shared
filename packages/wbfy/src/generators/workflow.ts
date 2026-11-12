@@ -52,6 +52,7 @@ interface PullRequest {
 
 interface Push {
   branches: string[];
+  paths?: string[];
   'paths-ignore'?: string[];
 }
 
@@ -176,6 +177,29 @@ const workflows = {
       },
     },
   },
+  // GitHub's dependency graph does not parse bun.lock, so this submits its resolved packages for
+  // Dependabot alerts. Alerts follow only default-branch snapshots, and the workflow file itself
+  // is a trigger so that merging the generated caller submits the first snapshot.
+  'submit-dependencies': {
+    name: 'Submit dependencies',
+    on: {
+      push: {
+        branches: ['main'],
+        paths: ['bun.lock', '.github/workflows/submit-dependencies.yml'],
+      },
+      workflow_dispatch: null,
+    },
+    concurrency: {
+      // Per ref, so that a manual run on another branch cannot cancel a default-branch run.
+      group: '${{ github.workflow }}-${{ github.ref }}',
+      'cancel-in-progress': true,
+    },
+    jobs: {
+      'submit-dependencies': {
+        uses: 'WillBooster/reusable-workflows/.github/workflows/submit-dependencies.yml@main',
+      },
+    },
+  },
   sync: {
     name: 'Sync',
     on: {},
@@ -241,7 +265,8 @@ async function collectWorkflowFileNamesByKind(
     if (!entry.isFile() || !entry.name.endsWith('.yml')) continue;
     fileNamesByKind.set(entry.name.slice(0, -'.yml'.length), entry.name);
   }
-  const mandatoryKinds = ['test', 'semantic-pr'];
+  // Every application ends with a Bun install, which leaves bun.lock for submit-dependencies.
+  const mandatoryKinds = ['test', 'semantic-pr', 'submit-dependencies'];
   if (rootConfig.depending.semanticRelease) {
     mandatoryKinds.push('release');
   }
@@ -630,6 +655,8 @@ const reusableWorkflowPermissions: Record<string, Record<string, string>> = {
   // skip-duplicate-actions reads workflow runs; cancel_others is false, so read is enough.
   'test-rust': { actions: 'read', contents: 'read' },
   'semantic-pr': { 'pull-requests': 'read' },
+  // The dependency submission API requires write access to contents.
+  'submit-dependencies': { contents: 'write' },
 };
 
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
