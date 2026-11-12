@@ -44,7 +44,6 @@ export const bunMinimumReleaseAgeExcludes = [
     .map(([packageName]) => packageName),
 ];
 
-/** The gate lines of bunfig.toml, shared by full generation and applyRepositoryReleaseAgeGate so both write the same policy. */
 function formatReleaseAgeGateLines(): string {
   return `minimumReleaseAge = ${bunMinimumReleaseAgeSeconds}
 minimumReleaseAgeExcludes = [

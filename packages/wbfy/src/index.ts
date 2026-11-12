@@ -65,7 +65,8 @@ import { getWbfyVersion, getWbfyVersionLabel } from './utils/version.js';
 import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
 
 /**
- * Applies only the global release-age gate, without touching any repository. Spelled out in full
+ * Applies only the release-age policy: to the given repositories' bunfig.toml, or, without paths, to
+ * the global package-manager configs. Spelled out in full
  * rather than shortened (e.g. `gate`) because the default command takes positional paths: a short
  * name would swallow a directory that happens to share it.
  */
