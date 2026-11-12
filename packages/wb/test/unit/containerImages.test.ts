@@ -1,5 +1,6 @@
-import { afterEach, beforeAll, beforeEach, expect, it } from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'bun:test';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,8 +10,65 @@ import { buildWb } from '../helpers/build.js';
 const cli = fileURLToPath(new URL('../../bin/index.js', import.meta.url));
 const root = fileURLToPath(new URL('../../../../.tmp', import.meta.url));
 let directory: string;
+let registryServer: ReturnType<typeof Bun.serve>;
+let registryCertificate: string;
 
 beforeAll(buildWb, 120_000);
+beforeAll(() => {
+  // wb looks up digests over HTTPS, so the fake registry serves a self-signed certificate that the CLI trusts.
+  fs.mkdirSync(root, { recursive: true });
+  const certificateDir = fs.mkdtempSync(path.join(root, 'registry-certificate-'));
+  registryCertificate = path.join(certificateDir, 'cert.pem');
+  const key = path.join(certificateDir, 'key.pem');
+  execFileSync(
+    'openssl',
+    [
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-days',
+      '1',
+      '-subj',
+      '/CN=localhost',
+      '-addext',
+      'subjectAltName=DNS:localhost',
+      '-keyout',
+      key,
+      '-out',
+      registryCertificate,
+    ],
+    { stdio: 'pipe' }
+  );
+  registryServer = Bun.serve({
+    port: 0,
+    tls: { cert: fs.readFileSync(registryCertificate, 'utf8'), key: fs.readFileSync(key, 'utf8') },
+    fetch(request) {
+      const match = /^\/v2\/([^/]+)\/(.+)\/manifests\/([^/]+)$/.exec(new URL(request.url).pathname);
+      if (request.method !== 'HEAD' || !match) return new Response(undefined, { status: 400 });
+      if (request.headers.get('authorization') !== `Basic ${Buffer.from('v1:fixture-password').toString('base64')}`) {
+        return new Response(undefined, { status: 401 });
+      }
+      const [, account, name, tag] = match;
+      const registry = JSON.parse(fs.readFileSync(path.join(directory, 'registry.json'), 'utf8')) as {
+        name: string;
+        tags: string[];
+        account: string;
+      }[];
+      if (
+        !registry.some((entry) => entry.account === account && entry.name === name && entry.tags.includes(tag ?? ''))
+      ) {
+        return new Response(undefined, { status: 404 });
+      }
+      return new Response(undefined, { headers: { 'Docker-Content-Digest': `sha256:${digestOf(`${name}:${tag}`)}` } });
+    },
+  });
+});
+afterAll(() => {
+  void registryServer.stop(true);
+  fs.rmSync(path.dirname(registryCertificate), { recursive: true, force: true });
+});
 beforeEach(() => {
   fs.mkdirSync(root, { recursive: true });
   directory = fs.mkdtempSync(path.join(root, 'container-images-'));
@@ -52,6 +110,8 @@ if (path.basename(process.argv[1]) === 'docker') {
 } else if (args[0] === 'containers' && args[1] === 'images') {
   if (process.env.FAIL_REGISTRY) process.exit(7);
   console.log(JSON.stringify(JSON.parse(fs.readFileSync(registryPath, 'utf8')).filter((entry) => entry.account === account() && entry.host === registryHost()).map(({ name, tags }) => ({ name, tags }))));
+} else if (args[0] === 'containers' && args[1] === 'registries' && args[2] === 'credentials') {
+  console.log(JSON.stringify({ account_id: account(), registry_host: registryHost(), username: 'v1', password: 'fixture-password' }));
 } else if (args[0] === 'containers' && args[1] === 'push') {
   const [name, tag] = args[2].split(':');
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
@@ -73,7 +133,7 @@ if (path.basename(process.argv[1]) === 'docker') {
   const image = imageHost.includes('.') || imageHost.includes(':') ? rawImage : registryHost() + '/' + account() + '/' + rawImage;
   const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
   if (rollout !== 'none' && !fs.existsSync(path.resolve(path.dirname(configPath), selected.containers[0].image)) && !registry.some((entry) => entry.account === account() && entry.host === registryHost() && entry.tags.some((tag) => image === entry.host + '/' + entry.account + '/' + entry.name + ':' + tag))) throw new Error('Image is unavailable in deployment account');
-  deploys.push({ image, rollout, configPath, main: path.resolve(path.dirname(configPath), config.main), named: selected.containers.filter((container) => container.images).map((container) => ({ ...container, contexts: Object.values(container.images).map((image) => { const context = path.resolve(path.dirname(configPath), image.build_context ?? path.dirname(image.dockerfile)); return { files: fs.readdirSync(context).toSorted(), dockerfile: fs.readFileSync(path.resolve(path.dirname(configPath), image.dockerfile), 'utf8') }; }) })) });
+  deploys.push({ image, rollout, configPath, main: path.resolve(path.dirname(configPath), config.main), named: selected.containers.filter((container) => container.images) });
   fs.writeFileSync(path.join(root, 'deployed.json'), JSON.stringify(deploys));
   if (process.env.FAIL_DEPLOY) process.exit(9);
   if (process.env.HOLD_DEPLOY) {
@@ -170,24 +230,41 @@ it.each([false, true])('rejects tracked context edits (staged: %s)', async (stag
   expect(readDeployments()).toEqual([]);
 });
 
-it('lets Wrangler build Durable Object-managed images from committed sources only', async () => {
-  const project = createProject('durable-object');
-  const runner = addNamedImageContainer(project);
-  fs.writeFileSync(path.join(project, '.gitignore'), 'runner/.env\n');
-  fs.writeFileSync(path.join(project, 'runner', '.env'), 'SECRET=local');
-  fs.writeFileSync(path.join(project, 'runner', 'untracked.txt'), 'local generated output');
-  await deploy(project, {}, true, ['--containers-rollout=gradual']);
-  const [deployment] = readDeployments();
-  expect(deployment?.image).toContain('registry.cloudflare.com/account/');
-  expect(deployment?.named).toMatchObject([
-    {
-      class_name: runner.class_name,
-      scheduling_policy: runner.scheduling_policy,
-      contexts: [{ files: ['Dockerfile'], dockerfile: 'FROM scratch\n' }],
-    },
-  ]);
-  expect(fs.readFileSync(path.join(project, 'wrangler.json'), 'utf8')).toContain('./runner/Dockerfile');
-});
+it('reuses Durable Object-managed images by digest across checkouts and builds changed committed sources', async () => {
+  const first = createProject('durable-object-first');
+  const second = createProject('durable-object-second');
+  const runner = addNamedImageContainer(first);
+  addNamedImageContainer(second);
+  fs.writeFileSync(path.join(second, '.gitignore'), 'runner/.env\n');
+  fs.writeFileSync(path.join(second, 'runner', '.env'), 'SECRET=local');
+  fs.writeFileSync(path.join(second, 'runner', 'untracked.txt'), 'local generated output');
+  const env = { CLOUDFLARE_CONTAINER_REGISTRY: registryHost(), NODE_EXTRA_CA_CERTS: registryCertificate };
+  await deploy(first, env);
+  await deploy(second, env);
+  let deployed = readDeployments();
+  const [reference] = Object.values(deployed[0]?.named[0]?.images as Record<string, Record<string, unknown>>);
+  expect(deployed[0]?.named).toEqual([{ ...runner, images: { runner: { image: reference?.image } } }]);
+  expect(reference?.image).toMatch(new RegExp(`^${registryHost()}/account/wb/runner-runner@sha256:[a-f0-9]{64}$`));
+  expect(deployed[1]?.named).toEqual(deployed[0]?.named);
+  expect(readBuilds()).toEqual(['runner', 'original']);
+  expect(fs.readFileSync(path.join(second, 'wrangler.json'), 'utf8')).toContain('./runner/Dockerfile');
+  fs.writeFileSync(path.join(second, 'runner', 'source.txt'), 'updated runner');
+  git(second, ['add', 'runner/source.txt']);
+  commit(second);
+  await deploy(second, env);
+  deployed = readDeployments();
+  expect(deployed[2]?.named).not.toEqual(deployed[1]?.named);
+  expect(readBuilds()).toEqual(['runner', 'original', 'updated runner']);
+  const configPath = path.join(second, 'wrangler.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  config.containers[1].images.runner.build_vars.FLAVOR = 'rich';
+  fs.writeFileSync(configPath, JSON.stringify(config));
+  commit(second);
+  await deploy(second, env);
+  deployed = readDeployments();
+  expect(deployed[3]?.named).not.toEqual(deployed[2]?.named);
+  expect(readBuilds()).toEqual(['runner', 'original', 'updated runner', 'updated runner']);
+}, 60_000);
 
 it('rejects tracked edits to the sources of a Durable Object-managed image', async () => {
   const project = createProject('durable-object-dirty');
@@ -360,17 +437,18 @@ it('cleans the sibling config after failed deployment and does not build after r
 
 function addNamedImageContainer(project: string): Record<string, unknown> {
   fs.mkdirSync(path.join(project, 'runner'));
-  fs.writeFileSync(path.join(project, 'runner', 'Dockerfile'), 'FROM scratch\n');
+  fs.writeFileSync(path.join(project, 'runner', 'Dockerfile'), 'FROM scratch\nCOPY source.txt /source.txt\n');
+  fs.writeFileSync(path.join(project, 'runner', 'source.txt'), 'runner');
   const runner = {
     class_name: 'Runner',
     scheduling_policy: 'durable_object',
-    images: { runner: { dockerfile: './runner/Dockerfile' } },
+    images: { runner: { dockerfile: './runner/Dockerfile', build_vars: { FLAVOR: 'plain' } } },
   };
   const configPath = path.join(project, 'wrangler.json');
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   config.containers.push(runner);
   fs.writeFileSync(configPath, JSON.stringify(config));
-  git(project, ['add', 'runner/Dockerfile']);
+  git(project, ['add', 'runner/Dockerfile', 'runner/source.txt']);
   commit(project);
   return runner;
 }
@@ -476,4 +554,12 @@ function readBuilds(): string[] {
         .split('\n')
         .map((line) => JSON.parse(line))
     : [];
+}
+
+function registryHost(): string {
+  return `localhost:${registryServer.port}`;
+}
+
+function digestOf(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
 }
