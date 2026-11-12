@@ -235,6 +235,14 @@ printWidth = 120
     fs.writeFileSync(filePath, 'env = false\n');
     expect(applyRepositoryReleaseAgeGate(dirPath)).toBe(false);
     expect(fs.readFileSync(filePath, 'utf8')).toBe('env = false\n');
+
+    // A symlinked bunfig.toml is refused, leaving its target untouched.
+    const outsidePath = path.join(dirPath, 'outside.toml');
+    fs.writeFileSync(outsidePath, before);
+    fs.rmSync(filePath);
+    fs.symlinkSync(outsidePath, filePath);
+    expect(applyRepositoryReleaseAgeGate(dirPath)).toBe(false);
+    expect(fs.readFileSync(outsidePath, 'utf8')).toBe(before);
   } finally {
     fs.rmSync(dirPath, { force: true, recursive: true });
   }

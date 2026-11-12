@@ -60,8 +60,13 @@ const releaseAgeGateLinesRegex = /^minimumReleaseAge = .*\nminimumReleaseAgeExcl
  */
 export function applyRepositoryReleaseAgeGate(rootDirPath: string): boolean {
   const filePath = path.resolve(rootDirPath, 'bunfig.toml');
-  const content = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-  if (content === undefined || !releaseAgeGateLinesRegex.test(content)) {
+  // Managed files must be regular files: a symlink would redirect the write outside the repository.
+  if (fs.lstatSync(filePath, { throwIfNoEntry: false })?.isFile() !== true) {
+    console.error(`${filePath} is missing or not a regular file; apply wbfy to the repository first.`);
+    return false;
+  }
+  const content = fs.readFileSync(filePath, 'utf8');
+  if (!releaseAgeGateLinesRegex.test(content)) {
     console.error(`${filePath} has no wbfy-generated release-age gate lines; apply wbfy to the repository first.`);
     return false;
   }
