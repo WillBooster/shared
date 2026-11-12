@@ -1,8 +1,8 @@
 #!/bin/bash
 # Writes the organization's minimum-release-age policy — releaseAgeGate.json next to this script is
 # its single source of truth — into the global package-manager configs of the user running it:
-# ~/.npmrc (npm, bun, yarn 1), ~/.yarnrc.yml (Yarn Berry), ~/.bunfig.toml (bun), bun's copies
-# under $XDG_CONFIG_HOME, and Cargo's $CARGO_HOME/config.toml. Run it once per user whose configs must be gated: `sudo -H env -u
+# ~/.npmrc (npm, bun, yarn 1), ~/.yarnrc.yml (Yarn Berry), ~/.bunfig.toml (bun) and bun's copies
+# under $XDG_CONFIG_HOME. Run it once per user whose configs must be gated: `sudo -H env -u
 # XDG_CONFIG_HOME bash applyReleaseAgeGate.sh` covers root, whose configs `sudo npm install
 # --global` reads.
 #
@@ -13,14 +13,11 @@
 #   itself (self-host-utils passes the Takumi Guard proxy that way).
 # - .bunfig.toml is replaced wholesale: bun reads its registry settings and credentials from
 #   .npmrc, so the organization keeps nothing else in this file.
-# - Cargo's config.toml keeps every setting except the gate key, which is written as one line
-#   under the `[registry]` header (a `registry.global-min-publish-age` dotted key is not supported).
-#   Cargo has no per-crate exemption, so the exclusion lists do not apply to it.
 #
 # A failed write aborts the run instead of moving on: leaving some package managers ungated must be
 # reported, not silently downgraded. Only up-to-date package managers are supported: npm >= 11.17
-# (`min-release-age-exclude`), Yarn Berry >= 4.10.3 (`npmMinimalAgeGate`), bun >= 1.3
-# (`minimumReleaseAge`) and Cargo >= 1.100 (`global-min-publish-age`) — older ones must be upgraded instead of accommodated.
+# (`min-release-age-exclude`), Yarn Berry >= 4.10.3 (`npmMinimalAgeGate`) and bun >= 1.3
+# (`minimumReleaseAge`) — older ones must be upgraded instead of accommodated.
 
 set -euo pipefail
 umask 077
@@ -65,14 +62,6 @@ yarnrc=$(
   echo 'npmPreapprovedPackages:'
   echo "$excludes" | sed "s|^|  - '|; s|$|'|"
 )
-cargoConfigPath="${CARGO_HOME:-$HOME/.cargo}/config.toml"
-cargoGateLine="global-min-publish-age = \"$days days\""
-cargoConfig=$({ ! [ -e "$cargoConfigPath" ] || cat "$cargoConfigPath"; } | awk -v gate="$cargoGateLine" '
-  /^global-min-publish-age[ \t]*=/ { next }
-  { print }
-  $0 == "[registry]" && !written { print gate; written = 1 }
-  END { if (!written) { if (NR > 0) print ""; print "[registry]"; print gate } }')
-
 bunfig=$(
   echo '[install]'
   echo "minimumReleaseAge = $((days * 24 * 60 * 60))"
@@ -108,8 +97,6 @@ writeFile() { # $1: content, $2: destination
 writeFile "$npmrc" "$HOME/.npmrc"
 writeFile "$yarnrc" "$HOME/.yarnrc.yml"
 writeFile "$bunfig" "$HOME/.bunfig.toml"
-mkdir -p "$(dirname "$cargoConfigPath")"
-writeFile "$cargoConfig" "$cargoConfigPath"
 
 # Once $XDG_CONFIG_HOME is set, bun reads BOTH its .bunfig.toml and its .npmrc from there and never
 # falls back to $HOME (verified with bun 1.3.14), so its installs would otherwise run ungated and
