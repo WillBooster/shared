@@ -13,7 +13,11 @@ import { createWranglerDeployEnv } from './wranglerDeployEnv.js';
 
 const execute = promisify(execFile);
 const namedImageSchema = z
-  .object({ dockerfile: z.string().optional(), build_context: z.string().optional() })
+  .object({
+    dockerfile: z.string().optional(),
+    build_context: z.string().optional(),
+    build_vars: z.record(z.string(), z.coerce.string()).optional(),
+  })
   .passthrough();
 const containerSchema = z
   .object({
@@ -174,7 +178,7 @@ async function reuseNamedImage(
   image: NamedImage,
   context: ImageContext
 ): Promise<void> {
-  const source = await resolveCommittedImageSource(dockerfile, image.build_context, {}, context);
+  const source = await resolveCommittedImageSource(dockerfile, image.build_context, image.build_vars ?? {}, context);
   const repositoryName = toRepositoryName(name);
   const tag = `source-${source.key}`;
   let reference = await findPublishedImage(repositoryName, tag, context);
@@ -188,6 +192,7 @@ async function reuseNamedImage(
   image.image = reference;
   delete image.dockerfile;
   delete image.build_context;
+  delete image.build_vars;
 }
 
 /**

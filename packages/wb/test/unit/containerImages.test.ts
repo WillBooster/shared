@@ -255,7 +255,16 @@ it('reuses Durable Object-managed images by digest across checkouts and builds c
   deployed = readDeployments();
   expect(deployed[2]?.named).not.toEqual(deployed[1]?.named);
   expect(readBuilds()).toEqual(['runner', 'original', 'updated runner']);
-});
+  const configPath = path.join(second, 'wrangler.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  config.containers[1].images.runner.build_vars.FLAVOR = 'rich';
+  fs.writeFileSync(configPath, JSON.stringify(config));
+  commit(second);
+  await deploy(second, env);
+  deployed = readDeployments();
+  expect(deployed[3]?.named).not.toEqual(deployed[2]?.named);
+  expect(readBuilds()).toEqual(['runner', 'original', 'updated runner', 'updated runner']);
+}, 60_000);
 
 it('rejects tracked edits to the sources of a Durable Object-managed image', async () => {
   const project = createProject('durable-object-dirty');
@@ -433,7 +442,7 @@ function addNamedImageContainer(project: string): Record<string, unknown> {
   const runner = {
     class_name: 'Runner',
     scheduling_policy: 'durable_object',
-    images: { runner: { dockerfile: './runner/Dockerfile' } },
+    images: { runner: { dockerfile: './runner/Dockerfile', build_vars: { FLAVOR: 'plain' } } },
   };
   const configPath = path.join(project, 'wrangler.json');
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));

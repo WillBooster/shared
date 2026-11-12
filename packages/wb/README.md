@@ -170,7 +170,7 @@ Omitting the option uses the normal Wrangler deployment without image reuse.
 
 Image reuse supports container entries with either `name` or `class_name` that build a local Dockerfile, through `image` or through `images` entries with `dockerfile` (the Durable Object scheduling policy). An `images` entry is deployed as a digest-pinned registry reference. Docker is required on a cache miss. Commit the Dockerfile inside its Git build context. Builds exclude untracked and generated files and reject uncommitted changes to tracked context files.
 
-The reuse key includes the deployment's Worker name, the context's Git tree, the relative Dockerfile path, `image_vars` of an `image` entry, and `linux/amd64`. Changes to tracked documentation or files excluded by `.dockerignore` also rebuild the image. To refresh external dependencies, update the committed context. Serialize deployments of the same Worker. Changes to other container settings can still trigger replacement by Cloudflare.
+The reuse key includes the deployment's Worker name, the context's Git tree, the relative Dockerfile path, `image_vars` of an `image` entry or `build_vars` of an `images` entry, and `linux/amd64`. Changes to tracked documentation or files excluded by `.dockerignore` also rebuild the image. To refresh external dependencies, update the committed context. Serialize deployments of the same Worker. Changes to other container settings can still trigger replacement by Cloudflare.
 
 ## Disk cleanup
 
