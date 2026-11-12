@@ -25,6 +25,12 @@ const containerSchema = z
     images: z.record(z.string(), namedImageSchema).optional(),
   })
   .passthrough();
+const registryCredentialsSchema = z.object({
+  account_id: z.string(),
+  registry_host: z.string(),
+  username: z.string(),
+  password: z.string(),
+});
 const configSchema = z
   .object({
     containers: z.array(containerSchema).optional(),
@@ -67,22 +73,26 @@ export async function withReusableContainerImages({
     const result = await execute(command, args, { cwd, env, signal: cancellation.signal, maxBuffer: 64 * 1024 * 1024 });
     return result.stdout.trim();
   };
-  const namedImages = containers
-    .flatMap((container) => Object.values(container.images ?? {}))
-    .filter((image): image is NamedImage & { dockerfile: string } => image.dockerfile !== undefined);
+  const namedImages = containers.flatMap((container) =>
+    Object.entries(container.images ?? {}).flatMap(([key, image]) =>
+      image.dockerfile === undefined
+        ? []
+        : [{ name: `${getImageName(container)}-${key}`, dockerfile: image.dockerfile, image }]
+    )
+  );
   if (localContainers.length === 0 && namedImages.length === 0) return deploy(configPath);
   const { temporaryDir, temporaryConfig, dispose } = createTemporaryImageFiles(absoluteConfigPath, cancellation);
   try {
-    // Wrangler builds these itself, so it must read an extracted copy of the committed sources, not the working tree.
-    for (const [index, image] of namedImages.entries()) {
-      await stageNamedImage(image, path.join(temporaryDir, `named-${index}`), configDir, run);
+    const context: ImageContext = { configDir, workerName, temporaryDir, wranglerArgs, run };
+    for (const { name, dockerfile, image } of namedImages) {
+      await reuseNamedImage(name, dockerfile, image, context);
     }
     if (localContainers.length > 0) {
       const registry = z
         .array(z.object({ name: z.string(), tags: z.array(z.string()) }))
         .parse(JSON.parse(await run('wrangler', ['containers', 'images', 'list', '--json', ...wranglerArgs])));
       for (const container of localContainers) {
-        await reuseContainerImage(container, { configDir, workerName, temporaryDir, registry, wranglerArgs, run });
+        await reuseContainerImage(container, registry, context);
       }
     }
     fs.writeFileSync(temporaryConfig, JSON.stringify(config));
@@ -133,7 +143,6 @@ interface ImageContext {
   configDir: string;
   workerName: string;
   temporaryDir: string;
-  registry: { name: string; tags: string[] }[];
   wranglerArgs: string[];
   run: (command: string, args: string[], cwd?: string) => Promise<string>;
 }
@@ -149,25 +158,88 @@ interface CommittedImageSource extends CommittedTree {
   buildVars: (readonly [string, string | undefined])[];
 }
 
-async function stageNamedImage(
-  image: NamedImage & { dockerfile: string },
-  directory: string,
-  configDir: string,
-  run: ImageContext['run']
-): Promise<void> {
-  const dockerfile = resolveDockerfile(path.resolve(configDir, image.dockerfile));
-  const buildContext = path.resolve(configDir, image.build_context ?? path.dirname(dockerfile));
-  const tree = await resolveCommittedTree(dockerfile, buildContext, run);
-  image.dockerfile = await extractCommittedTree(tree, directory, run);
-  image.build_context = directory;
-}
-
-async function reuseContainerImage(container: LocalContainer, context: ImageContext): Promise<void> {
-  const { registry } = context;
-  const source = await resolveCommittedImageSource(container, context);
+function getImageName(container: Container): string {
   const imageName = container.name || container.class_name;
   if (!imageName) throw new Error('Reusable container images require name or class_name.');
-  const repositoryName = `wb/${imageName.toLowerCase().replaceAll(/[^a-z0-9-]/g, '-')}`;
+  return imageName;
+}
+
+function toRepositoryName(imageName: string): string {
+  return `wb/${imageName.toLowerCase().replaceAll(/[^a-z0-9-]/g, '-')}`;
+}
+
+async function reuseNamedImage(
+  name: string,
+  dockerfile: string,
+  image: NamedImage,
+  context: ImageContext
+): Promise<void> {
+  const source = await resolveCommittedImageSource(dockerfile, image.build_context, {}, context);
+  const repositoryName = toRepositoryName(name);
+  const tag = `source-${source.key}`;
+  let reference = await findPublishedImage(repositoryName, tag, context);
+  if (reference) {
+    console.info(`Reusing published container image ${repositoryName}:${tag}.`);
+  } else {
+    await buildAndPushImage(`${repositoryName}:${tag}`, source, context);
+    reference = await findPublishedImage(repositoryName, tag, context);
+    if (!reference) throw new Error(`Pushed container image ${repositoryName}:${tag} is missing from the registry.`);
+  }
+  image.image = reference;
+  delete image.dockerfile;
+  delete image.build_context;
+}
+
+/**
+ * Returns the digest-pinned reference of a published image, the only registry reference
+ * Wrangler accepts for an `images` entry, or `undefined` when the tag is not published.
+ */
+async function findPublishedImage(
+  repositoryName: string,
+  tag: string,
+  context: ImageContext
+): Promise<string | undefined> {
+  const credentials = registryCredentialsSchema.parse(
+    JSON.parse(
+      await context.run('wrangler', [
+        'containers',
+        'registries',
+        'credentials',
+        '--pull',
+        '--json',
+        ...context.wranglerArgs,
+      ])
+    )
+  );
+  const repository = `${credentials.account_id}/${repositoryName}`;
+  const authorization = Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64');
+  const response = await fetch(`https://${credentials.registry_host}/v2/${repository}/manifests/${tag}`, {
+    method: 'HEAD',
+    headers: {
+      Authorization: `Basic ${authorization}`,
+      Accept: 'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json',
+    },
+  });
+  if (response.status === 404) return undefined;
+  const digest = response.headers.get('Docker-Content-Digest');
+  if (!response.ok || !digest) {
+    throw new Error(`Failed to look up container image ${repositoryName}:${tag}: ${response.status}`);
+  }
+  return `${credentials.registry_host}/${repository}@${digest}`;
+}
+
+async function reuseContainerImage(
+  container: LocalContainer,
+  registry: { name: string; tags: string[] }[],
+  context: ImageContext
+): Promise<void> {
+  const source = await resolveCommittedImageSource(
+    container.image,
+    container.image_build_context,
+    container.image_vars ?? {},
+    context
+  );
+  const repositoryName = toRepositoryName(getImageName(container));
   const tag = `source-${source.key}`;
   const image = `${repositoryName}:${tag}`;
   if (!registry.some((entry) => entry.name === repositoryName && entry.tags.includes(tag))) {
@@ -182,15 +254,16 @@ async function reuseContainerImage(container: LocalContainer, context: ImageCont
 }
 
 async function resolveCommittedImageSource(
-  container: LocalContainer,
+  dockerfilePath: string,
+  buildContextPath: string | undefined,
+  vars: Record<string, string>,
   context: ImageContext
 ): Promise<CommittedImageSource> {
   const { configDir, workerName, run } = context;
-  const dockerfile = resolveDockerfile(path.resolve(configDir, container.image));
-  const buildContext = path.resolve(configDir, container.image_build_context ?? path.dirname(dockerfile));
+  const dockerfile = resolveDockerfile(path.resolve(configDir, dockerfilePath));
+  const buildContext = path.resolve(configDir, buildContextPath ?? path.dirname(dockerfile));
   const tree = await resolveCommittedTree(dockerfile, buildContext, run);
   const treeHash = await run('git', ['rev-parse', tree.treeish], tree.repository);
-  const vars = container.image_vars ?? {};
   const buildVars = Object.keys(vars)
     .toSorted()
     .map((name) => [name, vars[name]] as const);
