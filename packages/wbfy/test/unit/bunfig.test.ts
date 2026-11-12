@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import {
+  applyRepositoryReleaseAgeGate,
   bunMinimumReleaseAgeSeconds,
   extractRawTestSections,
   generateBunfigToml,
@@ -200,5 +201,41 @@ ignorePatterns = [
     expect(content).not.toContain('# Project-specific patterns');
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
+
+test('rewrites only the release-age gate lines of a repository bunfig.toml', () => {
+  const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-release-age-gate-'));
+  try {
+    const filePath = path.join(dirPath, 'bunfig.toml');
+    const before = `env = false
+
+[install]
+exact = true
+minimumReleaseAge = 1
+minimumReleaseAgeExcludes = [
+  "stale-package",
+]
+
+[fmt]
+printWidth = 120
+`;
+    fs.writeFileSync(filePath, before);
+
+    expect(applyRepositoryReleaseAgeGate(dirPath)).toBe(true);
+    const after = fs.readFileSync(filePath, 'utf8');
+    expect(after).toStartWith('env = false\n\n[install]\nexact = true\n');
+    expect(after).toEndWith(']\n\n[fmt]\nprintWidth = 120\n');
+    expect(after).toContain(`minimumReleaseAge = ${bunMinimumReleaseAgeSeconds}\n`);
+    expect(after).not.toContain('stale-package');
+
+    expect(applyRepositoryReleaseAgeGate(dirPath)).toBe(true);
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(after);
+
+    fs.writeFileSync(filePath, 'env = false\n');
+    expect(applyRepositoryReleaseAgeGate(dirPath)).toBe(false);
+    expect(fs.readFileSync(filePath, 'utf8')).toBe('env = false\n');
+  } finally {
+    fs.rmSync(dirPath, { force: true, recursive: true });
   }
 });

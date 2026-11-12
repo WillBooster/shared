@@ -13,6 +13,7 @@ import { fixTypos } from './fixers/typos.js';
 import { fixViteConfig } from './fixers/viteConfig.js';
 import { generateAgentInstructions } from './generators/agents.js';
 import {
+  applyRepositoryReleaseAgeGate,
   generateBunfigToml,
   hasCurrentBunReleaseAgeExcludes,
   readBunGlobalStore,
@@ -77,8 +78,15 @@ const callerPath = process.env.PATH ?? '';
 async function main(): Promise<void> {
   const argv = await yargs(process.argv.slice(2))
     .command(
-      applyReleaseAgeGateCommand,
-      "Apply only the organization's minimum-release-age policy to this machine's global package-manager configs"
+      `${applyReleaseAgeGateCommand} [paths..]`,
+      "Apply only the organization's minimum-release-age policy: to the given repositories' bunfig.toml, or, without paths, to this machine's global package-manager configs",
+      (yargs) => {
+        yargs.positional('paths', {
+          describe: 'repository paths whose bunfig.toml gets only the release-age gate lines rewritten',
+          array: true,
+          type: 'string',
+        });
+      }
     )
     .command(
       generateUserAgentConfigsCommand,
@@ -120,7 +128,12 @@ async function main(): Promise<void> {
   // Deliberately before the Bun check in willboosterifyPaths(): the gate must be appliable on a
   // machine whose Bun is outdated, which is exactly a machine that still needs gating.
   if (argv._[0] === applyReleaseAgeGateCommand) {
-    if (!(await ensureGlobalReleaseAgeGates())) process.exitCode = 1;
+    const paths = (argv.paths as string[] | undefined) ?? [];
+    const succeeded =
+      paths.length > 0
+        ? paths.map((repositoryPath) => applyRepositoryReleaseAgeGate(repositoryPath)).every(Boolean)
+        : await ensureGlobalReleaseAgeGates();
+    if (!succeeded) process.exitCode = 1;
     return;
   }
   if (argv._[0] === generateUserAgentConfigsCommand) {
