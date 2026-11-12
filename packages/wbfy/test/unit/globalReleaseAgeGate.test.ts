@@ -110,3 +110,71 @@ test('exempts temporarily excluded packages only until their date', async () => 
     await fs.rm(workDirPath, { force: true, recursive: true });
   }
 });
+
+interface CargoConfigCase {
+  name: string;
+  files: Record<string, string>;
+  expected: Record<string, string>;
+  exitCode: number;
+}
+
+test.each<CargoConfigCase>([
+  {
+    name: 'adds the gate to a new config.toml',
+    files: {},
+    expected: { 'config.toml': '[registry]\nglobal-min-publish-age = "7 days"\n' },
+    exitCode: 0,
+  },
+  {
+    name: 'keeps the other settings and overwrites a weakened gate',
+    files: {
+      'config.toml': '[net]\ngit-fetch-with-cli = true\n\n[registry] # crates\nglobal-min-publish-age = "0 days"\n',
+    },
+    expected: {
+      'config.toml': '[net]\ngit-fetch-with-cli = true\n\n[registry] # crates\nglobal-min-publish-age = "7 days"\n',
+    },
+    exitCode: 0,
+  },
+  {
+    // Cargo reads the legacy file instead of config.toml when both exist.
+    name: 'writes the legacy config that Cargo reads',
+    files: { config: '[net]\noffline = false\n', 'config.toml': '[net]\noffline = true\n' },
+    expected: {
+      config: '[net]\noffline = false\n\n[registry]\nglobal-min-publish-age = "7 days"\n',
+      'config.toml': '[net]\noffline = true\n',
+    },
+    exitCode: 0,
+  },
+  {
+    name: 'leaves a config whose gate does not read back untouched and fails',
+    files: { 'config.toml': 'registry.default = "crates-io"\n' },
+    expected: { 'config.toml': 'registry.default = "crates-io"\n' },
+    exitCode: 1,
+  },
+])('$name in the global Cargo config', async ({ files, expected, exitCode }) => {
+  const workDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-release-age-gate-'));
+  try {
+    const homeDirPath = path.join(workDirPath, 'home');
+    const cargoHomeDirPath = path.join(workDirPath, 'cargo');
+    await fs.mkdir(homeDirPath);
+    await fs.mkdir(cargoHomeDirPath);
+    for (const [fileName, content] of Object.entries(files)) {
+      await fs.writeFile(path.join(cargoHomeDirPath, fileName), content);
+    }
+
+    const spawned = Bun.spawn(['bun', path.join(import.meta.dir, '../../src/index.ts'), 'apply-release-age-gate'], {
+      env: { ...Bun.env, CARGO_HOME: cargoHomeDirPath, HOME: homeDirPath, XDG_CONFIG_HOME: '' },
+      stderr: 'inherit',
+      stdout: 'inherit',
+    });
+    expect(await spawned.exited).toBe(exitCode);
+
+    const actual: Record<string, string> = {};
+    for (const fileName of await fs.readdir(cargoHomeDirPath)) {
+      actual[fileName] = await fs.readFile(path.join(cargoHomeDirPath, fileName), 'utf8');
+    }
+    expect(actual).toEqual(expected);
+  } finally {
+    await fs.rm(workDirPath, { force: true, recursive: true });
+  }
+});
