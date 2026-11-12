@@ -264,15 +264,13 @@ async function collectWorkflowFileNamesByKind(
     if (!entry.isFile() || !entry.name.endsWith('.yml')) continue;
     fileNamesByKind.set(entry.name.slice(0, -'.yml'.length), entry.name);
   }
-  const mandatoryKinds = ['test', 'semantic-pr'];
+  // Every application ends with a Bun install, which leaves bun.lock for submit-dependencies.
+  const mandatoryKinds = ['test', 'semantic-pr', 'submit-dependencies'];
   if (rootConfig.depending.semanticRelease) {
     mandatoryKinds.push('release');
   }
   if (rootConfig.cargoTomlDirPaths.length > 0) {
     mandatoryKinds.push('test-rust');
-  }
-  if (hasBunLockfile(rootConfig)) {
-    mandatoryKinds.push('submit-dependencies');
   }
   for (const kind of mandatoryKinds) {
     if (!fileNamesByKind.has(kind)) {
@@ -285,16 +283,6 @@ async function collectWorkflowFileNamesByKind(
     fileNamesByKind.delete('sync-force');
   }
   return fileNamesByKind;
-}
-
-function isConditionalKindApplicable(config: PackageConfig, kind: KnownKind): boolean {
-  if (kind === 'test-rust') return config.cargoTomlDirPaths.length > 0;
-  if (kind === 'submit-dependencies') return hasBunLockfile(config);
-  return true;
-}
-
-function hasBunLockfile(config: PackageConfig): boolean {
-  return fs.existsSync(path.resolve(config.dirPath, 'bun.lock'));
 }
 
 export function isReusableWorkflowsRepo(repository?: string): boolean {
@@ -314,9 +302,8 @@ async function writeWorkflowYaml(
     ? 'deploy-production.yml'
     : undefined;
 
-  // A non-generated file merely sharing a conditional kind's name (e.g., test-rust.yml in a repo
-  // without Rust code) is left alone.
-  if (!isConditionalKindApplicable(config, kind)) return;
+  // A non-generated test-rust.yml in a repo without Rust code merely shares the name; leave it alone.
+  if (kind === 'test-rust' && config.cargoTomlDirPaths.length === 0) return;
 
   const template = structuredClone(kind in workflows ? workflows[kind as keyof typeof workflows] : {}) as Workflow;
   const oldContent = await fsUtil.readFileIfExists(filePath);
