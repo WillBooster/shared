@@ -52,6 +52,7 @@ interface PullRequest {
 
 interface Push {
   branches: string[];
+  paths?: string[];
   'paths-ignore'?: string[];
 }
 
@@ -176,6 +177,28 @@ const workflows = {
       },
     },
   },
+  // GitHub's dependency graph does not parse bun.lock, so this submits its resolved packages for
+  // Dependabot alerts. Alerts follow only default-branch snapshots, and the workflow file itself
+  // is a trigger so that merging the generated caller submits the first snapshot.
+  'submit-dependencies': {
+    name: 'Submit dependencies',
+    on: {
+      push: {
+        branches: ['main'],
+        paths: ['bun.lock', '.github/workflows/submit-dependencies.yml'],
+      },
+      workflow_dispatch: null,
+    },
+    concurrency: {
+      group: '${{ github.workflow }}',
+      'cancel-in-progress': true,
+    },
+    jobs: {
+      'submit-dependencies': {
+        uses: 'WillBooster/reusable-workflows/.github/workflows/submit-dependencies.yml@main',
+      },
+    },
+  },
   sync: {
     name: 'Sync',
     on: {},
@@ -248,6 +271,9 @@ async function collectWorkflowFileNamesByKind(
   if (rootConfig.cargoTomlDirPaths.length > 0) {
     mandatoryKinds.push('test-rust');
   }
+  if (hasBunLockfile(rootConfig)) {
+    mandatoryKinds.push('submit-dependencies');
+  }
   for (const kind of mandatoryKinds) {
     if (!fileNamesByKind.has(kind)) {
       fileNamesByKind.set(kind, `${kind}.yml`);
@@ -259,6 +285,16 @@ async function collectWorkflowFileNamesByKind(
     fileNamesByKind.delete('sync-force');
   }
   return fileNamesByKind;
+}
+
+function isConditionalKindApplicable(config: PackageConfig, kind: KnownKind): boolean {
+  if (kind === 'test-rust') return config.cargoTomlDirPaths.length > 0;
+  if (kind === 'submit-dependencies') return hasBunLockfile(config);
+  return true;
+}
+
+function hasBunLockfile(config: PackageConfig): boolean {
+  return fs.existsSync(path.resolve(config.dirPath, 'bun.lock'));
 }
 
 export function isReusableWorkflowsRepo(repository?: string): boolean {
@@ -278,8 +314,9 @@ async function writeWorkflowYaml(
     ? 'deploy-production.yml'
     : undefined;
 
-  // A non-generated test-rust.yml in a repo without Rust code merely shares the name; leave it alone.
-  if (kind === 'test-rust' && config.cargoTomlDirPaths.length === 0) return;
+  // A non-generated file merely sharing a conditional kind's name (e.g., test-rust.yml in a repo
+  // without Rust code) is left alone.
+  if (!isConditionalKindApplicable(config, kind)) return;
 
   const template = structuredClone(kind in workflows ? workflows[kind as keyof typeof workflows] : {}) as Workflow;
   const oldContent = await fsUtil.readFileIfExists(filePath);
@@ -630,6 +667,8 @@ const reusableWorkflowPermissions: Record<string, Record<string, string>> = {
   // skip-duplicate-actions reads workflow runs; cancel_others is false, so read is enough.
   'test-rust': { actions: 'read', contents: 'read' },
   'semantic-pr': { 'pull-requests': 'read' },
+  // The dependency submission API requires write access to contents.
+  'submit-dependencies': { contents: 'write' },
 };
 
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
