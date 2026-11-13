@@ -503,8 +503,8 @@ function skipRunnerOptions(tokens: string[], startIndex: number): number {
  * Whether a deploy script invokes `wb … deploy` at command position. Package runners and global yargs options
  * (with their value tokens) may precede the deploy command.
  */
-export function invokesWbDeploy(deployScript: string, scriptNames: ReadonlySet<string>): boolean {
-  for (const tokens of parseShellCommands(deployScript) ?? []) {
+export async function invokesWbDeploy(deployScript: string, scriptNames: ReadonlySet<string>): Promise<boolean> {
+  for (const tokens of (await parseShellCommands(deployScript)) ?? []) {
     if (commandInvokesWbDeploy(tokens, scriptNames)) return true;
   }
   return false;

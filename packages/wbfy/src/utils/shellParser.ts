@@ -2,11 +2,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Language, type Node, Parser } from '@willbooster/web-tree-sitter';
 
-await Parser.init();
-const parser = new Parser();
-parser.setLanguage(
-  await Language.load(fileURLToPath(import.meta.resolve('@willbooster/tree-sitter-bash/tree-sitter-bash.wasm')))
-);
+let parserPromise: Promise<Parser> | undefined;
 
 /**
  * Returns the unquoted words (command name first) of every simple command in a Bash script, including those nested
@@ -14,14 +10,38 @@ parser.setLanguage(
  * Comments and literal heredoc text are not commands (command substitutions in an unquoted heredoc are), and function
  * bodies are skipped because they run only when called.
  */
-export function parseShellCommands(script: string): string[][] | undefined {
-  const rootNode = parser.parse(script)?.rootNode;
-  if (!rootNode || rootNode.hasError) return;
-  return rootNode.descendantsOfType('command').flatMap((command) => {
-    const name = command.childForFieldName('name');
-    if (!name || isInFunctionBody(command)) return [];
-    return [[name, ...command.childrenForFieldName('argument')].map((word) => unquoteWord(word))];
-  });
+export async function parseShellCommands(script: string): Promise<string[][] | undefined> {
+  const parser = await (parserPromise ??= initParser().catch((error: unknown) => {
+    parserPromise = undefined;
+    throw error;
+  }));
+  const tree = parser.parse(script);
+  if (!tree) return;
+  try {
+    const { rootNode } = tree;
+    if (rootNode.hasError) return;
+    return rootNode.descendantsOfType('command').flatMap((command) => {
+      const name = command.childForFieldName('name');
+      if (!name || isInFunctionBody(command)) return [];
+      return [[name, ...command.childrenForFieldName('argument')].map((word) => unquoteWord(word))];
+    });
+  } finally {
+    tree.delete();
+  }
+}
+
+async function initParser(): Promise<Parser> {
+  await Parser.init();
+  const language = await Language.load(
+    fileURLToPath(import.meta.resolve('@willbooster/tree-sitter-bash/tree-sitter-bash.wasm'))
+  );
+  const parser = new Parser();
+  try {
+    return parser.setLanguage(language);
+  } catch (error) {
+    parser.delete();
+    throw error;
+  }
 }
 
 function isInFunctionBody(node: Node): boolean {
