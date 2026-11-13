@@ -14,22 +14,34 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { runAllInPool } from '../utils/promisePool.js';
 import { hasCloudflareDeployWorkflow, invokesWbDeploy } from './workflow.js';
 
+interface DeployFacts {
+  ownsGeneratedWorkerTypes: boolean;
+  ownsWranglerConfig: boolean;
+  usesWbDeploy: boolean;
+}
+
+export const LANGUAGE_BOUND_TEXT_EXCEPTION =
+  'except text whose language is part of what the code handles (e.g., UI strings, test inputs)';
+
 export async function generateAgentInstructions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
   return logger.functionIgnoringException('generateAgentInstructions', async () => {
     if (!rootConfig.isRoot) return;
 
     const extraContent = await readAgentsExtraContent(rootConfig.dirPath);
-    const usesWbDeploy = allConfigs.some((config) => {
-      const scripts = config.packageJson?.scripts ?? {};
-      const deployScript = scripts['deploy'];
-      return typeof deployScript === 'string' && invokesWbDeploy(deployScript, new Set(Object.keys(scripts)));
-    });
+    const ownsWranglerConfig = allConfigs.some((config) => config.doesContainWranglerConfig);
+    const usesWbDeploy = ownsWranglerConfig && (await hasWbDeployScript(allConfigs));
 
     // Only claim the file is generated where it actually is: a package that hand-maintains its `Env` (e.g. under
     // `types: ["bun"]`) is deliberately left unmanaged, and telling an agent to run `wb gen-code` there would send
     // it after a file that never appears — and away from the `Env` it should be editing.
-    const generatedWorkerTypes = await Promise.all(allConfigs.map((config) => generatesWorkerTypes(config)));
-    const deployFacts = { ownsGeneratedWorkerTypes: generatedWorkerTypes.includes(true), usesWbDeploy };
+    const generatedWorkerTypes = ownsWranglerConfig
+      ? await Promise.all(allConfigs.map((config) => generatesWorkerTypes(config)))
+      : [];
+    const deployFacts = {
+      ownsGeneratedWorkerTypes: generatedWorkerTypes.includes(true),
+      ownsWranglerConfig,
+      usesWbDeploy,
+    };
     const codingStyle = generateAgentCodingStyle(rootConfig, allConfigs, await usesReactCompiler(allConfigs));
 
     const agentsMdPath = path.resolve(rootConfig.dirPath, 'AGENTS.md');
@@ -52,6 +64,17 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
   });
 }
 
+async function hasWbDeployScript(allConfigs: PackageConfig[]): Promise<boolean> {
+  for (const config of allConfigs) {
+    const scripts = config.packageJson?.scripts ?? {};
+    const deployScript = scripts['deploy'];
+    if (typeof deployScript === 'string' && (await invokesWbDeploy(deployScript, new Set(Object.keys(scripts))))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const agentsExtraContentCache = new Map<string, string | undefined>();
 
 /**
@@ -66,14 +89,6 @@ export async function readAgentsExtraContent(rootDirPath: string): Promise<strin
   }
   return agentsExtraContentCache.get(agentsExtraPath);
 }
-
-interface DeployFacts {
-  ownsGeneratedWorkerTypes: boolean;
-  usesWbDeploy: boolean;
-}
-
-export const LANGUAGE_BOUND_TEXT_EXCEPTION =
-  'except text whose language is part of what the code handles (e.g., UI strings, test inputs)';
 
 function generateAgentInstruction(
   rootConfig: PackageConfig,
@@ -178,12 +193,7 @@ function generateStackInstructions(
   // it no longer resolves, and the reflex fix (switching the linker back) silently reintroduces
   // the phantom dependencies the layout exists to catch.
   const isolatedInstallInstruction = `\n- \`bunfig.toml\` uses Bun's isolated linker, so only declared dependencies resolve. If an import fails to resolve, declare that package in the \`package.json\` that imports it; never switch \`linker\` to \`hoisted\` or add to \`publicHoistPattern\` to work around it.`;
-  const deployPlatformInstructions = generateDeployPlatformInstructions(
-    rootConfig,
-    allConfigs,
-    deployFacts,
-    packageManager
-  );
+  const deployPlatformInstructions = generateDeployPlatformInstructions(rootConfig, deployFacts, packageManager);
   const playwrightTestServerInstruction = hasPlaywrightTestServer(allConfigs)
     ? `\n- Use \`${packageManager} wb start --mode test\` to launch a web server for debugging or testing.`
     : '';
@@ -201,8 +211,7 @@ function generateStackInstructions(
 
 function generateDeployPlatformInstructions(
   rootConfig: PackageConfig,
-  allConfigs: PackageConfig[],
-  { ownsGeneratedWorkerTypes, usesWbDeploy }: DeployFacts,
+  { ownsGeneratedWorkerTypes, ownsWranglerConfig, usesWbDeploy }: DeployFacts,
   packageManager: string
 ): string {
   // Every clause states only a verified fact, reusing the workflow generator's own detectors: the
@@ -210,8 +219,8 @@ function generateDeployPlatformInstructions(
   // mention in a script or workflow), the workflow clause needs a live reusable-deploy caller
   // (YAML-parsed jobs.*.uses, not a raw-text/comment match), and the `wb deploy` clause needs a
   // deploy script whose command token is `wb … deploy`.
-  const ownsWranglerConfig = allConfigs.some((config) => config.doesContainWranglerConfig);
-  const hasDeployWorkflow = hasCloudflareDeployWorkflow(path.resolve(rootConfig.dirPath, '.github/workflows'));
+  const hasDeployWorkflow =
+    ownsWranglerConfig && hasCloudflareDeployWorkflow(path.resolve(rootConfig.dirPath, '.github/workflows'));
   // Independent facts stay separate sentences: the workflow's own deploy mechanism is not
   // inspected, so the wb-deploy clause must not claim the workflow invokes it.
   const cloudflareInstruction = ownsWranglerConfig
