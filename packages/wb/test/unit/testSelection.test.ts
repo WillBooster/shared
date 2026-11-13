@@ -128,7 +128,7 @@ it.each(['vitest', '@playwright/test'])(
         name: 'selection-fixture',
         type: 'module',
         packageManager: 'bun@1.4.2',
-        devDependencies: { [runner]: playwright ? '1.63.0' : '4.1.11' },
+        devDependencies: { [runner]: playwright ? '1.65.0' : '4.1.11' },
         ...(playwright ? { scripts: { 'test/e2e-additional': 'exit 9' } } : {}),
       })
     );
@@ -177,6 +177,18 @@ it.each(['vitest', '@playwright/test'])(
       expect(invertedResult.status, invertedResult.stdout + invertedResult.stderr).toBe(0);
       expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('selected');
       await fs.rm(path.join(dir, 'executed'));
+      const numericFile = path.join(dir, 'test/e2e/numeric.test.ts');
+      await fs.writeFile(
+        numericFile,
+        "import { test } from '@playwright/test'; import fs from 'node:fs'; test('case 1e3 1.00', () => fs.appendFileSync('executed', 'numeric'));"
+      );
+      for (const grep of ['1e3', '1.00']) {
+        const numericResult = await runCli(dir, ['test', '--', '--grep', grep, 'test/e2e/numeric.test.ts']);
+        expect(numericResult.status, numericResult.stdout + numericResult.stderr).toBe(0);
+        expect(await fs.readFile(path.join(dir, 'executed'), 'utf8')).toBe('numeric');
+        await fs.rm(path.join(dir, 'executed'));
+      }
+      await fs.rm(numericFile);
       const unitFile = path.join(dir, 'test/unit/selected.test.ts');
       const unitSource = await fs.readFile(unitFile, 'utf8');
       await fs.writeFile(unitFile, unitSource.replace('selected case', 'unit selected case'));
@@ -189,6 +201,8 @@ it.each(['vitest', '@playwright/test'])(
         ['--', '--last-failed-file', 'last-failed.json'],
         ['--', '--run-agents', 'none'],
         ['--', '--debug', 'cli'],
+        ['--', '--shuffle', '42'],
+        ['--', '--workers', '1'],
         ['--', '-u', 'none'],
       ]) {
         const unitResult = await runCli(dir, ['test', '--grep', 'unit selected case$', ...forwarded]);
@@ -234,6 +248,8 @@ it.each(['vitest', '@playwright/test'])(
         ['--last-failed-file', 'last-failed.json'],
         ['--run-agents', 'none'],
         ['--debug', 'cli'],
+        ['--shuffle', '42'],
+        ['--workers', '1'],
         ['-u', 'none'],
       ]) {
         const fullResult = await runCli(dir, ['test', '--', ...forwarded]);

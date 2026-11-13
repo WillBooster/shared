@@ -98,7 +98,9 @@ export const testCommand: CommandModule<unknown, TestCommandOptions> = {
     "Test project. If you pass no arguments, it will run all tests. Use '--' to stop wb option parsing and forward the remaining flags to Playwright. Example: wb test --grep 'uploaded image asset'",
   builder: (yargs: Argv<unknown>): Argv<TestCommandOptions> =>
     yargs
-      .parserConfiguration({ 'populate--': true })
+      // Without `parse-positional-numbers: false`, yargs turns forwarded Playwright values such as
+      // `--grep 1e3` into numbers, losing their spelling.
+      .parserConfiguration({ 'populate--': true, 'parse-positional-numbers': false })
       .options(builder)
       .positional('targets', testArgumentsBuilder.targets) as Argv<TestCommandOptions>,
   async handler(argv) {
@@ -110,16 +112,17 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   if (argv.grep !== undefined && (argv.e2e === 'generate' || argv.e2e === 'trace')) {
     throw new Error('--grep cannot be used with --e2e generate or trace; these modes do not run E2E tests.');
   }
+  const forwardedPlaywrightArgs = argv['--'] ?? [];
   if (
     argv.grep !== undefined &&
-    (argv['--'] ?? []).some((arg) => /^(?:-[gt]|--(?:grep|test-name-pattern)(?:=|$))/.test(arg))
+    forwardedPlaywrightArgs.some((arg) => /^(?:-[gt]|--(?:grep|test-name-pattern)(?:=|$))/.test(arg))
   ) {
     throw new Error('Use --grep before --, without another forwarded name filter.');
   }
   const isNameOnlySelection =
     argv.grep !== undefined &&
     !argv.targets?.length &&
-    findExplicitPlaywrightTargetIndexes(argv['--'] ?? []).length === 0;
+    findExplicitPlaywrightTargetIndexes(forwardedPlaywrightArgs).length === 0;
   const testArgv = {
     ...withDefaultTestCascadeEnv(argv),
     allowNoTests: isNameOnlySelection,
@@ -131,7 +134,6 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   }
 
   const testTargets = (testArgv.targets ?? []) as string[];
-  const forwardedPlaywrightArgs = testArgv['--'] ?? [];
   const { shouldRunE2e, shouldRunUnit } = resolveTestExecutionTargets(testTargets, forwardedPlaywrightArgs);
   // The hook cannot be filtered, so a selection of paths, names, or Playwright options leaves it out.
   const shouldRunPost = testTargets.length === 0 && forwardedPlaywrightArgs.length === 0 && argv.grep === undefined;

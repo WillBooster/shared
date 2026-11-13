@@ -471,6 +471,11 @@ const PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES = new Set([
   '--workers',
 ]);
 
-const PLAYWRIGHT_TEST_OPTIONS_WITH_OPTIONAL_VALUES = new Set(['--debug', '--only-changed', '--update-snapshots']);
+const PLAYWRIGHT_TEST_OPTIONS_WITH_OPTIONAL_VALUES = new Set([
+  '--debug',
+  '--only-changed',
+  '--shuffle',
+  '--update-snapshots',
+]);
 
 const PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES = new Set(['-c', '-g', '-G', '-j']);
