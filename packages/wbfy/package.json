@@ -68,8 +68,8 @@
     "@willbooster/wb": "workspace:*",
     "build-ts": "21.0.32",
     "lefthook": "2.2.2",
-    "oxlint": "1.90.0",
-    "oxlint-tsgolint": "7.0.2005",
+    "oxlint": "1.92.0",
+    "oxlint-tsgolint": "7.0.2006",
     "type-fest": "5.10.0"
   },
   "engines": {

@@ -55,8 +55,8 @@
     "@willbooster/wb": "workspace:*",
     "build-ts": "21.0.32",
     "next": "16.4.5",
-    "oxlint": "1.90.0",
-    "oxlint-tsgolint": "7.0.2005",
+    "oxlint": "1.92.0",
+    "oxlint-tsgolint": "7.0.2006",
     "typescript": "7.0.2"
   },
   "peerDependencies": {
