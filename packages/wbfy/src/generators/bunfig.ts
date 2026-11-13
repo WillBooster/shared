@@ -31,7 +31,8 @@ interface BunfigToml {
 // Other third-party packages — including tooling wbfy pins itself — stay age-gated;
 // getLatestAgeGatedDependencyVersion in packageJson.ts pins the newest release old enough to pass
 // the gate, so pinning keeps working without an exemption. `temporaryExcludes` lets a third-party
-// release needed now (a security fix, or an SDK a new model requires) in immediately and gates the
+// release needed now in immediately (e.g. an SDK a new model requires; a release patching a Dependabot
+// alert needs no entry, since the vulnerability-fix run admits it by exact version) and gates the
 // package again from the given UTC date, so the next wbfy run restores the gate without anyone
 // having to remember to remove the entry. List every package that release pins exactly and
 // publishes alongside it, since exclusion matches exact names only.
