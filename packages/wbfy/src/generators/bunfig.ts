@@ -39,41 +39,10 @@ export const bunMinimumReleaseAgeSeconds = releaseAgeGate.days * 24 * 60 * 60;
 const today = new Date().toISOString().slice(0, 10);
 export const bunMinimumReleaseAgeExcludes = [
   ...releaseAgeGate.excludes,
-  ...Object.entries(releaseAgeGate.temporaryExcludes)
+  ...Object.entries<string>(releaseAgeGate.temporaryExcludes)
     .filter(([, gatedAgainFrom]) => today < gatedAgainFrom)
     .map(([packageName]) => packageName),
 ];
-
-function formatReleaseAgeGateLines(): string {
-  return `minimumReleaseAge = ${bunMinimumReleaseAgeSeconds}
-minimumReleaseAgeExcludes = [
-${bunMinimumReleaseAgeExcludes.map((packageName) => `  "${packageName}",`).join('\n')}
-]`;
-}
-
-const releaseAgeGateLinesRegex = /^minimumReleaseAge = .*\nminimumReleaseAgeExcludes = \[\n[\s\S]*?^\]$/m;
-
-/**
- * Rewrites only the release-age gate lines of the repository's wbfy-generated bunfig.toml to today's
- * policy, leaving every other line untouched, so a security exemption reaches one repository without a
- * full wbfy application. Returns false, writing nothing, when the file lacks those lines.
- */
-export function applyRepositoryReleaseAgeGate(rootDirPath: string): boolean {
-  const filePath = path.resolve(rootDirPath, 'bunfig.toml');
-  // Managed files must be regular files: a symlink would redirect the write outside the repository.
-  if (fs.lstatSync(filePath, { throwIfNoEntry: false })?.isFile() !== true) {
-    console.error(`${filePath} is missing or not a regular file; apply wbfy to the repository first.`);
-    return false;
-  }
-  const content = fs.readFileSync(filePath, 'utf8');
-  if (!releaseAgeGateLinesRegex.test(content)) {
-    console.error(`${filePath} has no wbfy-generated release-age gate lines; apply wbfy to the repository first.`);
-    return false;
-  }
-  const updated = content.replace(releaseAgeGateLinesRegex, formatReleaseAgeGateLines());
-  if (updated !== content) fs.writeFileSync(filePath, updated);
-  return true;
-}
 
 /**
  * Whether the repository's bunfig.toml lists today's exemptions. `temporaryExcludes` changes them by
@@ -216,7 +185,10 @@ exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
 ${globalStoreLine}
 linker = "isolated"
 publicHoistPattern = ["tsx"]
-${formatReleaseAgeGateLines()}
+minimumReleaseAge = ${bunMinimumReleaseAgeSeconds}
+minimumReleaseAgeExcludes = [
+${bunMinimumReleaseAgeExcludes.map((packageName) => `  "${packageName}",`).join('\n')}
+]
 
 [fmt]
 flavor = "oxfmt"
