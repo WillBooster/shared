@@ -28,7 +28,7 @@ export const testSelectionOptions = {
     type: 'string',
     requiresArg: true,
     coerce(value: unknown): string {
-      if (typeof value !== 'string') throw new Error('--grep takes exactly one regular expression.');
+      if (typeof value !== 'string') throw new TypeError('--grep takes exactly one regular expression.');
       if (!value.trim()) throw new Error('--grep must not be empty.');
       new RegExp(value);
       return value;
