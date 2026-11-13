@@ -128,7 +128,7 @@ it.each(['vitest', '@playwright/test'])(
         name: 'selection-fixture',
         type: 'module',
         packageManager: 'bun@1.4.2',
-        devDependencies: { [runner]: playwright ? '1.63.0' : '4.1.11' },
+        devDependencies: { [runner]: playwright ? '1.65.0' : '4.1.11' },
         ...(playwright ? { scripts: { 'test/e2e-additional': 'exit 9' } } : {}),
       })
     );
@@ -189,6 +189,8 @@ it.each(['vitest', '@playwright/test'])(
         ['--', '--last-failed-file', 'last-failed.json'],
         ['--', '--run-agents', 'none'],
         ['--', '--debug', 'cli'],
+        ['--', '--shuffle', '42'],
+        ['--', '--workers', '1'],
         ['--', '-u', 'none'],
       ]) {
         const unitResult = await runCli(dir, ['test', '--grep', 'unit selected case$', ...forwarded]);
@@ -234,6 +236,8 @@ it.each(['vitest', '@playwright/test'])(
         ['--last-failed-file', 'last-failed.json'],
         ['--run-agents', 'none'],
         ['--debug', 'cli'],
+        ['--shuffle', '42'],
+        ['--workers', '1'],
         ['-u', 'none'],
       ]) {
         const fullResult = await runCli(dir, ['test', '--', ...forwarded]);

@@ -110,16 +110,18 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   if (argv.grep !== undefined && (argv.e2e === 'generate' || argv.e2e === 'trace')) {
     throw new Error('--grep cannot be used with --e2e generate or trace; these modes do not run E2E tests.');
   }
+  // yargs parses numeric values after `--` (e.g. `--workers 2`) into numbers.
+  const forwardedPlaywrightArgs = (argv['--'] ?? []).map(String);
   if (
     argv.grep !== undefined &&
-    (argv['--'] ?? []).some((arg) => /^(?:-[gt]|--(?:grep|test-name-pattern)(?:=|$))/.test(arg))
+    forwardedPlaywrightArgs.some((arg) => /^(?:-[gt]|--(?:grep|test-name-pattern)(?:=|$))/.test(arg))
   ) {
     throw new Error('Use --grep before --, without another forwarded name filter.');
   }
   const isNameOnlySelection =
     argv.grep !== undefined &&
     !argv.targets?.length &&
-    findExplicitPlaywrightTargetIndexes(argv['--'] ?? []).length === 0;
+    findExplicitPlaywrightTargetIndexes(forwardedPlaywrightArgs).length === 0;
   const testArgv = {
     ...withDefaultTestCascadeEnv(argv),
     allowNoTests: isNameOnlySelection,
@@ -131,7 +133,6 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   }
 
   const testTargets = (testArgv.targets ?? []) as string[];
-  const forwardedPlaywrightArgs = testArgv['--'] ?? [];
   const { shouldRunE2e, shouldRunUnit } = resolveTestExecutionTargets(testTargets, forwardedPlaywrightArgs);
   // The hook cannot be filtered, so a selection of paths, names, or Playwright options leaves it out.
   const shouldRunPost = testTargets.length === 0 && forwardedPlaywrightArgs.length === 0 && argv.grep === undefined;
