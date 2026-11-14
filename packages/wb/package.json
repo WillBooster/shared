@@ -45,7 +45,7 @@
     "@textlint/module-interop": "15.8.0",
     "@textlint/textlint-plugin-markdown": "15.8.0",
     "chalk": "6.0.1",
-    "code-gauge": "10.3.0",
+    "code-gauge": "10.4.3",
     "dotenv": "18.0.9",
     "dotenv-expand": "13.0.0",
     "fast-glob": "3.3.3",
@@ -62,7 +62,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@slidev/parser": "53.0.0",
+    "@slidev/parser": "53.1.0",
     "@tsconfig/bun": "1.0.11",
     "@tsconfig/node-lts": "24.0.1",
     "@tsconfig/node-ts": "23.6.4",
