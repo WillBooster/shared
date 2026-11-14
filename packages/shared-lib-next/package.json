@@ -53,7 +53,7 @@
     "@types/node": "26.6.6",
     "@willbooster/oxlint-config": "1.4.9",
     "@willbooster/wb": "workspace:*",
-    "build-ts": "21.0.32",
+    "build-ts": "21.0.33",
     "next": "16.4.5",
     "oxlint": "1.92.0",
     "oxlint-tsgolint": "7.0.2006",
