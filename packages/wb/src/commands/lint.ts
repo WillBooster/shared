@@ -12,6 +12,7 @@ import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { fixJapaneseSpacing, isInTestFixtures } from '../utils/japaneseSpacing.js';
 import { printBufferedOutput, shouldPrintBufferedOutput } from '../utils/output.js';
 import { buildShellCommand } from '../utils/shell.js';
+import { reportSkillFrontmatterErrors } from '../utils/skillFrontmatter.js';
 import { reportTestStructureViolations } from '../utils/testStructure.js';
 import { isCapturingVerificationOutput } from '../utils/verificationOutput.js';
 
@@ -129,7 +130,14 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   const plan =
     files.length > 0 ? await planExplicitLintRun(argv, projects.descendants, files) : planWholeLintRun(argv, projects);
   const succeeded = await runLintPlan(plan, argv, projects, files.length > 0 ? files : undefined);
-  return succeeded && !violatesTestStructure ? 0 : 1;
+  const violatesSkillFrontmatter =
+    shouldRunLinters(argv) &&
+    !argv.dryRun &&
+    (await reportSkillFrontmatterErrors(
+      projects.self.dirPath,
+      files.length > 0 ? files.map((file) => path.resolve(projects.self.dirPath, file)) : [projects.self.dirPath]
+    ));
+  return succeeded && !violatesTestStructure && !violatesSkillFrontmatter ? 0 : 1;
 }
 
 function shouldRunFormatters(argv: LintCommandArgv): boolean {
