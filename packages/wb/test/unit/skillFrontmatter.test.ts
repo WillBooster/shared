@@ -20,6 +20,9 @@ describe('lint skill frontmatter', () => {
 
     await fs.writeFile(path.join(dir, 'skills/example/SKILL.md'), valid);
     expect(runLint(dir).status).toBe(0);
+    await fs.writeFile(path.join(dir, 'skills/example/SKILL.md'), valid.replaceAll('---\n', '--- \t\r\n'));
+    expect(runLint(dir).status).toBe(0);
+    expect(runLint(dir, ['skills/']).status).toBe(0);
   });
 
   it('rejects unresolved and forward aliases but accepts an anchor preceding its alias', async () => {

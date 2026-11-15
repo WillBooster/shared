@@ -18,7 +18,7 @@ export async function reportSkillFrontmatterErrors(projectDir: string, targets: 
   for (const file of files) {
     if (isExcludedSkillPath(projectDir, file)) continue;
     const text = await fs.readFile(file, 'utf8');
-    const frontmatter = /^(\uFEFF?---\r?\n[\s\S]*?)^---[\t ]*(?:\r?\n|$)/m.exec(text);
+    const frontmatter = /^(\uFEFF?---[\t ]*\r?\n[\s\S]*?)^---[\t ]*(?:\r?\n|$)/m.exec(text);
     try {
       if (frontmatter?.index !== 0) {
         throw new Error('Missing or unclosed YAML frontmatter (expected --- delimiters).');
@@ -50,7 +50,7 @@ async function listTargetSkillFiles(target: string): Promise<string[]> {
   if (!stats) return [];
   const rootDir = stats.isDirectory() ? target : path.dirname(target);
   const files = await listSkillFiles(rootDir);
-  return files.filter((file) => file === target || file.startsWith(`${target}/`));
+  return stats.isDirectory() ? files : files.filter((file) => file === target);
 }
 
 async function listSkillFiles(rootDir: string): Promise<string[]> {
