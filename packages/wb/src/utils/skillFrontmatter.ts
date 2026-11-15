@@ -12,7 +12,7 @@ const excludedDirectories = new Set(['node_modules', '.git', '.tmp']);
 
 export async function reportSkillFrontmatterErrors(projectDir: string, targets: string[]): Promise<boolean> {
   const includedTargets = targets.filter((target) => !isExcludedSkillPath(projectDir, target));
-  const targetFiles = await Promise.all(includedTargets.map((target) => listTargetSkillFiles(path.resolve(target))));
+  const targetFiles = await Promise.all(includedTargets.map(listTargetSkillFiles));
   const files = new Set(targetFiles.flat());
   let hasErrors = false;
   for (const file of files) {
