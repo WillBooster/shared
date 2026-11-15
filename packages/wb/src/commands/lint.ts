@@ -134,7 +134,6 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
     shouldRunLinters(argv) &&
     !argv.dryRun &&
     (await reportSkillFrontmatterErrors(
-      projects.root.dirPath,
       files.length > 0 ? files.map((file) => path.resolve(projects.self.dirPath, file)) : [projects.self.dirPath]
     ));
   return succeeded && !violatesTestStructure && !violatesSkillFrontmatter ? 0 : 1;

@@ -8,14 +8,12 @@ import { parse } from 'yaml';
 
 import { isInTestFixtures } from './japaneseSpacing.js';
 
-export async function reportSkillFrontmatterErrors(rootDir: string, targets: string[]): Promise<boolean> {
-  const resolvedTargets = targets.map((target) => path.resolve(target));
-  const files = await listSkillFiles(rootDir);
+export async function reportSkillFrontmatterErrors(targets: string[]): Promise<boolean> {
+  const targetFiles = await Promise.all(targets.map((target) => listTargetSkillFiles(path.resolve(target))));
+  const files = new Set(targetFiles.flat());
   let hasErrors = false;
   for (const file of files) {
-    if (isInTestFixtures(file) || !resolvedTargets.some((target) => file === target || file.startsWith(`${target}/`))) {
-      continue;
-    }
+    if (isInTestFixtures(file)) continue;
     const text = await fs.readFile(file, 'utf8');
     const frontmatter = /^(\uFEFF?---\r?\n[\s\S]*?)^---[\t ]*(?:\r?\n|$)/m.exec(text);
     try {
@@ -29,6 +27,17 @@ export async function reportSkillFrontmatterErrors(rootDir: string, targets: str
     }
   }
   return hasErrors;
+}
+
+async function listTargetSkillFiles(target: string): Promise<string[]> {
+  const stats = await fs.stat(target).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return;
+    throw error;
+  });
+  if (!stats) return [];
+  const rootDir = stats.isDirectory() ? target : path.dirname(target);
+  const files = await listSkillFiles(rootDir);
+  return files.filter((file) => file === target || file.startsWith(`${target}/`));
 }
 
 async function listSkillFiles(rootDir: string): Promise<string[]> {

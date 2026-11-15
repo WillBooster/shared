@@ -82,12 +82,20 @@ describe('lint skill frontmatter', () => {
     git(source, 'add', '.');
     git(source, '-c', 'user.name=wb', '-c', 'user.email=wb@example.com', 'commit', '-qm', 'fixture');
     git(dir, 'init', '-q');
-    git(dir, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', source, '.claude/skills');
-    expect(runLint(dir).status).toBe(0);
-    expect(runLint(dir, ['own/SKILL.md']).status).toBe(0);
-    const result = runLint(path.join(dir, '.claude/skills'));
-    expect(result.status).toBe(1);
-    expect(result.stdout + result.stderr).toContain('invalid skill frontmatter');
+    for (const submodule of ['.claude/skills', 'packages/skills']) {
+      git(dir, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', source, submodule);
+      expect(runLint(dir).status).toBe(0);
+      expect(runLint(dir, ['own/SKILL.md']).status).toBe(0);
+      for (const args of [[], ['SKILL.md']]) {
+        const result = runLint(path.join(dir, submodule), args);
+        expect(result.status).toBe(1);
+        expect(result.stdout + result.stderr).toContain('invalid skill frontmatter');
+      }
+    }
+    const embedded = path.join(dir, 'packages/embedded');
+    await fs.cp(source, embedded, { recursive: true });
+    expect(runLint(embedded).status).toBe(1);
+    expect(runLint(embedded, ['SKILL.md']).status).toBe(1);
   });
 
   it('rejects missing frontmatter delimiters but leaves dry runs and formatting alone', async () => {
