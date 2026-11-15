@@ -75,6 +75,21 @@ describe('lint skill frontmatter', () => {
     expect(runLint(path.join(dir, 'apps/example')).status).toBe(0);
   });
 
+  it('keeps submodule skills outside parent lint while validating them in their own project', async () => {
+    const source = await createSkillProject({ 'SKILL.md': malformed });
+    const dir = await createSkillProject({ 'own/SKILL.md': valid });
+    git(source, 'init', '-q');
+    git(source, 'add', '.');
+    git(source, '-c', 'user.name=wb', '-c', 'user.email=wb@example.com', 'commit', '-qm', 'fixture');
+    git(dir, 'init', '-q');
+    git(dir, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', source, '.claude/skills');
+    expect(runLint(dir).status).toBe(0);
+    expect(runLint(dir, ['own/SKILL.md']).status).toBe(0);
+    const result = runLint(path.join(dir, '.claude/skills'));
+    expect(result.status).toBe(1);
+    expect(result.stdout + result.stderr).toContain('invalid skill frontmatter');
+  });
+
   it('rejects missing frontmatter delimiters but leaves dry runs and formatting alone', async () => {
     for (const content of ['# Instructions\n', '---\nname: example\n']) {
       const dir = await createSkillProject({ 'skills/example/SKILL.md': content });
@@ -99,4 +114,8 @@ async function createSkillProject(files: Record<string, string>): Promise<string
 
 function runLint(dir: string, args: string[] = []): childProcess.SpawnSyncReturns<string> {
   return childProcess.spawnSync('bun', [cliPath, '--working-dir', dir, 'lint', ...args], { encoding: 'utf8' });
+}
+
+function git(cwd: string, ...args: string[]): void {
+  childProcess.execFileSync('git', args, { cwd, stdio: 'pipe' });
 }

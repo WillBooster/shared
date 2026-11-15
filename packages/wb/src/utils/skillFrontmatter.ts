@@ -43,13 +43,15 @@ async function listSkillFiles(rootDir: string): Promise<string[]> {
   if (files.length === 0) return files;
   const workTree = await spawnAsync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: rootDir });
   if (workTree.status !== 0 || workTree.stdout.trim() !== 'true') return files;
-  const result = await spawnAsync('git', ['check-ignore', '--stdin', '-z'], {
+  const result = await spawnAsync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
     cwd: rootDir,
-    input: `${files.join('\0')}\0`,
   });
-  if (result.status !== 0 && result.status !== 1) {
-    throw new Error(`Cannot check skill Git exclusions: ${result.stderr}`);
-  }
-  const ignored = new Set(result.stdout.split('\0'));
-  return files.filter((file) => !ignored.has(file));
+  if (result.status !== 0) throw new Error(`Cannot list skill Git files: ${result.stderr}`);
+  const ownedFiles = new Set(
+    result.stdout
+      .split('\0')
+      .filter(Boolean)
+      .map((file) => path.resolve(rootDir, file))
+  );
+  return files.filter((file) => ownedFiles.has(file));
 }
