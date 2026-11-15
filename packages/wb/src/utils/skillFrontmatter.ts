@@ -17,9 +17,9 @@ export async function reportSkillFrontmatterErrors(projectDir: string, targets: 
   let hasErrors = false;
   for (const file of files) {
     if (isExcludedSkillPath(projectDir, file)) continue;
-    const text = await fs.readFile(file, 'utf8');
-    const frontmatter = /^(\uFEFF?---[\t ]*\r?\n[\s\S]*?)^---[\t ]*(?:\r?\n|$)/m.exec(text);
     try {
+      const text = await fs.readFile(file, 'utf8');
+      const frontmatter = /^(\uFEFF?---[\t ]*\r?\n[\s\S]*?)^---[\t ]*(?:\r?\n|$)/m.exec(text);
       if (frontmatter?.index !== 0) {
         throw new Error('Missing or unclosed YAML frontmatter (expected --- delimiters).');
       }
