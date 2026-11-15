@@ -98,6 +98,28 @@ describe('lint skill frontmatter', () => {
     expect(runLint(embedded, ['SKILL.md']).status).toBe(1);
   });
 
+  it('preserves dependency and temporary exclusions for explicit directory and file targets', async () => {
+    for (const withGit of [false, true]) {
+      const dir = await createSkillProject({
+        'skills/good/SKILL.md': valid,
+        'node_modules/pkg/SKILL.md': malformed,
+        '.tmp/SKILL.md': malformed,
+      });
+      if (withGit) {
+        git(dir, 'init', '-q');
+        await fs.mkdir(path.join(dir, '.git/local'));
+        await fs.writeFile(path.join(dir, '.git/local/SKILL.md'), malformed);
+      }
+      const targets = ['node_modules', 'node_modules/pkg/SKILL.md', '.tmp', '.tmp/SKILL.md'];
+      if (withGit) targets.push('.git', '.git/local/SKILL.md');
+      for (const target of targets) {
+        const result = runLint(dir, [target]);
+        expect(result.stdout + result.stderr).not.toContain('invalid skill frontmatter');
+        expect(result.status).toBe(0);
+      }
+    }
+  });
+
   it('rejects missing frontmatter delimiters but leaves dry runs and formatting alone', async () => {
     for (const content of ['# Instructions\n', '---\nname: example\n']) {
       const dir = await createSkillProject({ 'skills/example/SKILL.md': content });

@@ -8,12 +8,15 @@ import { parse } from 'yaml';
 
 import { isInTestFixtures } from './japaneseSpacing.js';
 
-export async function reportSkillFrontmatterErrors(targets: string[]): Promise<boolean> {
-  const targetFiles = await Promise.all(targets.map((target) => listTargetSkillFiles(path.resolve(target))));
+const excludedDirectories = new Set(['node_modules', '.git', '.tmp']);
+
+export async function reportSkillFrontmatterErrors(projectDir: string, targets: string[]): Promise<boolean> {
+  const includedTargets = targets.filter((target) => !isExcludedSkillPath(projectDir, target));
+  const targetFiles = await Promise.all(includedTargets.map((target) => listTargetSkillFiles(path.resolve(target))));
   const files = new Set(targetFiles.flat());
   let hasErrors = false;
   for (const file of files) {
-    if (isInTestFixtures(file)) continue;
+    if (isExcludedSkillPath(projectDir, file)) continue;
     const text = await fs.readFile(file, 'utf8');
     const frontmatter = /^(\uFEFF?---\r?\n[\s\S]*?)^---[\t ]*(?:\r?\n|$)/m.exec(text);
     try {
@@ -27,6 +30,16 @@ export async function reportSkillFrontmatterErrors(targets: string[]): Promise<b
     }
   }
   return hasErrors;
+}
+
+function isExcludedSkillPath(projectDir: string, file: string): boolean {
+  return (
+    isInTestFixtures(file) ||
+    path
+      .relative(projectDir, file)
+      .split(path.sep)
+      .some((part) => excludedDirectories.has(part))
+  );
 }
 
 async function listTargetSkillFiles(target: string): Promise<string[]> {
@@ -47,7 +60,7 @@ async function listSkillFiles(rootDir: string): Promise<string[]> {
     dot: true,
     gitignore: true,
     followSymbolicLinks: false,
-    ignore: ['**/node_modules/**', '**/.git/**', '**/.tmp/**'],
+    ignore: [...excludedDirectories].map((directory) => `**/${directory}/**`),
   });
   if (files.length === 0) return files;
   const workTree = await spawnAsync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: rootDir });
