@@ -56,6 +56,21 @@ describe('lint skill frontmatter', () => {
     expect(runLint(dir).status).toBe(0);
   });
 
+  it('honors repository-local and configured Git exclusions', async () => {
+    const dir = await createSkillProject({
+      'skills/good/SKILL.md': valid,
+      '.claude/skills/local/SKILL.md': malformed,
+      '.agents/skills/local/SKILL.md': malformed,
+    });
+    childProcess.execFileSync('git', ['init', '-q'], { cwd: dir });
+    await fs.writeFile(path.join(dir, '.git/info/exclude'), '.claude/\n');
+    const excludes = path.join(dir, '.git/global-ignore');
+    await fs.writeFile(excludes, '.agents/\n');
+    childProcess.execFileSync('git', ['config', 'core.excludesFile', excludes], { cwd: dir });
+    expect(runLint(dir).status).toBe(0);
+    expect(runLint(dir, ['.claude']).status).toBe(0);
+  });
+
   it('rejects missing frontmatter delimiters but leaves dry runs and formatting alone', async () => {
     for (const content of ['# Instructions\n', '---\nname: example\n']) {
       const dir = await createSkillProject({ 'skills/example/SKILL.md': content });
