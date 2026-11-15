@@ -61,6 +61,9 @@ describe('lint skill frontmatter', () => {
       'skills/good/SKILL.md': valid,
       '.claude/skills/local/SKILL.md': malformed,
       '.agents/skills/local/SKILL.md': malformed,
+      'apps/example/package.json': '{"name":"nested-skill-example","private":true}',
+      'apps/example/.claude/skills/local/SKILL.md': malformed,
+      'apps/example/skills/good/SKILL.md': valid,
     });
     childProcess.execFileSync('git', ['init', '-q'], { cwd: dir });
     await fs.writeFile(path.join(dir, '.git/info/exclude'), '.claude/\n');
@@ -69,6 +72,7 @@ describe('lint skill frontmatter', () => {
     childProcess.execFileSync('git', ['config', 'core.excludesFile', excludes], { cwd: dir });
     expect(runLint(dir).status).toBe(0);
     expect(runLint(dir, ['.claude']).status).toBe(0);
+    expect(runLint(path.join(dir, 'apps/example')).status).toBe(0);
   });
 
   it('rejects missing frontmatter delimiters but leaves dry runs and formatting alone', async () => {

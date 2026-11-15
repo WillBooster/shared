@@ -1,4 +1,3 @@
-import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -41,7 +40,9 @@ async function listSkillFiles(rootDir: string): Promise<string[]> {
     followSymbolicLinks: false,
     ignore: ['**/node_modules/**', '**/.git/**', '**/.tmp/**'],
   });
-  if (files.length === 0 || !existsSync(path.join(rootDir, '.git'))) return files;
+  if (files.length === 0) return files;
+  const workTree = await spawnAsync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: rootDir });
+  if (workTree.status !== 0 || workTree.stdout.trim() !== 'true') return files;
   const result = await spawnAsync('git', ['check-ignore', '--stdin', '-z'], {
     cwd: rootDir,
     input: `${files.join('\0')}\0`,
