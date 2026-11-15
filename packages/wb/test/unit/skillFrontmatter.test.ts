@@ -22,6 +22,23 @@ describe('lint skill frontmatter', () => {
     expect(runLint(dir).status).toBe(0);
   });
 
+  it('rejects unresolved and forward aliases but accepts an anchor preceding its alias', async () => {
+    const dir = await createSkillProject({ 'skills/example/SKILL.md': valid });
+    const file = path.join(dir, 'skills/example/SKILL.md');
+    for (const metadata of [
+      'name: example\ndescription: *description\n',
+      'name: example\ndescription: *description\nsummary: &description Example\n',
+    ]) {
+      await fs.writeFile(file, `---\n${metadata}---\n# Instructions\n`);
+      const result = runLint(dir);
+      expect(result.status).toBe(1);
+      expect(result.stdout + result.stderr).toContain('Unresolved alias');
+      expect(result.stdout + result.stderr).toContain('skills/example/SKILL.md');
+    }
+    await fs.writeFile(file, '---\nname: example\nsummary: &description Example\ndescription: *description\n---\n');
+    expect(runLint(dir).status).toBe(0);
+  });
+
   it('restricts explicit file and directory runs and ignores fixtures and ignored skills', async () => {
     const dir = await createSkillProject({
       'skills/good/SKILL.md': valid,

@@ -1,8 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { getErrorMessage } from '@willbooster/shared-lib/src';
 import { globby } from 'globby';
-import { parseDocument } from 'yaml';
+import { parse } from 'yaml';
 
 import { isInTestFixtures } from './japaneseSpacing.js';
 
@@ -23,12 +24,13 @@ export async function reportSkillFrontmatterErrors(rootDir: string, targets: str
     }
     const text = await fs.readFile(file, 'utf8');
     const frontmatter = /^(\uFEFF?---\r?\n[\s\S]*?)^---[\t ]*(?:\r?\n|$)/m.exec(text);
-    const errors =
-      frontmatter?.index === 0
-        ? parseDocument(frontmatter[1] ?? '').errors.map((error) => error.message)
-        : ['Missing or unclosed YAML frontmatter (expected --- delimiters).'];
-    for (const error of errors) {
-      console.error(`${file}: invalid skill frontmatter: ${error}`);
+    try {
+      if (frontmatter?.index !== 0) {
+        throw new Error('Missing or unclosed YAML frontmatter (expected --- delimiters).');
+      }
+      parse(frontmatter[1] ?? '', { logLevel: 'error' });
+    } catch (error) {
+      console.error(`${file}: invalid skill frontmatter: ${getErrorMessage(error)}`);
       hasErrors = true;
     }
   }
