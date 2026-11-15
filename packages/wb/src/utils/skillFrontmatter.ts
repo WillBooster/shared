@@ -47,7 +47,7 @@ async function listTargetSkillFiles(target: string): Promise<string[]> {
     if (error.code === 'ENOENT') return;
     throw error;
   });
-  if (!stats) return [];
+  if (!stats || (!stats.isDirectory() && path.basename(target) !== 'SKILL.md')) return [];
   const rootDir = stats.isDirectory() ? target : path.dirname(target);
   const files = await listSkillFiles(rootDir);
   return stats.isDirectory() ? files : files.filter((file) => file === target);
