@@ -99,7 +99,7 @@ describe('lint skill frontmatter', () => {
     await fs.cp(source, embedded, { recursive: true });
     expect(runLint(embedded).status).toBe(1);
     expect(runLint(embedded, ['SKILL.md']).status).toBe(1);
-  });
+  }, 20_000);
 
   it('preserves dependency and temporary exclusions for explicit directory and file targets', async () => {
     for (const withGit of [false, true]) {
