@@ -74,7 +74,9 @@ test('rejects an uneditable toolchain without updating either pin', async () => 
   await withFixture({ 'mise.toml': mise, 'Cargo.toml': '', 'rust-toolchain.toml': toolchain }, async (dirPath) => {
     const config = await getPackageConfig(dirPath);
     assert.ok(config);
-    await expect(generateRustToolchain(config)).rejects.toThrow('Write channel as one');
+    const error: unknown = await generateRustToolchain(config).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(Error);
+    expect(String(error)).toContain('Write channel as one');
     expect(fs.readFileSync(path.join(dirPath, 'mise.toml'), 'utf8')).toBe(mise);
     expect(fs.readFileSync(path.join(dirPath, 'rust-toolchain.toml'), 'utf8')).toBe(toolchain);
   });
