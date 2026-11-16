@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { isDeepStrictEqual } from 'node:util';
 
 import { parse as parseToml } from 'smol-toml';
 
@@ -9,16 +10,31 @@ import { parse as parseToml } from 'smol-toml';
  * sub-table), so this throws instead of returning content the parser disagrees with.
  */
 export function setTomlTableString(content: string, table: string, key: string, value: string): string {
-  const newContent = replaceTomlTableString(content, table, key, value);
+  return setTomlTableValue(content, table, key, value);
+}
+
+export function setTomlTableValue(
+  content: string,
+  table: string,
+  key: string,
+  value: string | Record<string, string | string[]>
+): string {
+  const literal =
+    typeof value === 'string'
+      ? JSON.stringify(value)
+      : `{ ${Object.entries(value)
+          .map(([name, entry]) => `${name} = ${JSON.stringify(entry)}`)
+          .join(', ')} }`;
+  const newContent = replaceTomlTableValue(content, table, key, literal);
   assert.ok(
-    readTomlTable(newContent, table)?.[key] === value,
+    isDeepStrictEqual(readTomlTable(newContent, table)?.[key], parseToml(`value = ${literal}`).value),
     `Write ${key} as one \`${key} = ...\` line under the [${table}] header.`
   );
   return newContent;
 }
 
-function replaceTomlTableString(content: string, table: string, key: string, value: string): string {
-  const line = `${key} = "${value}"`;
+function replaceTomlTableValue(content: string, table: string, key: string, literal: string): string {
+  const line = `${key} = ${literal}`;
   const section = new RegExp(String.raw`^\[${table}\][\t ]*(?:#.*)?$(?:\n(?!\[).*)*`, 'mu').exec(content)?.[0];
   if (section === undefined) return `${content && `${content.trimEnd()}\n\n`}[${table}]\n${line}\n`;
 

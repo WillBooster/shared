@@ -53,7 +53,7 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
   });
 }
 
-async function pinLatestToolVersion(
+export async function pinLatestToolVersion(
   tool: string,
   version: unknown,
   cwd: string,
