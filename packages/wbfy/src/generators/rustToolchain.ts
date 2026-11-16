@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { spawnOrUndefined } from '../utils/spawnUtil.js';
+import { spawnAndReturnStatus, spawnOrUndefined } from '../utils/spawnUtil.js';
 import { setTomlTableString, setTomlTableValue } from '../utils/tomlUtil.js';
 import { pinLatestToolVersion } from './miseToml.js';
 
@@ -22,6 +22,7 @@ const miseRustSchema = z.preprocess(
   (value) => (typeof value === 'string' ? { version: value } : value),
   rustOptionsSchema.extend({ version: z.string() }).strict()
 );
+const miseSchema = z.object({ tools: z.object({ rust: miseRustSchema.optional() }).optional() });
 const toolchainSchema = z
   .object({ toolchain: rustOptionsSchema.extend({ channel: z.string() }) })
   .transform(({ toolchain: { channel, ...options } }) => ({ version: channel, ...options }));
@@ -37,9 +38,7 @@ export async function generateRustToolchain(config: PackageConfig): Promise<stri
 
   const misePath = path.join(config.dirPath, 'mise.toml');
   const miseContent = (await fsUtil.readFileIfExists(misePath)) ?? '';
-  const mise = z
-    .object({ tools: z.object({ rust: miseRustSchema.optional() }).optional() })
-    .parse(parseToml(miseContent));
+  const mise = miseSchema.parse(parseToml(miseContent));
   const toolchains = await readToolchains(config);
   const options = [
     mise.tools?.rust,
@@ -98,6 +97,27 @@ export async function activateRustToolchain(config: PackageConfig, version: stri
       return false;
     }
   }
+  const miseContent = await fsUtil.readFileIfExists(path.join(config.dirPath, 'mise.toml'));
+  const rust = miseSchema.parse(parseToml(miseContent ?? '')).tools?.rust;
+  assert.ok(rust?.components?.length);
+  // mise releases before 2026.9.2 can skip newly configured components on an installed toolchain.
+  if (
+    (await spawnAndReturnStatus(
+      'rustup',
+      ['component', 'add', '--toolchain', version, ...rust.components],
+      config.dirPath
+    )) !== 0
+  )
+    return false;
+  if (
+    rust.targets?.length &&
+    (await spawnAndReturnStatus(
+      'rustup',
+      ['target', 'add', '--toolchain', version, ...rust.targets],
+      config.dirPath
+    )) !== 0
+  )
+    return false;
   return true;
 }
 

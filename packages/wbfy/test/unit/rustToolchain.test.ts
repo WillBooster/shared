@@ -104,7 +104,11 @@ test('installs and activates the generated Rust toolchain for Cargo and its comp
       assert.ok(config);
       const version = await generateRustToolchain(config);
       assert.ok(version);
-      process.env.MISE_DATA_DIR = path.join(dirPath, '.tmp/mise');
+      process.env.MISE_CEILING_PATHS = path.dirname(dirPath);
+      process.env.MISE_CONFIG_DIR = path.join(dirPath, '.tmp/mise/config');
+      process.env.MISE_GLOBAL_CONFIG_FILE = path.join(dirPath, '.tmp/mise/config/config.toml');
+      process.env.MISE_DATA_DIR = path.join(dirPath, '.tmp/mise/data');
+      process.env.MISE_STATE_DIR = path.join(dirPath, '.tmp/mise/state');
       process.env.RUSTUP_HOME = path.join(dirPath, '.tmp/rustup');
       process.env.CARGO_HOME = path.join(dirPath, '.tmp/cargo');
       process.env.MISE_PARANOID = '1';
@@ -112,6 +116,19 @@ test('installs and activates the generated Rust toolchain for Cargo and its comp
         await run('mise', ['trust', path.join(dirPath, 'mise.toml')], dirPath);
         await run('mise', ['install', 'rust'], dirPath);
         expect(await activateRustToolchain(config, version)).toBe(true);
+        await run('rustup', ['component', 'remove', '--toolchain', version, 'clippy', 'rustfmt'], dirPath);
+        const misePath = path.join(dirPath, 'mise.toml');
+        fs.writeFileSync(
+          misePath,
+          fs
+            .readFileSync(misePath, 'utf8')
+            .replace('profile = "minimal"', 'profile = "minimal", targets = ["wasm32-unknown-unknown"]')
+        );
+        await generateRustToolchain(config);
+        await run('mise', ['trust', misePath], dirPath);
+        await run('mise', ['install', 'rust'], dirPath);
+        expect(await activateRustToolchain(config, version)).toBe(true);
+        await run('cargo', ['check', '--target', 'wasm32-unknown-unknown'], path.join(dirPath, 'native'));
         const output = await run('cargo', ['run', '--quiet'], path.join(dirPath, 'native'));
         expect(output.trim().split('-')[0]).toBe(version);
         await run('cargo', ['fmt', '--all', '--check'], path.join(dirPath, 'native'));
