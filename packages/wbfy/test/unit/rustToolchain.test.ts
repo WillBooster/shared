@@ -30,9 +30,9 @@ test('updates Rust pins together while preserving components, targets, and unrel
   await withFixture(
     {
       'mise.toml':
-        '# Keep this comment\n[tools]\nrust = { version = "1.99.1", profile = "minimal", components = ["rust-src"] }\npython = "3.12.0"\n',
+        '# Keep this comment\n[tools]\nrust = { version = "1.101.0-beta.1", profile = "minimal", components = ["rust-src"] }\npython = "3.12.0"\n',
       'rust-toolchain.toml':
-        '[toolchain]\nchannel = "1.98.0" # pinned\nprofile = "minimal"\ncomponents = ["llvm-tools"]\n',
+        '[toolchain]\nchannel = "1.101.0-beta.1" # pinned\nprofile = "minimal"\ncomponents = ["llvm-tools"]\n',
       'native/Cargo.toml': '[package]\nname = "example"\nversion = "0.1.0"\n',
       'native/rust-toolchain.toml': '[toolchain]\nchannel = "stable"\ntargets = ["wasm32-unknown-unknown"]\n',
     },
@@ -44,6 +44,7 @@ test('updates Rust pins together while preserving components, targets, and unrel
       const content = fs.readFileSync(path.join(dirPath, 'mise.toml'), 'utf8');
       const { tools } = toolsSchema.parse(Bun.TOML.parse(content));
       expect(semver.gte(version, minimumRustVersion)).toBe(true);
+      expect(semver.prerelease(version)).toBeNull();
       expect(tools.rust.version).toBe(version);
       expect(tools.rust.components).toEqual(['clippy', 'llvm-tools', 'rust-src', 'rustfmt']);
       expect(tools.rust.targets).toEqual(['wasm32-unknown-unknown']);

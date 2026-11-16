@@ -44,7 +44,9 @@ export async function generateRustToolchain(config: PackageConfig): Promise<stri
     mise.tools?.rust,
     ...toolchains.map(({ content }) => toolchainSchema.parse(parseToml(content))),
   ].filter((option) => option !== undefined);
-  const versions = options.map((option) => option.version).filter((version) => semver.valid(version));
+  const versions = options
+    .map((option) => option.version)
+    .filter((version) => semver.valid(version) && semver.prerelease(version) === null);
   const version = z
     .string()
     .parse(await pinLatestToolVersion('rust', semver.rsort(versions)[0], config.dirPath, minimumRustVersion));
