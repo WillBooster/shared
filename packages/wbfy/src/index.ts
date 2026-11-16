@@ -40,6 +40,7 @@ import { generateReadme, readAppliedWbfyVersionLabel } from './generators/readme
 import { generateReleaserc } from './generators/releaserc.js';
 import { generateRenovateJsonc } from './generators/renovateJsonc.js';
 import { generateReviewFixLoopConfig } from './generators/reviewFixLoopConfig.js';
+import { activateRustToolchain, generateRustToolchain } from './generators/rustToolchain.js';
 import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
 import { generateTsconfig } from './generators/tsconfig.js';
 import { generateUserAgentConfigs } from './generators/userAgentConfigs.js';
@@ -73,6 +74,9 @@ const applyReleaseAgeGateCommand = 'apply-release-age-gate';
 const generateUserAgentConfigsCommand = 'generate-user-agent-configs';
 // wbfy may process several repositories in one run, and each must start from the caller's PATH.
 const callerPath = process.env.PATH ?? '';
+const callerRustEnvironment = Object.fromEntries(
+  ['RUSTUP_TOOLCHAIN', 'RUSTUP_HOME', 'CARGO_HOME'].map((key) => [key, process.env[key]])
+);
 
 async function main(): Promise<void> {
   const argv = await yargs(process.argv.slice(2))
@@ -182,6 +186,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       console.info(`Skip ${rootDirPath}: wbfy ${skippableVersionLabel} is already applied. Pass --force to re-apply.`);
       continue;
     }
+    resetCallerToolEnvironment();
     if (!(await willboosterifyRepository(rootDirPath, skipDeps))) {
       hasInvalidPackageConfig = true;
     }
@@ -189,8 +194,16 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
   return hasInvalidPackageConfig;
 }
 
+function resetCallerToolEnvironment(): void {
+  process.env.PATH = callerPath;
+  for (const [key, value] of Object.entries(callerRustEnvironment)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
+
 /** Returns whether the repository was processed without an error. */
-// code-gauge-allow functionNcss 39 -- Generator ordering is the point of this function; splitting it would hide that order.
+// code-gauge-allow functionNcss 40 -- Generator ordering is the point of this function; splitting it would hide that order.
 async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean): Promise<boolean> {
   const subDirPaths = await listSubPackageDirPaths(rootDirPath);
   const preflightError =
@@ -229,7 +242,8 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   const useGlobalStore = resolveBunGlobalStore(allPackageConfigs, previousBunGlobalStore, skipDeps);
   await generateBunfigToml(rootConfig, useGlobalStore, allPackageConfigs);
   await generateMiseToml(rootConfig);
-  if (!(await setUpMiseTools(rootDirPath))) return false;
+  const rustVersion = await generateRustToolchain(rootConfig);
+  if (!(await setUpMiseTools(rootConfig, rustVersion))) return false;
   await generateFnoxToml(rootConfig);
   // Run after generateFnoxToml so its transactional recipient sync cannot restore a snapshot
   // over definitions inserted here.
@@ -265,7 +279,8 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   return isBunLockUpToDate;
 }
 
-async function setUpMiseTools(rootDirPath: string): Promise<boolean> {
+async function setUpMiseTools(config: PackageConfig, rustVersion: string | undefined): Promise<boolean> {
+  const rootDirPath = config.dirPath;
   // Mise shims reject untrusted configs; pin edits also invalidate trust in paranoid mode.
   // Install lifecycle scripts, native build backends, and cleanup invoke those shims, so
   // trust the generated config before any of them run.
@@ -274,8 +289,10 @@ async function setUpMiseTools(rootDirPath: string): Promise<boolean> {
   }
   // Lifecycle scripts also invoke Node through shebangs, so both newly installed pins must
   // precede the caller's PATH before any dependency installation runs.
-  await spawnAndReturnStatus('mise', ['install'], rootDirPath);
+  const installStatus = await spawnAndReturnStatus('mise', ['install'], rootDirPath);
+  if (rustVersion && installStatus !== 0) return false;
   await preferPinnedTools(rootDirPath);
+  if (rustVersion && !(await activateRustToolchain(config, rustVersion))) return false;
   const bunVersion = await spawnAndReturnStdout('bun', ['--version'], rootDirPath);
   if (!bunVersion || lt(bunVersion, minimumBunVersion)) {
     console.error(
