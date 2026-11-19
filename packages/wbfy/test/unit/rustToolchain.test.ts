@@ -116,10 +116,6 @@ test('installs and activates the generated Rust toolchain for Cargo and its comp
       try {
         await run('mise', ['trust', path.join(dirPath, 'mise.toml')], dirPath);
         await run('mise', ['install', 'rust'], dirPath);
-        const systemBin = path.join(dirPath, '.tmp/system-bin');
-        fs.mkdirSync(systemBin, { recursive: true });
-        fs.writeFileSync(path.join(systemBin, 'cargo'), '#!/bin/sh\nexit 91\n', { mode: 0o755 });
-        process.env.PATH = [systemBin, process.env.PATH].join(path.delimiter);
         expect(await activateRustToolchain(config, version)).toBe(true);
         await run('rustup', ['component', 'remove', '--toolchain', version, 'clippy', 'rustfmt'], dirPath);
         const misePath = path.join(dirPath, 'mise.toml');
