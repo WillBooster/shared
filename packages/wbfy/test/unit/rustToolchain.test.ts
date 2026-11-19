@@ -56,6 +56,10 @@ test('updates Rust pins together while preserving components, targets, and unrel
       expect(Bun.TOML.parse(fs.readFileSync(path.join(dirPath, 'native/rust-toolchain.toml'), 'utf8'))).toMatchObject({
         toolchain: { channel: version, targets: ['wasm32-unknown-unknown'] },
       });
+      fs.writeFileSync(
+        path.join(dirPath, 'mise.toml'),
+        await run('bun', ['fmt', '--no-config', '--stdin-filepath=mise.toml'], process.cwd(), content)
+      );
       await generateRustToolchain(config);
       expect(fs.readFileSync(path.join(dirPath, 'mise.toml'), 'utf8')).toBe(content);
 
@@ -165,8 +169,8 @@ async function withFixture(files: Record<string, string>, callback: (dirPath: st
   }
 }
 
-async function run(command: string, args: string[], cwd: string): Promise<string> {
-  const result = await spawnAsync(command, args, { cwd, env: process.env });
+async function run(command: string, args: string[], cwd: string, input?: string): Promise<string> {
+  const result = await spawnAsync(command, args, { cwd, env: process.env, input });
   expect(result.status, `${command} ${args.join(' ')}\n${result.stdout}\n${result.stderr}`).toBe(0);
   return result.stdout;
 }

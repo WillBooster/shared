@@ -6,8 +6,7 @@ import { parse as parseToml } from 'smol-toml';
 /**
  * Sets `key = "value"` in the `[table]` section with a line edit, so comments and every other
  * setting are kept as written; a missing section or key is added.
- * A line edit breaks values written in any other form (a multi-line value, a dotted key, a
- * sub-table), so this throws instead of returning content the parser disagrees with.
+ * Dotted keys and sub-tables are rejected rather than returning content the parser disagrees with.
  */
 export function setTomlTableString(content: string, table: string, key: string, value: string): string {
   return setTomlTableValue(content, table, key, value);
@@ -41,10 +40,30 @@ function replaceTomlTableValue(content: string, table: string, key: string, lite
   const linePattern = new RegExp(`^${key} = .*?(\\s*#.*)?$`, 'mu');
   // Blank lines and comments that end the section lead the next table, so a new line goes above them.
   const linesEnd = /(?:\n[\t ]*(?:#.*)?)*$/u.exec(section)?.index ?? section.length;
-  const newSection = linePattern.test(section)
-    ? section.replace(linePattern, `${line}$1`)
+  const match = linePattern.exec(section);
+  const newSection = match
+    ? replaceAssignment(section, match, line)
     : `${section.slice(0, linesEnd)}\n${line}${section.slice(linesEnd)}`;
   return content.replace(section, () => newSection);
+}
+
+function replaceAssignment(section: string, match: RegExpExecArray, line: string): string {
+  // Bun formats generated inline tables with multiline arrays. Replace the complete
+  // assignment so the formatter's continuation lines cannot survive a pin update.
+  const start = match.index;
+  let end = start + match[0].length;
+  while (true) {
+    try {
+      parseToml(section.slice(start, end));
+      break;
+    } catch {
+      const nextLine = section.indexOf('\n', end + 1);
+      if (end === section.length) throw new Error('Cannot find the end of a TOML assignment.');
+      end = nextLine === -1 ? section.length : nextLine;
+    }
+  }
+  const comment = /[\t ]*#.*$/u.exec(section.slice(start, end).split('\n').at(-1) ?? '')?.[0] ?? '';
+  return `${section.slice(0, start)}${line}${comment}${section.slice(end)}`;
 }
 
 function readTomlTable(content: string, table: string): Record<string, unknown> | undefined {
