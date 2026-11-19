@@ -37,7 +37,7 @@ function replaceTomlTableValue(content: string, table: string, key: string, lite
   const section = new RegExp(String.raw`^\[${table}\][\t ]*(?:#.*)?$(?:\n(?!\[).*)*`, 'mu').exec(content)?.[0];
   if (section === undefined) return `${content && `${content.trimEnd()}\n\n`}[${table}]\n${line}\n`;
 
-  const linePattern = new RegExp(`^${key} = .*?(\\s*#.*)?$`, 'mu');
+  const linePattern = new RegExp(`^${key} = .*$`, 'mu');
   // Blank lines and comments that end the section lead the next table, so a new line goes above them.
   const linesEnd = /(?:\n[\t ]*(?:#.*)?)*$/u.exec(section)?.index ?? section.length;
   const match = linePattern.exec(section);
