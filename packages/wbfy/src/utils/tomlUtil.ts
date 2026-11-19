@@ -62,6 +62,11 @@ function replaceAssignment(section: string, match: RegExpExecArray, line: string
       end = nextLine === -1 ? section.length : nextLine;
     }
   }
+  const precedingLines = section.slice(start, end).split('\n').slice(0, -1).join('\n');
+  assert.ok(
+    ![...precedingLines.matchAll(/"(?:\\.|[^"\\])*"|'[^']*'|(#.*)/gu)].some((token) => token[1]),
+    'Comments inside a multiline TOML assignment cannot be preserved; move them above the assignment.'
+  );
   const comment = /[\t ]*#.*$/u.exec(section.slice(start, end).split('\n').at(-1) ?? '')?.[0] ?? '';
   return `${section.slice(0, start)}${line}${comment}${section.slice(end)}`;
 }

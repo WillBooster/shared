@@ -88,6 +88,16 @@ test('rejects an uneditable toolchain without updating either pin', async () => 
   });
 }, 60_000);
 
+test('refuses annotated continuation lines without changing configuration', async () => {
+  const mise = '[tools]\nrust = { version = "1.99.1", components = [\n  "clippy", # required for checks\n] }\n';
+  await withFixture({ 'mise.toml': mise, 'Cargo.toml': '' }, async (dirPath) => {
+    const config = await getPackageConfig(dirPath);
+    assert.ok(config);
+    await expect(generateRustToolchain(config)).rejects.toThrow('Comments inside a multiline TOML assignment');
+    expect(fs.readFileSync(path.join(dirPath, 'mise.toml'), 'utf8')).toBe(mise);
+  });
+}, 60_000);
+
 test('leaves repositories without Cargo projects unchanged', async () => {
   const mise = '[tools]\npython = "3.12.0"\n';
   await withFixture({ 'mise.toml': mise }, async (dirPath) => {
