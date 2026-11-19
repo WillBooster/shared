@@ -90,6 +90,6 @@ function toPermissionBits(stat: fs.Stats): number {
 }
 
 function ignoreMissingFile(error: unknown): undefined {
-  if (isErrnoException(error) && error.code === 'ENOENT') return undefined;
+  if (isErrnoException(error) && error.code === 'ENOENT') return;
   throw error;
 }
