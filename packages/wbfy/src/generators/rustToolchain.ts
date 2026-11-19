@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { spawnAndReturnStatus, spawnOrUndefined } from '../utils/spawnUtil.js';
+import { spawnAndReturnStatus, spawnAndReturnStdout, spawnOrUndefined } from '../utils/spawnUtil.js';
 import { setTomlTableString, setTomlTableValue } from '../utils/tomlUtil.js';
 import { pinLatestToolVersion } from './miseToml.js';
 
@@ -89,6 +89,11 @@ export async function activateRustToolchain(config: PackageConfig, version: stri
   }
   const env = rustEnvironmentSchema.parse(JSON.parse(result.stdout));
   Object.assign(process.env, env);
+  const cargoPath = await spawnAndReturnStdout('mise', ['which', 'cargo'], config.dirPath);
+  if (!cargoPath) return false;
+  // mise env can preserve an activated PATH with Homebrew ahead of the rustup proxies.
+  // Resolve Cargo through mise so the selected toolchain also wins for lifecycle scripts.
+  process.env.PATH = [path.dirname(cargoPath), env.PATH].join(path.delimiter);
   for (const dirPath of config.cargoTomlDirPaths) {
     const cwd = path.resolve(config.dirPath, dirPath);
     const cargo = await spawnOrUndefined('cargo', ['--version'], { cwd, env: process.env });
