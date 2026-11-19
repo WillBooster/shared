@@ -30,7 +30,7 @@ test('updates Rust pins together while preserving components, targets, and unrel
   await withFixture(
     {
       'mise.toml':
-        '# Keep this comment\n[tools]\nrust = { version = "1.101.0-beta.1", profile = "minimal", components = ["rust-src"] }\npython = "3.12.0"\n',
+        '# Keep this comment\n[tools]\nrust = { version = "1.101.0-beta.1", profile = "minimal", components = ["rust-src"] }\n\n# Keep Python pinned\npython = "3.12.0"\n\n# Keep the following settings\n[settings]\nexperimental = true\n',
       'rust-toolchain.toml':
         '[toolchain]\nchannel = "1.101.0-beta.1" # pinned\nprofile = "minimal"\ncomponents = ["llvm-tools"]\n',
       'native/Cargo.toml': '[package]\nname = "example"\nversion = "0.1.0"\n',
@@ -49,13 +49,18 @@ test('updates Rust pins together while preserving components, targets, and unrel
       expect(tools.rust.components).toEqual(['clippy', 'llvm-tools', 'rust-src', 'rustfmt']);
       expect(tools.rust.targets).toEqual(['wasm32-unknown-unknown']);
       expect(content).toContain('# Keep this comment\n');
-      expect(content).toContain('python = "3.12.0"\n');
+      expect(content).toContain('\n\n# Keep Python pinned\npython = "3.12.0"\n');
+      expect(content).toContain('# Keep the following settings\n[settings]\nexperimental = true\n');
       expect(fs.readFileSync(path.join(dirPath, 'rust-toolchain.toml'), 'utf8')).toBe(
         `[toolchain]\nchannel = "${version}" # pinned\nprofile = "minimal"\ncomponents = ["llvm-tools"]\n`
       );
       expect(Bun.TOML.parse(fs.readFileSync(path.join(dirPath, 'native/rust-toolchain.toml'), 'utf8'))).toMatchObject({
         toolchain: { channel: version, targets: ['wasm32-unknown-unknown'] },
       });
+      fs.writeFileSync(
+        path.join(dirPath, 'mise.toml'),
+        await run('bun', ['fmt', '--no-config', '--stdin-filepath=mise.toml'], process.cwd(), content)
+      );
       await generateRustToolchain(config);
       expect(fs.readFileSync(path.join(dirPath, 'mise.toml'), 'utf8')).toBe(content);
 
@@ -80,6 +85,16 @@ test('rejects an uneditable toolchain without updating either pin', async () => 
     expect(String(error)).toContain('Write channel as one');
     expect(fs.readFileSync(path.join(dirPath, 'mise.toml'), 'utf8')).toBe(mise);
     expect(fs.readFileSync(path.join(dirPath, 'rust-toolchain.toml'), 'utf8')).toBe(toolchain);
+  });
+}, 60_000);
+
+test('refuses annotated continuation lines without changing configuration', async () => {
+  const mise = '[tools]\nrust = { version = "1.99.1", components = [\n  "clippy", # required for checks\n] }\n';
+  await withFixture({ 'mise.toml': mise, 'Cargo.toml': '' }, async (dirPath) => {
+    const config = await getPackageConfig(dirPath);
+    assert.ok(config);
+    await expect(generateRustToolchain(config)).rejects.toThrow('Comments inside a multiline TOML assignment');
+    expect(fs.readFileSync(path.join(dirPath, 'mise.toml'), 'utf8')).toBe(mise);
   });
 }, 60_000);
 
@@ -165,8 +180,8 @@ async function withFixture(files: Record<string, string>, callback: (dirPath: st
   }
 }
 
-async function run(command: string, args: string[], cwd: string): Promise<string> {
-  const result = await spawnAsync(command, args, { cwd, env: process.env });
+async function run(command: string, args: string[], cwd: string, input?: string): Promise<string> {
+  const result = await spawnAsync(command, args, { cwd, env: process.env, input });
   expect(result.status, `${command} ${args.join(' ')}\n${result.stdout}\n${result.stderr}`).toBe(0);
   return result.stdout;
 }
