@@ -81,11 +81,8 @@ test.each(keyPatterns)('memoize releases expired results under %s', async (_name
   } finally {
     Date.now = originalNow;
   }
-  // A WeakRef keeps its target alive until the current job ends, so collect after yielding.
-  await sleep(0);
-  Bun.gc(true);
   // Only results inserted within the last two TTLs may remain.
-  expect(refs.filter((ref) => ref.deref()).length).toBeLessThanOrEqual(3);
+  expect(await collectUntil(refs, 3)).toBeLessThanOrEqual(3);
   // Referencing `load` keeps its cache reachable during the collection above.
   expect(load).toBeFunction();
 });
@@ -114,11 +111,8 @@ test('memoize releases expired results on a cache hit without recomputing the hi
   } finally {
     Date.now = originalNow;
   }
-  // A WeakRef keeps its target alive until the current job ends, so collect after yielding.
-  await sleep(0);
-  Bun.gc(true);
   expect(refs.length).toBe(101);
-  expect(refs.filter((ref) => ref.deref()).length).toBe(1);
+  expect(await collectUntil(refs, 1)).toBe(1);
   // Referencing `load` and `hotValue` keeps them reachable during the collection above.
   expect(load).toBeFunction();
   expect(hotValue).toEqual({ id: -1 });
@@ -164,10 +158,7 @@ test('a memoize group lets the cache of a discarded function be collected', asyn
     const load = memoize(() => ({ value: 'cached' }), { group });
     return new WeakRef(load());
   })();
-  // A WeakRef keeps its target alive until the current job ends, so collect after yielding.
-  await sleep(0);
-  Bun.gc(true);
-  expect(resultRef.deref()).toBeUndefined();
+  expect(await collectUntil([resultRef], 0)).toBe(0);
   expect(() => group.clear()).not.toThrow();
 });
 
@@ -189,9 +180,7 @@ test('a sweep triggered by one group member releases the expired results of the 
   } finally {
     Date.now = originalNow;
   }
-  await sleep(0);
-  Bun.gc(true);
-  expect(idleResultRef.deref()).toBeUndefined();
+  expect(await collectUntil([idleResultRef], 0)).toBe(0);
   // Referencing both functions keeps their caches reachable during the collection above.
   expect([active, idle]).toHaveLength(2);
 });
@@ -217,9 +206,7 @@ test('a call of a short-TTL group member releases a longer-TTL member result as 
   } finally {
     Date.now = originalNow;
   }
-  await sleep(0);
-  Bun.gc(true);
-  expect(idleResultRef.deref()).toBeUndefined();
+  expect(await collectUntil([idleResultRef], 0)).toBe(0);
   // Referencing both functions keeps their caches reachable during the collection above.
   expect([active, idle]).toHaveLength(2);
 });
@@ -239,3 +226,15 @@ test('memoize keeps the exact types of generic, explicitly typed, and key-typed 
 
   expect([firstItem([1, 2]), upper('a'), lower('B')]).toEqual([1, 'A', 'b']);
 });
+
+/** Collects garbage until at most `maxLiveCount` of `refs` remain or 10 attempts pass, and returns the live count. */
+async function collectUntil(refs: readonly WeakRef<object>[], maxLiveCount: number): Promise<number> {
+  let liveCount = refs.length;
+  for (let attempt = 0; attempt < 10 && liveCount > maxLiveCount; attempt++) {
+    // A WeakRef keeps its target alive until the job that created or dereferenced it ends, so collect after yielding.
+    await sleep(0);
+    Bun.gc(true);
+    liveCount = refs.filter((ref) => ref.deref()).length;
+  }
+  return liveCount;
+}
