@@ -29,8 +29,9 @@ export async function mapConcurrently<T, R>(
 
 /**
  * Returns a function that starts `task` once fewer than `concurrency` tasks started through that same function are in
- * flight, and settles with the task's result or error. Share one limiter across calls to cap concurrency process-wide;
- * for a one-shot loop over items, use `mapConcurrently` or `forEachConcurrently` instead.
+ * flight, and settles with the task's result or error. Share one limiter across calls to cap concurrency process-wide,
+ * or use one for a batch whose remaining items must still run after an item fails; for a one-shot loop over items that
+ * should stop at the first error, use `mapConcurrently` or `forEachConcurrently` instead.
  * Throws a `RangeError` when `concurrency` is not a positive integer.
  */
 export function createConcurrencyLimiter(concurrency: number): <R>(task: () => Promise<R>) => Promise<R> {
