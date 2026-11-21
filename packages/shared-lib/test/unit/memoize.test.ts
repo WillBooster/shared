@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, expectTypeOf, test } from 'bun:test';
 
 import { cached, createMemoizeGroup, memoize } from '../../src/memoize.js';
 import { sleep } from '../../src/sleep.js';
@@ -155,16 +155,18 @@ test('a memoize group clears every member, and a rejection from before the clear
   expect([attempts, doubled]).toEqual([2, 2]);
 });
 
-test('memoize keeps the inference of a generic function', () => {
+test('memoize keeps the exact types of generic, explicitly typed, and key-typed callbacks', () => {
   const firstItem = memoize(<T>(items: readonly T[]): T | undefined => items[0]);
-  // Type checking fails here if the memoized signature loses `T`.
-  const first: string | undefined = firstItem(['a', 'b']);
-  expect(first).toBe('a');
-});
+  expectTypeOf(firstItem(['a', 'b'])).toEqualTypeOf<string | undefined>();
+  expectTypeOf(firstItem([1, 2])).toEqualTypeOf<number | undefined>();
 
-test('memoize accepts explicit type arguments and infers arguments from key', () => {
   const upper = memoize<[string], string>((text) => text.toUpperCase());
-  // Type checking fails here if `text` is no longer contextually typed by `key`.
+  expectTypeOf(upper).parameters.toEqualTypeOf<[string]>();
+  expectTypeOf(upper).returns.toEqualTypeOf<string>();
+
   const lower = memoize((text) => text.toLowerCase(), { key: (text: string) => text });
-  expect([upper('a'), lower('B')]).toEqual(['A', 'b']);
+  expectTypeOf(lower).parameters.toEqualTypeOf<[string]>();
+  expectTypeOf(lower).returns.toEqualTypeOf<string>();
+
+  expect([firstItem([1, 2]), upper('a'), lower('B')]).toEqual([1, 'A', 'b']);
 });
