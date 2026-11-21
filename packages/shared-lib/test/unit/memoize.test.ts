@@ -1,6 +1,6 @@
-import { expect, test } from 'bun:test';
+import { expect, expectTypeOf, test } from 'bun:test';
 
-import { cached, memoize } from '../../src/memoize.js';
+import { cached, createMemoizeGroup, memoize } from '../../src/memoize.js';
 import { sleep } from '../../src/sleep.js';
 
 test('memoize evicts the least recently used result beyond maxSize', () => {
@@ -122,4 +122,51 @@ test('memoize releases expired results on a cache hit without recomputing the hi
   // Referencing `load` and `hotValue` keeps them reachable during the collection above.
   expect(load).toBeFunction();
   expect(hotValue).toEqual({ id: -1 });
+});
+
+test('a memoize group clears every member, and a rejection from before the clear keeps the newer result', async () => {
+  const group = createMemoizeGroup();
+  let attempts = 0;
+  const first = Promise.withResolvers<string>();
+  const load = memoize(
+    () => {
+      attempts++;
+      return attempts === 1 ? first.promise : Promise.resolve('fresh');
+    },
+    { group }
+  );
+  let doubled = 0;
+  const double = memoize(
+    (value: number) => {
+      doubled++;
+      return value * 2;
+    },
+    { group }
+  );
+  double(1);
+  const stale = load();
+  group.clear();
+  const fresh = load();
+  double(1);
+  first.reject(new Error('stale failure'));
+  await stale.catch(() => {});
+  expect(await fresh).toBe('fresh');
+  expect(load()).toBe(fresh);
+  expect([attempts, doubled]).toEqual([2, 2]);
+});
+
+test('memoize keeps the exact types of generic, explicitly typed, and key-typed callbacks', () => {
+  const firstItem = memoize(<T>(items: readonly T[]): T | undefined => items[0]);
+  expectTypeOf(firstItem(['a', 'b'])).toEqualTypeOf<string | undefined>();
+  expectTypeOf(firstItem([1, 2])).toEqualTypeOf<number | undefined>();
+
+  const upper = memoize<[string], string>((text) => text.toUpperCase());
+  expectTypeOf(upper).parameters.toEqualTypeOf<[string]>();
+  expectTypeOf(upper).returns.toEqualTypeOf<string>();
+
+  const lower = memoize((text) => text.toLowerCase(), { key: (text: string) => text });
+  expectTypeOf(lower).parameters.toEqualTypeOf<[string]>();
+  expectTypeOf(lower).returns.toEqualTypeOf<string>();
+
+  expect([firstItem([1, 2]), upper('a'), lower('B')]).toEqual([1, 'A', 'b']);
 });
