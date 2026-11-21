@@ -198,7 +198,7 @@ async function hasAnyWorkflowRun(
  * verbatim from the original text through the parser's positional offsets, so no reformatting of the
  * user's content is possible.
  */
-// code-gauge-allow functionCognitiveComplexity 17 -- The steps share the parsed nodes and offsets; splitting them would pass that state around.
+// code-gauge-allow functionCognitiveComplexity -- The steps share the parsed nodes and offsets; splitting them would pass that state around.
 export function writeBadgeBlock(readme: string, managedBadges: string[]): string {
   const lineEnding = getLineEnding(readme);
   // A BOM is not Markdown: left in the text it hides the `#` of the title from the parser, and

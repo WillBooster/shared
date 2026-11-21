@@ -203,7 +203,7 @@ function resetCallerToolEnvironment(): void {
 }
 
 /** Returns whether the repository was processed without an error. */
-// code-gauge-allow functionNcss 40 -- Generator ordering is the point of this function; splitting it would hide that order.
+// code-gauge-allow functionNcss -- Generator ordering is the point of this function; splitting it would hide that order.
 async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean): Promise<boolean> {
   const subDirPaths = await listSubPackageDirPaths(rootDirPath);
   const preflightError =
