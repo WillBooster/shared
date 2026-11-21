@@ -144,9 +144,12 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
   // A branch check without a report (e.g. no `origin/HEAD`) only costs the ordering and the count,
   // which the header then says; with no violation to order, there is nothing to say.
   const branchReport = branchCheck.report;
-  const branchViolations = violations.filter((violation) =>
-    branchReport?.violations.some((branchViolation) => isSameViolation(violation, branchViolation))
-  );
+  // The branch's share of test code leads whatever its level, so the cut list keeps it.
+  const branchViolations = violations
+    .filter((violation) =>
+      branchReport?.violations.some((branchViolation) => isSameViolation(violation, branchViolation))
+    )
+    .toSorted((a, b) => Number(b.kind === 'project') - Number(a.kind === 'project'));
   const otherViolations = violations.filter((violation) => !branchViolations.includes(violation));
   const allLines = formatViolationLines(branchViolations, otherViolations, check.report, false);
   const lines = allLines.slice(0, MAX_VERIFY_VIOLATION_LINES);
