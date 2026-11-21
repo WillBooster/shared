@@ -77,7 +77,7 @@ export type { AppEnv } from './appEnv.js';
 export type { RetryOptions } from './error.js';
 export type { ForeignCjkLanguage } from './foreignCjk.js';
 export type { CodeBlock, MarkdownSection } from './markdown.js';
-export type { MemoizeGroup, MemoizeOptions } from './memoize.js';
+export type { MemoizeGroup, MemoizeGroupMember, MemoizeOptions } from './memoize.js';
 export type { TemplateSection } from './githubTemplates.js';
 export type { ThrottledFetchOptions } from './throttledFetch.js';
 export type { RaceWithTimeoutResult } from './timeout.js';

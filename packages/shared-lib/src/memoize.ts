@@ -9,29 +9,46 @@ export interface MemoizeOptions<Args extends unknown[]> {
   maxSize?: number;
   /** How long a cached result stays valid, in milliseconds. Defaults to forever. */
   ttlMs?: number;
-  /** A group whose `clear()` also drops every result this function has cached. */
+  /**
+   * A group whose `clear()` also drops every result this function has cached. When this function's periodic sweep of
+   * expired results runs, it sweeps every live function in the group instead of only this one.
+   */
   group?: MemoizeGroup;
 }
 
 /**
- * Clears the caches of every function memoized with it as `group`. Its methods are all a memoized function uses, so a
- * group created by one copy of this package also works with `memoize` from another copy (e.g., another bundle).
+ * The caches of the functions memoized with it as `group`. Its members are plain objects, so a group created by one
+ * copy of this package also works with `memoize` from another copy (e.g., another bundle).
  */
 export interface MemoizeGroup {
-  /** Registers a callback that drops one function's cached results. */
-  add: (clearCache: () => void) => void;
-  /** Drops the cached results of every function in the group, so that their next calls recompute. */
+  /** Registers one memoized function's cache. The group holds it weakly, so it lives only as long as that function. */
+  add: (member: MemoizeGroupMember) => void;
+  /** Drops the cached results of every live function in the group, so that their next calls recompute. */
   clear: () => void;
+  /** Drops the expired results of every live function in the group. */
+  sweepExpired: (now: number) => void;
 }
 
-/** Creates a `MemoizeGroup`; pass it as the `group` option of each `memoize` call whose cache it should clear. */
+/** One memoized function's cache as registered with a `MemoizeGroup`. */
+export interface MemoizeGroupMember {
+  clear: () => void;
+  sweepExpired: (now: number) => void;
+}
+
+/** Creates a `MemoizeGroup`; pass it as the `group` option of each `memoize` call whose cache it should manage. */
 export function createMemoizeGroup(): MemoizeGroup {
-  const cacheClearers = new Set<() => void>();
+  const members = new Set<WeakRef<MemoizeGroupMember>>();
+  const forEachLiveMember = (action: (member: MemoizeGroupMember) => void): void => {
+    for (const memberRef of members) {
+      const member = memberRef.deref();
+      if (member) action(member);
+      else members.delete(memberRef);
+    }
+  };
   return {
-    add: (clearCache) => cacheClearers.add(clearCache),
-    clear: () => {
-      for (const clearCache of cacheClearers) clearCache();
-    },
+    add: (member) => members.add(new WeakRef(member)),
+    clear: () => forEachLiveMember((member) => member.clear()),
+    sweepExpired: (now) => forEachLiveMember((member) => member.sweepExpired(now)),
   };
 }
 
@@ -51,7 +68,13 @@ export function memoize<Args extends unknown[], R>(
   }: MemoizeOptions<Args> = {}
 ): (...args: Args) => R {
   const cache: Cache<R> = new Map();
-  group?.add(() => cache.clear());
+  // The returned function references `member`, which keeps the group's weak registration alive exactly as long as the
+  // function.
+  const member: MemoizeGroupMember = {
+    clear: () => cache.clear(),
+    sweepExpired: (now) => sweepExpiredEntries(cache, now),
+  };
+  group?.add(member);
   // Sweeping at most once per TTL, on any call, bounds the cache to results inserted within the last two TTLs
   // whatever the key pattern, at an amortized cost of one entry visit per insertion.
   let nextSweepAt = 0;
@@ -59,7 +82,7 @@ export function memoize<Args extends unknown[], R>(
     const cacheKey = key(...args);
     const now = Date.now();
     if (now >= nextSweepAt) {
-      sweepExpiredEntries(cache, now);
+      (group ?? member).sweepExpired(now);
       nextSweepAt = now + ttlMs;
     }
     const cachedEntry = takeUnexpiredEntry(cache, cacheKey, now);

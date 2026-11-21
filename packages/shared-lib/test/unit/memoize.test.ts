@@ -145,6 +145,9 @@ test('a memoize group clears every member, and a rejection from before the clear
   );
   double(1);
   const stale = load();
+  // Live memoized functions keep their weak group registrations through a collection after the creating job ends.
+  await sleep(0);
+  Bun.gc(true);
   group.clear();
   const fresh = load();
   double(1);
@@ -153,6 +156,44 @@ test('a memoize group clears every member, and a rejection from before the clear
   expect(await fresh).toBe('fresh');
   expect(load()).toBe(fresh);
   expect([attempts, doubled]).toEqual([2, 2]);
+});
+
+test('a memoize group lets the cache of a discarded function be collected', async () => {
+  const group = createMemoizeGroup();
+  const resultRef = ((): WeakRef<object> => {
+    const load = memoize(() => ({ value: 'cached' }), { group });
+    return new WeakRef(load());
+  })();
+  // A WeakRef keeps its target alive until the current job ends, so collect after yielding.
+  await sleep(0);
+  Bun.gc(true);
+  expect(resultRef.deref()).toBeUndefined();
+  expect(() => group.clear()).not.toThrow();
+});
+
+test('a sweep triggered by one group member releases the expired results of the others', async () => {
+  let now = 0;
+  const originalNow = Date.now;
+  Date.now = () => now;
+  const group = createMemoizeGroup();
+  let idleResultRef: WeakRef<object>;
+  let active: (id: number) => object;
+  let idle: () => object;
+  try {
+    active = memoize((id: number) => ({ id }), { group, ttlMs: 1000 });
+    idle = memoize(() => ({ idle: true }), { group, ttlMs: 1000 });
+    active(0);
+    idleResultRef = new WeakRef(idle());
+    now = 1500;
+    active(1);
+  } finally {
+    Date.now = originalNow;
+  }
+  await sleep(0);
+  Bun.gc(true);
+  expect(idleResultRef.deref()).toBeUndefined();
+  // Referencing both functions keeps their caches reachable during the collection above.
+  expect([active, idle]).toHaveLength(2);
 });
 
 test('memoize keeps the exact types of generic, explicitly typed, and key-typed callbacks', () => {
