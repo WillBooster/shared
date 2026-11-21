@@ -50,7 +50,7 @@
     "@types/react-dom": "19.3.0",
     "@willbooster/oxlint-config": "1.4.9",
     "@willbooster/wb": "workspace:*",
-    "build-ts": "21.0.36",
+    "build-ts": "21.0.38",
     "oxlint": "1.93.0",
     "oxlint-tsgolint": "7.0.2007",
     "react": "19.3.1",
