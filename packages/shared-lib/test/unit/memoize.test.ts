@@ -196,6 +196,34 @@ test('a sweep triggered by one group member releases the expired results of the 
   expect([active, idle]).toHaveLength(2);
 });
 
+test('a call of a short-TTL group member releases a longer-TTL member result as soon as it expires', async () => {
+  let now = 0;
+  const originalNow = Date.now;
+  Date.now = () => now;
+  const group = createMemoizeGroup();
+  let idleResultRef: WeakRef<object>;
+  let active: (id: number) => object;
+  let idle: () => object;
+  try {
+    active = memoize((id: number) => ({ id }), { group, ttlMs: 100 });
+    idle = memoize(() => ({ idle: true }), { group, ttlMs: 1000 });
+    active(0);
+    now = 50;
+    idleResultRef = new WeakRef(idle());
+    now = 1000;
+    active(1);
+    now = 1100;
+    active(2);
+  } finally {
+    Date.now = originalNow;
+  }
+  await sleep(0);
+  Bun.gc(true);
+  expect(idleResultRef.deref()).toBeUndefined();
+  // Referencing both functions keeps their caches reachable during the collection above.
+  expect([active, idle]).toHaveLength(2);
+});
+
 test('memoize keeps the exact types of generic, explicitly typed, and key-typed callbacks', () => {
   const firstItem = memoize(<T>(items: readonly T[]): T | undefined => items[0]);
   expectTypeOf(firstItem(['a', 'b'])).toEqualTypeOf<string | undefined>();

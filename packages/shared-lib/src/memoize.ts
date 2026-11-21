@@ -10,8 +10,8 @@ export interface MemoizeOptions<Args extends unknown[]> {
   /** How long a cached result stays valid, in milliseconds. Defaults to forever. */
   ttlMs?: number;
   /**
-   * A group whose `clear()` also drops every result this function has cached. Each call of this function also runs the
-   * periodic sweep of expired results that is due in any live function of the group, not only in this one.
+   * A group whose `clear()` also drops every result this function has cached. Each call of this function also drops
+   * the expired results of every live function in the group, not only its own.
    */
   group?: MemoizeGroup;
 }
@@ -25,15 +25,15 @@ export interface MemoizeGroup {
   add: (member: MemoizeGroupMember) => void;
   /** Drops the cached results of every live function in the group, so that their next calls recompute. */
   clear: () => void;
-  /** Runs the due sweep of expired results in every live function of the group. */
-  sweepExpiredIfDue: (now: number) => void;
+  /** Drops the expired results of every live function in the group. */
+  sweepExpired: (now: number) => void;
 }
 
 /** One memoized function's cache as registered with a `MemoizeGroup`. */
 export interface MemoizeGroupMember {
   clear: () => void;
-  /** Drops the expired results if this function's sweep, at most once per its TTL, is due. */
-  sweepExpiredIfDue: (now: number) => void;
+  /** Drops the expired results, visiting only results that have expired since the previous call. */
+  sweepExpired: (now: number) => void;
 }
 
 /** Creates a `MemoizeGroup`; pass it as the `group` option of each `memoize` call whose cache it should manage. */
@@ -49,11 +49,13 @@ export function createMemoizeGroup(): MemoizeGroup {
   return {
     add: (member) => members.add(new WeakRef(member)),
     clear: () => forEachLiveMember((member) => member.clear()),
-    sweepExpiredIfDue: (now) => forEachLiveMember((member) => member.sweepExpiredIfDue(now)),
+    sweepExpired: (now) => forEachLiveMember((member) => member.sweepExpired(now)),
   };
 }
 
 type Cache<R> = Map<string, { value: R; expiresAt: number }>;
+
+const MIN_QUEUE_COMPACTION_LENGTH = 64;
 
 /**
  * Returns a function that caches the results of `fn` by the key of its arguments.
@@ -68,34 +70,66 @@ export function memoize<Args extends unknown[], R>(
     group,
   }: MemoizeOptions<Args> = {}
 ): (...args: Args) => R {
-  const cache: Cache<R> = new Map();
+  const cache = createExpiringCache<R>();
   // The returned function references `member`, which keeps the group's weak registration alive exactly as long as the
   // function.
-  // Sweeping at most once per TTL, on any call, bounds the cache to results inserted within the last two TTLs
-  // whatever the key pattern, at an amortized cost of one entry visit per insertion.
-  let nextSweepAt = 0;
-  const member: MemoizeGroupMember = {
-    clear: () => cache.clear(),
-    sweepExpiredIfDue: (now) => {
-      if (now < nextSweepAt) return;
-      sweepExpiredEntries(cache, now);
-      nextSweepAt = now + ttlMs;
-    },
-  };
+  const member: MemoizeGroupMember = { clear: cache.clear, sweepExpired: cache.dropExpired };
   group?.add(member);
   return (...args) => {
     const cacheKey = key(...args);
     const now = Date.now();
-    (group ?? member).sweepExpiredIfDue(now);
-    const cachedEntry = takeUnexpiredEntry(cache, cacheKey, now);
+    (group ?? member).sweepExpired(now);
+    const cachedEntry = takeUnexpiredEntry(cache.entries, cacheKey, now);
     if (cachedEntry) return cachedEntry.value;
 
     const value = fn(...args);
     // The TTL starts when the result is ready, not at the lookup before a possibly slow `fn`.
-    cache.set(cacheKey, { value, expiresAt: Date.now() + ttlMs });
-    if (cache.size > maxSize) cache.delete(cache.keys().next().value as string);
-    if (value instanceof Promise) evictOnRejection(cache, cacheKey, value);
+    cache.set(cacheKey, value, Date.now() + ttlMs);
+    if (cache.entries.size > maxSize) cache.entries.delete(cache.entries.keys().next().value as string);
+    if (value instanceof Promise) evictOnRejection(cache.entries, cacheKey, value);
     return value;
+  };
+}
+
+interface ExpiringCache<R> {
+  entries: Cache<R>;
+  set: (key: string, value: R, expiresAt: number) => void;
+  /** Drops the entries that have expired, visiting only queue items that have expired since the previous call. */
+  dropExpired: (now: number) => void;
+  clear: () => void;
+}
+
+function createExpiringCache<R>(): ExpiringCache<R> {
+  const entries: Cache<R> = new Map();
+  // One memoized function has one TTL, so insertion order is also expiration order.
+  let expiryQueue: { key: string; expiresAt: number }[] = [];
+  let queueHead = 0;
+  const compactQueue = (): void => {
+    expiryQueue = expiryQueue.slice(queueHead).filter((item) => entries.get(item.key)?.expiresAt === item.expiresAt);
+    queueHead = 0;
+  };
+  return {
+    entries,
+    set: (key, value, expiresAt) => {
+      entries.set(key, { value, expiresAt });
+      if (!Number.isFinite(expiresAt)) return;
+      expiryQueue.push({ key, expiresAt });
+      // Evicted and overwritten keys leave stale items behind; compacting once they outnumber the cached entries keeps
+      // the queue proportional to the cache at an amortized constant cost per insertion.
+      if (expiryQueue.length - queueHead > 2 * entries.size + MIN_QUEUE_COMPACTION_LENGTH) compactQueue();
+    },
+    dropExpired: (now) => {
+      while (queueHead < expiryQueue.length && (expiryQueue[queueHead]?.expiresAt ?? now) <= now) {
+        const item = expiryQueue[queueHead++];
+        if (item && entries.get(item.key)?.expiresAt === item.expiresAt) entries.delete(item.key);
+      }
+      if (queueHead > MIN_QUEUE_COMPACTION_LENGTH && queueHead * 2 > expiryQueue.length) compactQueue();
+    },
+    clear: () => {
+      entries.clear();
+      expiryQueue = [];
+      queueHead = 0;
+    },
   };
 }
 
@@ -107,12 +141,6 @@ function takeUnexpiredEntry<R>(cache: Cache<R>, cacheKey: string, now: number): 
   if (entry.expiresAt <= now) return undefined;
   cache.set(cacheKey, entry);
   return entry;
-}
-
-function sweepExpiredEntries(cache: Cache<unknown>, now: number): void {
-  for (const [entryKey, { expiresAt }] of cache) {
-    if (expiresAt <= now) cache.delete(entryKey);
-  }
 }
 
 function evictOnRejection(cache: Cache<unknown>, cacheKey: string, promise: Promise<unknown>): void {
