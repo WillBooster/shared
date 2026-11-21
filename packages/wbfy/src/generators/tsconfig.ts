@@ -6,11 +6,11 @@ import type { PackageJson, TsConfigJson } from 'type-fest';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { sortKeys } from '../utils/objectUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 import { getTsconfigExtends } from '../utils/tsconfigBase.js';
 import {
   getMeaningfulDeclaredWorkspacePatterns,
@@ -85,7 +85,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     // already-up-to-date tsconfig.json survive wbfy runs.
     if (originalSettingsJson === JSON.stringify(newSettings)) return;
     const newContent = JSON.stringify(newSettings, undefined, 2);
-    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
+    await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 
@@ -343,9 +343,7 @@ async function normalizeFrameworkTsconfig(config: PackageConfig): Promise<void> 
   // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
   // already-clean tsconfig.json survive wbfy runs.
   if (JSON.stringify(settings) === originalSettingsJson) return;
-  await promisePool.runAndWaitForReturnValue(() =>
-    fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2))
-  );
+  await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
 }
 
 /**

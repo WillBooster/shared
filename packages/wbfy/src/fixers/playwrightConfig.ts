@@ -5,8 +5,8 @@ import * as ast from 'typescript/unstable/ast';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 
 type ParsedValue =
@@ -108,7 +108,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     const end = extractedObjectLiteral.node.getEnd();
     const newContent = `${oldContent.slice(0, start)}${newObjectLiteral}${oldContent.slice(end)}`;
 
-    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
+    await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 

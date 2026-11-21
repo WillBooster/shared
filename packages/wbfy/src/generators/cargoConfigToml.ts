@@ -3,8 +3,8 @@ import path from 'node:path';
 import releaseAgeGate from '../../configs/releaseAgeGate.json' with { type: 'json' };
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 import { setTomlTableString } from '../utils/tomlUtil.js';
 
 /**
@@ -18,7 +18,7 @@ import { setTomlTableString } from '../utils/tomlUtil.js';
 export async function generateCargoConfigToml(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateCargoConfigToml', async () => {
     const { filePath, content } = await gateCargoConfig(path.resolve(config.dirPath, '.cargo'));
-    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, content));
+    await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, content));
   });
 }
 

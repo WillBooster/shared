@@ -12,8 +12,8 @@ import {
 import { getDefaultProseLanguage, LANGUAGE_BOUND_TEXT_EXCEPTION } from '../generators/agents.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runAllWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { runAllInPool } from '../utils/promisePool.js';
 
 const generateTemplates = (prLanguageNote: string, issueLanguageNote: string): Record<string, string> => ({
   'pull_request_template.md': `
@@ -65,7 +65,7 @@ export async function generateGitHubTemplates(config: PackageConfig): Promise<vo
             ` Write in English, ${LANGUAGE_BOUND_TEXT_EXCEPTION}.`,
             ` Write in English, ${LANGUAGE_BOUND_TEXT_EXCEPTION}.`,
           ];
-    await runAllInPool(
+    await runAllWithConcurrencyLimit(
       Object.entries(generateTemplates(prLanguageNote, issueLanguageNote)).map(([fileName, content]) => {
         const filePath = path.resolve(config.dirPath, '.github', fileName);
         return () => fsUtil.generateFile(filePath, content);

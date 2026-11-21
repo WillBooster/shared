@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { forEachConcurrently, mapConcurrently } from '../../src/concurrency.js';
+import { createConcurrencyLimiter, forEachConcurrently, mapConcurrently } from '../../src/concurrency.js';
 import { sleep } from '../../src/sleep.js';
 
 test('forEachConcurrently keeps at most the given number of actions in flight and does not wait for a slow item', async () => {
@@ -50,4 +50,38 @@ test('mapConcurrently resolves with results in item order even when later items 
     return `${item}${index}`;
   });
   expect(results).toEqual(['a0', 'b1', 'c2']);
+});
+
+test('createConcurrencyLimiter caps tasks in flight across calls and settles each call with its own task result', async () => {
+  const runWithLimit = createConcurrencyLimiter(2);
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const results = await Promise.allSettled(
+    [1, 2, 3, 4, 5].map((item) =>
+      runWithLimit(async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await sleep(5);
+        inFlight--;
+        if (item === 3) throw new Error('failed at 3');
+        return item * 10;
+      })
+    )
+  );
+  expect(maxInFlight).toBe(2);
+  expect(results.map((result) => (result.status === 'fulfilled' ? result.value : String(result.reason)))).toEqual([
+    10,
+    20,
+    'Error: failed at 3',
+    40,
+    50,
+  ]);
+});
+
+test('createConcurrencyLimiter frees the slot of a rejected task for a queued one', async () => {
+  const runWithLimit = createConcurrencyLimiter(1);
+  const rejected = runWithLimit(() => Promise.reject(new Error('failed first')));
+  const queued = runWithLimit(() => Promise.resolve('ran second'));
+  expect(String(await rejected.catch((error: unknown) => error))).toBe('Error: failed first');
+  expect(await queued).toBe('ran second');
 });

@@ -3,10 +3,10 @@ import path from 'node:path';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { doesContainJava } from '../utils/packageCapabilities.js';
-import { promisePool } from '../utils/promisePool.js';
 
 // Keep package-manager shims in the File Watcher program field so node does not
 // parse wrapper scripts passed through arguments.
@@ -17,7 +17,7 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
     const dirPath = path.resolve(config.dirPath, '.idea');
     if (fs.existsSync(dirPath)) {
       const filePath = path.resolve(dirPath, 'watcherTasks.xml');
-      await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, getWatcherTasksContent(config)));
+      await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, getWatcherTasksContent(config)));
     }
   });
 }

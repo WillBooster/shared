@@ -5,9 +5,9 @@ import merge from 'deepmerge';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 
 export async function generateReleaserc(rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateReleaserc', async () => {
@@ -57,6 +57,6 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
       }
     }
     const newContent = JSON.stringify(settings, undefined, 2);
-    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
+    await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, newContent));
   });
 }

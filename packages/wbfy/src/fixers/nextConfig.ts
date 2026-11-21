@@ -5,9 +5,9 @@ import * as ast from 'typescript/unstable/ast';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { applyTextEdits, findProperty, insertPropertiesEdit, removePropertyEdit } from '../utils/objectLiteralEdit.js';
-import { promisePool } from '../utils/promisePool.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 
 // Settings every WillBooster Next.js project should carry. `name` is the top-level
@@ -51,7 +51,7 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
     if (edits.length === 0) return;
 
     const newContent = applyTextEdits(source.text, edits);
-    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
+    await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 

@@ -7,8 +7,8 @@ import { isReusableWorkflowsRepo } from '../generators/workflow.js';
 import { logger } from '../logger.js';
 import { options } from '../options.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runAllWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { runAllInPool } from '../utils/promisePool.js';
 import { getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
 
 export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
@@ -52,7 +52,7 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
       console.info(`Found ${textBasedFiles.length} text-based files in ${dirPath}`);
     }
 
-    await runAllInPool([
+    await runAllWithConcurrencyLimit([
       ...docFiles.map((file) => fixFile(path.join(dirPath, file), fixTyposInText, packageConfig, 'doc')),
       ...tsFiles.map((file) => fixFile(path.join(dirPath, file), fixTyposInCode, packageConfig, 'ts')),
       ...textBasedFiles.map((file) => fixFile(path.join(dirPath, file), fixTyposInText, packageConfig, 'text')),

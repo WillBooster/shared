@@ -10,8 +10,8 @@ import { z } from 'zod';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runAllWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { runAllInPool } from '../utils/promisePool.js';
 
 /**
  * Repositories outside WillBooster / WillBoosterLab cannot call the organization's reusable
@@ -123,7 +123,7 @@ export async function generateSelfContainedWorkflows(
     if (rootConfig.depending.semanticRelease && rootConfig.release.branches.length > 0) {
       workflowByFileName['release.yml'] = buildReleaseWorkflow(rootConfig, hasProductionDeployWorkflow, usesFnox);
     }
-    await runAllInPool(
+    await runAllWithConcurrencyLimit(
       Object.entries(workflowByFileName).map(
         ([fileName, workflow]) =>
           () =>

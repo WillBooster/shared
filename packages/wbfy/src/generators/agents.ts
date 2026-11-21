@@ -10,8 +10,8 @@ import type { PackageConfig } from '../packageConfig.js';
 import { generatesWorkerTypes } from '../packageConfig.js';
 import type { ProjectDirection } from '../projectDirection.js';
 import { readProjectDirection } from '../projectDirection.js';
+import { runAllWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { runAllInPool } from '../utils/promisePool.js';
 import { hasCloudflareDeployWorkflow, invokesWbDeploy } from './workflow.js';
 
 interface DeployFacts {
@@ -55,7 +55,7 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     );
     // Cursor reads AGENTS.md itself, and its CLI applies it alongside `.cursor/rules`, so the
     // former copy in `.cursor/rules/general.mdc` only duplicated these instructions.
-    await runAllInPool([
+    await runAllWithConcurrencyLimit([
       () => fsUtil.generateFile(agentsMdPath, agentsMdContent),
       () => fsUtil.removeConfined(path.resolve(rootConfig.dirPath, 'CLAUDE.md')),
       () => fsUtil.removeConfined(path.resolve(rootConfig.dirPath, 'GEMINI.md')),
@@ -303,6 +303,11 @@ ${commentInstruction}
 - If lint errors or warnings cannot be fixed, use ignore comments with reasons (e.g., \`// oxlint-disable-next-line <rule> -- <reason>\`).
 - Prefer \`undefined\` over \`null\` unless required by APIs or libraries.
 - Validate JavaScript objects (e.g., parsed JSON, API responses) with \`zod\` whenever possible instead of hand-written checks or type assertions.
+${
+  allConfigs.some((c) => c.depending.willboosterSharedLib)
+    ? `- Before writing a general-purpose helper (e.g., concurrency limiting, memoization, retries, timeouts, text processing), check the exports of the \`@willbooster/shared-lib*\` packages this project depends on and use a fitting one instead.`
+    : ''
+}
 - Build prompts as a single template literal instead of \`join()\` on a pre-computable array of strings.
 - Assume all environment variables are defined; if validation is needed, \`assert\` them at startup to fail fast.
 - Assume local tools such as \`git\`, \`gh\`, and \`ghq\` are installed and authenticated.

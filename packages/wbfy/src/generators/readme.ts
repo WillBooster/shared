@@ -6,10 +6,10 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { matchFrontMatter } from '../utils/frontMatter.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { getOctokit } from '../utils/githubUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 import { getWbfyVersionLabel } from '../utils/version.js';
 
 const semanticReleaseBadge =
@@ -92,9 +92,7 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
     // list, so nothing has to remove it.
     newContent = writeBadgeBlock(newContent, badges);
 
-    await promisePool.runAndWaitForReturnValue(() =>
-      fsUtil.generateFile(filePath, newContent, getLineEnding(newContent))
-    );
+    await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, newContent, getLineEnding(newContent)));
   });
 }
 

@@ -5,9 +5,9 @@ import * as ast from 'typescript/unstable/ast';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { applyTextEdits, findProperties, insertPropertiesEdit, type TextEdit } from '../utils/objectLiteralEdit.js';
-import { promisePool } from '../utils/promisePool.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 
 // vinext forwards `react` to @vitejs/plugin-react, whose `compiler` option enables the React Compiler.
@@ -25,7 +25,7 @@ export async function fixViteConfig(config: PackageConfig): Promise<void> {
     if (plan.kind === 'unsupported') {
       console.warn(`Skipped enabling the React Compiler in ${config.dirPath} because ${plan.reason}.`);
     } else if (plan.kind === 'edit') {
-      await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(plan.filePath, plan.content));
+      await runWithConcurrencyLimit(() => fsUtil.generateFile(plan.filePath, plan.content));
     }
   });
 }

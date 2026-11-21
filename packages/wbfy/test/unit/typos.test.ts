@@ -7,7 +7,6 @@ import path from 'node:path';
 import { fixTypos, fixTyposInCode, fixTyposInText } from '../../src/fixers/typos.js';
 import { getPackageConfig } from '../../src/packageConfig.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
-import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 test('fixTyposInText normalizes abbreviation typos without touching regular words', () => {
@@ -26,14 +25,12 @@ test('line-comment typo fixes keep words merely ending in the abbreviation lette
   expect(fixTyposInCode('/* block e.g. one */')).toBe('/* block e.g. one */');
 });
 
-test('fixTypos resolves only after every file is rewritten, including files queued in the pool', async () => {
+test('fixTypos resolves only after every file is rewritten, including files waiting for a free slot', async () => {
   const dirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-typos-')));
-  const oldConcurrency = promisePool.concurrency;
-  // With one slot, every file but the first waits in the pool's queue when fixTypos starts them.
-  promisePool.concurrency = 1;
   try {
     fsUtil.setRootDirPath(dirPath);
-    const fileNames = Array.from({ length: 5 }, (_, i) => `doc${i}.md`);
+    // More files than the concurrency limit of 10, so some of them wait for a free slot.
+    const fileNames = Array.from({ length: 15 }, (_, i) => `doc${i}.md`);
     for (const fileName of fileNames) {
       fs.writeFileSync(path.join(dirPath, fileName), 'eg. one\n');
     }
@@ -42,7 +39,6 @@ test('fixTypos resolves only after every file is rewritten, including files queu
       expect(fs.readFileSync(path.join(dirPath, fileName), 'utf8')).toBe('e.g. one\n');
     }
   } finally {
-    promisePool.concurrency = oldConcurrency;
     fsUtil.setRootDirPath(undefined);
     fs.rmSync(dirPath, { force: true, recursive: true });
   }

@@ -12,12 +12,12 @@ import * as ast from 'typescript/unstable/ast';
 
 import { logger } from '../logger.js';
 import { generatesWorkerTypes, getWorkerTypesScriptError, type PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { classifyScriptSegment, splitScriptSegments } from '../utils/managedScriptSegment.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
-import { promisePool } from '../utils/promisePool.js';
 import { spawnAndReturnStatus, spawnAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
@@ -877,7 +877,7 @@ async function normalizePublishedConfigPackageMetadata(
   // NodeNext resolves a relative `./config.mjs` import to `config.d.mts`, not
   // the package-level `types` field. Keep the published config importable from
   // package-local TypeScript linter settings.
-  await promisePool.runAndWaitForReturnValue(() =>
+  await runWithConcurrencyLimit(() =>
     fsUtil.generateFile(path.resolve(config.dirPath, 'config.d.mts'), configDmtsContent)
   );
 }

@@ -3,9 +3,9 @@ import path from 'node:path';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 
 // Exercode deploys Git-based private packages from node_modules, but the Docker context should stay narrow.
 const includedNodeModulesPatterns = ['@willbooster'];
@@ -71,7 +71,7 @@ export async function generateDockerignore(config: PackageConfig): Promise<void>
       const tailUserContent = ignoreFileUtil.getTailUserContent(content);
 
       const newContent = headUserContent + commonContent + tailUserContent;
-      await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
+      await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, newContent));
     } else {
       await fs.promises.rm(filePath, { force: true });
     }

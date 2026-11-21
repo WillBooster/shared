@@ -4,11 +4,11 @@ import merge from 'deepmerge';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
 import { sortKeys } from '../utils/objectUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 
 const jsonObj = {
   venvPath: '.',
@@ -38,6 +38,6 @@ export async function generatePyrightConfigJson(config: PackageConfig): Promise<
       return;
     }
     const newContent = JSON.stringify(newSettings, undefined, 2);
-    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
+    await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, newContent));
   });
 }

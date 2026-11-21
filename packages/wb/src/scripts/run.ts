@@ -5,8 +5,8 @@ import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { trackDescendants } from '../utils/leftoverProcesses.js';
-import { promisePool } from '../utils/promisePool.js';
 import { isCapturingVerificationOutput } from '../utils/verificationOutput.js';
 
 interface Options {
@@ -130,7 +130,7 @@ export function runWithSpawnInParallel(
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>,
   opts: Options = defaultOptions
 ): Promise<number> {
-  return promisePool.runAndWaitForReturnValue(async () => {
+  return runWithConcurrencyLimit(async () => {
     const normalizedScript = normalizeScript(script, project);
     const captureOutput = isCapturingVerificationOutput();
     printStart(normalizedScript.printable, project, 'Start (parallel)', true);
@@ -167,7 +167,7 @@ export function runWithSpawnInParallelBuffered(
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>,
   opts: Options = defaultOptions
 ): Promise<BufferedRunResult> {
-  return promisePool.runAndWaitForReturnValue(async () => {
+  return runWithConcurrencyLimit(async () => {
     const normalizedScript = normalizeScript(script, project);
     if (argv.dryRun) {
       return {

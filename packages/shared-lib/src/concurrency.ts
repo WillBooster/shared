@@ -27,14 +27,40 @@ export async function mapConcurrently<T, R>(
   return results;
 }
 
+/**
+ * Returns a function that starts `task` once fewer than `concurrency` tasks started through that same function are in
+ * flight, and settles with the task's result or error. Share one limiter across calls to cap concurrency process-wide,
+ * or use one for a batch whose remaining items must still run after an item fails; for a one-shot loop over items that
+ * should stop at the first error, use `mapConcurrently` or `forEachConcurrently` instead.
+ * Throws a `RangeError` when `concurrency` is not a positive integer.
+ */
+export function createConcurrencyLimiter(concurrency: number): <R>(task: () => Promise<R>) => Promise<R> {
+  assertValidConcurrency(concurrency);
+  let runningCount = 0;
+  const waitingStarts: (() => void)[] = [];
+  return async (task) => {
+    if (runningCount < concurrency) {
+      runningCount++;
+    } else {
+      await new Promise<void>((resolve) => waitingStarts.push(resolve));
+    }
+    try {
+      return await task();
+    } finally {
+      // The finished task's slot passes directly to the next waiting task, so `runningCount` stays unchanged.
+      const startNext = waitingStarts.shift();
+      if (startNext) startNext();
+      else runningCount--;
+    }
+  };
+}
+
 async function runConcurrently(
   length: number,
   concurrency: number,
   run: (index: number) => Promise<unknown>
 ): Promise<void> {
-  if (!Number.isInteger(concurrency) || concurrency < 1) {
-    throw new RangeError(`concurrency must be a positive integer: ${concurrency}`);
-  }
+  assertValidConcurrency(concurrency);
   let nextIndex = 0;
   let failure: { error: unknown } | undefined;
   // Workers beyond the item count would find nothing to take, so they are not created.
@@ -50,4 +76,10 @@ async function runConcurrently(
     })
   );
   if (failure) throw failure.error;
+}
+
+function assertValidConcurrency(concurrency: number): void {
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new RangeError(`concurrency must be a positive integer: ${concurrency}`);
+  }
 }
