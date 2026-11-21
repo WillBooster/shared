@@ -213,6 +213,26 @@ test('calls of a group member without a TTL release the expired results of membe
   expect([active, ...idles]).toHaveLength(101);
 });
 
+test('a due group sweep keeps the results that have not expired yet', () => {
+  let now = 0;
+  const originalNow = Date.now;
+  Date.now = () => now;
+  try {
+    const group = createMemoizeGroup();
+    const active = memoize((id: number) => ({ id }), { group });
+    const lookup = memoize((id: string) => ({ id }), { group, ttlMs: 1000 });
+    active(0);
+    now = 400;
+    const cached = lookup('a');
+    // The lookup's sweep is due at 1000, when its result cached at 400 is still valid until 1400.
+    now = 1000;
+    active(1);
+    expect(lookup('a')).toBe(cached);
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
 test('memoize keeps the exact types of generic, explicitly typed, and key-typed callbacks', () => {
   const firstItem = memoize(<T>(items: readonly T[]): T | undefined => items[0]);
   expectTypeOf(firstItem(['a', 'b'])).toEqualTypeOf<string | undefined>();
