@@ -89,3 +89,37 @@ test.each(keyPatterns)('memoize releases expired results under %s', async (_name
   // Referencing `load` keeps its cache reachable during the collection above.
   expect(load).toBeFunction();
 });
+
+test('memoize releases expired results on a cache hit without recomputing the hit key', async () => {
+  let now = 0;
+  const originalNow = Date.now;
+  Date.now = () => now;
+  const refs: WeakRef<object>[] = [];
+  let load: (id: number) => object;
+  let hotValue: object;
+  try {
+    load = memoize(
+      (id: number) => {
+        const value = { id };
+        refs.push(new WeakRef(value));
+        return value;
+      },
+      { ttlMs: 1000 }
+    );
+    for (let id = 0; id < 100; id++) load(id);
+    now = 500;
+    hotValue = load(-1);
+    now = 1000;
+    expect(load(-1)).toBe(hotValue);
+  } finally {
+    Date.now = originalNow;
+  }
+  // A WeakRef keeps its target alive until the current job ends, so collect after yielding.
+  await sleep(0);
+  Bun.gc(true);
+  expect(refs.length).toBe(101);
+  expect(refs.filter((ref) => ref.deref()).length).toBe(1);
+  // Referencing `load` and `hotValue` keeps them reachable during the collection above.
+  expect(load).toBeFunction();
+  expect(hotValue).toEqual({ id: -1 });
+});
