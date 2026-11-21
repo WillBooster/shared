@@ -250,11 +250,13 @@ For `wb verify` and `wb verify --full`, a log-write failure falls back to printi
 
 `wb code-gauge` runs [`code-gauge check`](https://github.com/WillBooster/code-gauge#threshold-check-code-gauge-check)
 on the project and prints every threshold violation as an error or a warning: functions and files
-over a metric limit, and duplicated blocks. A path limits the check to that file or directory (a directory's
-test files are skipped, so a directory holding only test files is reported as unchecked, while a
-file named as the path is checked even when it is a test file), and
-`--base <ref>` to what the working tree changed since the merge-base with `<ref>`, in which case a
-path without a changed file to check prints nothing. The command
+over a metric limit, duplicated blocks, and a share of test code over its limit (by default, test
+NCSS over 30% of production NCSS under the checked directory). A path limits the check to that file or
+directory. The metrics of functions, files, and duplicated blocks skip a directory's test files, so a
+directory holding only test files is reported as unchecked (a file named as the path is checked even
+when it is a test file); the share counts them. `--base <ref>` limits the check to what the working
+tree changed since the merge-base with `<ref>`: functions, files, and blocks the change touches, and
+the share when the change adds or edits a test, even a change touching only tests. The command
 always exits with 0, including when there are errors or the check cannot complete.
 
 ```sh
