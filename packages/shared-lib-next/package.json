@@ -54,7 +54,7 @@
     "@willbooster/oxlint-config": "1.4.9",
     "@willbooster/wb": "workspace:*",
     "build-ts": "21.0.36",
-    "next": "16.4.5",
+    "next": "16.4.6",
     "oxlint": "1.93.0",
     "oxlint-tsgolint": "7.0.2006",
     "typescript": "7.0.2"
