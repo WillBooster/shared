@@ -116,10 +116,10 @@ export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> =
       return;
     }
     const check = await runCodeGaugeCheck(project, argv.base, argv.target);
-    const report = formatReport(check, [
-      ...formatViolationLines(check.report?.violations ?? []),
-      ...formatDirectiveProblemLines(check.report),
-    ]);
+    const report = formatReport(
+      check,
+      formatViolationLines([], check.report?.violations ?? [], check.report, argv.base !== undefined)
+    );
     if (report) {
       console.info(report);
     } else if (argv.target !== undefined && argv.base === undefined && check.report?.summary.checkedFileCount === 0) {
@@ -147,11 +147,8 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
   const branchViolations = violations.filter((violation) =>
     branchReport?.violations.some((branchViolation) => isSameViolation(violation, branchViolation))
   );
-  const orderedViolations = [
-    ...branchViolations,
-    ...violations.filter((violation) => !branchViolations.includes(violation)),
-  ];
-  const allLines = [...formatViolationLines(orderedViolations), ...formatDirectiveProblemLines(check.report)];
+  const otherViolations = violations.filter((violation) => !branchViolations.includes(violation));
+  const allLines = formatViolationLines(branchViolations, otherViolations, check.report, false);
   const lines = allLines.slice(0, MAX_VERIFY_VIOLATION_LINES);
   const omittedCount = allLines.length - lines.length;
   if (omittedCount > 0) {
@@ -280,20 +277,38 @@ function formatReport(check: CodeGaugeCheck, lines: string[], branchSummary?: st
   return sections.filter(Boolean).join('\n') || undefined;
 }
 
-function formatViolationLines(violations: Violation[]): string[] {
-  return violations.map((violation) => `${violation.level}: ${describeViolation(violation)}`);
+/**
+ * The branch's violations, then the other errors with the directive problems (errors too), then
+ * the other warnings, so that a cut list keeps errors. The branch's share of test code asks only
+ * that the change add no test code, not that the whole excess go.
+ */
+function formatViolationLines(
+  branchViolations: Violation[],
+  otherViolations: Violation[],
+  report: Report | undefined,
+  onlyBranch: boolean
+): string[] {
+  const format = (violation: Violation, inBranch: boolean): string =>
+    `${violation.level}: ${describeViolation(violation, inBranch)}`;
+  const directiveLines = (report?.directiveProblems ?? []).map(
+    ({ file, line, message }) => `error: ${file}:${line}: ${message}`
+  );
+  return [
+    ...branchViolations.map((violation) => format(violation, true)),
+    ...otherViolations.filter(({ level }) => level === 'error').map((violation) => format(violation, onlyBranch)),
+    ...directiveLines,
+    ...otherViolations.filter(({ level }) => level === 'warning').map((violation) => format(violation, onlyBranch)),
+  ];
 }
 
-function formatDirectiveProblemLines(report: Report | undefined): string[] {
-  return (report?.directiveProblems ?? []).map(({ file, line, message }) => `error: ${file}:${line}: ${message}`);
-}
-
-function describeViolation(violation: Violation): string {
+function describeViolation(violation: Violation, inBranch: boolean): string {
   const exceeded = violation.exceeded.map((limit) => formatExceededThreshold(limit, violation)).join(', ');
   if (violation.kind === 'project') {
     return (
       `${violation.file}: ${exceeded}, test NCSS ${violation.testNcss} of production NCSS ${violation.productionNcss}; ` +
-      `delete or merge ${violation.excessTestNcss} test NCSS`
+      (inBranch
+        ? 'this change edits tests: delete or merge tests so the change adds no test code'
+        : `delete or merge ${violation.excessTestNcss} test NCSS`)
     );
   }
   if (violation.kind === 'file') return `${violation.file}: ${exceeded}`;
