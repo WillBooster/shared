@@ -9,29 +9,47 @@ export interface MemoizeOptions<Args extends unknown[]> {
   maxSize?: number;
   /** How long a cached result stays valid, in milliseconds. Defaults to forever. */
   ttlMs?: number;
-  /** A group whose `clear()` also drops every result this function has cached. */
+  /**
+   * A group whose `clear()` also drops every result this function has cached. Each call of this function also runs the
+   * periodic sweep of expired results that is due in any live function of the group, not only in this one.
+   */
   group?: MemoizeGroup;
 }
 
 /**
- * Clears the caches of every function memoized with it as `group`. Its methods are all a memoized function uses, so a
- * group created by one copy of this package also works with `memoize` from another copy (e.g., another bundle).
+ * The caches of the functions memoized with it as `group`. Its members are plain objects, so a group created by one
+ * copy of this package also works with `memoize` from another copy of the same version (e.g., another bundle).
  */
 export interface MemoizeGroup {
-  /** Registers a callback that drops one function's cached results. */
-  add: (clearCache: () => void) => void;
-  /** Drops the cached results of every function in the group, so that their next calls recompute. */
+  /** Registers one memoized function's cache. The group holds it weakly, so it lives only as long as that function. */
+  add: (member: MemoizeGroupMember) => void;
+  /** Drops the cached results of every live function in the group, so that their next calls recompute. */
   clear: () => void;
+  /** Runs the due sweep of expired results in every live function of the group. */
+  sweepExpiredIfDue: (now: number) => void;
 }
 
-/** Creates a `MemoizeGroup`; pass it as the `group` option of each `memoize` call whose cache it should clear. */
+/** One memoized function's cache as registered with a `MemoizeGroup`. */
+export interface MemoizeGroupMember {
+  clear: () => void;
+  /** Drops the expired results if this function's sweep, at most once per its TTL, is due. */
+  sweepExpiredIfDue: (now: number) => void;
+}
+
+/** Creates a `MemoizeGroup`; pass it as the `group` option of each `memoize` call whose cache it should manage. */
 export function createMemoizeGroup(): MemoizeGroup {
-  const cacheClearers = new Set<() => void>();
+  const members = new Set<WeakRef<MemoizeGroupMember>>();
+  const forEachLiveMember = (action: (member: MemoizeGroupMember) => void): void => {
+    for (const memberRef of members) {
+      const member = memberRef.deref();
+      if (member) action(member);
+      else members.delete(memberRef);
+    }
+  };
   return {
-    add: (clearCache) => cacheClearers.add(clearCache),
-    clear: () => {
-      for (const clearCache of cacheClearers) clearCache();
-    },
+    add: (member) => members.add(new WeakRef(member)),
+    clear: () => forEachLiveMember((member) => member.clear()),
+    sweepExpiredIfDue: (now) => forEachLiveMember((member) => member.sweepExpiredIfDue(now)),
   };
 }
 
@@ -51,17 +69,24 @@ export function memoize<Args extends unknown[], R>(
   }: MemoizeOptions<Args> = {}
 ): (...args: Args) => R {
   const cache: Cache<R> = new Map();
-  group?.add(() => cache.clear());
+  // The returned function references `member`, which keeps the group's weak registration alive exactly as long as the
+  // function.
   // Sweeping at most once per TTL, on any call, bounds the cache to results inserted within the last two TTLs
   // whatever the key pattern, at an amortized cost of one entry visit per insertion.
   let nextSweepAt = 0;
+  const member: MemoizeGroupMember = {
+    clear: () => cache.clear(),
+    sweepExpiredIfDue: (now) => {
+      if (now < nextSweepAt) return;
+      sweepExpiredEntries(cache, now);
+      nextSweepAt = now + ttlMs;
+    },
+  };
+  group?.add(member);
   return (...args) => {
     const cacheKey = key(...args);
     const now = Date.now();
-    if (now >= nextSweepAt) {
-      sweepExpiredEntries(cache, now);
-      nextSweepAt = now + ttlMs;
-    }
+    (group ?? member).sweepExpiredIfDue(now);
     const cachedEntry = takeUnexpiredEntry(cache, cacheKey, now);
     if (cachedEntry) return cachedEntry.value;
 

@@ -3,6 +3,10 @@ import { expect, expectTypeOf, test } from 'bun:test';
 import { cached, createMemoizeGroup, memoize } from '../../src/memoize.js';
 import { sleep } from '../../src/sleep.js';
 
+// Bun's conservative collector can keep a few unreachable objects alive through stale stack slots, so retention tests
+// assert on many objects and tolerate this many survivors; a retention bug keeps all of them.
+const PINNED_BY_CONSERVATIVE_GC = 10;
+
 test('memoize evicts the least recently used result beyond maxSize', () => {
   const calls: number[] = [];
   const double = memoize(
@@ -81,11 +85,8 @@ test.each(keyPatterns)('memoize releases expired results under %s', async (_name
   } finally {
     Date.now = originalNow;
   }
-  // A WeakRef keeps its target alive until the current job ends, so collect after yielding.
-  await sleep(0);
-  Bun.gc(true);
   // Only results inserted within the last two TTLs may remain.
-  expect(refs.filter((ref) => ref.deref()).length).toBeLessThanOrEqual(3);
+  expect(await collectUntil(refs, 3 + PINNED_BY_CONSERVATIVE_GC)).toBeLessThanOrEqual(3 + PINNED_BY_CONSERVATIVE_GC);
   // Referencing `load` keeps its cache reachable during the collection above.
   expect(load).toBeFunction();
 });
@@ -114,11 +115,8 @@ test('memoize releases expired results on a cache hit without recomputing the hi
   } finally {
     Date.now = originalNow;
   }
-  // A WeakRef keeps its target alive until the current job ends, so collect after yielding.
-  await sleep(0);
-  Bun.gc(true);
   expect(refs.length).toBe(101);
-  expect(refs.filter((ref) => ref.deref()).length).toBe(1);
+  expect(await collectUntil(refs, 1 + PINNED_BY_CONSERVATIVE_GC)).toBeLessThanOrEqual(1 + PINNED_BY_CONSERVATIVE_GC);
   // Referencing `load` and `hotValue` keeps them reachable during the collection above.
   expect(load).toBeFunction();
   expect(hotValue).toEqual({ id: -1 });
@@ -145,6 +143,9 @@ test('a memoize group clears every member, and a rejection from before the clear
   );
   double(1);
   const stale = load();
+  // Live memoized functions keep their weak group registrations through a collection after the creating job ends.
+  await sleep(0);
+  Bun.gc(true);
   group.clear();
   const fresh = load();
   double(1);
@@ -153,6 +154,83 @@ test('a memoize group clears every member, and a rejection from before the clear
   expect(await fresh).toBe('fresh');
   expect(load()).toBe(fresh);
   expect([attempts, doubled]).toEqual([2, 2]);
+});
+
+test('a memoize group lets the caches of discarded functions be collected', async () => {
+  const group = createMemoizeGroup();
+  const resultRefs = Array.from({ length: 100 }, (_, id) => {
+    const load = memoize(() => ({ id }), { group });
+    return new WeakRef(load());
+  });
+  expect(await collectUntil(resultRefs, PINNED_BY_CONSERVATIVE_GC)).toBeLessThanOrEqual(PINNED_BY_CONSERVATIVE_GC);
+  expect(() => group.clear()).not.toThrow();
+});
+
+test('a sweep triggered by one group member releases the expired results of the others', async () => {
+  let now = 0;
+  const originalNow = Date.now;
+  Date.now = () => now;
+  const group = createMemoizeGroup();
+  let idleResultRefs: WeakRef<object>[];
+  let active: (id: number) => object;
+  let idles: (() => object)[];
+  try {
+    active = memoize((id: number) => ({ id }), { group, ttlMs: 1000 });
+    idles = Array.from({ length: 100 }, (_, id) => memoize(() => ({ id }), { group, ttlMs: 1000 }));
+    active(0);
+    idleResultRefs = idles.map((idle) => new WeakRef(idle()));
+    now = 1500;
+    active(1);
+  } finally {
+    Date.now = originalNow;
+  }
+  expect(await collectUntil(idleResultRefs, PINNED_BY_CONSERVATIVE_GC)).toBeLessThanOrEqual(PINNED_BY_CONSERVATIVE_GC);
+  // Referencing the functions keeps their caches reachable during the collection above.
+  expect([active, ...idles]).toHaveLength(101);
+});
+
+test('calls of a group member without a TTL release the expired results of members with one', async () => {
+  let now = 0;
+  const originalNow = Date.now;
+  Date.now = () => now;
+  const group = createMemoizeGroup();
+  let idleResultRefs: WeakRef<object>[];
+  let active: (id: number) => object;
+  let idles: (() => object)[];
+  try {
+    active = memoize((id: number) => ({ id }), { group });
+    idles = Array.from({ length: 100 }, (_, id) => memoize(() => ({ id }), { group, ttlMs: 1000 }));
+    active(0);
+    now = 50;
+    idleResultRefs = idles.map((idle) => new WeakRef(idle()));
+    // The idle results expire at 1050, and the idle functions' next due sweep is at 2000.
+    for (now = 1000; now <= 2000; now += 100) active(now);
+  } finally {
+    Date.now = originalNow;
+  }
+  expect(await collectUntil(idleResultRefs, PINNED_BY_CONSERVATIVE_GC)).toBeLessThanOrEqual(PINNED_BY_CONSERVATIVE_GC);
+  // Referencing the functions keeps their caches reachable during the collection above.
+  expect([active, ...idles]).toHaveLength(101);
+});
+
+test('a due group sweep keeps the results that have not expired yet', () => {
+  let now = 0;
+  const originalNow = Date.now;
+  Date.now = () => now;
+  try {
+    const group = createMemoizeGroup();
+    const active = memoize((id: number) => ({ id }), { group });
+    const lookup = memoize((id: string) => ({ id }), { group, ttlMs: 1000 });
+    active(0);
+    now = 400;
+    const cached = lookup('a');
+    // The lookup's sweep is due at 1000, when its result cached at 400 is still valid until 1400.
+    now = 1000;
+    active(1);
+    expect(lookup('a')).toBe(cached);
+  } finally {
+    Date.now = originalNow;
+  }
 });
 
 test('memoize keeps the exact types of generic, explicitly typed, and key-typed callbacks', () => {
@@ -170,3 +248,15 @@ test('memoize keeps the exact types of generic, explicitly typed, and key-typed 
 
   expect([firstItem([1, 2]), upper('a'), lower('B')]).toEqual([1, 'A', 'b']);
 });
+
+/** Collects garbage until at most `maxLiveCount` of `refs` remain or 10 attempts pass, and returns the live count. */
+async function collectUntil(refs: readonly WeakRef<object>[], maxLiveCount: number): Promise<number> {
+  let liveCount = refs.length;
+  for (let attempt = 0; attempt < 10 && liveCount > maxLiveCount; attempt++) {
+    // A WeakRef keeps its target alive until the job that created or dereferenced it ends, so collect after yielding.
+    await sleep(0);
+    Bun.gc(true);
+    liveCount = refs.filter((ref) => ref.deref()).length;
+  }
+  return liveCount;
+}
