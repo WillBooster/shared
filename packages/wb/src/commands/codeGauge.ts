@@ -118,7 +118,11 @@ export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> =
     const check = await runCodeGaugeCheck(project, argv.base, argv.target);
     const report = formatReport(
       check,
-      formatViolationLines([], check.report?.violations ?? [], check.report, argv.base !== undefined)
+      formatViolationLines(
+        check.report?.violations ?? [],
+        check.report?.directiveProblems ?? [],
+        argv.base !== undefined
+      )
     );
     if (report) {
       console.info(report);
@@ -144,14 +148,21 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
   // A branch check without a report (e.g. no `origin/HEAD`) only costs the ordering and the count,
   // which the header then says; with no violation to order, there is nothing to say.
   const branchReport = branchCheck.report;
-  // The branch's share of test code leads whatever its level, so the cut list keeps it.
-  const branchViolations = violations
-    .filter((violation) =>
-      branchReport?.violations.some((branchViolation) => isSameViolation(violation, branchViolation))
-    )
-    .toSorted((a, b) => Number(b.kind === 'project') - Number(a.kind === 'project'));
-  const otherViolations = violations.filter((violation) => !branchViolations.includes(violation));
-  const allLines = formatViolationLines(branchViolations, otherViolations, check.report, false);
+  const branchViolations = violations.filter((violation) =>
+    branchReport?.violations.some((branchViolation) => isSameViolation(violation, branchViolation))
+  );
+  const directiveProblems = check.report?.directiveProblems ?? [];
+  const branchDirectiveProblems = directiveProblems.filter((problem) =>
+    branchReport?.directiveProblems.some(({ file, line }) => file === problem.file && line === problem.line)
+  );
+  const allLines = [
+    ...formatViolationLines(branchViolations, branchDirectiveProblems, true),
+    ...formatViolationLines(
+      violations.filter((violation) => !branchViolations.includes(violation)),
+      directiveProblems.filter((problem) => !branchDirectiveProblems.includes(problem)),
+      false
+    ),
+  ];
   const lines = allLines.slice(0, MAX_VERIFY_VIOLATION_LINES);
   const omittedCount = allLines.length - lines.length;
   if (omittedCount > 0) {
@@ -281,26 +292,22 @@ function formatReport(check: CodeGaugeCheck, lines: string[], branchSummary?: st
 }
 
 /**
- * The branch's violations, then the other errors with the directive problems (errors too), then
- * the other warnings, so that a cut list keeps errors. The branch's share of test code asks only
+ * The share of test code first whatever its level, then the errors with the directive problems
+ * (errors too), then the warnings, so that a cut list keeps errors. A branch's share asks only
  * that the change add no test code, not that the whole excess go.
  */
 function formatViolationLines(
-  branchViolations: Violation[],
-  otherViolations: Violation[],
-  report: Report | undefined,
-  onlyBranch: boolean
+  violations: Violation[],
+  directiveProblems: Report['directiveProblems'],
+  inBranch: boolean
 ): string[] {
-  const format = (violation: Violation, inBranch: boolean): string =>
-    `${violation.level}: ${describeViolation(violation, inBranch)}`;
-  const directiveLines = (report?.directiveProblems ?? []).map(
-    ({ file, line, message }) => `error: ${file}:${line}: ${message}`
-  );
+  const format = (violation: Violation): string => `${violation.level}: ${describeViolation(violation, inBranch)}`;
+  const codeViolations = violations.filter(({ kind }) => kind !== 'project');
   return [
-    ...branchViolations.map((violation) => format(violation, true)),
-    ...otherViolations.filter(({ level }) => level === 'error').map((violation) => format(violation, onlyBranch)),
-    ...directiveLines,
-    ...otherViolations.filter(({ level }) => level === 'warning').map((violation) => format(violation, onlyBranch)),
+    ...violations.filter(({ kind }) => kind === 'project').map(format),
+    ...codeViolations.filter(({ level }) => level === 'error').map(format),
+    ...directiveProblems.map(({ file, line, message }) => `error: ${file}:${line}: ${message}`),
+    ...codeViolations.filter(({ level }) => level === 'warning').map(format),
   ];
 }
 
