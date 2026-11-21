@@ -140,3 +140,10 @@ test('memoize recomputes after clear without letting an earlier rejection evict 
   expect(load()).toBe(fresh);
   expect(attempts).toBe(2);
 });
+
+test('memoize keeps the inference of a generic function', () => {
+  const firstItem = memoize(<T>(items: readonly T[]): T | undefined => items[0]);
+  // Type checking fails here if the memoized signature loses `T`.
+  const first: string | undefined = firstItem(['a', 'b']);
+  expect(first).toBe('a');
+});

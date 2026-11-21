@@ -11,8 +11,11 @@ export interface MemoizeOptions<Args extends unknown[]> {
   ttlMs?: number;
 }
 
-/** A memoized function; `clear()` drops every cached result so that the next calls recompute. */
-export type Memoized<Args extends unknown[], R> = ((...args: Args) => R) & { clear: () => void };
+/**
+ * A memoized function typed as the original `F`, so generic call signatures keep their inference; the wrapper does not
+ * copy `F`'s own properties. `clear()` drops every cached result so that the next calls recompute.
+ */
+export type Memoized<F> = F & { clear: () => void };
 
 type Cache<R> = Map<string, { value: R; expiresAt: number }>;
 
@@ -20,14 +23,17 @@ type Cache<R> = Map<string, { value: R; expiresAt: number }>;
  * Returns a function that caches the results of `fn` by the key of its arguments.
  * A returned promise is cached too, and dropped from the cache when it rejects so that the next call retries.
  */
-export function memoize<Args extends unknown[], R>(
-  fn: (...args: Args) => R,
+export function memoize<F extends (...args: never[]) => unknown>(
+  fn: F,
   {
     key = (...args) => JSON.stringify(args),
     maxSize = Number.POSITIVE_INFINITY,
     ttlMs = Number.POSITIVE_INFINITY,
-  }: MemoizeOptions<Args> = {}
-): Memoized<Args, R> {
+  }: MemoizeOptions<Parameters<F>> = {}
+): Memoized<F> {
+  type Args = Parameters<F>;
+  type R = ReturnType<F>;
+  const call = fn as unknown as (...args: Args) => R;
   const cache: Cache<R> = new Map();
   // Sweeping at most once per TTL, on any call, bounds the cache to results inserted within the last two TTLs
   // whatever the key pattern, at an amortized cost of one entry visit per insertion.
@@ -42,14 +48,14 @@ export function memoize<Args extends unknown[], R>(
     const cachedEntry = takeUnexpiredEntry(cache, cacheKey, now);
     if (cachedEntry) return cachedEntry.value;
 
-    const value = fn(...args);
+    const value = call(...args);
     // The TTL starts when the result is ready, not at the lookup before a possibly slow `fn`.
     cache.set(cacheKey, { value, expiresAt: Date.now() + ttlMs });
     if (cache.size > maxSize) cache.delete(cache.keys().next().value as string);
     if (value instanceof Promise) evictOnRejection(cache, cacheKey, value);
     return value;
   };
-  return Object.assign(memoized, { clear: () => cache.clear() });
+  return Object.assign(memoized, { clear: () => cache.clear() }) as unknown as Memoized<F>;
 }
 
 function takeUnexpiredEntry<R>(cache: Cache<R>, cacheKey: string, now: number): { value: R } | undefined {
