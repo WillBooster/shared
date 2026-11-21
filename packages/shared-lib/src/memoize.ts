@@ -1,5 +1,9 @@
 export interface MemoizeOptions<Args extends unknown[]> {
-  /** Derives the cache key from the arguments. Defaults to `JSON.stringify(args)`. */
+  /**
+   * Derives the cache key from the arguments. Defaults to `JSON.stringify(args)`, which gives the same key to
+   * arguments JSON does not distinguish (e.g., `undefined`, `null`, and `NaN`; a `Map` and `{}`), so pass `key`
+   * when such arguments must produce different results.
+   */
   key?: (...args: Args) => string;
   /** The maximum number of cached results; the least recently used one is evicted first. Defaults to no limit. */
   maxSize?: number;
@@ -34,7 +38,8 @@ export function memoize<Args extends unknown[], R>(
     if (cachedEntry) return cachedEntry.value;
 
     const value = fn(...args);
-    cache.set(cacheKey, { value, expiresAt: now + ttlMs });
+    // The TTL starts when the result is ready, not at the lookup before a possibly slow `fn`.
+    cache.set(cacheKey, { value, expiresAt: Date.now() + ttlMs });
     if (cache.size > maxSize) cache.delete(cache.keys().next().value as string);
     if (Number.isFinite(ttlMs) && cache.size >= sweepSize) sweepSize = sweepExpiredEntries(cache, now);
     if (value instanceof Promise) evictOnRejection(cache, cacheKey, value);
