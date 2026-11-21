@@ -523,8 +523,8 @@ async function deployCodeAndSecrets(
   return true;
 }
 
-// code-gauge-allow functionCognitiveComplexity 18 -- Signal forwarding and secret cleanup share subprocess state.
-// code-gauge-allow functionNcss 35 -- Keep the subprocess and its signal handlers in one cleanup scope.
+// code-gauge-allow functionCognitiveComplexity -- Signal forwarding and secret cleanup share subprocess state.
+// code-gauge-allow functionNcss -- Keep the subprocess and its signal handlers in one cleanup scope.
 async function runWranglerWithSecretsFile(
   project: Project,
   deployArgs: string[],

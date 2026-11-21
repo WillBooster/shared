@@ -32,11 +32,14 @@ type CodeGaugeCommandOptions = InferredOptionTypes<
 
 const locationSchema = z.object({ file: z.string(), startLine: z.number(), endLine: z.number() });
 const levelSchema = z.enum(['warning', 'error']);
-const violationSchema = locationSchema.extend({
+const exceededSchema = z.array(
+  z.object({ metric: z.string(), value: z.number(), level: levelSchema, limit: z.number() })
+);
+const codeViolationSchema = locationSchema.extend({
   kind: z.enum(['function', 'file', 'duplication']),
   level: levelSchema,
   name: z.string().optional(),
-  exceeded: z.array(z.object({ metric: z.string(), value: z.number(), level: levelSchema, limit: z.number() })),
+  exceeded: exceededSchema,
   largestBlocks: z
     .array(
       z.object({
@@ -49,6 +52,17 @@ const violationSchema = locationSchema.extend({
     .optional(),
   partners: z.array(locationSchema).optional(),
 });
+/** The share of test code in the checked directory, which no line span locates. */
+const projectViolationSchema = z.object({
+  kind: z.literal('project'),
+  file: z.string(),
+  level: levelSchema,
+  exceeded: exceededSchema,
+  testNcss: z.number(),
+  productionNcss: z.number(),
+  excessTestNcss: z.number(),
+});
+const violationSchema = z.union([codeViolationSchema, projectViolationSchema]);
 const reportSchema = z.object({
   summary: z.object({
     violationCount: z.number(),
@@ -57,6 +71,7 @@ const reportSchema = z.object({
     functionViolationCount: z.number(),
     fileViolationCount: z.number(),
     duplicationViolationCount: z.number(),
+    projectViolationCount: z.number(),
     checkedFileCount: z.number(),
   }),
   violations: z.array(violationSchema),
@@ -66,6 +81,7 @@ const reportSchema = z.object({
 });
 
 type Location = z.infer<typeof locationSchema>;
+type CodeViolation = z.infer<typeof codeViolationSchema>;
 type Violation = z.infer<typeof violationSchema>;
 type Report = z.infer<typeof reportSchema>;
 
@@ -83,7 +99,8 @@ const MAX_PARTNER_LOCATIONS = 3;
 const VIOLATION_HANDLING_INSTRUCTIONS = `How to handle these violations:
 - In code your change touches, fix every error, and each warning whose fix makes the code easier to read, with behavior-preserving changes (e.g., extract a helper, flatten branching, reuse the code it duplicates).
 - Leave a violation whose only fix moves complexity elsewhere (e.g., splitting a function mechanically), restructures far more code than your change touches, or removes an intentional duplicate (e.g., a file mirroring another by design).
-- Allow each warning left with a \`code-gauge-allow <metric> <max> -- <reason>\` comment on its own line right above the function's reported start line; for a duplicated block, above the start line of its enclosing function, separately for each copy (\`code-gauge-allow-file\` for the whole file or a block outside a function), where <metric> is the camelCase metric name (e.g., functionParameterCount) and <max> the reported value.
+- Allow each warning left with a \`code-gauge-allow <metric> -- <reason>\` comment on its own line right above the function's reported start line; for a duplicated block, above the start line of its enclosing function, separately for each copy (\`code-gauge-allow-file\` for the whole file or a block outside a function), where <metric> is the camelCase metric name (e.g., functionParameterCount). For a directive reported as an error, correct its syntax or placement, keeping its reason, when the code it covers still has the warning it was written for; remove it when no such warning remains.
+- When the share of test code (the test NCSS of a directory, \`.\` for the whole project) is reported in code this branch changed, the change touched a test: if it adds test code, delete or merge tests in the same change so it adds none, and leave the report otherwise; no comment can allow it.
 - List each error left, which no comment can allow, with the reason, in the PR body's Notes, proposing a \`code-gauge.config.json\` exclusion there for an intentional duplicate. Never edit \`code-gauge.config.json\` to silence a violation unless asked.
 - When a violation measures the code incorrectly (e.g., misparsed syntax, unrelated code reported as duplicated), search the issues of WillBooster/code-gauge and, if none covers it, create one with a freshly written minimal reproduction, the command, and its output.`;
 
@@ -99,10 +116,14 @@ export const codeGaugeCommand: CommandModule<unknown, CodeGaugeCommandOptions> =
       return;
     }
     const check = await runCodeGaugeCheck(project, argv.base, argv.target);
-    const report = formatReport(check, [
-      ...formatViolationLines(check.report?.violations ?? []),
-      ...formatDirectiveProblemLines(check.report),
-    ]);
+    const report = formatReport(
+      check,
+      formatViolationLines(
+        check.report?.violations ?? [],
+        check.report?.directiveProblems ?? [],
+        argv.base !== undefined
+      )
+    );
     if (report) {
       console.info(report);
     } else if (argv.target !== undefined && argv.base === undefined && check.report?.summary.checkedFileCount === 0) {
@@ -130,24 +151,32 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
   const branchViolations = violations.filter((violation) =>
     branchReport?.violations.some((branchViolation) => isSameViolation(violation, branchViolation))
   );
-  const orderedViolations = [
-    ...branchViolations,
-    ...violations.filter((violation) => !branchViolations.includes(violation)),
+  const directiveProblems = check.report?.directiveProblems ?? [];
+  const branchDirectiveProblems = directiveProblems.filter((problem) =>
+    branchReport?.directiveProblems.some(({ file, line }) => file === problem.file && line === problem.line)
+  );
+  const branchLines = formatViolationLines(branchViolations, branchDirectiveProblems, true);
+  const allLines = [
+    ...branchLines,
+    ...formatViolationLines(
+      violations.filter((violation) => !branchViolations.includes(violation)),
+      directiveProblems.filter((problem) => !branchDirectiveProblems.includes(problem)),
+      false
+    ),
   ];
-  const allLines = [...formatViolationLines(orderedViolations), ...formatDirectiveProblemLines(check.report)];
   const lines = allLines.slice(0, MAX_VERIFY_VIOLATION_LINES);
   const omittedCount = allLines.length - lines.length;
   if (omittedCount > 0) {
     const command = `${project.packageManagerCommand} wb code-gauge`;
     lines.push(
       `... and ${omittedCount} more: list all with \`${command}\`` +
-        (branchViolations.length > MAX_VERIFY_VIOLATION_LINES
+        (branchLines.length > MAX_VERIFY_VIOLATION_LINES
           ? `, those in code this branch changed with \`${command} --base ${VERIFY_BASE_REF}\``
           : '')
     );
   }
   const branchSummary = branchReport
-    ? describeBranchViolations(branchViolations.length)
+    ? describeBranchViolations(branchLines.length)
     : `not ordered by this branch's changes (no report for --base ${VERIFY_BASE_REF})`;
   const report = formatReport(check, lines, branchSummary);
   return allLines.length > 0 ? `${report}\n${VIOLATION_HANDLING_INSTRUCTIONS}` : report;
@@ -181,6 +210,7 @@ function describeBranchViolations(count: number): string {
  */
 function isSameViolation(violation: Violation, branchViolation: Violation): boolean {
   if (violation.kind !== branchViolation.kind || violation.file !== branchViolation.file) return false;
+  if (violation.kind === 'project' || branchViolation.kind === 'project') return true;
   return violation.kind === 'duplication'
     ? violation.startLine <= branchViolation.endLine && branchViolation.startLine <= violation.endLine
     : violation.startLine === branchViolation.startLine && violation.endLine === branchViolation.endLine;
@@ -247,10 +277,11 @@ function formatReport(check: CodeGaugeCheck, lines: string[], branchSummary?: st
   if (summary && summary.violationCount + directiveProblemCount > 0) {
     sections.push(
       chalk.yellow(
-        `code-gauge: ${summary.errorViolationCount} errors, ` +
-          `${summary.warningViolationCount + directiveProblemCount} warnings ` +
+        `code-gauge: ${summary.errorViolationCount + directiveProblemCount} errors, ` +
+          `${summary.warningViolationCount} warnings ` +
           `(${summary.functionViolationCount} functions, ` +
           `${summary.fileViolationCount} files, ${summary.duplicationViolationCount} duplicated blocks` +
+          (summary.projectViolationCount > 0 ? `, ${summary.projectViolationCount} test shares` : '') +
           (directiveProblemCount > 0 ? `, ${directiveProblemCount} directives` : '') +
           ')' +
           (branchSummary ? `, ${branchSummary}` : '')
@@ -261,16 +292,36 @@ function formatReport(check: CodeGaugeCheck, lines: string[], branchSummary?: st
   return sections.filter(Boolean).join('\n') || undefined;
 }
 
-function formatViolationLines(violations: Violation[]): string[] {
-  return violations.map((violation) => `${violation.level}: ${describeViolation(violation)}`);
+/**
+ * The share of test code first whatever its level, then the errors with the directive problems
+ * (errors too), then the warnings, so that a cut list keeps errors. A branch's share asks only
+ * that the change add no test code, not that the whole excess go.
+ */
+function formatViolationLines(
+  violations: Violation[],
+  directiveProblems: Report['directiveProblems'],
+  inBranch: boolean
+): string[] {
+  const format = (violation: Violation): string => `${violation.level}: ${describeViolation(violation, inBranch)}`;
+  const codeViolations = violations.filter(({ kind }) => kind !== 'project');
+  return [
+    ...violations.filter(({ kind }) => kind === 'project').map(format),
+    ...codeViolations.filter(({ level }) => level === 'error').map(format),
+    ...directiveProblems.map(({ file, line, message }) => `error: ${file}:${line}: ${message}`),
+    ...codeViolations.filter(({ level }) => level === 'warning').map(format),
+  ];
 }
 
-function formatDirectiveProblemLines(report: Report | undefined): string[] {
-  return (report?.directiveProblems ?? []).map(({ file, line, message }) => `warning: ${file}:${line}: ${message}`);
-}
-
-function describeViolation(violation: Violation): string {
+function describeViolation(violation: Violation, inBranch: boolean): string {
   const exceeded = violation.exceeded.map((limit) => formatExceededThreshold(limit, violation)).join(', ');
+  if (violation.kind === 'project') {
+    return (
+      `${violation.file}: ${exceeded}, test NCSS ${violation.testNcss} of production NCSS ${violation.productionNcss}; ` +
+      (inBranch
+        ? 'this change edits tests: if it adds test code, delete or merge tests so it adds none'
+        : `delete or merge ${violation.excessTestNcss} test NCSS`)
+    );
+  }
   if (violation.kind === 'file') return `${violation.file}: ${exceeded}`;
   if (violation.kind === 'function') {
     return `${formatLocation(violation)} ${toOneLine(violation.name ?? '')}: ${exceeded}`;
@@ -296,12 +347,15 @@ function formatExceededThreshold(
   // Rounded up so that a violating value never prints as equal to the maximum; the inner rounding
   // drops binary floating-point noise such as 26.4 * 10 = 264.00000000000006.
   const roundedValue = Math.ceil(Number((value * 10).toFixed(6))) / 10;
-  const blocks = metric === 'functionCognitiveComplexity' ? formatLargestBlocks(violation.largestBlocks) : '';
+  const blocks =
+    violation.kind === 'function' && metric === 'functionCognitiveComplexity'
+      ? formatLargestBlocks(violation.largestBlocks)
+      : '';
   return `${label} ${roundedValue} (${level === violation.level ? '' : `${level} `}max ${maxAllowed}${blocks})`;
 }
 
 /** The parts of the function to look at first, each with the complexity it adds. */
-function formatLargestBlocks(blocks: Violation['largestBlocks'] = []): string {
+function formatLargestBlocks(blocks: CodeViolation['largestBlocks'] = []): string {
   const parts = blocks.map(({ cognitiveComplexity, endLine, name, startLine }) => {
     const lines = endLine === startLine ? `L${startLine}` : `L${startLine}-${endLine}`;
     return `${lines}${name ? ` ${toOneLine(name)}` : ''} ${cognitiveComplexity}`;

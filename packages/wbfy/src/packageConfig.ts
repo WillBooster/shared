@@ -1,4 +1,4 @@
-// code-gauge-allow-file fileNcss 427 -- All detection feeding PackageConfig stays together until it is split by concern.
+// code-gauge-allow-file fileNcss -- All detection feeding PackageConfig stays together until it is split by concern.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';

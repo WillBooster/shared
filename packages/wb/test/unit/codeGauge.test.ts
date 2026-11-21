@@ -52,15 +52,15 @@ it('limits the check to a path and names the parts adding the most cognitive com
   );
 }, 60_000);
 
-it('prints a directive problem as a warning without failing', async () => {
+it('prints a directive problem as an error without failing', async () => {
   const dir = await createRepository({
-    'allowed.ts': `// code-gauge-allow functionParameterCount 8 -- mirrors a vendor API\n${violatingFunction('allowed')}// code-gauge-allow functionNcss 20 -- nothing to allow\nexport function small(): number {\n  return 1;\n}\n`,
+    'allowed.ts': `// code-gauge-allow functionParameterCount -- mirrors a vendor API\n${violatingFunction('allowed')}// code-gauge-allow functionNcss -- nothing to allow\nexport function small(): number {\n  return 1;\n}\n`,
   });
   const result = await runCli(dir, ['code-gauge']);
   expect(result.status, result.stdout + result.stderr).toBe(0);
   expect(stripVTControlCharacters(result.stdout)).toBe(
-    'code-gauge: 0 errors, 1 warnings (0 functions, 0 files, 0 duplicated blocks, 1 directives)\n' +
-      'warning: allowed.ts:5: code-gauge-allow functionNcss 20: allows no warning; remove the directive\n'
+    'code-gauge: 1 errors, 0 warnings (0 functions, 0 files, 0 duplicated blocks, 1 directives)\n' +
+      'error: allowed.ts:5: code-gauge-allow functionNcss: no functionNcss limit is exceeded; remove the directive\n'
   );
 }, 60_000);
 
@@ -80,16 +80,18 @@ it('says so when a path holds no file to check, and prints a path with a space a
   expect(stripVTControlCharacters(dryRun.stdout)).toContain("check --json 'my dir'");
 }, 60_000);
 
-it('shows the violations after the verification recap without failing', async () => {
+it('shows the violations after the verification recap, the added test share first, without failing', async () => {
   const dir = await createFixture();
+  await fs.mkdir(path.join(dir, 'test', 'unit'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'test', 'unit', 'a.test.ts'), violatingFunction('tested'));
   const result = await runCli(dir, ['verify']);
   expect(result.status, result.stdout + result.stderr).toBe(0);
   const stdout = stripVTControlCharacters(result.stdout);
   expect(stdout).toMatch(/✔ code-gauge/);
-  const header = 'code-gauge: 0 errors, 2 warnings (2 functions, 0 files, 0 duplicated blocks)';
+  const header = 'code-gauge: 1 errors, 2 warnings (2 functions, 0 files, 0 duplicated blocks, 1 test shares)';
   expect(stdout.indexOf('Verified in')).toBeLessThan(stdout.indexOf(header));
   expect(stdout).toContain(
-    `${header}, 1 in code this branch changed (listed first)\n${addedViolation}\n${committedViolation}\nHow to handle these violations:\n`
+    `${header}, 2 in code this branch changed (listed first)\nerror: .: test ncss percent 50 (max 30), test NCSS 2 of production NCSS 4; this change edits tests: if it adds test code, delete or merge tests so it adds none\n${addedViolation}\n${committedViolation}\nHow to handle these violations:\n`
   );
   expect(stripVTControlCharacters(await fs.readFile(path.join(dir, '.wb/verify.log'), 'utf8'))).toContain(
     addedViolation
