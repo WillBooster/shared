@@ -11,6 +11,9 @@ export interface MemoizeOptions<Args extends unknown[]> {
   ttlMs?: number;
 }
 
+/** A memoized function; `clear()` drops every cached result so that the next calls recompute. */
+export type Memoized<Args extends unknown[], R> = ((...args: Args) => R) & { clear: () => void };
+
 type Cache<R> = Map<string, { value: R; expiresAt: number }>;
 
 /**
@@ -24,12 +27,12 @@ export function memoize<Args extends unknown[], R>(
     maxSize = Number.POSITIVE_INFINITY,
     ttlMs = Number.POSITIVE_INFINITY,
   }: MemoizeOptions<Args> = {}
-): (...args: Args) => R {
+): Memoized<Args, R> {
   const cache: Cache<R> = new Map();
   // Sweeping at most once per TTL, on any call, bounds the cache to results inserted within the last two TTLs
   // whatever the key pattern, at an amortized cost of one entry visit per insertion.
   let nextSweepAt = 0;
-  return (...args) => {
+  const memoized = (...args: Args): R => {
     const cacheKey = key(...args);
     const now = Date.now();
     if (now >= nextSweepAt) {
@@ -46,6 +49,7 @@ export function memoize<Args extends unknown[], R>(
     if (value instanceof Promise) evictOnRejection(cache, cacheKey, value);
     return value;
   };
+  return Object.assign(memoized, { clear: () => cache.clear() });
 }
 
 function takeUnexpiredEntry<R>(cache: Cache<R>, cacheKey: string, now: number): { value: R } | undefined {

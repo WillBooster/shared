@@ -123,3 +123,20 @@ test('memoize releases expired results on a cache hit without recomputing the hi
   expect(load).toBeFunction();
   expect(hotValue).toEqual({ id: -1 });
 });
+
+test('memoize recomputes after clear without letting an earlier rejection evict the new result', async () => {
+  let attempts = 0;
+  const first = Promise.withResolvers<string>();
+  const load = memoize(() => {
+    attempts++;
+    return attempts === 1 ? first.promise : Promise.resolve('fresh');
+  });
+  const stale = load();
+  load.clear();
+  const fresh = load();
+  first.reject(new Error('stale failure'));
+  await stale.catch(() => {});
+  expect(await fresh).toBe('fresh');
+  expect(load()).toBe(fresh);
+  expect(attempts).toBe(2);
+});
