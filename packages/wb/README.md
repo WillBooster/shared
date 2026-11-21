@@ -269,8 +269,8 @@ bun wb code-gauge --base origin/HEAD
 violations after the recap: the totals per level, how many are in code changed since the merge-base
 with `origin/HEAD`, and at most 10 violations and directive errors: those in the changed code first,
 then the rest, each group with the share of test code first whatever its level, then its errors,
-then its directive errors, then its warnings. A branch's share of test code asks that the change add
-no test code; elsewhere it names the test NCSS to delete or merge. A limit milder than its line's level names its own, as in
+then its directive errors, then its warnings. A branch's share of test code asks a change that adds
+test code to add none, and only reports one that does not; elsewhere it names the test NCSS to delete or merge. A limit milder than its line's level names its own, as in
 `error: ... function cognitive complexity 56 (max 30; largest parts L12-31 19, L33-40 isLegacy 8), function ncss 41 (warning max 30)`,
 where the largest parts are the lines adding the most to the cognitive complexity. After the
 violations come the instructions for handling them. The step never fails verification.
