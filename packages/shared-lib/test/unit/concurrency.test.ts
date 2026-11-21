@@ -77,3 +77,11 @@ test('createConcurrencyLimiter caps tasks in flight across calls and settles eac
     50,
   ]);
 });
+
+test('createConcurrencyLimiter frees the slot of a rejected task for a queued one', async () => {
+  const runWithLimit = createConcurrencyLimiter(1);
+  const rejected = runWithLimit(() => Promise.reject(new Error('failed first')));
+  const queued = runWithLimit(() => Promise.resolve('ran second'));
+  expect(String(await rejected.catch((error: unknown) => error))).toBe('Error: failed first');
+  expect(await queued).toBe('ran second');
+});
