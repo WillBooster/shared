@@ -155,8 +155,9 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
   const branchDirectiveProblems = directiveProblems.filter((problem) =>
     branchReport?.directiveProblems.some(({ file, line }) => file === problem.file && line === problem.line)
   );
+  const branchLines = formatViolationLines(branchViolations, branchDirectiveProblems, true);
   const allLines = [
-    ...formatViolationLines(branchViolations, branchDirectiveProblems, true),
+    ...branchLines,
     ...formatViolationLines(
       violations.filter((violation) => !branchViolations.includes(violation)),
       directiveProblems.filter((problem) => !branchDirectiveProblems.includes(problem)),
@@ -169,13 +170,13 @@ export async function checkCodeGaugeForVerify(project: Project): Promise<string 
     const command = `${project.packageManagerCommand} wb code-gauge`;
     lines.push(
       `... and ${omittedCount} more: list all with \`${command}\`` +
-        (branchViolations.length > MAX_VERIFY_VIOLATION_LINES
+        (branchLines.length > MAX_VERIFY_VIOLATION_LINES
           ? `, those in code this branch changed with \`${command} --base ${VERIFY_BASE_REF}\``
           : '')
     );
   }
   const branchSummary = branchReport
-    ? describeBranchViolations(branchViolations.length)
+    ? describeBranchViolations(branchLines.length)
     : `not ordered by this branch's changes (no report for --base ${VERIFY_BASE_REF})`;
   const report = formatReport(check, lines, branchSummary);
   return allLines.length > 0 ? `${report}\n${VIOLATION_HANDLING_INSTRUCTIONS}` : report;
