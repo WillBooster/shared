@@ -52,7 +52,13 @@ test('cached computes a getter once per instance and keeps in-place mutations', 
   expect([first.computeCount, second.computeCount]).toEqual([1, 1]);
 });
 
-test('memoize releases expired results of keys that are never requested again', async () => {
+const keyPatterns: [string, (step: number) => number][] = [
+  ['rotating keys', (step) => step],
+  ['one hot key after a burst', () => 0],
+  ['a few new keys after a burst', (step) => (step % 25 === 0 ? 2000 + step : 0)],
+];
+
+test.each(keyPatterns)('memoize releases expired results under %s', async (_name, keyAtStep) => {
   let now = 0;
   const originalNow = Date.now;
   Date.now = () => now;
@@ -67,9 +73,10 @@ test('memoize releases expired results of keys that are never requested again', 
       },
       { ttlMs: 1000 }
     );
-    for (let id = 0; id < 1000; id++) {
+    for (let id = 0; id < 1000; id++) load(id);
+    for (let step = 1; step <= 1000; step++) {
       now += 1000;
-      load(id);
+      load(keyAtStep(step));
     }
   } finally {
     Date.now = originalNow;
@@ -77,8 +84,8 @@ test('memoize releases expired results of keys that are never requested again', 
   // A WeakRef keeps its target alive until the current job ends, so collect after yielding.
   await sleep(0);
   Bun.gc(true);
-  // Only the entries since the last sweep remain, which is far fewer than all 1000.
-  expect(refs.filter((ref) => ref.deref()).length).toBeLessThan(200);
+  // Only results inserted within the last two TTLs may remain.
+  expect(refs.filter((ref) => ref.deref()).length).toBeLessThanOrEqual(3);
   // Referencing `load` keeps its cache reachable during the collection above.
   expect(load).toBeFunction();
 });

@@ -11,8 +11,6 @@ export interface MemoizeOptions<Args extends unknown[]> {
   ttlMs?: number;
 }
 
-const MIN_SWEEP_SIZE = 64;
-
 type Cache<R> = Map<string, { value: R; expiresAt: number }>;
 
 /**
@@ -28,12 +26,16 @@ export function memoize<Args extends unknown[], R>(
   }: MemoizeOptions<Args> = {}
 ): (...args: Args) => R {
   const cache: Cache<R> = new Map();
-  // Sweeping whenever the cache doubles since the last sweep keeps the amortized cost per call constant
-  // while bounding the cache to about twice its unexpired entries.
-  let sweepSize = MIN_SWEEP_SIZE;
+  // Sweeping at most once per TTL, on any call, bounds the cache to results inserted within the last two TTLs
+  // whatever the key pattern, at an amortized cost of one entry visit per insertion.
+  let nextSweepAt = 0;
   return (...args) => {
     const cacheKey = key(...args);
     const now = Date.now();
+    if (now >= nextSweepAt) {
+      sweepExpiredEntries(cache, now);
+      nextSweepAt = now + ttlMs;
+    }
     const cachedEntry = takeUnexpiredEntry(cache, cacheKey, now);
     if (cachedEntry) return cachedEntry.value;
 
@@ -41,7 +43,6 @@ export function memoize<Args extends unknown[], R>(
     // The TTL starts when the result is ready, not at the lookup before a possibly slow `fn`.
     cache.set(cacheKey, { value, expiresAt: Date.now() + ttlMs });
     if (cache.size > maxSize) cache.delete(cache.keys().next().value as string);
-    if (Number.isFinite(ttlMs) && cache.size >= sweepSize) sweepSize = sweepExpiredEntries(cache, now);
     if (value instanceof Promise) evictOnRejection(cache, cacheKey, value);
     return value;
   };
@@ -57,12 +58,10 @@ function takeUnexpiredEntry<R>(cache: Cache<R>, cacheKey: string, now: number): 
   return entry;
 }
 
-/** Deletes expired entries and returns the cache size that triggers the next sweep. */
-function sweepExpiredEntries(cache: Cache<unknown>, now: number): number {
+function sweepExpiredEntries(cache: Cache<unknown>, now: number): void {
   for (const [entryKey, { expiresAt }] of cache) {
     if (expiresAt <= now) cache.delete(entryKey);
   }
-  return Math.max(MIN_SWEEP_SIZE, cache.size * 2);
 }
 
 function evictOnRejection(cache: Cache<unknown>, cacheKey: string, promise: Promise<unknown>): void {
