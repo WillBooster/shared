@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { cached, memoize } from '../../src/memoize.js';
+import { sleep } from '../../src/sleep.js';
 
 test('memoize evicts the least recently used result beyond maxSize', () => {
   const calls: number[] = [];
@@ -49,4 +50,35 @@ test('cached computes a getter once per instance and keeps in-place mutations', 
   expect(first.values.mode).toBe('changed');
   expect(second.values.mode).toBe('test');
   expect([first.computeCount, second.computeCount]).toEqual([1, 1]);
+});
+
+test('memoize releases expired results of keys that are never requested again', async () => {
+  let now = 0;
+  const originalNow = Date.now;
+  Date.now = () => now;
+  const refs: WeakRef<object>[] = [];
+  let load: (id: number) => object;
+  try {
+    load = memoize(
+      (id: number) => {
+        const value = { id };
+        refs.push(new WeakRef(value));
+        return value;
+      },
+      { ttlMs: 1000 }
+    );
+    for (let id = 0; id < 1000; id++) {
+      now += 1000;
+      load(id);
+    }
+  } finally {
+    Date.now = originalNow;
+  }
+  // A WeakRef keeps its target alive until the current job ends, so collect after yielding.
+  await sleep(0);
+  Bun.gc(true);
+  // Only the entries since the last sweep remain, which is far fewer than all 1000.
+  expect(refs.filter((ref) => ref.deref()).length).toBeLessThan(200);
+  // Referencing `load` keeps its cache reachable during the collection above.
+  expect(load).toBeFunction();
 });
