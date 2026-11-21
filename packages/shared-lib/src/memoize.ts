@@ -9,13 +9,31 @@ export interface MemoizeOptions<Args extends unknown[]> {
   maxSize?: number;
   /** How long a cached result stays valid, in milliseconds. Defaults to forever. */
   ttlMs?: number;
+  /** A group whose `clear()` also drops every result this function has cached. */
+  group?: MemoizeGroup;
 }
 
 /**
- * A memoized function typed as the original `F`, so generic call signatures keep their inference; the wrapper does not
- * copy `F`'s own properties. `clear()` drops every cached result so that the next calls recompute.
+ * Clears the caches of every function memoized with it as `group`. Its methods are all a memoized function uses, so a
+ * group created by one copy of this package also works with `memoize` from another copy (e.g., another bundle).
  */
-export type Memoized<F> = F & { clear: () => void };
+export interface MemoizeGroup {
+  /** Registers a callback that drops one function's cached results. */
+  add: (clearCache: () => void) => void;
+  /** Drops the cached results of every function in the group, so that their next calls recompute. */
+  clear: () => void;
+}
+
+/** Creates a `MemoizeGroup`; pass it as the `group` option of each `memoize` call whose cache it should clear. */
+export function createMemoizeGroup(): MemoizeGroup {
+  const cacheClearers = new Set<() => void>();
+  return {
+    add: (clearCache) => cacheClearers.add(clearCache),
+    clear: () => {
+      for (const clearCache of cacheClearers) clearCache();
+    },
+  };
+}
 
 type Cache<R> = Map<string, { value: R; expiresAt: number }>;
 
@@ -23,22 +41,21 @@ type Cache<R> = Map<string, { value: R; expiresAt: number }>;
  * Returns a function that caches the results of `fn` by the key of its arguments.
  * A returned promise is cached too, and dropped from the cache when it rejects so that the next call retries.
  */
-export function memoize<F extends (...args: never[]) => unknown>(
-  fn: F,
+export function memoize<Args extends unknown[], R>(
+  fn: (...args: Args) => R,
   {
     key = (...args) => JSON.stringify(args),
     maxSize = Number.POSITIVE_INFINITY,
     ttlMs = Number.POSITIVE_INFINITY,
-  }: MemoizeOptions<Parameters<F>> = {}
-): Memoized<F> {
-  type Args = Parameters<F>;
-  type R = ReturnType<F>;
-  const call = fn as unknown as (...args: Args) => R;
+    group,
+  }: MemoizeOptions<Args> = {}
+): (...args: Args) => R {
   const cache: Cache<R> = new Map();
+  group?.add(() => cache.clear());
   // Sweeping at most once per TTL, on any call, bounds the cache to results inserted within the last two TTLs
   // whatever the key pattern, at an amortized cost of one entry visit per insertion.
   let nextSweepAt = 0;
-  const memoized = (...args: Args): R => {
+  return (...args) => {
     const cacheKey = key(...args);
     const now = Date.now();
     if (now >= nextSweepAt) {
@@ -48,14 +65,13 @@ export function memoize<F extends (...args: never[]) => unknown>(
     const cachedEntry = takeUnexpiredEntry(cache, cacheKey, now);
     if (cachedEntry) return cachedEntry.value;
 
-    const value = call(...args);
+    const value = fn(...args);
     // The TTL starts when the result is ready, not at the lookup before a possibly slow `fn`.
     cache.set(cacheKey, { value, expiresAt: Date.now() + ttlMs });
     if (cache.size > maxSize) cache.delete(cache.keys().next().value as string);
     if (value instanceof Promise) evictOnRejection(cache, cacheKey, value);
     return value;
   };
-  return Object.assign(memoized, { clear: () => cache.clear() }) as unknown as Memoized<F>;
 }
 
 function takeUnexpiredEntry<R>(cache: Cache<R>, cacheKey: string, now: number): { value: R } | undefined {

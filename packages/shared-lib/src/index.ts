@@ -30,7 +30,7 @@ export { getFormString, parseBearerToken } from './http.js';
 export { detectForeignCjkInJapanese, findForeignCjkCharactersInJapanese } from './foreignCjk.js';
 export { formatDuration, formatElapsedTimeInJapanese, humanizeNumber } from './humanize.js';
 export { mailTemplates } from './mail.js';
-export { cached, memoize } from './memoize.js';
+export { cached, createMemoizeGroup, memoize } from './memoize.js';
 export { isRecord, omitUndefined } from './object.js';
 export {
   extractCodeBlocks,
@@ -77,7 +77,7 @@ export type { AppEnv } from './appEnv.js';
 export type { RetryOptions } from './error.js';
 export type { ForeignCjkLanguage } from './foreignCjk.js';
 export type { CodeBlock, MarkdownSection } from './markdown.js';
-export type { Memoized, MemoizeOptions } from './memoize.js';
+export type { MemoizeGroup, MemoizeOptions } from './memoize.js';
 export type { TemplateSection } from './githubTemplates.js';
 export type { ThrottledFetchOptions } from './throttledFetch.js';
 export type { RaceWithTimeoutResult } from './timeout.js';

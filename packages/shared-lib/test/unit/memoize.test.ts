@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { cached, memoize } from '../../src/memoize.js';
+import { cached, createMemoizeGroup, memoize } from '../../src/memoize.js';
 import { sleep } from '../../src/sleep.js';
 
 test('memoize evicts the least recently used result beyond maxSize', () => {
@@ -124,21 +124,35 @@ test('memoize releases expired results on a cache hit without recomputing the hi
   expect(hotValue).toEqual({ id: -1 });
 });
 
-test('memoize recomputes after clear without letting an earlier rejection evict the new result', async () => {
+test('a memoize group clears every member, and a rejection from before the clear keeps the newer result', async () => {
+  const group = createMemoizeGroup();
   let attempts = 0;
   const first = Promise.withResolvers<string>();
-  const load = memoize(() => {
-    attempts++;
-    return attempts === 1 ? first.promise : Promise.resolve('fresh');
-  });
+  const load = memoize(
+    () => {
+      attempts++;
+      return attempts === 1 ? first.promise : Promise.resolve('fresh');
+    },
+    { group }
+  );
+  let doubled = 0;
+  const double = memoize(
+    (value: number) => {
+      doubled++;
+      return value * 2;
+    },
+    { group }
+  );
+  double(1);
   const stale = load();
-  load.clear();
+  group.clear();
   const fresh = load();
+  double(1);
   first.reject(new Error('stale failure'));
   await stale.catch(() => {});
   expect(await fresh).toBe('fresh');
   expect(load()).toBe(fresh);
-  expect(attempts).toBe(2);
+  expect([attempts, doubled]).toEqual([2, 2]);
 });
 
 test('memoize keeps the inference of a generic function', () => {
@@ -146,4 +160,11 @@ test('memoize keeps the inference of a generic function', () => {
   // Type checking fails here if the memoized signature loses `T`.
   const first: string | undefined = firstItem(['a', 'b']);
   expect(first).toBe('a');
+});
+
+test('memoize accepts explicit type arguments and infers arguments from key', () => {
+  const upper = memoize<[string], string>((text) => text.toUpperCase());
+  // Type checking fails here if `text` is no longer contextually typed by `key`.
+  const lower = memoize((text) => text.toLowerCase(), { key: (text: string) => text });
+  expect([upper('a'), lower('B')]).toEqual(['A', 'b']);
 });
