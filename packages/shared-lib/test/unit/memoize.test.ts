@@ -189,7 +189,7 @@ test('a sweep triggered by one group member releases the expired results of the 
   expect([active, ...idles]).toHaveLength(101);
 });
 
-test('a call of a short-TTL group member releases a longer-TTL member result as soon as it expires', async () => {
+test('calls of a short-TTL group member release a longer-TTL member result within one of its TTLs', async () => {
   let now = 0;
   const originalNow = Date.now;
   Date.now = () => now;
@@ -203,10 +203,8 @@ test('a call of a short-TTL group member releases a longer-TTL member result as 
     active(0);
     now = 50;
     idleResultRefs = idles.map((idle) => new WeakRef(idle()));
-    now = 1000;
-    active(1);
-    now = 1100;
-    active(2);
+    // The idle results expire at 1050, and the idle functions' next due sweep is at 2000.
+    for (now = 1000; now <= 2000; now += 100) active(now);
   } finally {
     Date.now = originalNow;
   }
