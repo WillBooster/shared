@@ -189,7 +189,7 @@ test('a sweep triggered by one group member releases the expired results of the 
   expect([active, ...idles]).toHaveLength(101);
 });
 
-test('calls of a short-TTL group member release a longer-TTL member result within one of its TTLs', async () => {
+test('calls of a group member without a TTL release the expired results of members with one', async () => {
   let now = 0;
   const originalNow = Date.now;
   Date.now = () => now;
@@ -198,7 +198,7 @@ test('calls of a short-TTL group member release a longer-TTL member result withi
   let active: (id: number) => object;
   let idles: (() => object)[];
   try {
-    active = memoize((id: number) => ({ id }), { group, ttlMs: 100 });
+    active = memoize((id: number) => ({ id }), { group });
     idles = Array.from({ length: 100 }, (_, id) => memoize(() => ({ id }), { group, ttlMs: 1000 }));
     active(0);
     now = 50;
