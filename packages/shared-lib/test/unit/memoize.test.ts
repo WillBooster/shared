@@ -3,6 +3,10 @@ import { expect, expectTypeOf, test } from 'bun:test';
 import { cached, createMemoizeGroup, memoize } from '../../src/memoize.js';
 import { sleep } from '../../src/sleep.js';
 
+// Bun's conservative collector can keep a few unreachable objects alive through stale stack slots, so retention tests
+// assert on many objects and tolerate this many survivors; a retention bug keeps all of them.
+const PINNED_BY_CONSERVATIVE_GC = 10;
+
 test('memoize evicts the least recently used result beyond maxSize', () => {
   const calls: number[] = [];
   const double = memoize(
@@ -82,7 +86,7 @@ test.each(keyPatterns)('memoize releases expired results under %s', async (_name
     Date.now = originalNow;
   }
   // Only results inserted within the last two TTLs may remain.
-  expect(await collectUntil(refs, 3)).toBeLessThanOrEqual(3);
+  expect(await collectUntil(refs, 3 + PINNED_BY_CONSERVATIVE_GC)).toBeLessThanOrEqual(3 + PINNED_BY_CONSERVATIVE_GC);
   // Referencing `load` keeps its cache reachable during the collection above.
   expect(load).toBeFunction();
 });
@@ -112,7 +116,7 @@ test('memoize releases expired results on a cache hit without recomputing the hi
     Date.now = originalNow;
   }
   expect(refs.length).toBe(101);
-  expect(await collectUntil(refs, 1)).toBe(1);
+  expect(await collectUntil(refs, 1 + PINNED_BY_CONSERVATIVE_GC)).toBeLessThanOrEqual(1 + PINNED_BY_CONSERVATIVE_GC);
   // Referencing `load` and `hotValue` keeps them reachable during the collection above.
   expect(load).toBeFunction();
   expect(hotValue).toEqual({ id: -1 });
@@ -152,13 +156,13 @@ test('a memoize group clears every member, and a rejection from before the clear
   expect([attempts, doubled]).toEqual([2, 2]);
 });
 
-test('a memoize group lets the cache of a discarded function be collected', async () => {
+test('a memoize group lets the caches of discarded functions be collected', async () => {
   const group = createMemoizeGroup();
-  const resultRef = ((): WeakRef<object> => {
-    const load = memoize(() => ({ value: 'cached' }), { group });
+  const resultRefs = Array.from({ length: 100 }, (_, id) => {
+    const load = memoize(() => ({ id }), { group });
     return new WeakRef(load());
-  })();
-  expect(await collectUntil([resultRef], 0)).toBe(0);
+  });
+  expect(await collectUntil(resultRefs, PINNED_BY_CONSERVATIVE_GC)).toBeLessThanOrEqual(PINNED_BY_CONSERVATIVE_GC);
   expect(() => group.clear()).not.toThrow();
 });
 
@@ -167,22 +171,22 @@ test('a sweep triggered by one group member releases the expired results of the 
   const originalNow = Date.now;
   Date.now = () => now;
   const group = createMemoizeGroup();
-  let idleResultRef: WeakRef<object>;
+  let idleResultRefs: WeakRef<object>[];
   let active: (id: number) => object;
-  let idle: () => object;
+  let idles: (() => object)[];
   try {
     active = memoize((id: number) => ({ id }), { group, ttlMs: 1000 });
-    idle = memoize(() => ({ idle: true }), { group, ttlMs: 1000 });
+    idles = Array.from({ length: 100 }, (_, id) => memoize(() => ({ id }), { group, ttlMs: 1000 }));
     active(0);
-    idleResultRef = new WeakRef(idle());
+    idleResultRefs = idles.map((idle) => new WeakRef(idle()));
     now = 1500;
     active(1);
   } finally {
     Date.now = originalNow;
   }
-  expect(await collectUntil([idleResultRef], 0)).toBe(0);
-  // Referencing both functions keeps their caches reachable during the collection above.
-  expect([active, idle]).toHaveLength(2);
+  expect(await collectUntil(idleResultRefs, PINNED_BY_CONSERVATIVE_GC)).toBeLessThanOrEqual(PINNED_BY_CONSERVATIVE_GC);
+  // Referencing the functions keeps their caches reachable during the collection above.
+  expect([active, ...idles]).toHaveLength(101);
 });
 
 test('a call of a short-TTL group member releases a longer-TTL member result as soon as it expires', async () => {
@@ -190,15 +194,15 @@ test('a call of a short-TTL group member releases a longer-TTL member result as 
   const originalNow = Date.now;
   Date.now = () => now;
   const group = createMemoizeGroup();
-  let idleResultRef: WeakRef<object>;
+  let idleResultRefs: WeakRef<object>[];
   let active: (id: number) => object;
-  let idle: () => object;
+  let idles: (() => object)[];
   try {
     active = memoize((id: number) => ({ id }), { group, ttlMs: 100 });
-    idle = memoize(() => ({ idle: true }), { group, ttlMs: 1000 });
+    idles = Array.from({ length: 100 }, (_, id) => memoize(() => ({ id }), { group, ttlMs: 1000 }));
     active(0);
     now = 50;
-    idleResultRef = new WeakRef(idle());
+    idleResultRefs = idles.map((idle) => new WeakRef(idle()));
     now = 1000;
     active(1);
     now = 1100;
@@ -206,9 +210,9 @@ test('a call of a short-TTL group member releases a longer-TTL member result as 
   } finally {
     Date.now = originalNow;
   }
-  expect(await collectUntil([idleResultRef], 0)).toBe(0);
-  // Referencing both functions keeps their caches reachable during the collection above.
-  expect([active, idle]).toHaveLength(2);
+  expect(await collectUntil(idleResultRefs, PINNED_BY_CONSERVATIVE_GC)).toBeLessThanOrEqual(PINNED_BY_CONSERVATIVE_GC);
+  // Referencing the functions keeps their caches reachable during the collection above.
+  expect([active, ...idles]).toHaveLength(101);
 });
 
 test('memoize keeps the exact types of generic, explicitly typed, and key-typed callbacks', () => {
