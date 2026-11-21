@@ -66,6 +66,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
       vinext: false,
       vite: false,
       wb: false,
+      willboosterSharedLib: false,
     },
     release: {
       branches: [],

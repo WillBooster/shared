@@ -5,9 +5,9 @@ import path from 'node:path';
 import { logger } from '../logger.js';
 import { options } from '../options.js';
 import { consumesGeneratedWorkerTypes, generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 
 // Do not remove `windows`: generated .gitignore files must keep ignoring Windows-created local artifacts.
 const defaultNames = ['windows', 'macos', 'linux', 'jetbrains', 'visualstudiocode', 'emacs', 'vim', 'yarn'];
@@ -68,7 +68,7 @@ export async function generateGitignore(config: PackageConfig, rootConfig: Packa
     if (templates === undefined) return;
     const generated = adjustTemplates(templates, config, rootConfig);
     const newContent = headUserContent + '\n' + generated + tailUserContent;
-    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
+    await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 
@@ -199,7 +199,7 @@ async function syncWorkerTypesRule(config: PackageConfig): Promise<string> {
     // so an existing copy is always a disposable generated one.
     const workerTypesPath = path.resolve(config.dirPath, 'worker-configuration.d.ts');
     if (fs.existsSync(workerTypesPath)) {
-      await promisePool.runAndWaitForReturnValue(() => fs.promises.rm(workerTypesPath, { force: true }));
+      await runWithConcurrencyLimit(() => fs.promises.rm(workerTypesPath, { force: true }));
     }
   }
   return '';
@@ -226,7 +226,7 @@ async function fetchTemplate(name: string): Promise<string | undefined> {
     return;
   }
   const template = responseText.trim();
-  await promisePool.runAndWaitForReturnValue(() => writeCache(name, template));
+  await runWithConcurrencyLimit(() => writeCache(name, template));
   if (options.isVerbose) {
     console.info(`Fetched ${url}`);
   }

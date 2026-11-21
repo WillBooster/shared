@@ -6,9 +6,9 @@ import { parse as parseToml } from 'smol-toml';
 import releaseAgeGate from '../../configs/releaseAgeGate.json' with { type: 'json' };
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { doesContainJava } from '../utils/packageCapabilities.js';
-import { promisePool } from '../utils/promisePool.js';
 
 interface BunfigToml {
   install?: {
@@ -105,7 +105,7 @@ export async function generateBunfigToml(
         : migrateOxfmtIgnoreLines(config.dirPath, managedIgnorePatterns)
     ).filter((line) => !managedIgnorePatterns.some((pattern) => line === `"${pattern}",`));
     const content = newContent(existingContent, useGlobalStore, managedIgnorePatterns, projectIgnoreLines);
-    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, content));
+    await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, content));
   });
 }
 

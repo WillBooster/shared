@@ -4,8 +4,8 @@ import { consumesDockerEnv } from '@willbooster/shared-lib-node/src';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 
 export async function fixRailwayignore(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('fixRailwayignore', async () => {
@@ -14,7 +14,7 @@ export async function fixRailwayignore(config: PackageConfig): Promise<void> {
     const usesDockerEnv = consumesDockerEnv(config.dockerfile);
     if (!content) {
       if (config.isRailway && usesDockerEnv) {
-        await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, '!.docker.env\n'));
+        await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, '!.docker.env\n'));
       }
       return;
     }
@@ -31,7 +31,7 @@ export async function fixRailwayignore(config: PackageConfig): Promise<void> {
     }
     if (newContent === content) return;
 
-    await promisePool.runAndWaitForReturnValue(() =>
+    await runWithConcurrencyLimit(() =>
       newContent ? fsUtil.generateFile(filePath, newContent) : fsUtil.removeConfined(filePath)
     );
   });

@@ -4,10 +4,10 @@ import merge from 'deepmerge';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { sortKeys } from '../utils/objectUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 
 const excludeFilePatterns = [
   '**/.git/objects/**',
@@ -46,7 +46,7 @@ export async function generateVscodeSettings(config: PackageConfig): Promise<voi
     // already-clean settings.json survive wbfy runs.
     if (JSON.stringify(settings) === originalSettingsJson) return;
     const newContent = JSON.stringify(settings, undefined, 2);
-    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
+    await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 

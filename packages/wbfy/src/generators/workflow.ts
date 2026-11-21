@@ -9,12 +9,12 @@ import * as yaml from 'js-yaml';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runAllWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
 import { isSkippedReleaseCaller, parseOrgReusableWorkflowCall } from '../utils/orgReusableWorkflowCall.js';
 import { repoPublishesPrivatePackages, repoResolvesPrivatePackages } from '../utils/privatePackages.js';
-import { runAllInPool } from '../utils/promisePool.js';
 import { parseShellCommands } from '../utils/shellParser.js';
 import { dumpYamlOver } from '../utils/yamlUtil.js';
 import { hasFnoxSyncFailed, resolveFnoxCiAgeKeySecretName } from './fnoxToml.js';
@@ -242,7 +242,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     await fs.promises.mkdir(workflowsPath, { recursive: true });
 
     const fileNamesByKind = await collectWorkflowFileNamesByKind(rootConfig, workflowsPath);
-    await runAllInPool(
+    await runAllWithConcurrencyLimit(
       // 実際はKnownKind以外の値も代入されることに注意
       [...fileNamesByKind].map(
         ([kind, fileName]) =>

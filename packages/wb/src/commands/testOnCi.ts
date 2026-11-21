@@ -11,7 +11,6 @@ import { selectScripts } from '../scripts/execution/selectScripts.js';
 import { normalizeScript, runWithSpawn } from '../scripts/run.js';
 import { buildEnvReaderOptionArgs, type sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { PackageCommandError } from '../utils/packageCommand.js';
-import { promisePool } from '../utils/promisePool.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../utils/shell.js';
 import { findTestStructureViolations, printTestStructureViolations } from '../utils/testStructure.js';
 import { getDefaultUnitTargets, POST_TEST_SCRIPT_NAME } from './test.js';
@@ -112,7 +111,6 @@ async function runTests(projects: Project[], argv: CiArgv, steps: CiStep[]): Pro
     }
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
       await runCiStep('startup', () => scripts.testStart(project, argv), project, argv, steps);
-      await promisePool.promiseAll();
       if (hasDockerfile) {
         project.env.WB_DOCKER ||= '1';
         await runCiStep('docker build', () => scripts.buildDocker(project, 'test'), project, argv, steps);

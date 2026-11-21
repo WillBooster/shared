@@ -2,9 +2,9 @@ import path from 'node:path';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 
 const commonContent = `
 3rd-party/
@@ -39,6 +39,6 @@ pubspec.yaml
     }
 
     const newContent = headUserContent + commonContent + additionalContent + gitignoreContent + tailUserContent;
-    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
+    await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, newContent));
   });
 }

@@ -7,7 +7,6 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 
 import { findDescendantProjects } from '../project.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
-import { promisePool } from '../utils/promisePool.js';
 import { shellEscapeArgument } from '../utils/shell.js';
 import { prepareForRunningCommand } from './commandUtils.js';
 
@@ -66,7 +65,6 @@ export async function setup(
         const quotedPythonPath = shellEscapeArgument(pythonPath);
         await runWithSpawnInParallel(`poetry env use ${quotedPythonPath}`, project, argv);
       }
-      await promisePool.promiseAll();
       await runWithSpawn('poetry run pip install --upgrade pip', project, argv);
       await runWithSpawn('poetry install --ansi', project, argv);
     }

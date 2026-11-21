@@ -11,7 +11,7 @@ import {
   resolveFallbackWbEnv,
   shouldSuppressEnvironmentOutput,
 } from '@willbooster/shared-lib-node/src';
-import { memoizeOne } from 'at-decorators';
+import { cached } from '@willbooster/shared-lib/src';
 import chalk from 'chalk';
 import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
@@ -43,7 +43,7 @@ export class Project {
     this.loadEnv = loadEnv;
   }
 
-  @memoizeOne
+  @cached
   get isBunAvailable(): boolean {
     return this.usesBunPackageManager;
   }
@@ -61,7 +61,7 @@ export class Project {
   // A single signal decides every bun-vs-yarn branch in wb (script normalization included):
   // splitting the tool-manifest signal from the lockfile signal once produced commands mixing
   // `bun install` with `yarn prisma ...` in mise-pinned repos whose bun.lock is gitignored.
-  @memoizeOne
+  @cached
   get usesBunPackageManager(): boolean {
     // Some repositories rely on the lockfile or packageManager field instead of mise.
     // Docker optimization must follow the target project, not the runtime that launched wb.
@@ -71,7 +71,7 @@ export class Project {
     return isBunPackageManager(packageManager);
   }
 
-  @memoizeOne
+  @cached
   get buildCommand(): string {
     return this.packageJson.scripts?.build?.includes('buildIfNeeded')
       ? 'YARN run build'
@@ -84,19 +84,19 @@ export class Project {
     return this._dirPath;
   }
 
-  @memoizeOne
+  @cached
   get rootDirPath(): string {
     return fs.existsSync(path.join(this.dirPath, '..', '..', 'package.json'))
       ? path.resolve(this.dirPath, '..', '..')
       : this.dirPath;
   }
 
-  @memoizeOne
+  @cached
   get dockerfile(): string {
     return fs.readFileSync(this.findFile('Dockerfile'), 'utf8');
   }
 
-  @memoizeOne
+  @cached
   get hasDockerfile(): boolean {
     try {
       return !!this.findFile('Dockerfile');
@@ -105,23 +105,21 @@ export class Project {
     }
   }
 
-  @memoizeOne
+  @cached
   get hasSourceCode(): boolean {
     return fs.existsSync(path.join(this.dirPath, 'src'));
   }
 
-  @memoizeOne
+  @cached
   get name(): string {
     return this.packageJson.name || 'unknown';
   }
 
-  @memoizeOne
+  @cached
   get dockerImageName(): string {
     const name = this.packageJson.name || 'unknown';
     return name.replaceAll('@', '').replaceAll('/', '-');
   }
-
-  private declaredEnvKeyCache: Set<string> | undefined;
 
   /**
    * The names of the environment variables the PROJECT declares (its fnox sources), excluding
@@ -129,36 +127,26 @@ export class Project {
    * variables such as PATH. `env` cannot answer this: it merges process.env, so a project variable
    * is indistinguishable from an inherited one there.
    */
+  @cached
   get declaredEnvKeys(): Set<string> {
-    if (this.declaredEnvKeyCache) return this.declaredEnvKeyCache;
-    if (!this.loadEnv) {
-      this.declaredEnvKeyCache = new Set();
-      return this.declaredEnvKeyCache;
-    }
+    if (!this.loadEnv) return new Set();
     const [, envSources] = readEnvironmentVariables(this.argv, this.dirPath, { ignoreProcessEnv: true });
-    this.declaredEnvKeyCache = selectFnoxSourcedKeys(envSources);
-    return this.declaredEnvKeyCache;
+    return selectFnoxSourcedKeys(envSources);
   }
 
-  // Cached in a plain field rather than with @memoizeOne: that decorator keys its cache on a hash
-  // of the instance, which changes as other memoized getters populate the instance, so `env` could
-  // silently be recomputed — dropping in-place mutations (e.g. `project.env.PORT ||= …`, or the
-  // secrets `wb deploy` merges from .env.cloudflare) that callers rely on for spawned commands.
-  private envCache: Record<string, string | undefined> | undefined;
-
+  /** Callers mutate the returned object in place (e.g. `project.env.PORT ||= …`) to pass values to spawned commands. */
+  @cached
   get env(): Record<string, string | undefined> {
-    if (this.envCache) return this.envCache;
-    if (!this.loadEnv) {
-      this.envCache = process.env;
-      return this.envCache;
-    }
+    if (!this.loadEnv) return process.env;
 
     const [mergedEnv, envPathAndLoadedEnvVarNamePairs] = readAndMergeEnvironmentVariables(this.argv, this.dirPath);
-    this.envCache = mergedEnv;
     // `mise env` is excluded: it reports tool-activation output (e.g. PATH) even in repos that
     // declare no environment variables at all, which must not trigger the CI strictness below.
-    this.completeAndValidateWbEnv(envPathAndLoadedEnvVarNamePairs.some(([source]) => !source.startsWith('mise env')));
-    return this.envCache;
+    this.completeAndValidateWbEnv(
+      mergedEnv,
+      envPathAndLoadedEnvVarNamePairs.some(([source]) => !source.startsWith('mise env'))
+    );
+    return mergedEnv;
   }
 
   private static readonly standardWbEnvModes = new Set(['development', 'test', 'staging', 'production']);
@@ -176,10 +164,7 @@ export class Project {
    * - `NEXT_PUBLIC_WB_ENV` is derived from `WB_ENV` for Next.js/vinext apps when missing, so a
    *   production build can no longer bake a stale development value into the client bundle.
    */
-  private completeAndValidateWbEnv(hasEnvironmentSources: boolean): void {
-    const env = this.envCache;
-    if (!env) return;
-
+  private completeAndValidateWbEnv(env: Record<string, string | undefined>, hasEnvironmentSources: boolean): void {
     // On CI, WB_ENV must be EXPORTED by the workflow — checked against process.env, not the
     // merged environment: a committed base default (e.g. fnox's development entry) would
     // otherwise satisfy the check and silently run CI in development mode.
@@ -257,19 +242,19 @@ export class Project {
     }
   }
 
-  @memoizeOne
+  @cached
   private get requiresNextPublicWbEnv(): boolean {
     // OWN dependencies only: a root-level next/vinext devDependency in a mixed monorepo must not
     // force NEXT_PUBLIC_WB_ENV onto every non-Next workspace package.
     return !!this.getOwnDependencyVersion('next') || !!this.getOwnDependencyVersion('vinext');
   }
 
-  @memoizeOne
+  @cached
   get packageJson(): PackageJson {
     return JSON.parse(fs.readFileSync(this.packageJsonPath, 'utf8')) as PackageJson;
   }
 
-  @memoizeOne
+  @cached
   get packageJsonPath(): string {
     return path.join(this.dirPath, 'package.json');
   }
@@ -286,64 +271,64 @@ export class Project {
    * hand-maintain their `Env` instead. Without this check, such a package would gain an untracked
    * ~500KB generated file on every install.
    */
-  @memoizeOne
+  @cached
   get generatesWorkerTypes(): boolean {
     if (!findWranglerConfigPath(this) || !this.hasOwnDependency('wrangler')) return false;
     return hasManagedGitignoreRule(this.dirPath, WORKER_TYPES_FILE_NAME);
   }
 
-  @memoizeOne
+  @cached
   get hasPrisma(): boolean {
     return !!this.getOwnDependencyVersion('prisma');
   }
 
   /** Blitz repositories keep their Prisma schema and SQLite databases under db/ instead of prisma/. */
-  @memoizeOne
+  @cached
   get prismaDirName(): string {
     return fs.existsSync(path.join(this.dirPath, 'db', 'schema.prisma')) ? 'db' : 'prisma';
   }
 
-  @memoizeOne
+  @cached
   get hasDrizzle(): boolean {
     return !!this.getOwnDependencyVersion('drizzle-orm');
   }
 
-  @memoizeOne
+  @cached
   get databaseOrm(): DatabaseOrm | undefined {
     if (this.hasPrisma) return 'prisma';
     if (this.hasDrizzle) return 'drizzle';
     return;
   }
 
-  @memoizeOne
+  @cached
   get hasVitest(): boolean {
     return !!(this.packageJson.dependencies?.vitest ?? this.packageJson.devDependencies?.vitest);
   }
 
-  @memoizeOne
+  @cached
   get hasOxlint(): boolean {
     return this.hasDependency('oxlint');
   }
 
-  @memoizeOne
+  @cached
   get hasTypeAwareOxlint(): boolean {
     // Oxlint's type-aware mode requires the oxlint-tsgolint binary.
     return this.hasOxlint && this.hasDependency('oxlint-tsgolint');
   }
 
-  @memoizeOne
+  @cached
   get hasPrettier(): boolean {
     return this.hasDependency('prettier');
   }
 
-  @memoizeOne
+  @cached
   get hasPoetryLock(): boolean {
     return (
       fs.existsSync(path.join(this.dirPath, 'poetry.lock')) || fs.existsSync(path.join(this.rootDirPath, 'poetry.lock'))
     );
   }
 
-  @memoizeOne
+  @cached
   get hasPubspecYaml(): boolean {
     return (
       fs.existsSync(path.join(this.dirPath, 'pubspec.yaml')) ||
@@ -351,7 +336,7 @@ export class Project {
     );
   }
 
-  @memoizeOne
+  @cached
   get hasCargoToml(): boolean {
     // Only the project's own directory is checked because `cargo fmt --all`
     // covers the whole workspace; matching the root directory too would make
@@ -360,7 +345,7 @@ export class Project {
     return fs.existsSync(path.join(this.dirPath, 'Cargo.toml'));
   }
 
-  @memoizeOne
+  @cached
   get preferredLinter(): 'oxlint' | undefined {
     if (this.hasOxlint) return 'oxlint';
     return;
@@ -370,7 +355,7 @@ export class Project {
     return !!this.getOwnDependencyVersion(packageName);
   }
 
-  @memoizeOne
+  @cached
   get hasPlaywrightConfig(): boolean {
     try {
       return !!this.findFile('playwright.config.ts');
@@ -384,7 +369,7 @@ export class Project {
    * starts the app under test. Unlike {@link skipLaunchingServerForPlaywright} this ignores CI, so
    * it also holds for library fixtures whose only server is the one Playwright manages.
    */
-  @memoizeOne
+  @cached
   get hasPlaywrightWebServerConfig(): boolean {
     try {
       const configPath = this.findFile('playwright.config.ts');
@@ -399,7 +384,7 @@ export class Project {
    * (`/api/ping` for `${baseURL}/api/ping`), or an empty string when it names none. Only a string
    * or template literal whose path is plain text is recognized.
    */
-  @memoizeOne
+  @cached
   get playwrightWebServerUrlPath(): string {
     try {
       const configText = fs.readFileSync(this.findFile('playwright.config.ts'), 'utf8');
@@ -416,7 +401,7 @@ export class Project {
     }
   }
 
-  @memoizeOne
+  @cached
   get skipLaunchingServerForPlaywright(): boolean {
     // On CI wb launches the app itself so the run does not depend on Playwright's `reuseExistingServer`
     // (which is disabled on CI); locally, a `webServer` block means Playwright already owns the server.
@@ -424,7 +409,7 @@ export class Project {
     return this.hasPlaywrightWebServerConfig;
   }
 
-  @memoizeOne
+  @cached
   get dockerPackageJson(): PackageJson {
     const dockerfileDirPath = path.dirname(this.findFile('Dockerfile'));
     return dockerfileDirPath === this.dirPath
@@ -432,7 +417,7 @@ export class Project {
       : (JSON.parse(fs.readFileSync(path.join(dockerfileDirPath, 'package.json'), 'utf8')) as PackageJson);
   }
 
-  @memoizeOne
+  @cached
   get binExists(): boolean {
     return prependNodeModulesBinToPath(this.dirPath, this.env);
   }
@@ -472,7 +457,7 @@ export class Project {
     );
   }
 
-  @memoizeOne
+  @cached
   private get rootPackageJson(): PackageJson | undefined {
     if (this.rootDirPath === this.dirPath) return this.packageJson;
 

@@ -5,9 +5,9 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runAllWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
-import { runAllInPool } from '../utils/promisePool.js';
 import {
   generateAgentCodingStyle,
   getDefaultProseLanguage,
@@ -61,7 +61,7 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
       codingRuleExtraContent ? `\n${codingRuleExtraContent.trimEnd()}` : ''
     }`;
 
-    await runAllInPool([
+    await runAllWithConcurrencyLimit([
       () => fsUtil.generateFile(configFilePath, yamlContent),
       () => fsUtil.generateFile(styleguideFilePath, styleguideContent),
     ]);

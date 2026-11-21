@@ -90,6 +90,7 @@ export interface PackageConfig {
     vinext: boolean;
     vite: boolean;
     wb: boolean;
+    willboosterSharedLib: boolean;
     chakra: boolean;
     drizzle: boolean;
   };
@@ -440,6 +441,9 @@ function detectDependencies(
     vinext: !!dependencies.vinext || !!devDependencies.vinext,
     vite: !!dependencies.vite || !!devDependencies.vite,
     wb: !!dependencies['@willbooster/wb'] || !!devDependencies['@willbooster/wb'],
+    willboosterSharedLib: Object.keys({ ...dependencies, ...devDependencies }).some((name) =>
+      name.startsWith('@willbooster/shared-lib')
+    ),
   };
 }
 

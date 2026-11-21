@@ -1,7 +1,7 @@
 export { getAppEnv } from './appEnv.js';
 export { chunk } from './array.js';
 export { ensureTruthy } from './assert.js';
-export { forEachConcurrently, mapConcurrently } from './concurrency.js';
+export { createConcurrencyLimiter, forEachConcurrently, mapConcurrently } from './concurrency.js';
 export { sha256HexAsync, timingSafeEqualStringAsync } from './crypto.js';
 export {
   BUG_ISSUE_SECTIONS,
@@ -30,6 +30,7 @@ export { getFormString, parseBearerToken } from './http.js';
 export { detectForeignCjkInJapanese, findForeignCjkCharactersInJapanese } from './foreignCjk.js';
 export { formatDuration, formatElapsedTimeInJapanese, humanizeNumber } from './humanize.js';
 export { mailTemplates } from './mail.js';
+export { cached, memoize } from './memoize.js';
 export { isRecord, omitUndefined } from './object.js';
 export {
   extractCodeBlocks,
@@ -76,6 +77,7 @@ export type { AppEnv } from './appEnv.js';
 export type { RetryOptions } from './error.js';
 export type { ForeignCjkLanguage } from './foreignCjk.js';
 export type { CodeBlock, MarkdownSection } from './markdown.js';
+export type { MemoizeOptions } from './memoize.js';
 export type { TemplateSection } from './githubTemplates.js';
 export type { ThrottledFetchOptions } from './throttledFetch.js';
 export type { RaceWithTimeoutResult } from './timeout.js';

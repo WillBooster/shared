@@ -3,9 +3,9 @@ import path from 'node:path';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 import { spawnOrUndefined } from '../utils/spawnUtil.js';
 
 // cf. https://bun.sh/guides/install/git-diff-bun-lockfile
@@ -29,7 +29,7 @@ dist/** linguist-generated=true
 export async function generateGitattributes(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateGitattributes', async () => {
     const filePath = path.resolve(config.dirPath, '.gitattributes');
-    await promisePool.runAndWaitForReturnValue(() => fsUtil.generateFile(filePath, newContent));
+    await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 
