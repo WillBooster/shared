@@ -21,5 +21,10 @@
       "groupName": "litestream",
       "groupSlug": "litestream",
     },
+    // 15.0.3: Version 15 uses grammar ABI 0x5742000d and requires web-tree-sitter 23, but wbfy loads it with runtime 20 (ABI 0x5742000c); a coordinated runtime upgrade is required: https://github.com/WillBooster/tree-sitter-bash/pull/133 and https://github.com/WillBooster/shared/pull/1647.
+    {
+      "matchPackageNames": ["@willbooster/tree-sitter-bash"],
+      "allowedVersions": "!/^15\\.0\\.3$/",
+    },
   ],
 }
