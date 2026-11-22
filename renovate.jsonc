@@ -26,5 +26,10 @@
       "matchPackageNames": ["@willbooster/tree-sitter-bash"],
       "allowedVersions": "!/^15\\.0\\.3$/",
     },
+    // 23.0.4: The v22+ runtime requires grammar ABI 0x5742000d, but wbfy loads tree-sitter-bash 14.0.0 with ABI 0x5742000c; upgrading the grammar is also required. https://github.com/WillBooster/tree-sitter/pull/366 https://github.com/WillBooster/shared/pull/1675
+    {
+      "matchPackageNames": ["@willbooster/web-tree-sitter"],
+      "allowedVersions": "!/^23\\.0\\.4$/",
+    },
   ],
 }
