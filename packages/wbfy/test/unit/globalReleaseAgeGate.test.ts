@@ -115,43 +115,27 @@ interface CargoConfigCase {
   name: string;
   files: Record<string, string>;
   expected: Record<string, string>;
-  exitCode: number;
 }
 
 test.each<CargoConfigCase>([
   {
-    name: 'adds the gate to a new config.toml',
-    files: {},
-    expected: { 'config.toml': '[registry]\nglobal-min-publish-age = "7 days"\n' },
-    exitCode: 0,
+    name: 'deletes a config that holds only the gate',
+    files: { 'config.toml': '[registry]\nglobal-min-publish-age = "7 days"\n' },
+    expected: {},
   },
   {
-    name: 'keeps the other settings and overwrites a weakened gate',
+    name: 'removes the gate from both config files while keeping the other settings',
     files: {
-      'config.toml': '[net]\ngit-fetch-with-cli = true\n\n[registry] # crates\nglobal-min-publish-age = "0 days"\n',
-    },
-    expected: {
-      'config.toml': '[net]\ngit-fetch-with-cli = true\n\n[registry] # crates\nglobal-min-publish-age = "7 days"\n',
-    },
-    exitCode: 0,
-  },
-  {
-    // Cargo reads the legacy file instead of config.toml when both exist.
-    name: 'writes the legacy config that Cargo reads',
-    files: { config: '[net]\noffline = false\n', 'config.toml': '[net]\noffline = true\n' },
-    expected: {
       config: '[net]\noffline = false\n\n[registry]\nglobal-min-publish-age = "7 days"\n',
-      'config.toml': '[net]\noffline = true\n',
+      'config.toml':
+        '[registry] # crates\ndefault = "crates-io"\nglobal-min-publish-age = "7 days"\n\n[net]\noffline = true\n',
     },
-    exitCode: 0,
+    expected: {
+      config: '[net]\noffline = false\n',
+      'config.toml': '[registry] # crates\ndefault = "crates-io"\n\n[net]\noffline = true\n',
+    },
   },
-  {
-    name: 'leaves a config whose gate does not read back untouched and fails',
-    files: { 'config.toml': 'registry.default = "crates-io"\n' },
-    expected: { 'config.toml': 'registry.default = "crates-io"\n' },
-    exitCode: 1,
-  },
-])('$name in the global Cargo config', async ({ files, expected, exitCode }) => {
+])('$name in the global Cargo config', async ({ files, expected }) => {
   const workDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-release-age-gate-'));
   try {
     const homeDirPath = path.join(workDirPath, 'home');
@@ -167,7 +151,7 @@ test.each<CargoConfigCase>([
       stderr: 'inherit',
       stdout: 'inherit',
     });
-    expect(await spawned.exited).toBe(exitCode);
+    expect(await spawned.exited).toBe(0);
 
     const actual: Record<string, string> = {};
     for (const fileName of await fs.readdir(cargoHomeDirPath)) {

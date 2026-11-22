@@ -1,40 +1,37 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import releaseAgeGate from '../../configs/releaseAgeGate.json' with { type: 'json' };
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
-import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { setTomlTableString } from '../utils/tomlUtil.js';
 
 /**
- * Applies the organization's minimum-release-age policy to Cargo through the config file that
- * gateCargoConfig picks in `.cargo/` at the repository root. Cargo reads config files from the current directory upward, not from the
- * manifest's directory, and Renovate runs `cargo update --manifest-path <dir>/Cargo.toml` from the
- * repository root, so a config next to a nested Cargo.toml (e.g. src-tauri/) would not gate it.
- * Cargo honors the key from 1.100; 1.98 and 1.99 warn that they ignore it, and older versions ignore
- * it silently, so writing it never breaks an older toolchain.
+ * Removes the crate publish-age gate that earlier wbfy versions wrote to the repository's root `.cargo/`.
+ * Cargo has no per-crate exemption, so the gate also held back our own crates and failed Renovate's bumps of
+ * them for a week after each release.
  */
 export async function generateCargoConfigToml(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateCargoConfigToml', async () => {
-    const { filePath, content } = await gateCargoConfig(path.resolve(config.dirPath, '.cargo'));
-    await runWithConcurrencyLimit(() => fsUtil.generateFile(filePath, content));
+    for (const { filePath, content } of await ungateCargoConfigs(path.resolve(config.dirPath, '.cargo'))) {
+      await (content ? fsUtil.generateFile(filePath, content) : fsUtil.removeConfined(filePath));
+    }
   });
 }
 
 /**
- * Returns the config file Cargo reads in `cargoDirPath` (the legacy `config`, which Cargo prefers when
- * both exist, else `config.toml`) and its content with the gate set, keeping every other setting.
- * The policy is the organization's, never the repository's or the user's: a hand-weakened value is
- * overwritten. Throws when the gate cannot be written as one line under the `[registry]` header.
+ * Returns each Cargo config file in `cargoDirPath` that has the gate and its content without it,
+ * empty when nothing else remains.
  */
-export async function gateCargoConfig(cargoDirPath: string): Promise<{ filePath: string; content: string }> {
-  const legacyFilePath = path.join(cargoDirPath, 'config');
-  const legacyContent = await fsUtil.readFileIfExists(legacyFilePath);
-  const filePath = legacyContent === undefined ? path.join(cargoDirPath, 'config.toml') : legacyFilePath;
-  const content = legacyContent ?? (await fsUtil.readFileIfExists(filePath)) ?? '';
-  return {
-    filePath,
-    content: setTomlTableString(content, 'registry', 'global-min-publish-age', `${releaseAgeGate.days} days`),
-  };
+export async function ungateCargoConfigs(cargoDirPath: string): Promise<{ filePath: string; content: string }[]> {
+  const files = await Promise.all(
+    ['config', 'config.toml'].map(async (fileName) => {
+      const filePath = path.join(cargoDirPath, fileName);
+      const content = await fs.readFile(filePath, 'utf8').catch(() => {});
+      const ungated = content
+        ?.replace(/^global-min-publish-age = .*\n/mu, '')
+        .replace(/(?<=^|\n)\n?\[registry\]\n$/u, '');
+      return content === ungated || ungated === undefined ? undefined : { filePath, content: ungated };
+    })
+  );
+  return files.filter((file) => file !== undefined);
 }
