@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, expect, it } from 'bun:test';
+import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
-import net from 'node:net';
 import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
@@ -24,15 +24,16 @@ afterEach(async () => {
 });
 
 it('serves a Worker that sees its declared secrets and the D1 schema of its migration settings', async () => {
-  const port = await findFreePort();
+  // Without PORT, wb picks a free port itself; with one, it would kill whatever listens there.
   const server = spawn('node', [cliPath, 'start'], {
     cwd: dirPath,
     detached: true,
-    env: { ...workerEnv, PORT: String(port), WB_ENV: 'development', MISE_ENV: undefined },
-    stdio: 'ignore',
+    env: { ...workerEnv, PORT: undefined, WB_ENV: 'development', MISE_ENV: undefined },
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
   try {
-    expect(await fetchJsonWhenReady(`http://127.0.0.1:${port}/`)).toEqual({
+    const response = await fetch(await waitForServerUrl(server));
+    expect(await response.json()).toEqual({
       secret: 's3cret',
       tables: ['example', 'migration_history'],
       undeclared: false,
@@ -177,27 +178,19 @@ esac
   );
 }
 
-async function findFreePort(): Promise<number> {
+/** Resolves with the URL the dev server reports once it accepts requests. */
+async function waitForServerUrl(server: ChildProcess): Promise<string> {
   return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address() as net.AddressInfo;
-      server.close(() => {
-        resolve(port);
-      });
+    let output = '';
+    const onData = (chunk: Buffer): void => {
+      output += chunk.toString();
+      const url = /Ready on (http:\/\/127\.0\.0\.1:\d+)/u.exec(output)?.[1];
+      if (url) resolve(url);
+    };
+    server.stdout?.on('data', onData);
+    server.stderr?.on('data', onData);
+    server.once('exit', (code) => {
+      reject(new Error(`wb start exited with ${code} before serving:\n${output}`));
     });
   });
-}
-
-async function fetchJsonWhenReady(url: string): Promise<unknown> {
-  for (;;) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) return await response.json();
-    } catch {
-      // Not listening yet: the test's timeout bounds the wait.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
 }
