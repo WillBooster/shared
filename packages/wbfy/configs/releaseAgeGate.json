@@ -81,5 +81,17 @@
     "wbfy",
     "yarn-plugin-auto-install"
   ],
-  "temporaryExcludes": {}
+  "temporaryExcludes": {
+    "cf": "2026-12-09",
+    "miniflare": "2026-12-09",
+    "workerd": "2026-12-09",
+    "@cloudflare/workerd-darwin-64": "2026-12-09",
+    "@cloudflare/workerd-darwin-arm64": "2026-12-09",
+    "@cloudflare/workerd-linux-64": "2026-12-09",
+    "@cloudflare/workerd-linux-arm64": "2026-12-09",
+    "@cloudflare/workerd-windows-64": "2026-12-09",
+    "@cloudflare/config": "2026-12-09",
+    "@cloudflare/runtime-types": "2026-12-09",
+    "@cloudflare/build-output-utils": "2026-12-09"
+  }
 }
