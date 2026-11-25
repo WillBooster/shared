@@ -600,12 +600,8 @@ async function listRemoteWorkerSecretNames({
     return undefined;
   }
   if (ret.status === 0) {
-    // cf evaluates the config here, whose own output may precede the JSON array on stdout.
-    const jsonStart = ret.stdout.search(/^\[/mu);
-    const parsed = z
-      .array(z.looseObject({ name: z.string() }))
-      .safeParse(parseJsonOrUndefined(ret.stdout.slice(Math.max(jsonStart, 0))));
-    if (parsed.success) return parsed.data.map(({ name }) => name);
+    const names = parseSecretNames(ret.stdout);
+    if (names) return names;
   } else if (/\b100(07|90)\b/u.test(ret.stdout + ret.stderr)) {
     // The Worker does not exist yet, so a first deploy inherits nothing: the Cloudflare API
     // answers 10007 (workers.api.error.service_not_found) or 10090
@@ -617,6 +613,20 @@ async function listRemoteWorkerSecretNames({
       `Failed to list the remote Worker secrets; checking only the local payload against Cloudflare's limits.\n${(ret.stderr || ret.stdout).trim()}`
     )
   );
+  return undefined;
+}
+
+/**
+ * cf evaluates the config for this command, whose own output (bracketed log lines, even JSON
+ * arrays) may precede the listing on stdout: the listing is the last line-initial `[` from which
+ * the rest of stdout parses as the expected array.
+ */
+function parseSecretNames(stdout: string): string[] | undefined {
+  const starts = [...stdout.matchAll(/^\[/gmu)].map((match) => match.index);
+  for (const start of starts.toReversed()) {
+    const parsed = z.array(z.looseObject({ name: z.string() })).safeParse(parseJsonOrUndefined(stdout.slice(start)));
+    if (parsed.success) return parsed.data.map(({ name }) => name);
+  }
   return undefined;
 }
 
