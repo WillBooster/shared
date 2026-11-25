@@ -209,16 +209,15 @@ test('uses stable age-gated versions for generated dependencies when skipping in
   expect(packageJson.devDependencies?.prettier).toMatch(/^\d+\.\d+\.\d+$/u);
 });
 
-// `wb gen-code` generates worker-configuration.d.ts itself, so wbfy no longer weaves `wrangler types` into the
-// managed scripts: a Cloudflare package normalizes to `bun wb gen-code` like any other.
+// The types under .cloudflare/ are gitignored, so a fresh install must regenerate them.
 test('normalizes managed scripts of a Cloudflare project to wb gen-code', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
+  const wranglerPackageJson = { devDependencies: { cf: '1.0.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: {}, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
       isCloudflare: true,
-      doesContainWranglerConfig: true,
+      doesContainCloudflareConfig: true,
       packageJson: wranglerPackageJson,
     },
     { createI18nDir: true }
@@ -228,143 +227,6 @@ test('normalizes managed scripts of a Cloudflare project to wb gen-code', async 
     'gen-code': 'bun wb gen-code',
     postinstall: 'bun wb gen-code',
   });
-});
-
-const rejectedWranglerScripts: [string, Record<string, string>, boolean?][] = [
-  ['a referenced alias', { 'gen-types': 'wrangler types', build: 'bun run gen-types && vite build' }],
-  ['an npm run-script alias reference', { 'gen-types': 'wrangler types', build: 'npm run-script gen-types' }],
-  ['a quoted alias reference', { 'gen-types': 'wrangler types', build: 'bun run "gen-types"' }],
-  [
-    'an alias reference after an unparseable command',
-    { 'gen-types': 'wrangler types', build: 'patch-package > /dev/null && bun run gen-types' },
-  ],
-  ['a compound alias', { 'gen-types': 'wrangler types && echo custom', postinstall: 'bun run gen-types' }],
-  ['an arbitrary generator name', { 'types:worker': 'wrangler types --strict-vars=false' }],
-  ['an arbitrary generator name with extra whitespace', { 'types:worker': 'wrangler  types --strict-vars=false' }],
-  ['an unsupported runner', { 'gen-types': 'npm exec wrangler types --strict-vars=false' }],
-  ['a yarn binary runner', { postinstall: 'yarn wrangler types --strict-vars=false' }],
-  ['a bun binary runner', { postinstall: 'bun wrangler types --strict-vars=false' }],
-  ['a pnpm binary runner', { postinstall: 'pnpm wrangler types --strict-vars=false' }],
-  ['an npx runner option', { postinstall: 'npx -y wrangler types --strict-vars=false' }],
-  ['a bunx runner option', { postinstall: 'bunx --bun wrangler types --strict-vars=false' }],
-  ['an npm exec package option', { postinstall: 'npm exec --package wrangler -- wrangler types --path=src/env.d.ts' }],
-  ['a bun run binary runner', { postinstall: 'bun run wrangler types --path=src/env.d.ts' }],
-  ['an environment-prefixed generator', { 'gen-types': 'NODE_ENV=test wrangler types' }],
-  ['a global config flag', { 'gen-types': 'wrangler --config=wrangler.jsonc types' }],
-  ['a short global config flag', { 'gen-types': 'wrangler -c wrangler.jsonc types' }],
-  ['a global environment flag', { 'gen-types': 'wrangler --env=staging types' }],
-  ['a global profile flag', { 'gen-types': 'wrangler --profile staging types' }],
-  ['a global boolean flag', { 'gen-types': 'wrangler --install-skills types' }],
-  ['an experimental global flag', { 'gen-types': 'wrangler --experimental-provision=false types' }],
-  ['an experimental alias flag', { 'gen-types': 'wrangler --x-auto-create=false types' }],
-  ['a version-qualified executable', { 'gen-types': 'npx wrangler@4.107.0 types' }],
-  ['a quoted global option value', { 'gen-types': 'wrangler --config "configs/worker config.jsonc" types' }],
-  ['a quoted equals-form option value', { 'gen-types': "wrangler --config='configs/worker config.jsonc' types" }],
-  ['an escaped option value', { 'gen-types': String.raw`wrangler --config configs/worker\ config.jsonc types` }],
-  ['a subcommand config flag', { 'gen-types': 'wrangler types --config=wrangler.other.jsonc' }],
-  ['a short subcommand config flag', { 'gen-types': 'wrangler types -c wrangler.other.jsonc' }],
-  ['a positional output path after a flag', { postinstall: 'wrangler types --strict-vars=false src/env.d.ts' }],
-  ['an equals-form output path', { postinstall: 'wrangler types --path=src/env.d.ts' }],
-  ['an environment', { postinstall: 'wrangler types --env=staging' }],
-  ['a custom interface', { postinstall: 'wrangler types --env-interface=CloudflareEnv' }],
-  ['a custom working directory', { postinstall: 'wrangler types --cwd packages/worker' }],
-  ['a global custom working directory', { postinstall: 'wrangler --cwd packages/worker types' }],
-  ['a check', { 'check-types': 'wrangler types --check' }],
-  ['an equals-form check', { 'gen-types': 'wrangler types --check=true' }],
-  ['a divergent check', { 'check-types': 'wrangler types --check --strict-vars=false' }],
-  ['an unparseable postinstall alias', { 'gen-types': 'wrangler types', postinstall: 'bun run gen-types > /dev/null' }],
-  ['a flagged postinstall alias', { 'gen-types': 'wrangler types', postinstall: 'npm --silent run-script gen-types' }],
-  ['a joined redirection', { postinstall: 'wrangler types>/dev/null' }],
-  ['a joined alias redirection', { 'gen-types': 'wrangler types', postinstall: 'bun run gen-types>/dev/null' }],
-  ['unsupported shell syntax', { postinstall: 'cd sub && wrangler types' }],
-  ['eval indirection', { postinstall: 'eval wrangler types' }],
-  ['shell indirection', { postinstall: "sh -c 'wrangler types'" }],
-  ['combined shell-option indirection', { postinstall: 'echo before && sh -lc "wrangler types"' }],
-  ['a quoted executable', { postinstall: '"wrangler" types' }],
-  ['an if command', { postinstall: 'if wrangler types; then echo done; fi' }],
-  ['a subshell command', { postinstall: '(wrangler types)' }],
-  ['a newline-separated command', { postinstall: 'echo before\nwrangler types' }],
-  ['a case branch command', { postinstall: 'case x in x) wrangler types;; esac' }],
-  ['a timed command', { postinstall: 'time wrangler types' }],
-  ['a command-env prefix', { postinstall: 'command env wrangler types' }],
-  ['a backtick substitution', { postinstall: 'echo `wrangler types`' }],
-  ['a quoted command substitution', { postinstall: 'echo "$(wrangler types)"' }],
-  ['a shell separator before a payload', { postinstall: "sh -c -- 'wrangler types'" }],
-  ['a combined shell option before a payload', { postinstall: "bash -lc -- 'wrangler types'" }],
-  ['an interpolated heredoc body', { postinstall: 'cat <<EOF\n$(wrangler types)\nEOF' }],
-  ['a substitution after a quoted hash', { postinstall: 'echo "a # b $(wrangler types)"' }],
-  ['a command after a quoted fake heredoc', { postinstall: 'echo "a << b"\nwrangler types' }],
-  ['a command after an arithmetic shift', { postinstall: 'echo $((1 << 2))\nwrangler types' }],
-  ['a textual mention', { help: 'echo wrangler types' }],
-  ['a textual gen-types mention', { 'gen-types': 'wrangler types', help: 'echo gen-types' }],
-  ['a shell payload that prints the words', { help: 'sh -c "echo wrangler types"' }],
-  ['a heredoc containing the words', { help: "cat <<'EOF'\nwrangler types\nEOF" }],
-  ['a single-quoted backtick', { help: "node -e 'console.log(`wrangler types`)'" }],
-  ['a redirection target', { help: 'echo ok > "wrangler types"' }],
-  ['a commented substitution', { help: 'echo ok # `wrangler types`' }],
-  ['a shell payload after a separator', { help: 'sh -c -- "echo wrangler types"' }],
-  [
-    'a cross-package generator without a local config',
-    { postinstall: 'wrangler types --config packages/app/wrangler.jsonc' },
-    false,
-  ],
-];
-
-test.each(rejectedWranglerScripts)(
-  'rejects %s instead of partially normalizing it',
-  async (_description, scripts, doesContainWranglerConfig = true) => {
-    const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
-    const packageJson = await generatePackageJsonFrom(
-      { ...wranglerPackageJson },
-      {
-        isCloudflare: true,
-        doesContainWranglerConfig,
-        packageJson: wranglerPackageJson,
-      }
-    );
-
-    expect(packageJson.scripts).toEqual(scripts);
-  }
-);
-
-test('does not treat an unrelated Wrangler command argument as the types subcommand', async () => {
-  const scripts = { deploy: 'wrangler deploy types' };
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    {
-      isCloudflare: true,
-      doesContainWranglerConfig: true,
-      packageJson: wranglerPackageJson,
-    }
-  );
-
-  expect(packageJson.scripts).toMatchObject({ deploy: 'wrangler deploy types', postinstall: 'bun wb gen-code' });
-});
-
-test.each([
-  ['a quoted fake heredoc marker', 'echo "a << b"\necho done'],
-  ['an arithmetic shift', 'echo $((1 << 2))'],
-])('ignores %s without the literal worker-types command', async (_description, help) => {
-  const scripts = { help };
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
-  );
-
-  expect(packageJson.scripts?.help).toBe(help);
-  expect(packageJson.scripts?.postinstall).toBe('bun wb gen-code');
-});
-
-test('rejects worker type generation without a direct wrangler dependency', async () => {
-  const scripts = { postinstall: 'wrangler types --strict-vars=false' };
-  const packageJson = await generatePackageJsonFrom(
-    { scripts },
-    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: { scripts } }
-  );
-
-  expect(packageJson.scripts).toEqual(scripts);
 });
 
 test.each(['wb gen-code', 'bunx wb gen-code', 'bun run wb gen-code'])(
@@ -434,15 +296,15 @@ test('preserves the position of a custom step after generation', async () => {
 });
 
 // `wb gen-code` also runs prisma, drizzle-kit check, and chakra typegen, so it must survive even where the
-// worker-types generation is no longer wanted.
-test('keeps a wb gen-code postinstall for an unmanaged worker package', async () => {
+// worker-types generation is not wanted.
+test('keeps a wb gen-code postinstall for a worker package without its own cf dependency', async () => {
   const wranglerPackageJson = {
-    devDependencies: { wrangler: '4.69.0', 'drizzle-orm': '0.44.5' },
+    devDependencies: { 'drizzle-orm': '0.44.5' },
     scripts: { postinstall: 'bun wb gen-code' },
   };
   const packageJson = await generatePackageJsonFrom(
     { ...wranglerPackageJson },
-    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+    { isCloudflare: true, doesContainCloudflareConfig: true, packageJson: wranglerPackageJson }
   );
 
   expect(packageJson.scripts?.postinstall).toBe('bun wb gen-code');
@@ -473,68 +335,16 @@ test('preserves project-specific steps appended to the managed gen-code script',
 });
 
 // Without a gen-code script `wb gen-code` still has to run on install, but a project-owned postinstall step may
-// generate `wrangler types`' own inputs (a wrangler config, `.dev.vars`), so it keeps running first.
+// generate the generators' own inputs, so it keeps running first.
 test('runs wb gen-code after a project postinstall that has no gen-code script', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
+  const wranglerPackageJson = { devDependencies: { cf: '1.0.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { postinstall: 'node scripts/writeDevVars.js' }, ...wranglerPackageJson },
-    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+    { isCloudflare: true, doesContainCloudflareConfig: true, packageJson: wranglerPackageJson }
   );
 
   expect(packageJson.scripts?.postinstall).toBe('node scripts/writeDevVars.js && bun wb gen-code');
   expect(packageJson.scripts?.['gen-code']).toBeUndefined();
-});
-
-// wbfy gitignores worker-configuration.d.ts only where postinstall regenerates it, so a package that
-// cannot run wrangler must not gain the install-time generation either.
-test.each([
-  ['the package does not depend on wrangler', {}, true],
-  ['the package owns no wrangler config', { devDependencies: { wrangler: '4.69.0' } }, false],
-])('omits the install-time generation when %s', async (_description, wranglerPackageJson, hasConfig) => {
-  const packageJson = await generatePackageJsonFrom(
-    { scripts: {}, ...wranglerPackageJson },
-    { isCloudflare: true, doesContainWranglerConfig: hasConfig, packageJson: wranglerPackageJson }
-  );
-
-  expect(packageJson.scripts?.postinstall).toBeUndefined();
-});
-
-// The types under .cloudflare/ are gitignored, so a fresh install must regenerate them or the first type check fails.
-test.each([
-  ['generates', { devDependencies: { cf: '1.0.0' } }, 'bun wb gen-code'],
-  ['omits', {}, undefined],
-])(
-  '%s the install-time type generation by the cf dependency of a cloudflare.config.ts package',
-  async (_, deps, expected) => {
-    const packageJson = await generatePackageJsonFrom(
-      { scripts: {}, ...deps },
-      { isCloudflare: true, doesContainCloudflareConfig: true, packageJson: deps }
-    );
-
-    expect(packageJson.scripts?.postinstall).toBe(expected);
-  }
-);
-
-// `wb gen-code` pins the `Env` inference to the committed fnox.toml key names via `wrangler types --env-file`,
-// so machine-local dotenv files (which `wb start`/`wb deploy` create routinely) never affect the generated file.
-// They must therefore never disable the install-time generation either: when a local `.dev.vars` flipped this
-// decision, wbfy runs on dev machines re-tracked the generated file that clean-checkout runs had untracked,
-// oscillating forever (ai-game-builder #684 → #746).
-test('generates worker types on install despite machine-local dotenv files', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
-  const packageJson = await generatePackageJsonFrom(
-    { scripts: {}, ...wranglerPackageJson },
-    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson },
-    {
-      files: {
-        '.dev.vars': 'AUTH_SECRET=local-secret\n',
-        '.env.cloudflare': 'CLOUDFLARE_API_TOKEN=x\n',
-        'wrangler.jsonc': '{}',
-      },
-    }
-  );
-
-  expect(packageJson.scripts?.postinstall).toBe('bun wb gen-code');
 });
 
 test('keeps custom database scripts for drizzle projects', async () => {

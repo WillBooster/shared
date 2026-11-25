@@ -11,12 +11,7 @@ import type { PackageJson, SetRequired } from 'type-fest';
 import * as ast from 'typescript/unstable/ast';
 
 import { logger } from '../logger.js';
-import {
-  generatesCfWorkerTypes,
-  generatesWorkerTypes,
-  getWorkerTypesScriptError,
-  type PackageConfig,
-} from '../packageConfig.js';
+import { generatesCfWorkerTypes, getGenCodeScriptError, type PackageConfig } from '../packageConfig.js';
 import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
@@ -96,8 +91,8 @@ async function core(
   skipAddingDeps: boolean,
   blitzNextVersion: string | undefined
 ): Promise<void> {
-  const workerTypesScriptError = getWorkerTypesScriptError(config);
-  if (workerTypesScriptError) throw new Error(workerTypesScriptError);
+  const genCodeScriptError = getGenCodeScriptError(config);
+  if (genCodeScriptError) throw new Error(genCodeScriptError);
   const filePath = path.resolve(config.dirPath, 'package.json');
   const jsonObj = await readPackageJson(filePath);
   updateScripts(config, jsonObj);
@@ -260,11 +255,11 @@ function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scr
  * unparseable script.
  */
 function updatePostinstallScript(scripts: PackageJson.Scripts, managesWorkerTypes: boolean): void {
-  // `bun wb gen-code` regenerates worker-configuration.d.ts itself, so a package with a
+  // `bun wb gen-code` generates the gitignored Worker types itself, so a package with a
   // code-generation or worker-types pipeline gets one managed generation segment.
   if (scripts['gen-code'] || managesWorkerTypes) {
     // Project-owned steps are never dropped, and their POSITION relative to generation is preserved: a step
-    // before it may produce `wrangler types`' inputs (a wrangler config, `.dev.vars`), while one after it may
+    // before it may produce the generators' inputs, while one after it may
     // consume the generated types. So the managed generation replaces the first managed segment in place, and is
     // appended only when the script had none. A wrapper around a customized gen-code already performs the
     // generation plus the project's own steps, so it suppresses the replacement entirely.
@@ -789,7 +784,7 @@ async function normalizePackageMetadata(
   if (shouldGenerateWbGenCodeScript(config)) {
     normalizeGenCodeScript(jsonObj.scripts);
   }
-  updatePostinstallScript(jsonObj.scripts, generatesCfWorkerTypes(config) || (await generatesWorkerTypes(config)));
+  updatePostinstallScript(jsonObj.scripts, generatesCfWorkerTypes(config));
 }
 
 function applyFlutterScripts(config: PackageConfig, scripts: PackageJson.Scripts): void {

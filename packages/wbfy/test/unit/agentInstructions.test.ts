@@ -72,7 +72,7 @@ test('describes wb deploy only when the package script invokes it', async () => 
       const config = createConfig({
         dirPath,
         isRoot: true,
-        doesContainWranglerConfig: true,
+        doesContainCloudflareConfig: true,
         packageJson: { name: 'example', scripts: { deploy: deployScript, ...additionalScripts } },
       });
       await generateAgentInstructions(config, [config]);
@@ -85,7 +85,7 @@ test('describes wb deploy only when the package script invokes it', async () => 
       const config = createConfig({
         dirPath,
         isRoot: true,
-        doesContainWranglerConfig: true,
+        doesContainCloudflareConfig: true,
         packageJson: { name: 'example', scripts: { deploy: deployScript, ...additionalScripts } },
       });
       await generateAgentInstructions(config, [config]);

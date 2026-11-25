@@ -53,7 +53,7 @@ import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
 import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
-import { getPackageConfig, getWorkerTypesScriptError, readWbfyConfig } from './packageConfig.js';
+import { getGenCodeScriptError, getPackageConfig, readWbfyConfig } from './packageConfig.js';
 import { readProjectDirection } from './projectDirection.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
@@ -219,7 +219,9 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   if (!packageConfigs) return false;
   const { rootConfig, allPackageConfigs } = packageConfigs;
   const configError =
-    findUnknownVisibilityError(rootConfig) ?? (await findTrackedCloudflareEnvError(rootConfig, allPackageConfigs));
+    findUnknownVisibilityError(rootConfig) ??
+    findUnconvertedWorkerError(rootConfig, allPackageConfigs) ??
+    (await findTrackedCloudflareEnvError(rootConfig, allPackageConfigs));
   if (configError) {
     console.error(configError);
     return false;
@@ -385,7 +387,7 @@ function findInvalidPackageJsonError(rootDirPath: string, subDirPaths: string[])
     if (!fs.existsSync(packageJsonPath)) return [];
     try {
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageConfig['packageJson'];
-      const error = getWorkerTypesScriptError({ packageJson });
+      const error = getGenCodeScriptError({ packageJson });
       return error ? [`${dirPath}: ${error}`] : [];
     } catch {
       return [`${packageJsonPath} is invalid`];
@@ -443,6 +445,20 @@ async function loadPackageConfigs(
   }
   const subPackageConfigs = nullableSubPackageConfigs.filter((config) => !!config);
   return { rootConfig, allPackageConfigs: [rootConfig, ...subPackageConfigs] };
+}
+
+/**
+ * wbfy installs the latest wb, which serves and deploys a Worker only through the cf CLI and
+ * `cloudflare.config.ts`, so applying it to a Worker still on a wrangler config would break the
+ * repository's start, test, type generation, and deploy in one run.
+ */
+function findUnconvertedWorkerError(rootConfig: PackageConfig, allPackageConfigs: PackageConfig[]): string | undefined {
+  const unconvertedDirPaths = allPackageConfigs
+    .filter((config) => config.doesContainWranglerConfig)
+    .map((config) => config.dirPath);
+  return unconvertedDirPaths.length > 0
+    ? `Skip ${rootConfig.dirPath}: convert each Worker below from its wrangler config to cloudflare.config.ts with \`cf migrate\` (and upgrade wb in the same change) before applying wbfy.\n${unconvertedDirPaths.join('\n')}`
+    : undefined;
 }
 
 async function findTrackedCloudflareEnvError(
