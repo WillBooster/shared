@@ -47,7 +47,7 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
     : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(mode)}"`;
   return [
     // A locally served Worker reads the values of its declared secrets only from this file.
-    buildGenDevVarsCommand(argv, mode),
+    buildGenDevVarsCommand(argv),
     // The local D1 starts empty and no dev server applies migrations itself.
     ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
     `${usesVite ? buildViteStateDirPrefix(project, mode) : ''}${buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
@@ -67,7 +67,7 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
     // local D1 migrated below is the one whose ID that config declares.
     ...(project.packageJson.scripts?.['gen-code'] ? ['YARN run gen-code'] : []),
     `${stateDirPrefix}${buildCfCommand(mode, 'build')}`,
-    buildGenDevVarsCommand(argv, mode),
+    buildGenDevVarsCommand(argv),
     ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
     `${stateDirPrefix}YARN vite preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];

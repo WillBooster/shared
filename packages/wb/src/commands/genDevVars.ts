@@ -24,21 +24,22 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     'Generate a .dev.vars file for a locally served Worker: the secrets cloudflare.config.ts declares with bindings.secret(), with their values from fnox or the environment.',
   builder: (yargs) =>
     yargs.positional('path', {
-      description: 'Output path of the generated .dev.vars file.',
+      description:
+        'Output path of the generated file (default: .dev.vars.<mode>, which the local runtime reads for that mode).',
       type: 'string',
-      default: '.dev.vars',
     }) as unknown as Argv<GenDevVarsCommandOptions>,
   async handler(argv: GenDevVarsCommandArgv) {
     const project = findSelfProjectOrExit(argv);
 
     // Exactly the secrets `wb deploy` would push for this mode: a locally served Worker reads
     // nothing else from the file, and a secret without a value stays unset as it would deployed.
-    const secretNames = resolveLocalCloudflareConfig(project, resolveCloudflareMode(project))?.secretNames ?? [];
+    const mode = resolveCloudflareMode(project);
+    const secretNames = resolveLocalCloudflareConfig(project, mode)?.secretNames ?? [];
     const { secrets } = resolveDeclaredSecrets(argv, project, secretNames);
     const lines = Object.entries(secrets)
       .toSorted(([a], [b]) => a.localeCompare(b))
       .map(([key, value]) => `${key}=${quoteDotenvValue(key, value)}`);
-    const outputPath = path.resolve(project.dirPath, argv.path ?? '.dev.vars');
+    const outputPath = path.resolve(project.dirPath, argv.path ?? `.dev.vars.${mode}`);
     if (argv.dryRun) {
       console.info(chalk.cyan(`Would generate ${outputPath} with ${lines.length} declared secrets.`));
       return;

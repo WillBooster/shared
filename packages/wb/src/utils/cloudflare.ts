@@ -10,13 +10,13 @@ import { buildShellCommand, shellEscapeArgument } from './shell.js';
 type CloudflareProject = Pick<Project, 'dirPath' | 'env' | 'packageJson'>;
 
 /**
- * Build a command generating the mode's .dev.vars file (via `wb gen-dev-vars`) so that a locally
- * served Worker can see the wb-managed values of its declared secrets. The local runtime prefers
- * `.dev.vars.<mode>` over `.dev.vars`, so servers of different modes (a dev server and a test
+ * Build a command generating the mode's `.dev.vars.<mode>` file (via `wb gen-dev-vars`) so that a
+ * locally served Worker can see the wb-managed values of its declared secrets. The local runtime
+ * prefers that file over `.dev.vars`, so servers of different modes (a dev server and a test
  * run) never rewrite each other's file.
  */
-export function buildGenDevVarsCommand(argv: ScriptArgv, mode: string): string {
-  return buildShellCommand(['YARN', 'wb', 'gen-dev-vars', ...buildEnvReaderOptionArgs(argv), `.dev.vars.${mode}`]);
+export function buildGenDevVarsCommand(argv: ScriptArgv): string {
+  return buildShellCommand(['YARN', 'wb', 'gen-dev-vars', ...buildEnvReaderOptionArgs(argv)]);
 }
 
 /**
