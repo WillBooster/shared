@@ -87,6 +87,22 @@ minimumReleaseAgeExcludes = [
   "vinext-progress",
   "wbfy",
   "yarn-plugin-auto-install",
+  "cf",
+  "miniflare",
+  "workerd",
+  "@cloudflare/workerd-darwin-64",
+  "@cloudflare/workerd-darwin-arm64",
+  "@cloudflare/workerd-linux-64",
+  "@cloudflare/workerd-linux-arm64",
+  "@cloudflare/workerd-windows-64",
+  "@cloudflare/config",
+  "@cloudflare/runtime-types",
+  "@cloudflare/build-output-utils",
+  "@cloudflare/kv-asset-handler",
+  "@cloudflare/unenv-preset",
+  "@cloudflare/vite-plugin",
+  "@cloudflare/workers-utils",
+  "wrangler",
 ]
 
 [fmt]

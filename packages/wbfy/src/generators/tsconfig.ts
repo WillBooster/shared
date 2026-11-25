@@ -108,6 +108,7 @@ function applyManagedSettings(newSettings: TsConfigJson, config: PackageConfig, 
     addIncludePath(newSettings, 'prisma/**/*');
   }
   if (hasRailwayIac(config)) addIncludePath(newSettings, '.railway/**/*');
+  if (config.doesContainCloudflareConfig) addIncludePath(newSettings, CF_WORKER_TYPES_INCLUDE);
 }
 
 /** Merges the project's own settings into the generated ones, which win on conflict. Mutates `oldSettings`. */
@@ -369,9 +370,13 @@ function addIncludesForFrameworkProject(settings: TsConfigJson, config: PackageC
   addIncludePath(settings, 'scripts/**/*');
   // Include wildcards skip dot directories, so framework globs such as `**/*.ts` never reach `.railway/`.
   if (hasRailwayIac(config)) addIncludePath(settings, '.railway/**/*');
+  if (config.doesContainCloudflareConfig) addIncludePath(settings, CF_WORKER_TYPES_INCLUDE);
   // Sorting an unchanged include would rewrite an already-clean tsconfig and drop its comments.
   if (settings.include.length > includeCount) settings.include.sort();
 }
+
+/** Where cf writes the `Env` and runtime types it infers from `cloudflare.config.ts`. */
+const CF_WORKER_TYPES_INCLUDE = '.cloudflare/types/**/*';
 
 function hasRailwayIac(config: PackageConfig): boolean {
   return fs.existsSync(path.resolve(config.dirPath, '.railway', 'railway.ts'));

@@ -11,7 +11,12 @@ import type { PackageJson, SetRequired } from 'type-fest';
 import * as ast from 'typescript/unstable/ast';
 
 import { logger } from '../logger.js';
-import { generatesWorkerTypes, getWorkerTypesScriptError, type PackageConfig } from '../packageConfig.js';
+import {
+  generatesCfWorkerTypes,
+  generatesWorkerTypes,
+  getWorkerTypesScriptError,
+  type PackageConfig,
+} from '../packageConfig.js';
 import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
@@ -784,7 +789,7 @@ async function normalizePackageMetadata(
   if (shouldGenerateWbGenCodeScript(config)) {
     normalizeGenCodeScript(jsonObj.scripts);
   }
-  updatePostinstallScript(jsonObj.scripts, await generatesWorkerTypes(config));
+  updatePostinstallScript(jsonObj.scripts, generatesCfWorkerTypes(config) || (await generatesWorkerTypes(config)));
 }
 
 function applyFlutterScripts(config: PackageConfig, scripts: PackageJson.Scripts): void {

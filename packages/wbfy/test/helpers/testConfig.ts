@@ -17,6 +17,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
     isWillBoosterRepo: true,
     isCloudflare: false,
     doesContainWranglerConfig: false,
+    doesContainCloudflareConfig: false,
     isRailway: false,
     isEsmPackage: false,
     isWillBoosterConfigs: false,

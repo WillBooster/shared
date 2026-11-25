@@ -38,6 +38,8 @@ export interface PackageConfig {
   isWillBoosterRepo: boolean;
   isCloudflare: boolean;
   doesContainWranglerConfig: boolean;
+  /** Whether the package owns a Worker configured for the cf CLI (`cloudflare.config.ts`). */
+  doesContainCloudflareConfig: boolean;
   isRailway: boolean;
   isEsmPackage: boolean;
   isWillBoosterConfigs: boolean;
@@ -201,6 +203,7 @@ export async function getPackageConfig(
         containsAny(pattern, workspaceSubDir.dirPath, workspaceSubDir.globIgnore)
       );
     const doesContainWranglerConfig = detectWranglerConfig(dirPath);
+    const doesContainCloudflareConfig = fs.existsSync(path.resolve(dirPath, 'cloudflare.config.ts'));
     const workflowContents = readWorkflowFileContents(dirPath);
     const importsPlaywrightAtRuntime = detectPlaywrightRuntimeImport(dirPath, globIgnore);
     const config: PackageConfig = {
@@ -216,8 +219,13 @@ export async function getPackageConfig(
       isWillBoosterRepo: Boolean(
         repository?.startsWith('github:WillBooster/') || repository?.startsWith('github:WillBoosterLab/')
       ),
-      isCloudflare: detectCloudflare(packageJson, doesContainWranglerConfig, workflowContents),
+      isCloudflare: detectCloudflare(
+        packageJson,
+        doesContainWranglerConfig || doesContainCloudflareConfig,
+        workflowContents
+      ),
       doesContainWranglerConfig,
+      doesContainCloudflareConfig,
       isRailway: detectRailway(dirPath, packageJson, workflowContents),
       isEsmPackage: packageJson.type === 'module',
       isWillBoosterConfigs: detectIsWillBoosterConfigs(dirPath, packageJsonPath, repoName),
@@ -492,6 +500,17 @@ export async function generatesWorkerTypes(config: PackageConfig): Promise<boole
   );
 }
 
+/**
+ * Tells whether `wb gen-code` generates `.cloudflare/types` for the package: it runs `cf workers types` only for a
+ * package that owns a `cloudflare.config.ts` and depends on cf itself.
+ */
+export function generatesCfWorkerTypes(
+  config: Pick<PackageConfig, 'doesContainCloudflareConfig' | 'packageJson'>
+): boolean {
+  const { dependencies, devDependencies } = config.packageJson ?? {};
+  return config.doesContainCloudflareConfig && !!(dependencies?.cf ?? devDependencies?.cf);
+}
+
 export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJson'>): string | undefined {
   const scripts = config.packageJson?.scripts ?? {};
   for (const [name, script] of Object.entries(scripts)) {
@@ -734,17 +753,13 @@ function detectIsWillBoosterConfigs(dirPath: string, packageJsonPath: string, re
   return packageJsonPath.toLowerCase().includes('/willbooster-configs/');
 }
 
-function detectCloudflare(
-  packageJson: PackageJson,
-  doesContainWranglerConfig: boolean,
-  workflowContents: string[]
-): boolean {
+function detectCloudflare(packageJson: PackageJson, ownsWorker: boolean, workflowContents: string[]): boolean {
   const scripts = packageJson.scripts;
   if (scripts && Object.values(scripts).some((script) => typeof script === 'string' && script.includes('wrangler'))) {
     return true;
   }
 
-  if (doesContainWranglerConfig) {
+  if (ownsWorker) {
     return true;
   }
 

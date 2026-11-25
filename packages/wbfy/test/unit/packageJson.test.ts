@@ -499,6 +499,22 @@ test.each([
   expect(packageJson.scripts?.postinstall).toBeUndefined();
 });
 
+// The types under .cloudflare/ are gitignored, so a fresh install must regenerate them or the first type check fails.
+test.each([
+  ['generates', { devDependencies: { cf: '1.0.0' } }, 'bun wb gen-code'],
+  ['omits', {}, undefined],
+])(
+  '%s the install-time type generation by the cf dependency of a cloudflare.config.ts package',
+  async (_, deps, expected) => {
+    const packageJson = await generatePackageJsonFrom(
+      { scripts: {}, ...deps },
+      { isCloudflare: true, doesContainCloudflareConfig: true, packageJson: deps }
+    );
+
+    expect(packageJson.scripts?.postinstall).toBe(expected);
+  }
+);
+
 // `wb gen-code` pins the `Env` inference to the committed fnox.toml key names via `wrangler types --env-file`,
 // so machine-local dotenv files (which `wb start`/`wb deploy` create routinely) never affect the generated file.
 // They must therefore never disable the install-time generation either: when a local `.dev.vars` flipped this
