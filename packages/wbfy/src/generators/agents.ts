@@ -7,7 +7,7 @@ import fg from 'fast-glob';
 import { enablesViteReactCompiler } from '../fixers/viteConfig.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
-import { generatesWorkerTypes } from '../packageConfig.js';
+import { generatesCfWorkerTypes, generatesWorkerTypes } from '../packageConfig.js';
 import type { ProjectDirection } from '../projectDirection.js';
 import { readProjectDirection } from '../projectDirection.js';
 import { runAllWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
@@ -18,6 +18,7 @@ interface DeployFacts {
   ownsGeneratedWorkerTypes: boolean;
   ownsWranglerConfig: boolean;
   ownsCloudflareConfig: boolean;
+  ownsGeneratedCfWorkerTypes: boolean;
   usesWbDeploy: boolean;
 }
 
@@ -29,7 +30,11 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     if (!rootConfig.isRoot) return;
 
     const extraContent = await readAgentsExtraContent(rootConfig.dirPath);
-    const ownsWranglerConfig = allConfigs.some((config) => config.doesContainWranglerConfig);
+    // A package converted with `cf migrate` no longer reads its wrangler configuration, so only a
+    // package without a `cloudflare.config.ts` counts as a wrangler one.
+    const ownsWranglerConfig = allConfigs.some(
+      (config) => config.doesContainWranglerConfig && !config.doesContainCloudflareConfig
+    );
     const ownsCloudflareConfig = allConfigs.some((config) => config.doesContainCloudflareConfig);
     const usesWbDeploy = (ownsWranglerConfig || ownsCloudflareConfig) && (await hasWbDeployScript(allConfigs));
 
@@ -42,6 +47,7 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     const deployFacts = {
       ownsGeneratedWorkerTypes: generatedWorkerTypes.includes(true),
       ownsCloudflareConfig,
+      ownsGeneratedCfWorkerTypes: allConfigs.some((config) => generatesCfWorkerTypes(config)),
       ownsWranglerConfig,
       usesWbDeploy,
     };
@@ -138,7 +144,7 @@ function generateAgentInstruction(
 ${TEST_WRITING_RULES}
 - When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
 - Before raising a concern, a conditional ("if X, ..."), or a question to the user, settle its premise yourself from the code, documentation, issues, and primary sources, and cite that evidence. Ask the user only about what those cannot settle (e.g., the requester's intent or business facts), stating what you checked; never present a premise you could have checked as a possibility.
-- Use any tool available in the development environment, including CLIs already logged in (e.g., \`railway\`, \`cf\`), and ask the user only when you cannot proceed on your own (e.g., a login is required), with one exception: always ask before a hard-to-reverse action that the user did not explicitly request on a deployed environment's resources you did not create in the task (e.g., deleting data, variables, volumes, or services), even when you could perform it. Carry out a requested one without asking again.
+- Use any tool available in the development environment, including CLIs already logged in (e.g., \`railway\`, \`${deployFacts.ownsCloudflareConfig ? 'cf' : 'wrangler'}\`), and ask the user only when you cannot proceed on your own (e.g., a login is required), with one exception: always ask before a hard-to-reverse action that the user did not explicitly request on a deployed environment's resources you did not create in the task (e.g., deleting data, variables, volumes, or services), even when you could perform it. Carry out a requested one without asking again.
 - After making changes, run locally only \`${packageManager} run verify\` (type checking and linting; up to 10 minutes) and the relevant tests; leave the full suite (\`${packageManager} run verify-full\`; up to 1 hour) to the PR's CI, or run it locally if PR CI does not. Fix errors your change caused, including CI failures, and re-run until they pass. Report a failure that also occurs on the base branch or comes from infrastructure, with its evidence, instead of working around it.
   - Run relevant tests with \`${packageManager} wb test test/unit/example.test.ts --grep 'case name'\` (omit \`--grep\` for the whole file${workspaceOption}). \`${packageManager} wb verify --full <test-path> --grep 'case name'\` combines verification with selected tests.
   - Wait for it to finish without restarting it: prefer completion notifications, otherwise the longest permitted wait; no output does not mean it has stopped. If the displayed excerpt is insufficient, read the indicated log file before rerunning. If the environment kills long-running commands, run them detached with a saved log and exit status.
@@ -215,7 +221,13 @@ function generateStackInstructions(
 
 function generateDeployPlatformInstructions(
   rootConfig: PackageConfig,
-  { ownsCloudflareConfig, ownsGeneratedWorkerTypes, ownsWranglerConfig, usesWbDeploy }: DeployFacts,
+  {
+    ownsCloudflareConfig,
+    ownsGeneratedCfWorkerTypes,
+    ownsGeneratedWorkerTypes,
+    ownsWranglerConfig,
+    usesWbDeploy,
+  }: DeployFacts,
   packageManager: string
 ): string {
   // Every clause states only a verified fact, reusing the workflow generator's own detectors: the
@@ -229,13 +241,15 @@ function generateDeployPlatformInstructions(
   // Independent facts stay separate sentences: the workflow's own deploy mechanism is not
   // inspected, so the wb-deploy clause must not claim the workflow invokes it.
   const deployFactSentences = `${hasDeployWorkflow ? ' The deploy workflows under `.github/workflows` perform deployments.' : ''}${usesWbDeploy ? ' The `deploy` package script runs `wb deploy`.' : ''}`;
-  // A package converted with `cf migrate` no longer reads its wrangler configuration, so the cf
-  // wording wins wherever a `cloudflare.config.ts` exists.
-  const cloudflareInstruction = ownsCloudflareConfig
-    ? `\n- This project runs on Cloudflare Workers and uses the \`cf\` CLI, not \`wrangler\`: \`cloudflare.config.ts\` holds the Worker's configuration, including bindings, and receives \`WB_ENV\` as its \`mode\`.${deployFactSentences}\n- \`.cloudflare/\` is gitignored and generated (Build Output, local state, and the types under \`.cloudflare/types\`); after changing bindings in \`cloudflare.config.ts\`, re-run \`${packageManager} wb gen-code\` instead of editing the types by hand. A locally served Worker receives from \`.dev.vars\` only the secrets \`cloudflare.config.ts\` declares with \`bindings.secret()\`, and \`wb deploy\` pushes only those.`
-    : ownsWranglerConfig
-      ? `\n- This project runs on Cloudflare Workers: the wrangler configuration file holds the Worker's configuration, including bindings and per-environment overrides.${deployFactSentences}${ownsGeneratedWorkerTypes ? `\n- \`worker-configuration.d.ts\` is gitignored and generated by \`${packageManager} wb gen-code\`; after changing bindings or vars in the wrangler configuration, re-run it instead of editing the file by hand.` : ''}`
-      : '';
+  // The two kinds are per package, so a repository converting its Workers one by one gets both
+  // instructions; the deploy facts are stated once, with the first.
+  const cfInstruction = ownsCloudflareConfig
+    ? `\n- This project runs on Cloudflare Workers and uses the \`cf\` CLI${ownsWranglerConfig ? '' : ', not `wrangler`'}: \`cloudflare.config.ts\` holds the Worker's configuration, including bindings, for the mode given as cf's \`--mode\`; \`wb\` passes \`WB_ENV\` as that mode, and a cf command run directly needs \`--mode\` itself.${deployFactSentences}\n- \`.cloudflare/\` is gitignored and generated (Build Output, local state, and the types under \`.cloudflare/types\`).${ownsGeneratedCfWorkerTypes ? ` After changing bindings in \`cloudflare.config.ts\`, re-run \`${packageManager} wb gen-code\` instead of editing the types by hand.` : ''} A locally served Worker receives from \`.dev.vars\` only the secrets \`cloudflare.config.ts\` declares with \`bindings.secret()\`${usesWbDeploy ? ', and `wb deploy` pushes only those' : ''}.`
+    : '';
+  const wranglerInstruction = ownsWranglerConfig
+    ? `\n- ${ownsCloudflareConfig ? 'A package without `cloudflare.config.ts` still uses `wrangler`' : 'This project runs on Cloudflare Workers'}: the wrangler configuration file holds the Worker's configuration, including bindings and per-environment overrides.${ownsCloudflareConfig ? '' : deployFactSentences}${ownsGeneratedWorkerTypes ? `\n- \`worker-configuration.d.ts\` is gitignored and generated by \`${packageManager} wb gen-code\`; after changing bindings or vars in the wrangler configuration, re-run it instead of editing the file by hand.` : ''}`
+    : '';
+  const cloudflareInstruction = cfInstruction + wranglerInstruction;
   const railwayInstruction = !rootConfig.isRailway
     ? ''
     : fs.existsSync(path.resolve(rootConfig.dirPath, '.railway', 'railway.ts'))

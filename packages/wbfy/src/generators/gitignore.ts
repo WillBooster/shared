@@ -167,14 +167,17 @@ src-tauri/gen/schemas/
   }
   if (config.isCloudflare || rootConfig.isCloudflare) {
     // .dev.vars* hold local secrets for the local Worker runtime and must never be committed.
-    // .cloudflare/ holds everything cf generates: Build Output, types, and local state.
     // .env.cloudflare carries CLOUDFLARE_API_TOKEN: CI writes it from a secret, and a local
     // `wb deploy` needs a real token in it, so committing it would leak account credentials.
     // It is listed explicitly so the Cloudflare-specific credential policy remains visible.
-    rules += `.cloudflare/
-.dev.vars*
+    rules += `.dev.vars*
 .env.cloudflare
 .wrangler/
+`;
+  }
+  if (config.doesContainCloudflareConfig) {
+    // Everything cf generates for the package: Build Output, types, and local state.
+    rules += `.cloudflare/
 `;
   }
   return { names, rules };
