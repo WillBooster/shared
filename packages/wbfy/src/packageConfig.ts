@@ -37,6 +37,7 @@ export interface PackageConfig {
   repoName?: string;
   isWillBoosterRepo: boolean;
   isCloudflare: boolean;
+  /** Whether the package owns a Worker configured by a wrangler config and no `cloudflare.config.ts`. */
   doesContainWranglerConfig: boolean;
   /** Whether the package owns a Worker configured for the cf CLI (`cloudflare.config.ts`). */
   doesContainCloudflareConfig: boolean;
@@ -202,8 +203,10 @@ export async function getPackageConfig(
       workspaceSubDirs.some((workspaceSubDir) =>
         containsAny(pattern, workspaceSubDir.dirPath, workspaceSubDir.globIgnore)
       );
-    const doesContainWranglerConfig = detectWranglerConfig(dirPath);
     const doesContainCloudflareConfig = fs.existsSync(path.resolve(dirPath, 'cloudflare.config.ts'));
+    // A package converted with `cf migrate` no longer reads the wrangler config it may still hold,
+    // so it must not get the wrangler-side output (e.g. worker-configuration.d.ts generation) too.
+    const doesContainWranglerConfig = !doesContainCloudflareConfig && detectWranglerConfig(dirPath);
     const workflowContents = readWorkflowFileContents(dirPath);
     const importsPlaywrightAtRuntime = detectPlaywrightRuntimeImport(dirPath, globIgnore);
     const config: PackageConfig = {

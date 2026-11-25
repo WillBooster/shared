@@ -30,13 +30,13 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     if (!rootConfig.isRoot) return;
 
     const extraContent = await readAgentsExtraContent(rootConfig.dirPath);
-    // A package converted with `cf migrate` no longer reads its wrangler configuration, so only a
-    // package without a `cloudflare.config.ts` counts as a wrangler one.
-    const ownsWranglerConfig = allConfigs.some(
-      (config) => config.doesContainWranglerConfig && !config.doesContainCloudflareConfig
-    );
+    const ownsWranglerConfig = allConfigs.some((config) => config.doesContainWranglerConfig);
     const ownsCloudflareConfig = allConfigs.some((config) => config.doesContainCloudflareConfig);
-    const usesWbDeploy = (ownsWranglerConfig || ownsCloudflareConfig) && (await hasWbDeployScript(allConfigs));
+    // A Worker deploys through its own `deploy` script or the root's (`wb deploy -w <package>`);
+    // another workspace's script (e.g. a Railway service's) says nothing about the Worker.
+    const usesWbDeploy =
+      (ownsWranglerConfig || ownsCloudflareConfig) &&
+      (await hasWbDeployScript(allConfigs.filter((config) => config.isRoot || ownsWorker(config))));
 
     // Only claim the file is generated where it actually is: a package that hand-maintains its `Env` (e.g. under
     // `types: ["bun"]`) is deliberately left unmanaged, and telling an agent to run `wb gen-code` there would send

@@ -99,7 +99,6 @@ minimumReleaseAgeExcludes = [
   "@cloudflare/runtime-types",
   "@cloudflare/build-output-utils",
   "@cloudflare/kv-asset-handler",
-  "@cloudflare/unenv-preset",
   "@cloudflare/vite-plugin",
   "@cloudflare/workers-utils",
   "wrangler",
