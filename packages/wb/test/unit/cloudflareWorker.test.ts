@@ -74,7 +74,7 @@ it('generates the Worker types that infer the bindings from the config', async (
   expect(types.includes('typeof import("../../cloudflare.config").default')).toBe(true);
 }, 120_000);
 
-it("deploys the build and exactly the declared secrets to the config's account", async () => {
+it("deploys the build with the declared secrets and the version to the config's account", async () => {
   const logDirPath = path.join(dirPath, 'cf-log');
   await fs.mkdir(logDirPath);
   await recordAuthenticatedCfCalls();
@@ -87,6 +87,7 @@ it("deploys the build and exactly the declared secrets to the config's account",
       // A deploy on CI requires a token; nothing here contacts Cloudflare.
       CLOUDFLARE_API_TOKEN: 'unused-token',
       WB_ENV: 'staging',
+      WB_VERSION: 'v1.2.3',
       WB_TEST_CF_LOG: logDirPath,
     },
     timeout: 100_000,
@@ -108,6 +109,7 @@ it("deploys the build and exactly the declared secrets to the config's account",
   expect(JSON.parse(await fs.readFile(path.join(logDirPath, 'secrets.json'), 'utf8'))).toEqual({
     AUTH_SECRET: 's3cret',
     EMPTY_SECRET: '',
+    WB_VERSION: 'v1.2.3',
   });
 }, 120_000);
 
