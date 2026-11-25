@@ -11,7 +11,8 @@ import { getLocalStateDir, wrapWithLocalD1DatabaseUrl } from '../../utils/cloudf
 import {
   findCloudflareConfigPath,
   formatD1DatabaseNames,
-  resolveCloudflareConfig,
+  resolveLocalCloudflareConfig,
+  resolveLocalCloudflareMode,
   selectD1Migrations,
 } from '../../utils/cloudflareConfig.js';
 import { ensurePort } from '../../utils/port.js';
@@ -117,13 +118,14 @@ export abstract class BaseScripts {
   }
 
   protected buildMigrationCommands(project: Project): string[] {
+    const mode = resolveLocalCloudflareMode(project);
     // Test-environment Worker state is disposable; wipe it entirely (not just D1) before
     // migrating, since stale KV cache entries or Durable Object storage can break e2e tests.
     const localStateWipeCommands =
       isProjectEnvironment(project, 'test') && findCloudflareConfigPath(project)
-        ? [`rm -Rf "${getLocalStateDir(project)}"`]
+        ? [`rm -Rf "${getLocalStateDir(mode)}"`]
         : [];
-    const d1Databases = resolveCloudflareConfig(project)?.d1Databases ?? [];
+    const d1Databases = resolveLocalCloudflareConfig(project, mode)?.d1Databases ?? [];
     const drizzleKitManagesD1 = usesDrizzleKitForD1(project);
     const { drizzleD1Database, errorMessage, unmanagedD1Databases } = selectD1Migrations(
       project,
@@ -142,7 +144,7 @@ export abstract class BaseScripts {
     const drizzleMigrationCommand = !project.hasDrizzle
       ? undefined
       : drizzleD1Database
-        ? wrapWithLocalD1DatabaseUrl(project, drizzleScripts.migrateForStart(project))
+        ? wrapWithLocalD1DatabaseUrl(project, mode, drizzleScripts.migrateForStart(project))
         : d1Databases.length === 0
           ? drizzleScripts.migrateForStart(project)
           : !drizzleKitManagesD1 && findDrizzleConfig(project)

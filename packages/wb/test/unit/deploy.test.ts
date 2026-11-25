@@ -5,16 +5,13 @@ import path from 'node:path';
 
 import { parse as parseDotenv } from 'dotenv';
 
-import {
-  readCloudflareEnvFiles,
-  selectDeclaredSecrets,
-  selectInheritedRemoteSecretNames,
-} from '../../src/commands/deploy.js';
+import { readCloudflareEnvFiles, selectInheritedRemoteSecretNames } from '../../src/commands/deploy.js';
 import { quoteDotenvValue } from '../../src/commands/genDevVars.js';
-import { resolveCloudflareConfig } from '../../src/utils/cloudflareConfig.js';
+import { resolveDeployCloudflareConfig, resolveLocalCloudflareConfig } from '../../src/utils/cloudflareConfig.js';
+import { selectDeclaredSecrets } from '../../src/utils/workerSecrets.js';
 import { createCloudflareProjectDir } from '../helpers/cloudflareProject.js';
 
-describe('resolveCloudflareConfig', () => {
+describe('resolving cloudflare.config.ts', () => {
   let dirPath: string;
 
   beforeEach(async () => {
@@ -25,7 +22,7 @@ describe('resolveCloudflareConfig', () => {
     await fs.rm(dirPath, { force: true, recursive: true });
   });
 
-  it('evaluates the config for the given mode, defaulting to WB_ENV', async () => {
+  it('evaluates the config for the given mode under the given environment', async () => {
     await fs.writeFile(
       path.join(dirPath, 'cloudflare.config.ts'),
       `import { bindings, defineConfig } from 'cf/config';
@@ -47,7 +44,7 @@ describe('resolveCloudflareConfig', () => {
       }));`
     );
 
-    expect(resolveCloudflareConfig({ dirPath, env: process.env }, 'production')).toEqual({
+    expect(resolveLocalCloudflareConfig({ dirPath, env: process.env }, 'production')).toEqual({
       workerName: 'my-app',
       accountId: 'acc-1',
       vars: { WB_ENV: 'production', LIMITS: { max: 3 } },
@@ -55,17 +52,19 @@ describe('resolveCloudflareConfig', () => {
       envKeys: ['WB_ENV', 'LIMITS', 'AUTH_SECRET', 'DB', 'CACHE'],
       d1Databases: [{ binding: 'DB', name: 'my-app-production', id: 'prod-id' }],
     });
-    const staging = resolveCloudflareConfig({ dirPath, env: { ...process.env, WB_ENV: 'staging' } });
+    const staging = resolveDeployCloudflareConfig({ dirPath }, 'staging', process.env);
     expect(staging?.workerName).toBe('my-app-staging');
     expect(staging?.secretNames).toEqual(['AUTH_SECRET', 'OMITTED']);
     expect(staging?.d1Databases).toEqual([{ binding: 'DB', name: 'my-app-staging', id: 'stg-id' }]);
   });
 
   it('returns undefined without a config and throws for one that cannot be evaluated', async () => {
-    expect(resolveCloudflareConfig({ dirPath, env: process.env }, 'production')).toBeUndefined();
+    expect(resolveLocalCloudflareConfig({ dirPath, env: process.env }, 'production')).toBeUndefined();
 
     await fs.writeFile(path.join(dirPath, 'cloudflare.config.ts'), `throw new Error('Migration incomplete.');`);
-    expect(() => resolveCloudflareConfig({ dirPath, env: process.env }, 'production')).toThrow('Migration incomplete.');
+    expect(() => resolveLocalCloudflareConfig({ dirPath, env: process.env }, 'production')).toThrow(
+      'Migration incomplete.'
+    );
   });
 });
 

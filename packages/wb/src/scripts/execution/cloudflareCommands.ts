@@ -6,16 +6,34 @@ import {
   buildCfCommand,
   buildGenDevVarsCommand,
   buildLocalD1MigrationsApplyCommands,
+  getAbsoluteLocalStateDir,
   getLocalStateDir,
 } from '../../utils/cloudflare.js';
-import { getCloudflareMode } from '../../utils/cloudflareConfig.js';
+import { resolveLocalCloudflareMode } from '../../utils/cloudflareConfig.js';
 import { getEnsuredPort } from '../../utils/port.js';
 import { buildShellEnvironmentAssignment, shellEscapeArgument } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
 
-/** Whether cf delegates the project's dev server and build to Vite (otherwise to Wrangler). */
+const VITE_PLUGIN_PACKAGE_NAME = '@cloudflare/vite-plugin';
+
+/**
+ * Whether cf delegates the project's dev server and build to Vite (otherwise to Wrangler). cf
+ * decides by the package's own dependency, so a vite.config using the plugin without declaring it
+ * would be served by one tool and prepared for the other.
+ */
 export function usesViteBundler(project: Project): boolean {
-  return project.hasOwnDependency('@cloudflare/vite-plugin');
+  if (project.hasOwnDependency(VITE_PLUGIN_PACKAGE_NAME)) return true;
+  const usesUndeclaredPlugin = ['vite.config.ts', 'vite.config.mts', 'vite.config.js', 'vite.config.mjs']
+    .map((fileName) => path.join(project.dirPath, fileName))
+    .some(
+      (filePath) => fs.existsSync(filePath) && fs.readFileSync(filePath, 'utf8').includes(VITE_PLUGIN_PACKAGE_NAME)
+    );
+  if (usesUndeclaredPlugin) {
+    throw new Error(
+      `${project.packageJsonPath} must declare ${VITE_PLUGIN_PACKAGE_NAME} (and vite) among its own dependencies: its vite.config uses the plugin, and cf selects the bundler by that declaration.`
+    );
+  }
+  return false;
 }
 
 /** Commands serving the Worker from source with `cf dev`. */
@@ -24,18 +42,18 @@ export function buildCloudflareDevCommands(
   argv: ScriptArgv,
   { appliesD1Migrations }: { appliesD1Migrations: boolean }
 ): string[] {
+  const mode = resolveLocalCloudflareMode(project);
   const port = getEnsuredPort(project);
   const usesVite = usesViteBundler(project);
-  if (usesVite) assertViteStateDirConvention(project);
   const serverArgs = usesVite
     ? `--port ${port}`
-    : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(project)}"`;
+    : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(mode)}"`;
   return [
     // A locally served Worker reads the values of its declared secrets only from .dev.vars.
     buildGenDevVarsCommand(argv, '.dev.vars'),
     // The local D1 starts empty and no dev server applies migrations itself.
-    ...(appliesD1Migrations ? buildLocalD1MigrationsApplyCommands(project) : []),
-    `${usesVite ? buildViteModeEnvPrefix(project) : ''}${buildCfCommand(project, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
+    ...(appliesD1Migrations ? buildLocalD1MigrationsApplyCommands(project, mode) : []),
+    `${usesVite ? buildViteStateDirPrefix(project, mode) : ''}${buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
   ];
 }
 
@@ -45,44 +63,24 @@ export function buildCloudflareDevCommands(
  */
 export function buildCloudflareBuiltStartCommands(project: Project, argv: ScriptArgv): string[] {
   if (!usesViteBundler(project)) return buildCloudflareDevCommands(project, argv, { appliesD1Migrations: true });
-  assertViteStateDirConvention(project);
+  const mode = resolveLocalCloudflareMode(project);
+  const stateDirPrefix = buildViteStateDirPrefix(project, mode);
   return [
     // The same build `wb deploy` runs, so the served Worker has the config of wb's mode: the
     // local D1 migrated below is the one whose ID that config declares.
     ...(project.packageJson.scripts?.['gen-code'] ? ['YARN run gen-code'] : []),
-    `${buildViteModeEnvPrefix(project)}${buildCfCommand(project, 'build')}`,
+    `${stateDirPrefix}${buildCfCommand(mode, 'build')}`,
     buildGenDevVarsCommand(argv, '.dev.vars'),
-    ...buildLocalD1MigrationsApplyCommands(project),
-    // The same mode as the build, for a vite.config that derives anything (e.g. the state path) from it.
-    `${buildViteModeEnvPrefix(project)}YARN vite preview --mode ${shellEscapeArgument(getCloudflareMode(project))} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
+    ...buildLocalD1MigrationsApplyCommands(project, mode),
+    `${stateDirPrefix}YARN vite preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
 }
 
 /**
- * A vite.config selects the per-mode state directory from `WB_ENV`, which can differ from wb's
- * mode (e.g. `MISE_ENV=test` with `WB_ENV=development`), so Vite runs with `WB_ENV` set to the mode.
+ * The Cloudflare Vite plugin takes the local state directory only from `persistState` in the
+ * project's vite.config, so wb hands the directory it migrates and resets to every Vite command
+ * through this variable, which that config reads.
  */
-function buildViteModeEnvPrefix(project: Project): string {
-  const mode = getCloudflareMode(project);
-  return project.env.WB_ENV === mode ? '' : `${buildShellEnvironmentAssignment('WB_ENV', mode)} `;
-}
-
-/**
- * wb cannot tell Vite where to keep the local Worker state: the Cloudflare Vite plugin takes it
- * only from `persistState` in the project's vite.config, and defaults to `.cloudflare/state` for
- * every mode. Without the per-mode path there, a test run would serve an unmigrated D1 from the
- * development state while wb migrates and wipes `.cloudflare/state-test`.
- */
-function assertViteStateDirConvention(project: Project): void {
-  const mode = getCloudflareMode(project);
-  if (mode === 'development') return;
-  const viteConfigPath = ['vite.config.ts', 'vite.config.mts', 'vite.config.js', 'vite.config.mjs']
-    .map((fileName) => path.join(project.dirPath, fileName))
-    .find((filePath) => fs.existsSync(filePath));
-  if (viteConfigPath && fs.readFileSync(viteConfigPath, 'utf8').includes('.cloudflare/state-')) return;
-  // A static check cannot evaluate arbitrary path expressions, so the rule fixes the spelling:
-  // the file must contain the literal directory prefix.
-  throw new Error(
-    `vite.config must set the Cloudflare Vite plugin's persistState.path to ".cloudflare/state-<WB_ENV>" for WB_ENV=${mode} (".cloudflare/state" for development), written with the literal text ".cloudflare/state-" (e.g. \`.cloudflare/state-\${process.env.WB_ENV}\`): wb migrates and resets that directory.`
-  );
+function buildViteStateDirPrefix(project: Project, mode: string): string {
+  return `${buildShellEnvironmentAssignment('WB_CLOUDFLARE_STATE_DIR', getAbsoluteLocalStateDir(project, mode))} `;
 }

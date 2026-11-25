@@ -108,10 +108,11 @@ export function findUnmigratedWranglerConfigPath(project: Pick<Project, 'dirPath
 }
 
 /**
- * The mode wb passes to every cf command, so that a function-form `cloudflare.config.ts`
- * receives WB_ENV as `mode`.
+ * The mode of a local command (start, test, db, gen-code), which wb passes to every cf command so
+ * that a function-form `cloudflare.config.ts` receives WB_ENV as `mode`. Each command entry
+ * resolves it once and hands it to the builders; `wb deploy` uses its validated WB_ENV instead.
  */
-export function getCloudflareMode(project: Pick<Project, 'env'>): string {
+export function resolveLocalCloudflareMode(project: Pick<Project, 'env'>): string {
   // Destructive test resets are gated on isProjectEnvironment(project, 'test'), which accepts
   // either WB_ENV or MISE_ENV; resolve to test whenever either says so, so that such resets can
   // never target the development state.
@@ -121,36 +122,61 @@ export function getCloudflareMode(project: Pick<Project, 'env'>): string {
 }
 
 /**
- * Evaluate `cloudflare.config.ts` for the mode and return what wb needs from it. Returns
- * undefined when the project has no such config; throws when it cannot be evaluated.
+ * Evaluate `cloudflare.config.ts` for a local command's mode and return what wb needs from it.
+ * Returns undefined when the project has no such config; throws when it cannot be evaluated.
  */
-export function resolveCloudflareConfig(
+export function resolveLocalCloudflareConfig(
   project: Pick<Project, 'dirPath' | 'env'>,
-  mode = getCloudflareMode(project),
-  env?: Record<string, string | undefined>
+  mode: string
 ): ResolvedCloudflareConfig | undefined {
   const configPath = findCloudflareConfigPath(project);
   if (!configPath) return;
-  // The config may read the environment, so one evaluated under another environment (the one a
-  // build gets) is a different result and bypasses the cache.
-  if (env) return loadCloudflareConfig(project, configPath, mode, env);
   return resolvedConfigCache
     .getOrInsertComputed(project, () => new Map<string, ResolvedCloudflareConfig>())
-    .getOrInsertComputed(mode, () => loadCloudflareConfig(project, configPath, mode));
+    .getOrInsertComputed(mode, () => loadCloudflareConfig(project.dirPath, configPath, mode, project.env));
+}
+
+/**
+ * Evaluate `cloudflare.config.ts` for a deploy, under the environment its build will get: the
+ * config may read the environment, so the preflight must see the config the build produces.
+ */
+export function resolveDeployCloudflareConfig(
+  project: Pick<Project, 'dirPath'>,
+  envName: string,
+  buildEnv: Record<string, string | undefined>
+): ResolvedCloudflareConfig | undefined {
+  const configPath = findCloudflareConfigPath(project);
+  return configPath ? loadCloudflareConfig(project.dirPath, configPath, envName, buildEnv) : undefined;
+}
+
+/**
+ * The Worker `cf build` wrote to the Build Output, in the shape of the preflight's config, or
+ * undefined when the output holds no default Worker.
+ */
+export function readBuiltCloudflareConfig(project: Pick<Project, 'dirPath'>): ResolvedCloudflareConfig | undefined {
+  const outputDirPath = path.join(project.dirPath, '.cloudflare', 'output', 'v1');
+  const workerConfigPath = path.join(outputDirPath, 'workers', 'default', 'worker.config.json');
+  if (!fs.existsSync(workerConfigPath)) return;
+  const rootConfig = z
+    .looseObject({ settings: z.looseObject({ accountId: z.string().optional() }).optional() })
+    .parse(JSON.parse(fs.readFileSync(path.join(outputDirPath, 'config.json'), 'utf8')));
+  return toResolvedConfig({
+    accountId: rootConfig.settings?.accountId,
+    worker: JSON.parse(fs.readFileSync(workerConfigPath, 'utf8')) as unknown,
+  });
 }
 
 function loadCloudflareConfig(
-  project: Pick<Project, 'dirPath' | 'env'>,
+  dirPath: string,
   configPath: string,
   mode: string,
-  env: Record<string, string | undefined> = project.env
+  env: Record<string, string | undefined>
 ): ResolvedCloudflareConfig {
   const resultDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-cloudflare-config-'));
-  let config;
   try {
     const resultPath = path.join(resultDirPath, 'config.json');
     const ret = spawnSync('node', ['--input-type=module', '-e', LOAD_CONFIG_SCRIPT, configPath, mode, resultPath], {
-      cwd: project.dirPath,
+      cwd: dirPath,
       encoding: 'utf8',
       // The config may read the environment (e.g. WB_VERSION), exactly as it does under cf.
       env: env as NodeJS.ProcessEnv,
@@ -163,10 +189,14 @@ function loadCloudflareConfig(
       );
     }
     if (ret.stderr) process.stderr.write(ret.stderr);
-    config = parsedConfigSchema.parse(JSON.parse(fs.readFileSync(resultPath, 'utf8')));
+    return toResolvedConfig(JSON.parse(fs.readFileSync(resultPath, 'utf8')));
   } finally {
     fs.rmSync(resultDirPath, { force: true, recursive: true });
   }
+}
+
+function toResolvedConfig(rawConfig: unknown): ResolvedCloudflareConfig {
+  const config = parsedConfigSchema.parse(rawConfig);
   const resolvedConfig: ResolvedCloudflareConfig = {
     workerName: config.worker.name,
     accountId: config.accountId,

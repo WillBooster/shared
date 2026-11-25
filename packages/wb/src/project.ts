@@ -257,13 +257,18 @@ export class Project {
   }
 
   /**
-   * Whether `cf workers types` should generate `.cloudflare/types/index.d.ts` here. An own cf
-   * dependency is required: in a mixed monorepo a root-level cf devDependency must not make
-   * every workspace package run it.
+   * Whether `cf workers types` should generate `.cloudflare/types/index.d.ts` here. The config
+   * imports `cf/config` and the generator is cf's own, so a Worker package without its own cf
+   * dependency is a broken manifest, not a package to skip silently.
    */
   @cached
   get generatesWorkerTypes(): boolean {
-    return !!findCloudflareConfigPath(this) && this.hasOwnDependency('cf');
+    const configPath = findCloudflareConfigPath(this);
+    if (!configPath) return false;
+    if (!this.hasOwnDependency('cf')) {
+      throw new Error(`${this.packageJsonPath} must declare cf among its own dependencies: ${configPath} needs it.`);
+    }
+    return true;
   }
 
   @cached

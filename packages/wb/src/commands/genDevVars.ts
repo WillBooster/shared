@@ -1,14 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import { parse as parseDotenv } from 'dotenv';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findSelfProjectOrExit } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { resolveCloudflareConfig } from '../utils/cloudflareConfig.js';
+import { resolveLocalCloudflareConfig, resolveLocalCloudflareMode } from '../utils/cloudflareConfig.js';
+import { resolveDeclaredSecrets } from '../utils/workerSecrets.js';
 
 // Cloudflare Workers don't see the process environment; a locally served Worker reads the values
 // of its declared secrets from a .dev.vars file next to its config file instead. This command
@@ -21,7 +21,7 @@ type GenDevVarsCommandArgv = ArgumentsCamelCase<GenDevVarsCommandOptions & { pat
 export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions> = {
   command: 'gen-dev-vars [path]',
   describe:
-    'Generate a .dev.vars file for a locally served Worker from the environment variables loaded from fnox (plus WB_ENV and NEXT_PUBLIC_WB_ENV).',
+    'Generate a .dev.vars file for a locally served Worker: the secrets cloudflare.config.ts declares with bindings.secret(), with their values from fnox or the environment.',
   builder: (yargs) =>
     yargs.positional('path', {
       description: 'Output path of the generated .dev.vars file.',
@@ -31,50 +31,22 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
   async handler(argv: GenDevVarsCommandArgv) {
     const project = findSelfProjectOrExit(argv);
 
-    // Restrict to variables loaded from the project's declared environment sources so that
-    // unrelated process environment variables never leak into the generated file. Ignore
-    // process.env because the parent wb process injects the fnox values into it, which would
-    // otherwise suppress loading them here. wbfy declares the WB_ENV-family keys in fnox, so
-    // they are already included; process-only keys are intentionally outside this allowlist.
-    const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
-    // Explicitly exported environment variables must win over fnox values for configured keys
-    // (project.env applies that precedence), or `AUTH_SECRET=... wb start` would serve the
-    // stale configured value. An export that empties a non-empty configured value is deliberate
-    // and must survive the empty-value filter below (unlike `KEY=` placeholders, which stay
-    // omitted so they cannot shadow a configured value with empty strings).
-    const explicitlyEmptiedKeys = new Set<string>();
-    for (const key of Object.keys(envVars)) {
-      const effectiveValue = project.env[key];
-      if (effectiveValue === undefined) continue;
-      if (effectiveValue === '' && envVars[key] !== '') explicitlyEmptiedKeys.add(key);
-      envVars[key] = effectiveValue;
-    }
-    // wb derives NEXT_PUBLIC_BASE_URL from the auto-selected port when fnox does not define it
-    // (see ensurePort); the worker runtime reads only .dev.vars, so bridge the derived value too.
-    if (envVars.NEXT_PUBLIC_BASE_URL === undefined && project.env.NEXT_PUBLIC_BASE_URL !== undefined) {
-      envVars.NEXT_PUBLIC_BASE_URL = project.env.NEXT_PUBLIC_BASE_URL;
-    }
-    // A declared secret may be supplied only by the environment (e.g. a CI workflow env);
-    // `wb deploy` pushes it from there, so the locally served Worker must receive it too.
-    // An empty value of a declared secret is a value there too, so it is kept here.
-    const secretNames = new Set(resolveCloudflareConfig(project)?.secretNames);
-    for (const secretName of secretNames) {
-      const exportedValue = project.env[secretName];
-      if (envVars[secretName] === undefined && exportedValue !== undefined) envVars[secretName] = exportedValue;
-    }
-    const lines = Object.entries(envVars)
-      .filter(([key, value]) => value !== '' || explicitlyEmptiedKeys.has(key) || secretNames.has(key))
+    // Exactly the secrets `wb deploy` would push for this mode: a locally served Worker reads
+    // nothing else from the file, and a secret without a value stays unset as it would deployed.
+    const secretNames = resolveLocalCloudflareConfig(project, resolveLocalCloudflareMode(project))?.secretNames ?? [];
+    const { secrets } = resolveDeclaredSecrets(argv, project, secretNames);
+    const lines = Object.entries(secrets)
       .toSorted(([a], [b]) => a.localeCompare(b))
       .map(([key, value]) => `${key}=${quoteDotenvValue(key, value)}`);
     const outputPath = path.resolve(project.dirPath, argv.path ?? '.dev.vars');
     if (argv.dryRun) {
-      console.info(chalk.cyan(`Would generate ${outputPath} with ${lines.length} environment variables.`));
+      console.info(chalk.cyan(`Would generate ${outputPath} with ${lines.length} declared secrets.`));
       return;
     }
 
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, lines.join('\n') + '\n');
-    console.info(chalk.green(`Generated ${outputPath} with ${lines.length} environment variables.`));
+    console.info(chalk.green(`Generated ${outputPath} with ${lines.length} declared secrets.`));
   },
 };
 

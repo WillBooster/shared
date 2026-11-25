@@ -381,7 +381,7 @@ describe('BaseScripts D1 migration selection', () => {
       `YARN cf d1 raw --mode test ${d1DatabaseIds.DB} --local --persist-to ".cloudflare/state-test"`
     );
     expect(migrationCommand).toContain('YARN drizzle-kit migrate');
-    expect(buildLocalD1MigrationsApplyCommands(project)).toEqual([]);
+    expect(buildLocalD1MigrationsApplyCommands(project, 'test')).toEqual([]);
   });
 
   it('uses cf-native migrations when package.json opts in before the directory exists', async () => {
@@ -390,7 +390,7 @@ describe('BaseScripts D1 migration selection', () => {
     const project = buildD1Project(dirPath, { DB: { dir: 'drizzle', pattern: 'drizzle/*/migration.sql' } });
 
     expect(scripts.getMigrationCommands(project).join(' && ')).not.toContain('YARN drizzle-kit migrate');
-    expect(buildLocalD1MigrationsApplyCommands(project)).toEqual([
+    expect(buildLocalD1MigrationsApplyCommands(project, 'test')).toEqual([
       `CI=true YARN cf d1 migrations apply --mode test ${d1DatabaseIds.DB} --local --persist-to ".cloudflare/state-test" --dir drizzle --pattern 'drizzle/*/migration.sql'`,
     ]);
   });
@@ -409,10 +409,12 @@ describe('BaseScripts D1 migration selection', () => {
     await fs.writeFile(path.join(dirPath, 'migrations', '0001.sql'), 'CREATE TABLE t (id);');
     await writeCloudflareConfig(dirPath, ['FIRST', 'SECOND']);
 
-    expect(buildLocalD1MigrationsApplyCommands(buildD1Project(dirPath, { SECOND: { dir: 'second' } }))).toEqual([
-      `CI=true YARN cf d1 migrations apply --mode test ${d1DatabaseIds.FIRST} --local --persist-to ".cloudflare/state-test" --dir migrations`,
-      `CI=true YARN cf d1 migrations apply --mode test ${d1DatabaseIds.SECOND} --local --persist-to ".cloudflare/state-test" --dir second`,
-    ]);
+    expect(buildLocalD1MigrationsApplyCommands(buildD1Project(dirPath, { SECOND: { dir: 'second' } }), 'test')).toEqual(
+      [
+        `CI=true YARN cf d1 migrations apply --mode test ${d1DatabaseIds.FIRST} --local --persist-to ".cloudflare/state-test" --dir migrations`,
+        `CI=true YARN cf d1 migrations apply --mode test ${d1DatabaseIds.SECOND} --local --persist-to ".cloudflare/state-test" --dir second`,
+      ]
+    );
   });
 
   it('rejects mixing cf-native and drizzle-kit D1 bindings', async () => {

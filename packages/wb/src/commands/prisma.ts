@@ -21,6 +21,7 @@ import { isTursoDatabaseUrl, restoreTursoDatabase } from '../scripts/tursoRestor
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isDockerEnabled } from '../utils/ci.js';
 import { wrapWithLocalD1DatabaseUrl } from '../utils/cloudflare.js';
+import { resolveLocalCloudflareMode } from '../utils/cloudflareConfig.js';
 import { collectPlaintextFnoxValues } from '../utils/fnoxToml.js';
 import { buildShellCommand } from '../utils/shell.js';
 import { prepareForRunningCommand } from './commandUtils.js';
@@ -400,7 +401,7 @@ const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultC
  * at the local miniflare D1 SQLite file.
  */
 function withLocalD1IfNeeded(orm: DatabaseOrm, project: Project, script: string): string {
-  return orm === 'drizzle' ? wrapWithLocalD1DatabaseUrl(project, script) : script;
+  return orm === 'drizzle' ? wrapWithLocalD1DatabaseUrl(project, resolveLocalCloudflareMode(project), script) : script;
 }
 
 // At a monorepo root, multiple workspace projects can qualify — for a Drizzle `file:` URL, the

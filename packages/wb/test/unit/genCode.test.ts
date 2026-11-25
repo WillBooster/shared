@@ -28,11 +28,11 @@ describe('getGenCodeScripts', () => {
     }
   });
 
-  it('does not generate worker types without an own cf dependency', async () => {
+  it('rejects a Worker package without an own cf dependency', async () => {
     const dirPath = await createWorkerProject({});
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain(WORKER_TYPES);
+      expect(() => getGenCodeScripts(new Project(dirPath, {}, false))).toThrow('must declare cf');
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }

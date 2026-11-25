@@ -1,6 +1,6 @@
 import { httpServerPackages } from '../../commands/httpServerPackages.js';
 import type { Project } from '../../project.js';
-import { findCloudflareConfigPath } from '../../utils/cloudflareConfig.js';
+import { findCloudflareConfigPath, findUnmigratedWranglerConfigPath } from '../../utils/cloudflareConfig.js';
 import type { BaseScripts } from './baseScripts.js';
 import { httpServerScripts } from './httpServerScripts.js';
 import { nextScripts } from './nextScripts.js';
@@ -16,6 +16,7 @@ export function selectScripts(project: Project): BaseScripts {
 
 /** The framework-detection prefix every consumer shares; `wb start` composes its own tail around it. */
 export function selectFrameworkScripts(project: Project): BaseScripts | undefined {
+  assertNoUnmigratedWranglerConfig(project);
   const deps = project.packageJson.dependencies ?? {};
   const devDeps = project.packageJson.devDependencies ?? {};
   // vinext apps also depend on next, so this check must come first.
@@ -25,6 +26,14 @@ export function selectFrameworkScripts(project: Project): BaseScripts | undefine
   if (findCloudflareConfigPath(project)) return workersScripts;
   if (devDeps.vite) return viteScripts;
   return;
+}
+
+/** wb drives a Worker only through cf, so a package still on a wrangler config cannot be served or tested. */
+function assertNoUnmigratedWranglerConfig(project: Project): void {
+  const wranglerConfigPath = findUnmigratedWranglerConfigPath(project);
+  if (wranglerConfigPath) {
+    throw new Error(`wb no longer reads ${wranglerConfigPath}; convert the project with \`cf migrate\` first.`);
+  }
 }
 
 export function dependsOnHttpServerPackage(project: Project): boolean {

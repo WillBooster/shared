@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { readEnvironmentVariables, spawnAsync } from '@willbooster/shared-lib-node/src';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { getErrorMessage } from '@willbooster/shared-lib/src';
 import chalk from 'chalk';
 import { config } from 'dotenv';
@@ -23,12 +23,13 @@ import {
   findCloudflareConfigPath,
   findUnmigratedWranglerConfigPath,
   formatD1DatabaseNames,
-  resolveCloudflareConfig,
+  readBuiltCloudflareConfig,
+  resolveDeployCloudflareConfig,
   selectD1Migrations,
 } from '../utils/cloudflareConfig.js';
-import { selectFnoxSourcedKeys } from '../utils/envSources.js';
 import { exitWithError } from '../utils/exit.js';
 import { createSecretFreeBuildEnv } from '../utils/secretFreeEnv.js';
+import { resolveDeclaredSecrets } from '../utils/workerSecrets.js';
 import { deployRailway, RAILWAY_IAC_FILE_PATH } from './deployRailway.js';
 
 /**
@@ -136,6 +137,7 @@ async function deployBuiltWorker(
   const { project, resolvedConfig } = context;
   const accountId = resolvedConfig.accountId ?? project.env.CLOUDFLARE_ACCOUNT_ID;
   await buildWorker(context);
+  assertBuildMatchesPreflight(context);
   await validateWorkerBuild(context);
   await applyD1Migrations(context, d1Migrations, accountId);
   if (!(await deployCodeAndSecrets(context, secrets))) return;
@@ -161,7 +163,7 @@ function resolveCloudflareConfigOrExit(
   buildEnv: Record<string, string> | undefined
 ): ResolvedCloudflareConfig {
   try {
-    const resolvedConfig = resolveCloudflareConfig(project, envName, buildEnv);
+    const resolvedConfig = resolveDeployCloudflareConfig(project, envName, buildEnv ?? project.env);
     if (resolvedConfig) return resolvedConfig;
   } catch (error) {
     exitWithError(getErrorMessage(error));
@@ -211,10 +213,11 @@ function assertDeployCredentials(project: Project, drizzleD1Database: Cloudflare
 function selectSecretsOrExit({ argv, project, envName, resolvedConfig }: WorkerDeployContext): Record<string, string> {
   // Resolve and validate all secrets before any build or remote mutation, so a missing
   // secret aborts the deploy instead of leaving a migrated database behind an old Worker.
-  const [envVars, envSources] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
-  const fnoxKeys = selectFnoxSourcedKeys(envSources);
-  const fnoxValues = Object.fromEntries(Object.entries(envVars).filter(([key]) => fnoxKeys.has(key)));
-  const { missingSecretNames, secrets } = selectDeclaredSecrets(resolvedConfig.secretNames, fnoxValues, project.env);
+  const { missingSecretNames, secrets, undeclaredFnoxKeys } = resolveDeclaredSecrets(
+    argv,
+    project,
+    resolvedConfig.secretNames
+  );
   if (missingSecretNames.length > 0) {
     exitWithError(
       `Secrets that cloudflare.config.ts declares with bindings.secret() for ${envName} are not provided: ${missingSecretNames.join(', ')}. ` +
@@ -226,14 +229,12 @@ function selectSecretsOrExit({ argv, project, envName, resolvedConfig }: WorkerD
   if (project.env.WB_VERSION && !resolvedConfig.envKeys.includes('WB_VERSION')) {
     secrets.WB_VERSION = project.env.WB_VERSION;
   }
-  const undeclaredKeys = [...fnoxKeys].filter(
+  const unpushedKeys = undeclaredFnoxKeys.filter(
     (key) => !resolvedConfig.envKeys.includes(key) && !DEPLOY_CONTROL_KEYS.has(key)
   );
-  if (undeclaredKeys.length > 0) {
-    // A locally served Worker gets only its declared secrets too, so pushing more here would
-    // make the deployed Worker differ from the one the tests exercise.
+  if (unpushedKeys.length > 0) {
     console.info(
-      `Not pushed because cloudflare.config.ts does not declare them with bindings.secret(): ${undeclaredKeys.toSorted().join(', ')}`
+      `Not pushed because cloudflare.config.ts does not declare them with bindings.secret(): ${unpushedKeys.toSorted().join(', ')}`
     );
   }
   return secrets;
@@ -300,14 +301,44 @@ async function buildWorker({ argv, project, envName, buildEnv }: WorkerDeployCon
   if (project.packageJson.scripts?.['gen-code']) {
     await runWithSpawn('YARN run gen-code', project, argv);
   }
-  await runWithSpawn(buildCfCommand(project, 'build', '', envName), project, argv, {
+  await runWithSpawn(buildCfCommand(envName, 'build'), project, argv, {
     env: buildEnv,
   });
 }
 
+/**
+ * The config is code, so the build's evaluation may differ from the preflight's even under the
+ * same environment (e.g. it reads a file or the time). Secrets were validated and migrations are
+ * planned for the preflight's Worker, so a different built Worker must stop before any remote
+ * mutation.
+ */
+function assertBuildMatchesPreflight({ argv, project, resolvedConfig }: WorkerDeployContext): void {
+  // On dry runs the build above is a printed no-op.
+  if (argv.dryRun) return;
+  const builtConfig = readBuiltCloudflareConfig(project);
+  if (!builtConfig) {
+    exitWithError('cf build produced no default Worker under .cloudflare/output/v1.');
+  }
+  if (describeDeployTarget(builtConfig) !== describeDeployTarget(resolvedConfig)) {
+    exitWithError(
+      'The built Worker differs from the one wb validated before building (name, account, bindings, secrets, or D1 databases): make cloudflare.config.ts return the same configuration for the same mode and environment.'
+    );
+  }
+}
+
+function describeDeployTarget(config: ResolvedCloudflareConfig): string {
+  return JSON.stringify([
+    config.workerName,
+    config.accountId,
+    config.envKeys.toSorted(),
+    config.secretNames.toSorted(),
+    config.d1Databases.map((database) => [database.binding, database.id]).toSorted(),
+  ]);
+}
+
 async function validateWorkerBuild({ argv, project, envName }: WorkerDeployContext): Promise<void> {
   await runWithSpawn(
-    buildCfCommand(project, 'deploy', `--prebuilt --dry-run${buildRolloutOption(argv)}`, envName),
+    buildCfCommand(envName, 'deploy', `--prebuilt --dry-run${buildRolloutOption(argv)}`),
     project,
     argv
   );
@@ -350,7 +381,7 @@ async function applyD1Migrations(
   for (const { database, settings } of cfNativeD1Migrations) {
     // CI=true suppresses cf's interactive confirmation prompt.
     await runWithSpawn(
-      `CI=true ${buildCfCommand(project, 'd1 migrations apply', `${getD1DatabaseIdOrExit(database)} ${buildD1MigrationOptions(settings)}`, envName)}`,
+      `CI=true ${buildCfCommand(envName, 'd1 migrations apply', `${getD1DatabaseIdOrExit(database)} ${buildD1MigrationOptions(settings)}`)}`,
       project,
       argv
     );
@@ -522,30 +553,6 @@ export function readCloudflareEnvFiles(dirPath: string, rootDirPath: string | un
     }
   }
   return envVars;
-}
-
-/**
- * Select the values of the secrets the config declares. An explicitly exported environment
- * variable wins over the fnox value (so `AUTH_SECRET=... wb deploy` does not push the stale
- * configured value) and may supply a secret fnox does not hold (e.g. a CI workflow env).
- * Empty strings are values: pushing one clears a stale remote secret.
- */
-export function selectDeclaredSecrets(
-  secretNames: readonly string[],
-  fnoxValues: Record<string, string>,
-  exportedEnv: Record<string, string | undefined>
-): { missingSecretNames: string[]; secrets: Record<string, string> } {
-  const secrets: Record<string, string> = {};
-  const missingSecretNames: string[] = [];
-  for (const name of secretNames) {
-    const value = exportedEnv[name] ?? fnoxValues[name];
-    if (value === undefined) {
-      missingSecretNames.push(name);
-    } else {
-      secrets[name] = value;
-    }
-  }
-  return { missingSecretNames, secrets };
 }
 
 /**
