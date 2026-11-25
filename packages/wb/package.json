@@ -77,7 +77,8 @@
     "oxlint-tsgolint": "7.0.2007",
     "semantic-release": "25.0.9",
     "textlint-rule-no-hankaku-kana": "2.0.1",
-    "type-fest": "5.10.0"
+    "type-fest": "5.10.0",
+    "wrangler": "4.168.0"
   },
   "engines": {
     "bun": ">=1.4.4",

@@ -66,7 +66,14 @@ interface WorkerDeployContext {
   envName: string;
   resolvedConfig: ResolvedCloudflareConfig;
   /** The environment the config is evaluated and built under: restricted for a Vite build. */
-  buildEnv: Record<string, string | undefined>;
+  buildEnv: Readonly<Record<string, string | undefined>>;
+  /**
+   * The environment of every authenticated step and hook. cf's resource commands prefer an
+   * exported CLOUDFLARE_ACCOUNT_ID over the config's accountId, while the upload uses the
+   * account of the build, so this carries the account the Worker is deployed to.
+   */
+  authEnv: Readonly<Record<string, string | undefined>>;
+  accountId: string | undefined;
 }
 
 export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
@@ -94,22 +101,16 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     }
 
     exportCloudflareEnvFiles(project);
+    // Every environment below is a snapshot, so it must already carry the local bin directories
+    // on PATH.
+    prepareLocalBinPath(project);
     // The preflight must see the config the build will produce, so both evaluate it under the
     // same environment.
-    // The snapshot below must already carry the local bin directories on PATH.
-    prepareLocalBinPath(project);
-    // A Wrangler build gets wb's environment as it is now, before the account below is exported
-    // into it for the authenticated steps.
     const buildEnv = usesViteBundler(project) ? createViteBuildEnv(project, envName) : { ...project.env };
     const resolvedConfig = resolveCloudflareConfigOrExit(project, envName, buildEnv);
-    // cf's resource commands prefer an exported CLOUDFLARE_ACCOUNT_ID over the config's
-    // accountId, while the upload uses the account of the build; every authenticated step must
-    // target the account the Worker is deployed to.
-    if (resolvedConfig.accountId) {
-      process.env.CLOUDFLARE_ACCOUNT_ID = resolvedConfig.accountId;
-      project.env.CLOUDFLARE_ACCOUNT_ID = resolvedConfig.accountId;
-    }
-    const context: WorkerDeployContext = { argv, project, envName, resolvedConfig, buildEnv };
+    const accountId = resolvedConfig.accountId ?? project.env.CLOUDFLARE_ACCOUNT_ID;
+    const authEnv = { ...project.env, ...(accountId && { CLOUDFLARE_ACCOUNT_ID: accountId }) };
+    const context: WorkerDeployContext = { argv, project, envName, resolvedConfig, buildEnv, authEnv, accountId };
     const d1Migrations = selectD1MigrationsOrExit(context);
     // Dry runs execute nothing authenticated, so they skip the credential preflight entirely.
     if (!argv.dryRun) assertDeployCredentials(project, d1Migrations.drizzleD1Database);
@@ -117,7 +118,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     // App-specific validation hook (e.g. secret pairs that must be both-set-or-both-empty).
     // The reusable deploy.yml already runs it on CI; run it here for local deploys.
     if (!isCI(project.env.CI) && project.packageJson.scripts?.['deploy/ci-setup']) {
-      await runWithSpawn('YARN run deploy/ci-setup', project, argv);
+      await runWithSpawn('YARN run deploy/ci-setup', project, argv, { env: authEnv });
     }
 
     const secrets = selectSecretsOrExit(context);
@@ -138,14 +139,12 @@ async function deployBuiltWorker(
   d1Migrations: D1Migrations,
   secrets: Record<string, string>
 ): Promise<void> {
-  const { project, resolvedConfig } = context;
-  const accountId = resolvedConfig.accountId ?? project.env.CLOUDFLARE_ACCOUNT_ID;
   await buildWorker(context);
   assertBuildMatchesPreflight(context);
   await validateWorkerBuild(context);
-  await applyD1Migrations(context, d1Migrations, accountId);
+  await applyD1Migrations(context, d1Migrations);
   if (!(await deployCodeAndSecrets(context, secrets))) return;
-  await runPostDeployHook(context, accountId);
+  await runPostDeployHook(context);
 }
 
 function exportCloudflareEnvFiles(project: Project): void {
@@ -342,11 +341,12 @@ function describeDeployTarget(config: ResolvedCloudflareConfig): string {
   ]);
 }
 
-async function validateWorkerBuild({ argv, project, envName }: WorkerDeployContext): Promise<void> {
+async function validateWorkerBuild({ argv, project, envName, authEnv }: WorkerDeployContext): Promise<void> {
   await runWithSpawn(
     buildCfCommand(envName, 'deploy', `--prebuilt --dry-run${buildRolloutOption(argv)}`),
     project,
-    argv
+    argv,
+    { env: authEnv }
   );
 }
 
@@ -377,9 +377,8 @@ function createViteBuildEnv(project: Project, envName: string): Record<string, s
 }
 
 async function applyD1Migrations(
-  { argv, project, envName }: WorkerDeployContext,
-  { cfNativeD1Migrations, drizzleD1Database }: D1Migrations,
-  accountId: string | undefined
+  { argv, project, envName, authEnv, accountId }: WorkerDeployContext,
+  { cfNativeD1Migrations, drizzleD1Database }: D1Migrations
 ): Promise<void> {
   // Apply D1 migrations to the remote database with the project's single migration mechanism.
   // Migrations must be backward compatible: the old Worker serves traffic until
@@ -389,7 +388,8 @@ async function applyD1Migrations(
     await runWithSpawn(
       `CI=true ${buildCfCommand(envName, 'd1 migrations apply', `${getD1DatabaseIdOrExit(database)} ${buildD1MigrationOptions(settings)}`)}`,
       project,
-      argv
+      argv,
+      { env: authEnv }
     );
   }
   if (drizzleD1Database) {
@@ -406,7 +406,8 @@ async function applyD1Migrations(
         `CLOUDFLARE_D1_DATABASE_ID=${databaseId} CLOUDFLARE_ACCOUNT_ID=${accountId}`
       ),
       project,
-      argv
+      argv,
+      { env: authEnv }
     );
   }
 }
@@ -421,7 +422,7 @@ function getD1DatabaseIdOrExit(database: CloudflareD1Database): string {
 
 /** Resolves to false when a shutdown signal interrupted the deploy. */
 async function deployCodeAndSecrets(
-  { argv, project, envName }: WorkerDeployContext,
+  { argv, project, envName, authEnv }: WorkerDeployContext,
   secrets: Record<string, string>
 ): Promise<boolean> {
   // Deploy the validated build and its secrets atomically (no post-deploy secret push that
@@ -440,7 +441,7 @@ async function deployCodeAndSecrets(
   console.info(chalk.cyan(`Running: cf ${deployArgs.join(' ')} <temporary secrets file>`));
   if (argv.dryRun) return true;
 
-  const { deployStatus, receivedShutdownSignal } = await runCfWithSecretsFile(project, deployArgs, secrets);
+  const { deployStatus, receivedShutdownSignal } = await runCfWithSecretsFile(project, authEnv, deployArgs, secrets);
   if (receivedShutdownSignal) {
     // Re-raise so the caller observes the same signal-derived exit status.
     process.kill(process.pid, receivedShutdownSignal);
@@ -458,10 +459,10 @@ async function deployCodeAndSecrets(
 // code-gauge-allow functionNcss -- Keep the subprocess and its signal handlers in one cleanup scope.
 async function runCfWithSecretsFile(
   project: Project,
+  authEnv: WorkerDeployContext['authEnv'],
   deployArgs: string[],
   secrets: Record<string, string>
 ): Promise<{ deployStatus: number | undefined; receivedShutdownSignal: NodeJS.Signals | undefined }> {
-  prepareLocalBinPath(project);
   // 0o700 directory + 0o600 file: readable only by the deploying user. cf runs through an
   // async spawn (spawnSync would block the event loop, so a shutdown signal would kill the
   // process before any cleanup) and the directory is removed in a finally, so an interrupted
@@ -502,7 +503,7 @@ async function runCfWithSecretsFile(
     deployStatus = await new Promise<number | undefined>((resolve) => {
       cfProcess = spawn('cf', [...deployArgs, secretsFilePath], {
         cwd: project.dirPath,
-        env: project.env as NodeJS.ProcessEnv,
+        env: authEnv as NodeJS.ProcessEnv,
         stdio: ['ignore', 'inherit', 'inherit'],
       });
       cfProcess.on('error', (error) => {
@@ -522,24 +523,18 @@ async function runCfWithSecretsFile(
   return { deployStatus, receivedShutdownSignal };
 }
 
-async function runPostDeployHook(
-  { argv, project, resolvedConfig }: WorkerDeployContext,
-  accountId: string | undefined
-): Promise<void> {
+async function runPostDeployHook({ argv, project, resolvedConfig, authEnv }: WorkerDeployContext): Promise<void> {
   // Optional post-deploy hook (e.g. seeding the remote D1 via drizzle's d1-http driver).
-  if (project.packageJson.scripts?.['deploy/post']) {
-    // The id is unambiguous only with a single D1 binding; with multiple, the hook must
-    // resolve its target itself. Clear first either way: a stale inherited id must not
-    // redirect the hook to another database.
-    const hookD1Database = resolvedConfig.d1Databases.length === 1 ? resolvedConfig.d1Databases[0] : undefined;
-    delete project.env.CLOUDFLARE_D1_DATABASE_ID;
-    if (resolvedConfig.d1Databases.length > 1) {
-      console.warn(chalk.yellow('Multiple D1 bindings exist; CLOUDFLARE_D1_DATABASE_ID is not set for deploy/post.'));
-    }
-    if (hookD1Database?.id) project.env.CLOUDFLARE_D1_DATABASE_ID = hookD1Database.id;
-    if (accountId) project.env.CLOUDFLARE_ACCOUNT_ID = accountId;
-    await runWithSpawn('YARN run deploy/post', project, argv);
+  if (!project.packageJson.scripts?.['deploy/post']) return;
+  // The id is unambiguous only with a single D1 binding; with multiple, the hook must resolve
+  // its target itself. A stale inherited id must not redirect the hook to another database.
+  const hookD1Database = resolvedConfig.d1Databases.length === 1 ? resolvedConfig.d1Databases[0] : undefined;
+  if (resolvedConfig.d1Databases.length > 1) {
+    console.warn(chalk.yellow('Multiple D1 bindings exist; CLOUDFLARE_D1_DATABASE_ID is not set for deploy/post.'));
   }
+  await runWithSpawn('YARN run deploy/post', project, argv, {
+    env: { ...authEnv, CLOUDFLARE_D1_DATABASE_ID: hookD1Database?.id },
+  });
 }
 
 /**
@@ -573,8 +568,8 @@ async function listRemoteWorkerSecretNames({
   argv,
   project,
   resolvedConfig,
+  authEnv,
 }: WorkerDeployContext): Promise<string[] | undefined> {
-  prepareLocalBinPath(project);
   const listArgs = ['workers', 'secrets', 'list', '--worker', resolvedConfig.workerName];
   console.info(chalk.cyan(`Running: cf ${listArgs.join(' ')}`));
   let ret;
@@ -582,9 +577,9 @@ async function listRemoteWorkerSecretNames({
     ret = await spawnAsync('cf', listArgs, {
       // At the filesystem root, cf finds no config to evaluate (it searches upward from the
       // working directory), so the config's own output cannot mix into the JSON on stdout; the
-      // account comes from CLOUDFLARE_ACCOUNT_ID.
+      // account comes from authEnv's CLOUDFLARE_ACCOUNT_ID.
       cwd: path.parse(project.dirPath).root,
-      env: project.env as NodeJS.ProcessEnv,
+      env: authEnv as NodeJS.ProcessEnv,
       stdio: 'pipe',
       killOnExit: true,
       verbose: argv.verbose,
@@ -637,8 +632,8 @@ export function selectInheritedRemoteSecretNames(
 }
 
 /**
- * Reading binExists prepends node_modules/.bin directories to project.env.PATH,
- * so the direct (non-shell) cf spawns resolve the local binary.
+ * Reading binExists prepends node_modules/.bin directories to project.env.PATH, so the
+ * environments copied from it resolve the local cf binary.
  */
 function prepareLocalBinPath(project: Project): void {
   if (!project.binExists) {

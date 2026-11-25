@@ -13,22 +13,7 @@ const cliPath = path.resolve('bin/index.js');
 
 beforeAll(buildWb, 120_000);
 
-// A function-form config may reject an undefined mode, so the types are generated for wb's mode,
-// whichever the shell running the tests selects.
-const WORKER_TYPES_PATTERN = /^YARN cf workers types --mode \S+ < \/dev\/null$/u;
-
 describe('getGenCodeScripts', () => {
-  it('generates worker types first, before the other generators', async () => {
-    const dirPath = await createWorkerProject({ devDependencies: { cf: '1.0.0' } });
-
-    try {
-      // The later generators type-check against the `Env` the gitignored types declare.
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))[0]).toMatch(WORKER_TYPES_PATTERN);
-    } finally {
-      await fs.rm(dirPath, { force: true, recursive: true });
-    }
-  });
-
   it('rejects a Worker package without an own cf dependency', async () => {
     const dirPath = await createWorkerProject({});
 

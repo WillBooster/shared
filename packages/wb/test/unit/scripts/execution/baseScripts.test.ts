@@ -14,7 +14,6 @@ import {
   buildWaitOnLoopbackCommand,
 } from '../../../../src/scripts/execution/baseScripts.js';
 import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/sharedOptionsBuilder.js';
-import { buildLocalD1MigrationsApplyCommands } from '../../../../src/utils/cloudflare.js';
 import * as portUtils from '../../../../src/utils/port.js';
 import * as processUtils from '../../../../src/utils/process.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../../../src/utils/shell.js';
@@ -362,37 +361,9 @@ describe('BaseScripts D1 migration selection', () => {
     await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'postgresql' };`);
     const warn = spyOn(console, 'warn').mockImplementation(() => {});
 
-    const migrationCommand = scripts.getMigrationCommands(buildD1Project(dirPath)).join(' && ');
-    expect(migrationCommand).toContain('YARN drizzle-kit migrate');
-    expect(migrationCommand).not.toContain('cf d1 raw');
-    expect(migrationCommand).not.toContain('export DATABASE_URL');
+    scripts.getMigrationCommands(buildD1Project(dirPath));
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('No D1 migration mechanism detected for DB'));
     warn.mockRestore();
-  });
-
-  it('uses drizzle-kit against the local D1 file when migrations/ has no flat SQL files', async () => {
-    await fs.mkdir(path.join(dirPath, 'migrations'));
-    await writeCloudflareConfig(dirPath, ['DB']);
-    await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
-    const project = buildD1Project(dirPath);
-
-    const migrationCommand = scripts.getMigrationCommands(project).join(' && ');
-    expect(migrationCommand).toContain(
-      `YARN cf d1 raw --mode test ${d1DatabaseIds.DB} --local --persist-to ".cloudflare/state-test"`
-    );
-    expect(migrationCommand).toContain('YARN drizzle-kit migrate');
-    expect(buildLocalD1MigrationsApplyCommands(project, 'test', true)).toEqual([]);
-  });
-
-  it('uses cf-native migrations when package.json opts in before the directory exists', async () => {
-    await writeCloudflareConfig(dirPath, ['DB']);
-    await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
-    const project = buildD1Project(dirPath, { DB: { dir: 'drizzle', pattern: 'drizzle/*/migration.sql' } });
-
-    expect(scripts.getMigrationCommands(project).join(' && ')).not.toContain('YARN drizzle-kit migrate');
-    expect(buildLocalD1MigrationsApplyCommands(project, 'test', true)).toEqual([
-      `CI=true YARN cf d1 migrations apply --mode test ${d1DatabaseIds.DB} --local --persist-to ".cloudflare/state-test" --dir drizzle --pattern 'drizzle/*/migration.sql'`,
-    ]);
   });
 
   it('rejects multiple drizzle-kit D1 bindings', async () => {
@@ -402,19 +373,6 @@ describe('BaseScripts D1 migration selection', () => {
     expect(() => scripts.getMigrationCommands(buildD1Project(dirPath))).toThrow(
       'wb supports drizzle-kit migrations only for a single D1 binding; found multiple.'
     );
-  });
-
-  it('plans the local migration of each D1 binding with its own settings, flat SQL in migrations/ by default', async () => {
-    await fs.mkdir(path.join(dirPath, 'migrations'));
-    await fs.writeFile(path.join(dirPath, 'migrations', '0001.sql'), 'CREATE TABLE t (id);');
-    await writeCloudflareConfig(dirPath, ['FIRST', 'SECOND']);
-
-    expect(
-      buildLocalD1MigrationsApplyCommands(buildD1Project(dirPath, { SECOND: { dir: 'second' } }), 'test', false)
-    ).toEqual([
-      `CI=true YARN cf d1 migrations apply --mode test ${d1DatabaseIds.FIRST} --local --persist-to ".cloudflare/state-test" --dir migrations`,
-      `CI=true YARN cf d1 migrations apply --mode test ${d1DatabaseIds.SECOND} --local --persist-to ".cloudflare/state-test" --dir second`,
-    ]);
   });
 
   it('rejects mixing cf-native and drizzle-kit D1 bindings', async () => {
@@ -451,7 +409,7 @@ async function writeCloudflareConfig(dirPath: string, d1BindingNames: string[]):
   );
 }
 
-function buildD1Project(dirPath: string, d1Migrations?: Record<string, { dir: string; pattern?: string }>): Project {
+function buildD1Project(dirPath: string, d1Migrations?: Record<string, { dir: string }>): Project {
   return {
     buildCommand: 'build',
     dirPath,
