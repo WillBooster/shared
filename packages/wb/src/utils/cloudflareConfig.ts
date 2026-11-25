@@ -221,34 +221,6 @@ function toResolvedConfig(rawConfig: unknown): ResolvedCloudflareConfig {
   return resolvedConfig;
 }
 
-/**
- * How `cf d1 migrations apply` finds the binding's migrations, or undefined when the binding is
- * not migrated that way. `cloudflare.config.ts` has no migration fields, so the explicit opt-in
- * is `"wb": { "d1Migrations": { "<binding>": { "dir", "pattern", "table" } } }` in package.json
- * (e.g. for drizzle-kit's nested `<dir>/<name>/migration.sql` layout); without an entry, flat
- * `*.sql` files in `migrations/` (cf's defaults) opt in. A drizzle-kit `out` directory with
- * nested files and no explicit pattern would match nothing and silently apply zero migrations,
- * so it must fall through to the drizzle-kit mechanism.
- */
-export function findCfNativeD1MigrationSettings(
-  project: Pick<Project, 'dirPath' | 'packageJson'>,
-  database: CloudflareD1Database
-): D1MigrationSettings | undefined {
-  const explicitSettings = z
-    .looseObject({ d1Migrations: z.record(z.string(), d1MigrationSettingsSchema).optional() })
-    .optional()
-    .parse((project.packageJson as { wb?: unknown }).wb)?.d1Migrations?.[database.binding];
-  // An explicit entry opts in even before the directory exists; cf then fails safely instead
-  // of wb silently switching to a different migration engine.
-  if (explicitSettings) return { ...explicitSettings, dir: explicitSettings.dir ?? 'migrations' };
-
-  const migrationsDirPath = path.resolve(project.dirPath, 'migrations');
-  if (!fs.existsSync(migrationsDirPath)) return;
-  return fs.readdirSync(migrationsDirPath).some((fileName) => fileName.endsWith('.sql'))
-    ? { dir: 'migrations' }
-    : undefined;
-}
-
 export function selectD1Migrations(
   project: Pick<Project, 'dirPath' | 'packageJson'>,
   d1Databases: CloudflareD1Database[],
@@ -277,6 +249,34 @@ export function selectD1Migrations(
   return errorMessage
     ? { cfNativeD1Migrations, errorMessage, unmanagedD1Databases: [] }
     : { cfNativeD1Migrations, drizzleD1Database: otherD1Databases[0], unmanagedD1Databases: [] };
+}
+
+/**
+ * How `cf d1 migrations apply` finds the binding's migrations, or undefined when the binding is
+ * not migrated that way. `cloudflare.config.ts` has no migration fields, so the explicit opt-in
+ * is `"wb": { "d1Migrations": { "<binding>": { "dir", "pattern", "table" } } }` in package.json
+ * (e.g. for drizzle-kit's nested `<dir>/<name>/migration.sql` layout); without an entry, flat
+ * `*.sql` files in `migrations/` (cf's defaults) opt in. A drizzle-kit `out` directory with
+ * nested files and no explicit pattern would match nothing and silently apply zero migrations,
+ * so it must fall through to the drizzle-kit mechanism.
+ */
+export function findCfNativeD1MigrationSettings(
+  project: Pick<Project, 'dirPath' | 'packageJson'>,
+  database: CloudflareD1Database
+): D1MigrationSettings | undefined {
+  const explicitSettings = z
+    .looseObject({ d1Migrations: z.record(z.string(), d1MigrationSettingsSchema).optional() })
+    .optional()
+    .parse((project.packageJson as { wb?: unknown }).wb)?.d1Migrations?.[database.binding];
+  // An explicit entry opts in even before the directory exists; cf then fails safely instead
+  // of wb silently switching to a different migration engine.
+  if (explicitSettings) return { ...explicitSettings, dir: explicitSettings.dir ?? 'migrations' };
+
+  const migrationsDirPath = path.resolve(project.dirPath, 'migrations');
+  if (!fs.existsSync(migrationsDirPath)) return;
+  return fs.readdirSync(migrationsDirPath).some((fileName) => fileName.endsWith('.sql'))
+    ? { dir: 'migrations' }
+    : undefined;
 }
 
 export function formatD1DatabaseNames(d1Databases: CloudflareD1Database[]): string {
