@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { logger } from '../logger.js';
 import { options } from '../options.js';
-import { consumesGeneratedWorkerTypes, generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
+import type { PackageConfig } from '../packageConfig.js';
 import { runWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
@@ -53,11 +53,7 @@ export async function generateGitignore(config: PackageConfig, rootConfig: Packa
     const projectFileEntries = getProjectFileEntries(config);
     const dependencyEntries = getDependencyEntries(config, rootConfig);
     let headUserContent =
-      ignoreFileUtil.getHeadUserContent(content) +
-      commonContent +
-      projectFileEntries.rules +
-      dependencyEntries.rules +
-      (await syncWorkerTypesRule(config));
+      ignoreFileUtil.getHeadUserContent(content) + commonContent + projectFileEntries.rules + dependencyEntries.rules;
     if (rootConfig.depending.vinext || config.depending.vinext) {
       headUserContent += `.vinext/
 `;
@@ -181,33 +177,6 @@ src-tauri/gen/schemas/
 `;
   }
   return { names, rules };
-}
-
-/**
- * Returns the ignore rule for worker-configuration.d.ts, deleting a stale generated copy when the
- * rule no longer applies.
- */
-async function syncWorkerTypesRule(config: PackageConfig): Promise<string> {
-  // Ignored only where postinstall regenerates it, so wbfy never ignores a file that nothing recreates. This keeps
-  // its thousands of lines out of every wrangler bump's diff. Anchored with a leading slash because `wrangler types`
-  // and the opt-out deletion below only ever touch this package's own file, not a nested one at any depth.
-  if (await generatesWorkerTypes(config)) {
-    return `/worker-configuration.d.ts
-`;
-  }
-  if (config.doesContainWranglerConfig && !(await consumesGeneratedWorkerTypes(config))) {
-    // On a genuine worker-types opt-out (nothing consumes the generated file; generatesWorkerTypes
-    // alone is false for unrelated reasons such as a missing local wrangler dependency, where the
-    // file may still be consumed) the ignore rule
-    // above disappears, so an already-generated file would surface as untracked noise on every
-    // checkout — delete it. No repository tracks the file (docs/expected-repository-rules.md),
-    // so an existing copy is always a disposable generated one.
-    const workerTypesPath = path.resolve(config.dirPath, 'worker-configuration.d.ts');
-    if (fs.existsSync(workerTypesPath)) {
-      await runWithConcurrencyLimit(() => fs.promises.rm(workerTypesPath, { force: true }));
-    }
-  }
-  return '';
 }
 
 /** Returns the concatenated gitignore.io templates, or undefined when one cannot be fetched. */
