@@ -65,8 +65,8 @@ interface WorkerDeployContext {
   project: Project;
   envName: string;
   resolvedConfig: ResolvedCloudflareConfig;
-  /** The restricted environment of a Vite build; undefined when Wrangler bundles the Worker. */
-  buildEnv: Record<string, string> | undefined;
+  /** The environment the config is evaluated and built under: restricted for a Vite build. */
+  buildEnv: Record<string, string | undefined>;
 }
 
 export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
@@ -96,7 +96,9 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     exportCloudflareEnvFiles(project);
     // The preflight must see the config the build will produce, so both evaluate it under the
     // same environment.
-    const buildEnv = usesViteBundler(project) ? createViteBuildEnv(project, envName) : undefined;
+    // A Wrangler build gets wb's environment as it is now, before the account below is exported
+    // into it for the authenticated steps.
+    const buildEnv = usesViteBundler(project) ? createViteBuildEnv(project, envName) : { ...project.env };
     const resolvedConfig = resolveCloudflareConfigOrExit(project, envName, buildEnv);
     // cf's resource commands prefer an exported CLOUDFLARE_ACCOUNT_ID over the config's
     // accountId, while the upload uses the account of the build; every authenticated step must
@@ -160,10 +162,10 @@ function exportCloudflareEnvFiles(project: Project): void {
 function resolveCloudflareConfigOrExit(
   project: Project,
   envName: string,
-  buildEnv: Record<string, string> | undefined
+  buildEnv: Record<string, string | undefined>
 ): ResolvedCloudflareConfig {
   try {
-    const resolvedConfig = resolveDeployCloudflareConfig(project, envName, buildEnv ?? project.env);
+    const resolvedConfig = resolveDeployCloudflareConfig(project, envName, buildEnv);
     if (resolvedConfig) return resolvedConfig;
   } catch (error) {
     exitWithError(getErrorMessage(error));
