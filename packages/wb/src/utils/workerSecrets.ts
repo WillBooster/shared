@@ -9,7 +9,7 @@ export interface DeclaredSecrets {
   secrets: Record<string, string>;
   /** Declared secrets with no value in fnox or the environment. */
   missingSecretNames: string[];
-  /** fnox keys the config does not declare as secrets, which therefore never reach the Worker as such. */
+  /** fnox keys the config does not declare as secrets, which wb therefore does not supply as such. */
   undeclaredFnoxKeys: string[];
 }
 
