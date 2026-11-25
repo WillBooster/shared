@@ -112,10 +112,15 @@ export function findUnmigratedWranglerConfigPath(project: Pick<Project, 'dirPath
  * receives WB_ENV as `mode`. Each command entry resolves it once and hands it to the builders.
  * Everything keyed on the environment of a Worker (its config, types, local state directory, and
  * whether that state is disposable test state) follows this one value, so that no two of them
- * can disagree when WB_ENV and MISE_ENV differ.
+ * can disagree when WB_ENV and MISE_ENV differ. Test wins such a disagreement: a test run inside
+ * a shell that also exports a regular WB_ENV must never serve or wipe that environment's state.
+ * `wb deploy` does not use it: it passes its validated WB_ENV to every step, its own
+ * `gen-code` included.
  */
 export function resolveCloudflareMode(project: Pick<Project, 'env'>): string {
-  return project.env.WB_ENV || project.env.MISE_ENV || 'development';
+  return [project.env.WB_ENV, project.env.MISE_ENV].includes('test')
+    ? 'test'
+    : project.env.WB_ENV || project.env.MISE_ENV || 'development';
 }
 
 /**

@@ -301,7 +301,9 @@ async function buildWorker({ argv, project, envName, buildEnv }: WorkerDeployCon
   // gen-code keeps project.env: it may need a secret to fetch private inputs (e.g. prompt-study
   // clones a private repository), and it emits sources that the restricted build compiles.
   if (project.packageJson.scripts?.['gen-code']) {
-    await runWithSpawn('YARN run gen-code', project, argv);
+    // MISE_ENV follows the deploy's WB_ENV so that the script's wb commands resolve the deploy
+    // mode even inside a shell whose mise environment is another one (e.g. test).
+    await runWithSpawn('YARN run gen-code', project, argv, { env: { ...project.env, MISE_ENV: envName } });
   }
   await runWithSpawn(buildCfCommand(envName, 'build'), project, argv, {
     env: buildEnv,
