@@ -112,16 +112,16 @@ describe('readCloudflareEnvFiles', () => {
 });
 
 describe('selectDeclaredSecrets', () => {
-  it('prefers exported values, keeps empty values, and reports undeclared sources as missing', () => {
+  it('takes the effective environment before fnox, keeps empty values, and reports valueless secrets as missing', () => {
     expect(
       selectDeclaredSecrets(
         ['AUTH_SECRET', 'CLEARED_SECRET', 'CI_ONLY_SECRET', 'MISSING_SECRET'],
         { AUTH_SECRET: 'from-fnox', CLEARED_SECRET: '', UNDECLARED: 'never-pushed' },
-        { AUTH_SECRET: 'exported', CI_ONLY_SECRET: 'from-ci' }
+        { AUTH_SECRET: 'effective', CI_ONLY_SECRET: 'from-ci' }
       )
     ).toEqual({
       missingSecretNames: ['MISSING_SECRET'],
-      secrets: { AUTH_SECRET: 'exported', CLEARED_SECRET: '', CI_ONLY_SECRET: 'from-ci' },
+      secrets: { AUTH_SECRET: 'effective', CLEARED_SECRET: '', CI_ONLY_SECRET: 'from-ci' },
     });
   });
 });
