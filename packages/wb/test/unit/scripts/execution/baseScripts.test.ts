@@ -404,7 +404,7 @@ describe('BaseScripts D1 migration selection', () => {
     );
   });
 
-  it('applies each D1 binding its own migrations locally, flat SQL in migrations/ by default', async () => {
+  it('plans the local migration of each D1 binding with its own settings, flat SQL in migrations/ by default', async () => {
     await fs.mkdir(path.join(dirPath, 'migrations'));
     await fs.writeFile(path.join(dirPath, 'migrations', '0001.sql'), 'CREATE TABLE t (id);');
     await writeCloudflareConfig(dirPath, ['FIRST', 'SECOND']);

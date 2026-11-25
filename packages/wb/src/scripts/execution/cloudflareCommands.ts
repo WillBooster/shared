@@ -49,11 +49,13 @@ export function buildCloudflareDevCommands(
   const serverArgs = usesVite
     ? `--port ${port}`
     : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(mode)}"`;
+  // Planned even when not applied, so that an unsupported migration layout stops every start.
+  const d1MigrationCommands = buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project));
   return [
     // A locally served Worker reads the values of its declared secrets only from this file.
     buildGenDevVarsCommand(argv, mode),
     // The local D1 starts empty and no dev server applies migrations itself.
-    ...(appliesD1Migrations ? buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)) : []),
+    ...(appliesD1Migrations ? d1MigrationCommands : []),
     `${usesVite ? buildViteStateDirPrefix(project, mode) : ''}${buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
   ];
 }
