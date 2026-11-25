@@ -105,8 +105,18 @@ export function getD1DatabaseId(database: CloudflareD1Database): string {
   if (!database.id) {
     throw new Error(`The D1 binding ${database.binding} has no id in cloudflare.config.ts.`);
   }
-  return shellEscapeArgument(database.id);
+  if (!CF_D1_DATABASE_ID_PATTERN.test(database.id)) {
+    throw new Error(
+      `The id of the D1 binding ${database.binding} in cloudflare.config.ts is not a version 4 UUID, which cf's D1 commands require: ${database.id}`
+    );
+  }
+  return database.id;
 }
+
+// The forms cf's D1 commands accept, so that a deploy rejects a mistyped id before its first
+// migration instead of at the migration of that binding.
+const CF_D1_DATABASE_ID_PATTERN =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[0-9a-f]{32})$/iu;
 
 /**
  * Get the local miniflare state directory of the mode.
