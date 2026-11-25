@@ -197,14 +197,14 @@ esac
   );
 }
 
-/** Resolves with the URL the dev server reports once it accepts requests. */
+/** Resolves with the URL of the port wb chose (printed in the command it starts), once it responds. */
 async function waitForServerUrl(server: ChildProcess): Promise<string> {
-  return new Promise((resolve, reject) => {
+  const port = await new Promise<string>((resolve, reject) => {
     let output = '';
     const onData = (chunk: Buffer): void => {
       output += chunk.toString();
-      const url = /Ready on (http:\/\/127\.0\.0\.1:\d+)/u.exec(output)?.[1];
-      if (url) resolve(url);
+      const chosenPort = /cf dev .*--port (\d+)/u.exec(output)?.[1];
+      if (chosenPort) resolve(chosenPort);
     };
     server.stdout?.on('data', onData);
     server.stderr?.on('data', onData);
@@ -212,4 +212,14 @@ async function waitForServerUrl(server: ChildProcess): Promise<string> {
       reject(new Error(`wb start exited with ${code} before serving:\n${output}`));
     });
   });
+  const url = `http://127.0.0.1:${port}/`;
+  for (;;) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return url;
+    } catch {
+      // Not listening yet: the test's timeout bounds the wait.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
 }
