@@ -10,11 +10,13 @@ import { buildShellCommand, shellEscapeArgument } from './shell.js';
 type CloudflareProject = Pick<Project, 'dirPath' | 'env' | 'packageJson'>;
 
 /**
- * Build a command generating a .dev.vars file (via `wb gen-dev-vars`) so that a locally served
- * Worker can see the wb-managed values of its declared secrets.
+ * Build a command generating the mode's .dev.vars file (via `wb gen-dev-vars`) so that a locally
+ * served Worker can see the wb-managed values of its declared secrets. The local runtime prefers
+ * `.dev.vars.<mode>` over `.dev.vars`, so servers of different modes (a dev server and a test
+ * run) never rewrite each other's file.
  */
-export function buildGenDevVarsCommand(argv: ScriptArgv, outputPath: string): string {
-  return buildShellCommand(['YARN', 'wb', 'gen-dev-vars', ...buildEnvReaderOptionArgs(argv), outputPath]);
+export function buildGenDevVarsCommand(argv: ScriptArgv, mode: string): string {
+  return buildShellCommand(['YARN', 'wb', 'gen-dev-vars', ...buildEnvReaderOptionArgs(argv), `.dev.vars.${mode}`]);
 }
 
 /**
@@ -30,12 +32,17 @@ export function buildCfCommand(mode: string, command: string, args = ''): string
  * Build commands applying cf-native D1 migrations to every local D1 binding.
  * CI=true suppresses cf's interactive confirmation prompt.
  */
-export function buildLocalD1MigrationsApplyCommands(project: CloudflareProject, mode: string): string[] {
-  const { cfNativeD1Migrations } = selectD1Migrations(
+export function buildLocalD1MigrationsApplyCommands(
+  project: CloudflareProject,
+  mode: string,
+  drizzleKitManagesD1: boolean
+): string[] {
+  const { cfNativeD1Migrations, errorMessage } = selectD1Migrations(
     project,
     resolveLocalCloudflareConfig(project, mode)?.d1Databases ?? [],
-    false
+    drizzleKitManagesD1
   );
+  if (errorMessage) throw new Error(errorMessage);
   return cfNativeD1Migrations.map(
     ({ database, settings }) =>
       `CI=true ${buildCfCommand(mode, 'd1 migrations apply', `${getD1DatabaseId(database)} --local --persist-to "${getLocalStateDir(mode)}" ${buildD1MigrationOptions(settings)}`)}`

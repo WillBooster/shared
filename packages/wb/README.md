@@ -165,7 +165,7 @@ Options:
 
 `wb` drives a Worker through the `cf` CLI and its `cloudflare.config.ts`, passing `WB_ENV` as `--mode` to every cf command.
 
-- The secrets the config declares with `bindings.secret()` are the only ones that reach the Worker: `wb gen-dev-vars` writes them to `.dev.vars` and `wb deploy` pushes them, both with values from fnox or the environment. A declared secret without a value (an explicitly empty one counts) aborts the deploy.
+- The secrets the config declares with `bindings.secret()` are the only ones that reach the Worker: `wb start`/`wb test` write them to `.dev.vars.<mode>` and `wb deploy` pushes them, both with values from fnox or the environment; `wb deploy` also pushes `WB_VERSION` when it is set and the config has no `WB_VERSION` entry. A declared secret without a value (an explicitly empty one counts) aborts the deploy.
 - A Vite-bundled Worker's `vite.config` sets the Cloudflare plugin's `persistState.path` to `process.env.WB_CLOUDFLARE_STATE_DIR ?? '.cloudflare/state'`; wb exports the per-mode directory it migrates and resets through that variable.
 - A D1 binding migrates through `cf d1 migrations apply` when `package.json` sets `"wb": { "d1Migrations": { "<binding>": { "dir": "...", "pattern": "...", "table": "..." } } }` for it or `migrations/` holds flat `*.sql` files; otherwise through drizzle-kit when the drizzle config targets D1.
 - `wb deploy --containers-rollout=<none|gradual|immediate>` forwards the rollout strategy to `cf deploy`.

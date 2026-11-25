@@ -13,6 +13,7 @@ import { resolveLocalCloudflareMode } from '../../utils/cloudflareConfig.js';
 import { getEnsuredPort } from '../../utils/port.js';
 import { buildShellEnvironmentAssignment, shellEscapeArgument } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
+import { usesDrizzleKitForD1 } from '../drizzleScripts.js';
 
 const VITE_PLUGIN_PACKAGE_NAME = '@cloudflare/vite-plugin';
 
@@ -49,10 +50,10 @@ export function buildCloudflareDevCommands(
     ? `--port ${port}`
     : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(mode)}"`;
   return [
-    // A locally served Worker reads the values of its declared secrets only from .dev.vars.
-    buildGenDevVarsCommand(argv, '.dev.vars'),
+    // A locally served Worker reads the values of its declared secrets only from this file.
+    buildGenDevVarsCommand(argv, mode),
     // The local D1 starts empty and no dev server applies migrations itself.
-    ...(appliesD1Migrations ? buildLocalD1MigrationsApplyCommands(project, mode) : []),
+    ...(appliesD1Migrations ? buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)) : []),
     `${usesVite ? buildViteStateDirPrefix(project, mode) : ''}${buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
   ];
 }
@@ -70,8 +71,8 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
     // local D1 migrated below is the one whose ID that config declares.
     ...(project.packageJson.scripts?.['gen-code'] ? ['YARN run gen-code'] : []),
     `${stateDirPrefix}${buildCfCommand(mode, 'build')}`,
-    buildGenDevVarsCommand(argv, '.dev.vars'),
-    ...buildLocalD1MigrationsApplyCommands(project, mode),
+    buildGenDevVarsCommand(argv, mode),
+    ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
     `${stateDirPrefix}YARN vite preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
 }

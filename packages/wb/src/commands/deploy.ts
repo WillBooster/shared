@@ -574,9 +574,10 @@ async function listRemoteWorkerSecretNames({
   let ret;
   try {
     ret = await spawnAsync('cf', listArgs, {
-      // Outside the project, cf finds no config to evaluate, so the config's own output cannot
-      // mix into the JSON on stdout; the account comes from CLOUDFLARE_ACCOUNT_ID.
-      cwd: os.tmpdir(),
+      // At the filesystem root, cf finds no config to evaluate (it searches upward from the
+      // working directory), so the config's own output cannot mix into the JSON on stdout; the
+      // account comes from CLOUDFLARE_ACCOUNT_ID.
+      cwd: path.parse(project.dirPath).root,
       env: project.env as NodeJS.ProcessEnv,
       stdio: 'pipe',
       killOnExit: true,
