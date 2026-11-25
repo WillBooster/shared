@@ -14,11 +14,8 @@ export interface DeclaredSecrets {
 }
 
 /**
- * Resolve the values of the secrets `cloudflare.config.ts` declares with `bindings.secret()`.
- * `wb deploy` uploads exactly this set and `wb gen-dev-vars` writes exactly this set, so wb
- * supplies the same secrets to the deployed Worker and the locally served one (Cloudflare
- * additionally keeps a previous version's secrets that an upload does not name). A value comes from wb's
- * effective environment (`project.env`, which already applies wb's precedence between exported
+ * Resolve the values of the secrets `cloudflare.config.ts` declares with `bindings.secret()`,
+ * for both `wb deploy` and `wb gen-dev-vars`. A value comes from wb's effective environment (`project.env`, which already applies wb's precedence between exported
  * values and the selected fnox profile), else from fnox.
  */
 export function resolveDeclaredSecrets(
