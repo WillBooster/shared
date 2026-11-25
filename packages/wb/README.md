@@ -168,6 +168,7 @@ Options:
 - The secrets the config declares with `bindings.secret()` are the only ones wb supplies: `wb start`/`wb test` write them to `.dev.vars.<mode>` and `wb deploy` uploads them, both with values from fnox or the environment; `wb deploy` also pushes `WB_VERSION` when it is set and the config has no `WB_VERSION` entry. Cloudflare keeps the secrets of the previous version that an upload does not name, so delete an obsolete one with `cf workers secrets delete <name> --mode <WB_ENV>` (a bare cf command evaluates the config without a mode). A declared secret without a value (an explicitly empty one counts) aborts the deploy.
 - Local state lives in `.cloudflare/state` for `development` and `.cloudflare/state-<mode>` otherwise; wb migrates and resets that directory and exports it to Vite commands as `WB_CLOUDFLARE_STATE_DIR`.
 - A D1 binding migrates through `cf d1 migrations apply` when `package.json` sets `"wb": { "d1Migrations": { "<binding>": { "dir": "...", "pattern": "...", "table": "..." } } }` for it or `migrations/` holds flat `*.sql` files; otherwise through drizzle-kit when the drizzle config targets D1.
+- `wb gen-code` generates the Worker's types into `.cloudflare/types` and removes a `worker-configuration.d.ts` that wrangler generated in the package before its conversion.
 - `wb deploy --containers-rollout=<none|gradual|immediate>` forwards the rollout strategy to `cf deploy`.
 
 ## Disk cleanup
