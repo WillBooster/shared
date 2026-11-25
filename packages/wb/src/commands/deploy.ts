@@ -322,8 +322,9 @@ async function buildWorker({ argv, project, envName, buildEnv }: WorkerDeployCon
 /**
  * The config is code, so the build's evaluation may differ from the preflight's even under the
  * same environment (e.g. it reads a file or the time). Secrets were validated and migrations are
- * planned for the preflight's Worker, so a different built Worker must stop before any remote
- * mutation.
+ * planned for the preflight's Worker, so a built Worker that differs in what those steps used
+ * must stop before any remote mutation. Other binding properties are not compared: wb neither
+ * validates nor acts on them, and cf's two representations of them are not known to be equal.
  */
 function assertBuildMatchesPreflight({ argv, project, resolvedConfig }: WorkerDeployContext): void {
   // On dry runs the build above is a printed no-op.
@@ -334,7 +335,7 @@ function assertBuildMatchesPreflight({ argv, project, resolvedConfig }: WorkerDe
   }
   if (describeDeployTarget(builtConfig) !== describeDeployTarget(resolvedConfig)) {
     exitWithError(
-      'The built Worker differs from the one wb validated before building (name, account, bindings, secrets, or D1 databases): make cloudflare.config.ts return the same configuration for the same mode and environment.'
+      'The built Worker differs from the one wb validated before building (name, account, binding names, text/JSON values, secret names, or D1 ids): make cloudflare.config.ts return the same configuration for the same mode and environment.'
     );
   }
 }
