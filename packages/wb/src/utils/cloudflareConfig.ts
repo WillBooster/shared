@@ -152,7 +152,7 @@ export function resolveDeployCloudflareConfig(
 }
 
 /**
- * The Worker `cf build` wrote to the Build Output, in the shape of the preflight's config, or
+ * The Worker the build wrote to the Build Output, in the shape of the preflight's config, or
  * undefined when the output holds no default Worker.
  */
 export function readBuiltCloudflareConfig(project: Pick<Project, 'dirPath'>): ResolvedCloudflareConfig | undefined {
