@@ -18,9 +18,9 @@ import { usesDrizzleKitForD1 } from '../drizzleScripts.js';
 const VITE_PLUGIN_PACKAGE_NAME = '@cloudflare/vite-plugin';
 
 /**
- * Whether cf delegates the project's dev server and build to Vite (otherwise to Wrangler). cf
- * decides by the package's own dependency, so a vite.config using the plugin without declaring it
- * would be served by one tool and prepared for the other.
+ * Whether Vite serves and builds the project (otherwise Wrangler does, through cf). The package's
+ * own dependency decides, as it does for cf, so a vite.config using the plugin without declaring
+ * it would be served by one tool and prepared for the other.
  */
 export function usesViteBundler(project: Project): boolean {
   if (project.hasOwnDependency(VITE_PLUGIN_PACKAGE_NAME)) return true;
@@ -37,7 +37,7 @@ export function usesViteBundler(project: Project): boolean {
   return false;
 }
 
-/** Commands serving the Worker from source with `cf dev`. */
+/** Commands serving the Worker from source. */
 export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): string[] {
   const mode = resolveCloudflareMode(project);
   const port = getEnsuredPort(project);
@@ -50,7 +50,9 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
     buildGenDevVarsCommand(argv),
     // The local D1 starts empty and no dev server applies migrations itself.
     ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
-    `${usesVite ? buildViteStateDirPrefix(project, mode) : ''}${buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
+    usesVite
+      ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
+      : buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim()),
   ];
 }
 
@@ -66,11 +68,21 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
     // The same build `wb deploy` runs, so the served Worker has the config of wb's mode: the
     // local D1 migrated below is the one whose ID that config declares.
     ...(project.packageJson.scripts?.['gen-code'] ? ['YARN run gen-code'] : []),
-    `${stateDirPrefix}${buildCfCommand(mode, 'build')}`,
+    `${stateDirPrefix}${buildViteCommand(mode, 'build')}`,
     buildGenDevVarsCommand(argv),
     ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
     `${stateDirPrefix}YARN vite preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
+}
+
+/**
+ * The command `cf dev` / `cf build` delegates to for a Vite project, run directly: cf first
+ * detects the project's framework from its dependencies and stops, without a terminal, when it
+ * finds more than two (e.g. a vinext app that also depends on hono), although the answer would
+ * not change the command. The variable is the one cf sets to make the plugin write Build Output.
+ */
+export function buildViteCommand(mode: string, command: 'dev' | 'build', args = ''): string {
+  return `CLOUDFLARE_VITE_FORCE_BUILD_OUTPUT=true YARN vite ${command} --mode ${shellEscapeArgument(mode)} ${args}`.trim();
 }
 
 /**
