@@ -9,7 +9,7 @@ import {
   getAbsoluteLocalStateDir,
   getLocalStateDir,
 } from '../../utils/cloudflare.js';
-import { resolveLocalCloudflareMode } from '../../utils/cloudflareConfig.js';
+import { resolveCloudflareMode } from '../../utils/cloudflareConfig.js';
 import { getEnsuredPort } from '../../utils/port.js';
 import { buildShellEnvironmentAssignment, shellEscapeArgument } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
@@ -38,24 +38,18 @@ export function usesViteBundler(project: Project): boolean {
 }
 
 /** Commands serving the Worker from source with `cf dev`. */
-export function buildCloudflareDevCommands(
-  project: Project,
-  argv: ScriptArgv,
-  { appliesD1Migrations }: { appliesD1Migrations: boolean }
-): string[] {
-  const mode = resolveLocalCloudflareMode(project);
+export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): string[] {
+  const mode = resolveCloudflareMode(project);
   const port = getEnsuredPort(project);
   const usesVite = usesViteBundler(project);
   const serverArgs = usesVite
     ? `--port ${port}`
     : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(mode)}"`;
-  // Planned even when not applied, so that an unsupported migration layout stops every start.
-  const d1MigrationCommands = buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project));
   return [
     // A locally served Worker reads the values of its declared secrets only from this file.
     buildGenDevVarsCommand(argv, mode),
     // The local D1 starts empty and no dev server applies migrations itself.
-    ...(appliesD1Migrations ? d1MigrationCommands : []),
+    ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
     `${usesVite ? buildViteStateDirPrefix(project, mode) : ''}${buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
   ];
 }
@@ -65,8 +59,8 @@ export function buildCloudflareDevCommands(
  * Wrangler's dev server bundles the Worker itself.
  */
 export function buildCloudflareBuiltStartCommands(project: Project, argv: ScriptArgv): string[] {
-  if (!usesViteBundler(project)) return buildCloudflareDevCommands(project, argv, { appliesD1Migrations: true });
-  const mode = resolveLocalCloudflareMode(project);
+  if (!usesViteBundler(project)) return buildCloudflareDevCommands(project, argv);
+  const mode = resolveCloudflareMode(project);
   const stateDirPrefix = buildViteStateDirPrefix(project, mode);
   return [
     // The same build `wb deploy` runs, so the served Worker has the config of wb's mode: the

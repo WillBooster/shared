@@ -1,5 +1,4 @@
 import type { Project } from '../../project.js';
-import { isProjectEnvironment } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
 import { BaseScripts } from './baseScripts.js';
 import { buildCloudflareBuiltStartCommands, buildCloudflareDevCommands } from './cloudflareCommands.js';
@@ -14,10 +13,7 @@ class VinextScripts extends BaseScripts {
   }
 
   protected override startDevProtected(project: Project, argv: ScriptArgv): string {
-    // The test environment wipes its state directory, so every page would 500 without migrations.
-    return buildCloudflareDevCommands(project, argv, {
-      appliesD1Migrations: isProjectEnvironment(project, 'test'),
-    }).join(' && ');
+    return buildCloudflareDevCommands(project, argv).join(' && ');
   }
 
   protected override buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {

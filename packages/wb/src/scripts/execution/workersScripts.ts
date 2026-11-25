@@ -12,7 +12,7 @@ import { HttpServerScripts } from './httpServerScripts.js';
  */
 class WorkersScripts extends HttpServerScripts {
   protected override startDevProtected(project: Project, argv: ScriptArgv): string {
-    return buildCloudflareDevCommands(project, argv, { appliesD1Migrations: true }).join(' && ');
+    return buildCloudflareDevCommands(project, argv).join(' && ');
   }
 
   protected override buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {

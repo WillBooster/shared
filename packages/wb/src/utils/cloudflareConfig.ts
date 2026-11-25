@@ -108,17 +108,14 @@ export function findUnmigratedWranglerConfigPath(project: Pick<Project, 'dirPath
 }
 
 /**
- * The mode of a local command (start, test, db, gen-code), which wb passes to every cf command so
- * that a function-form `cloudflare.config.ts` receives WB_ENV as `mode`. Each command entry
- * resolves it once and hands it to the builders; `wb deploy` uses its validated WB_ENV instead.
+ * The mode wb passes to every cf command, so that a function-form `cloudflare.config.ts`
+ * receives WB_ENV as `mode`. Each command entry resolves it once and hands it to the builders.
+ * Everything keyed on the environment of a Worker (its config, types, local state directory, and
+ * whether that state is disposable test state) follows this one value, so that no two of them
+ * can disagree when WB_ENV and MISE_ENV differ.
  */
-export function resolveLocalCloudflareMode(project: Pick<Project, 'env'>): string {
-  // Destructive test resets are gated on isProjectEnvironment(project, 'test'), which accepts
-  // either WB_ENV or MISE_ENV; resolve to test whenever either says so, so that such resets can
-  // never target the development state.
-  return [project.env.WB_ENV, project.env.MISE_ENV].includes('test')
-    ? 'test'
-    : project.env.WB_ENV || project.env.MISE_ENV || 'development';
+export function resolveCloudflareMode(project: Pick<Project, 'env'>): string {
+  return project.env.WB_ENV || project.env.MISE_ENV || 'development';
 }
 
 /**

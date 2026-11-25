@@ -16,7 +16,9 @@ export interface DeclaredSecrets {
 /**
  * Resolve the values of the secrets `cloudflare.config.ts` declares with `bindings.secret()`.
  * `wb deploy` pushes exactly this set and `wb gen-dev-vars` writes exactly this set, so the
- * deployed Worker and the locally served one receive the same secrets.
+ * deployed Worker and the locally served one receive the same secrets. A value comes from wb's
+ * effective environment (`project.env`, which already applies wb's precedence between exported
+ * values and the selected fnox profile), else from fnox.
  */
 export function resolveDeclaredSecrets(
   argv: EnvReaderOptions,
@@ -35,20 +37,19 @@ export function resolveDeclaredSecrets(
 }
 
 /**
- * Select the values of the declared secrets. An explicitly exported environment variable wins
- * over the fnox value (so `AUTH_SECRET=... wb deploy` does not push the stale configured value)
- * and may supply a secret fnox does not hold (e.g. a CI workflow env). Empty strings are values:
+ * Select the values of the declared secrets: the effective environment's value, which may be one
+ * fnox does not hold (e.g. a CI workflow env), else the fnox value. Empty strings are values:
  * pushing one clears a stale remote secret.
  */
 export function selectDeclaredSecrets(
   secretNames: readonly string[],
   fnoxValues: Record<string, string>,
-  exportedEnv: Record<string, string | undefined>
+  effectiveEnv: Record<string, string | undefined>
 ): Pick<DeclaredSecrets, 'missingSecretNames' | 'secrets'> {
   const secrets: Record<string, string> = {};
   const missingSecretNames: string[] = [];
   for (const name of secretNames) {
-    const value = exportedEnv[name] ?? fnoxValues[name];
+    const value = effectiveEnv[name] ?? fnoxValues[name];
     if (value === undefined) {
       missingSecretNames.push(name);
     } else {

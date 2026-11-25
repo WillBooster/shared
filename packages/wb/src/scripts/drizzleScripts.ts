@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { getAbsoluteFileDatabaseUrlPath, isProjectEnvironment, type Project } from '../project.js';
 import { buildMaterializeLocalD1Command, findLocalD1Database, getLocalStateDir } from '../utils/cloudflare.js';
-import { resolveLocalCloudflareMode } from '../utils/cloudflareConfig.js';
+import { resolveCloudflareMode } from '../utils/cloudflareConfig.js';
 import { buildShellCommand } from '../utils/shell.js';
 import { getLitestreamConfigOption } from './litestream.js';
 
@@ -15,7 +15,7 @@ class DrizzleScripts {
   }
 
   reset(project: Project, additionalOptions = ''): string {
-    const mode = resolveLocalCloudflareMode(project);
+    const mode = resolveCloudflareMode(project);
     const d1Database = findLocalD1Database(project, mode);
     if (d1Database) {
       // Remove only the D1 subtree so that other locally-persisted bindings (KV, R2, Durable Objects) survive,
@@ -39,10 +39,12 @@ class DrizzleScripts {
   }
 
   migrateForStart(project: Project, additionalOptions = ''): string {
-    if (
-      isProjectEnvironment(project, 'test') &&
-      (buildRemoveSqliteDbCommand(project) || findLocalD1Database(project, resolveLocalCloudflareMode(project)))
-    ) {
+    // A local D1 is disposable only as the test mode's state; a file database, in the test environment.
+    const mode = resolveCloudflareMode(project);
+    const isDisposable = findLocalD1Database(project, mode)
+      ? mode === 'test'
+      : isProjectEnvironment(project, 'test') && !!buildRemoveSqliteDbCommand(project);
+    if (isDisposable) {
       return this.reset(project, additionalOptions);
     }
     return this.migrate(project, additionalOptions);

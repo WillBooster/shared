@@ -7,7 +7,7 @@ import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } fro
 
 import { findSelfProjectOrExit } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { resolveLocalCloudflareConfig, resolveLocalCloudflareMode } from '../utils/cloudflareConfig.js';
+import { resolveCloudflareMode, resolveLocalCloudflareConfig } from '../utils/cloudflareConfig.js';
 import { resolveDeclaredSecrets } from '../utils/workerSecrets.js';
 
 // Cloudflare Workers don't see the process environment; a locally served Worker reads the values
@@ -33,7 +33,7 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
 
     // Exactly the secrets `wb deploy` would push for this mode: a locally served Worker reads
     // nothing else from the file, and a secret without a value stays unset as it would deployed.
-    const secretNames = resolveLocalCloudflareConfig(project, resolveLocalCloudflareMode(project))?.secretNames ?? [];
+    const secretNames = resolveLocalCloudflareConfig(project, resolveCloudflareMode(project))?.secretNames ?? [];
     const { secrets } = resolveDeclaredSecrets(argv, project, secretNames);
     const lines = Object.entries(secrets)
       .toSorted(([a], [b]) => a.localeCompare(b))
