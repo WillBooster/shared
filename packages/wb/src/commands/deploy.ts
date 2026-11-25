@@ -96,6 +96,8 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     exportCloudflareEnvFiles(project);
     // The preflight must see the config the build will produce, so both evaluate it under the
     // same environment.
+    // The snapshot below must already carry the local bin directories on PATH.
+    prepareLocalBinPath(project);
     // A Wrangler build gets wb's environment as it is now, before the account below is exported
     // into it for the authenticated steps.
     const buildEnv = usesViteBundler(project) ? createViteBuildEnv(project, envName) : { ...project.env };
