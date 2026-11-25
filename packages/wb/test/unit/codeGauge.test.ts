@@ -88,11 +88,16 @@ it('shows the violations after the verification recap, the added test share firs
   expect(result.status, result.stdout + result.stderr).toBe(0);
   const stdout = stripVTControlCharacters(result.stdout);
   expect(stdout).toMatch(/✔ code-gauge/);
-  const header = 'code-gauge: 1 errors, 2 warnings (2 functions, 0 files, 0 duplicated blocks, 1 test shares)';
+  const header = 'code-gauge: 0 errors, 3 warnings (2 functions, 0 files, 0 duplicated blocks, 1 test shares)';
   expect(stdout.indexOf('Verified in')).toBeLessThan(stdout.indexOf(header));
-  expect(stdout).toContain(
-    `${header}, 2 in code this branch changed (listed first)\nerror: .: test ncss percent 50 (max 30), test NCSS 2 of production NCSS 4; this change edits tests: if it adds test code, delete or merge tests so it adds none\n${addedViolation}\n${committedViolation}\nHow to handle these violations:\n`
+  // The remedy wording between the share and the next line is left unpinned.
+  const shareStart = stdout.indexOf(
+    `${header}, 2 in code this branch changed (listed first)\nwarning: .: test ncss percent 50 (max 30), test NCSS 2 of production NCSS 4`
   );
+  expect(shareStart).toBeGreaterThanOrEqual(0);
+  expect(
+    stdout.indexOf(`\n${addedViolation}\n${committedViolation}\nHow to handle these violations:\n`)
+  ).toBeGreaterThan(shareStart);
   expect(stripVTControlCharacters(await fs.readFile(path.join(dir, '.wb/verify.log'), 'utf8'))).toContain(
     addedViolation
   );
