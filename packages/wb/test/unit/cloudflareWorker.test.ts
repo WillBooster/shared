@@ -53,7 +53,11 @@ it('serves a Worker that sees its declared secrets and the D1 schema of its migr
       "AUTH_SECRET='s3cret'\nEMPTY_SECRET=''\n"
     );
   } finally {
-    if (server.pid) process.kill(-server.pid, 'SIGTERM');
+    try {
+      if (server.pid) process.kill(-server.pid, 'SIGTERM');
+    } catch {
+      // The group already exited: keep the startup error instead of this one.
+    }
   }
 }, 120_000);
 
