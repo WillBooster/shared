@@ -137,7 +137,7 @@
         "@textlint/module-interop": "15.8.0",
         "@textlint/textlint-plugin-markdown": "15.8.0",
         "chalk": "6.0.1",
-        "code-gauge": "13.0.0",
+        "code-gauge": "13.1.0",
         "dotenv": "18.0.10",
         "dotenv-expand": "13.0.0",
         "fast-glob": "3.3.3",
@@ -1221,21 +1221,21 @@
 
     "code-excerpt": ["code-excerpt@3.0.0", "", { "dependencies": { "convert-to-spaces": "^1.0.1" } }, "sha512-VHNTVhd7KsLGOqfX3SyeO8RyYPMp1GJOg194VITk04WMYCv4plV68YWe6TJZxd9MhobjtpMRnVky01gqZsalaw=="],
 
-    "code-gauge": ["code-gauge@13.0.0", "", { "dependencies": { "@willbooster/shared-lib": "10.18.0", "commander": "15.0.0", "zod": "4.6.7" }, "optionalDependencies": { "code-gauge-darwin-arm64": "13.0.0", "code-gauge-darwin-x64": "13.0.0", "code-gauge-linux-arm64-gnu": "13.0.0", "code-gauge-linux-arm64-musl": "13.0.0", "code-gauge-linux-x64-gnu": "13.0.0", "code-gauge-linux-x64-musl": "13.0.0", "code-gauge-win32-x64-msvc": "13.0.0" }, "bin": { "code-gauge": "dist/cli.js" } }, "sha512-2G3Q3191ltMb9IY9JnlYKQEtFryFTmA6H3Ahm00Ws/32AFDkkXWOvh7XyHCxs/2EuzKYjARiyfdDxbpaMfc9Fw=="],
+    "code-gauge": ["code-gauge@13.1.0", "", { "dependencies": { "@willbooster/shared-lib": "10.18.0", "commander": "15.0.0", "zod": "4.6.7" }, "optionalDependencies": { "code-gauge-darwin-arm64": "13.1.0", "code-gauge-darwin-x64": "13.1.0", "code-gauge-linux-arm64-gnu": "13.1.0", "code-gauge-linux-arm64-musl": "13.1.0", "code-gauge-linux-x64-gnu": "13.1.0", "code-gauge-linux-x64-musl": "13.1.0", "code-gauge-win32-x64-msvc": "13.1.0" }, "bin": { "code-gauge": "dist/cli.js" } }, "sha512-0XKmvFEEOScq5r1gVcAeN7CjdHA16Q3cG7YQHuxukPBl6HkN5JZzQOOr/voQYUG17Vd8KjCOXcupULQ5+rF14g=="],
 
-    "code-gauge-darwin-arm64": ["code-gauge-darwin-arm64@13.0.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-rqZJzuzgYa1paN334RtTrL4qtyT//5+BtunoOK/UZpC3FcyjYJdr/ek07Qui+s9su+MAzJc6TAzbn3WHCsVqqA=="],
+    "code-gauge-darwin-arm64": ["code-gauge-darwin-arm64@13.1.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-T6J2VYNWldgNkRxOCr6MHHu4AT9pQ0piMYY6toSEZ5jkMBwV+9X5RFU+yg6w+0Qs1Ll9eJBjIPFDxFG3biwnGw=="],
 
-    "code-gauge-darwin-x64": ["code-gauge-darwin-x64@13.0.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-WyEz3pHn58+aB4uQ2PVJpcPiXPUkXOMhlZO7svOBIkxkFgg5eAdfM/2ag4tDtaYzjpB/4Qu+8F25ykdNNjX9UQ=="],
+    "code-gauge-darwin-x64": ["code-gauge-darwin-x64@13.1.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-WDodKLKwduZv4f3XiCSTr4kZuoluz+WvSQuyBWMqWtrrih+2uaepMrclzUJMOWag2ytF1FOMNBNrUAYt/I6rUA=="],
 
-    "code-gauge-linux-arm64-gnu": ["code-gauge-linux-arm64-gnu@13.0.0", "", { "os": "linux", "cpu": "arm64", "libc": "glibc" }, "sha512-ub7zcLE60Nu6OzJuMIia0lqMuXgMGr527jv9l1j2Mvq1Ytal0cxnnvOAzQnU1Sj1zPoYd4mkxKiyqr98vq+CUg=="],
+    "code-gauge-linux-arm64-gnu": ["code-gauge-linux-arm64-gnu@13.1.0", "", { "os": "linux", "cpu": "arm64", "libc": "glibc" }, "sha512-pyiSNpHupKAeWaqgrRiVp4oEUqYxJw1KWhm65tenFhwHIDe4iivj1GL5h1CpgJvQQeIdnMRKRE+cbCyNZ0snUg=="],
 
-    "code-gauge-linux-arm64-musl": ["code-gauge-linux-arm64-musl@13.0.0", "", { "os": "linux", "cpu": "arm64", "libc": "musl" }, "sha512-x79QMl/KY5XdOuccdp3+RoVq0nUpWpou2SylBWLqFyXTa6F6HEBKALWtabxC2UeJwUtg78VuqVRxwxPwC0+hvQ=="],
+    "code-gauge-linux-arm64-musl": ["code-gauge-linux-arm64-musl@13.1.0", "", { "os": "linux", "cpu": "arm64", "libc": "musl" }, "sha512-0rHH2V9WgIIMfQuFD52ZmuKmwXq1POXNihsJU7mL67uf43j2Brcag99eavzdpzm/hn/TbQ81bxOhRSZxF9lURQ=="],
 
-    "code-gauge-linux-x64-gnu": ["code-gauge-linux-x64-gnu@13.0.0", "", { "os": "linux", "cpu": "x64", "libc": "glibc" }, "sha512-0RWSNmqZ4BKBedWsjZlvOieHC8sI4nu5uJtKFFJSI7UV8VoYcNwMo5Vh/H1M56SRBBIZ01Cg/Ewscyl1u2UKGg=="],
+    "code-gauge-linux-x64-gnu": ["code-gauge-linux-x64-gnu@13.1.0", "", { "os": "linux", "cpu": "x64", "libc": "glibc" }, "sha512-SHvtj82PK792vlk9dIrVLBMdmGa94EHYE4Kge2di3gwSEqkP4GyvZ7X3hTg/X+1QvN73VSyU4IzMGNBP8S/8cw=="],
 
-    "code-gauge-linux-x64-musl": ["code-gauge-linux-x64-musl@13.0.0", "", { "os": "linux", "cpu": "x64", "libc": "musl" }, "sha512-lNHOTifzh6SOeCIRQfoyt/MJvZvhbQxkqTddSzZ7/99xumt6uXCTM/oMlOYWxaiTgKsJFc4VUuaYzJyUn5I9Ig=="],
+    "code-gauge-linux-x64-musl": ["code-gauge-linux-x64-musl@13.1.0", "", { "os": "linux", "cpu": "x64", "libc": "musl" }, "sha512-URfa2ppPK9kqxzNJOG8zRuJW0nFyIjZGvMeB5sqJLJrB6d8H1VjrRMrKtdSO3xiykEWykbq+Qdcfq4qsJ1gOmA=="],
 
-    "code-gauge-win32-x64-msvc": ["code-gauge-win32-x64-msvc@13.0.0", "", { "os": "win32", "cpu": "x64" }, "sha512-CXB/djmuo8NAOHe9ja+je1/PIrVtKCgrIU9Najiuv74749K+NFz0VkUmSiPamh8b4S4iVStZh32X6R9tsfxg9g=="],
+    "code-gauge-win32-x64-msvc": ["code-gauge-win32-x64-msvc@13.1.0", "", { "os": "win32", "cpu": "x64" }, "sha512-gwFFTHNus3U6jBOE3LGuNEgT3cLsXKE0TY187V8z24y5zfoxed76DyNy9DuRLZzoI23qyUyvaCq1xdaNhKwnRA=="],
 
     "collection-visit": ["collection-visit@1.0.0", "", { "dependencies": { "map-visit": "^1.0.0", "object-visit": "^1.0.0" } }, "sha512-lNkKvzEeMBBjUGHZ+q6z9pSJla0KWAQPvtzhEV9+iGyQYG+pBpl7xKDhxoNSOZH2hhv0v5k0y2yAM4o4SjoSkw=="],
 

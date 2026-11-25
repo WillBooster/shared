@@ -97,10 +97,10 @@ const VERIFY_BASE_REF = 'origin/HEAD';
 const MAX_VERIFY_VIOLATION_LINES = 10;
 const MAX_PARTNER_LOCATIONS = 3;
 const VIOLATION_HANDLING_INSTRUCTIONS = `How to handle these violations:
-- In code your change touches, fix every error, and each warning whose fix makes the code easier to read, with behavior-preserving changes (e.g., extract a helper, flatten branching, reuse the code it duplicates).
+- In code your change touches, fix every error other than the share of test code, and each warning whose fix makes the code easier to read, with behavior-preserving changes (e.g., extract a helper, flatten branching, reuse the code it duplicates).
 - Leave a violation whose only fix moves complexity elsewhere (e.g., splitting a function mechanically), restructures far more code than your change touches, or removes an intentional duplicate (e.g., a file mirroring another by design).
 - Allow each warning left with a \`code-gauge-allow <metric> -- <reason>\` comment on its own line right above the function's reported start line; for a duplicated block, above the start line of its enclosing function, separately for each copy (\`code-gauge-allow-file\` for the whole file or a block outside a function), where <metric> is the camelCase metric name (e.g., functionParameterCount). For a directive reported as an error, correct its syntax or placement, keeping its reason, when the code it covers still has the warning it was written for; remove it when no such warning remains.
-- When the share of test code (the test NCSS of a directory, \`.\` for the whole project) is reported in code this branch changed, the change touched a test: if it adds test code, delete or merge tests in the same change so it adds none, and leave the report otherwise; no comment can allow it.
+- No comment can allow the share of test code (the test NCSS of a directory, \`.\` for the whole project) at either level. When it is reported in code this branch changed, the change touched a test: keep a test it adds only when the project's test rule justifies it, and delete or merge the others in the same change; leave the report otherwise.
 - List each error left, which no comment can allow, with the reason, in the PR body's Notes, proposing a \`code-gauge.config.json\` exclusion there for an intentional duplicate. Never edit \`code-gauge.config.json\` to silence a violation unless asked.
 - When a violation measures the code incorrectly (e.g., misparsed syntax, unrelated code reported as duplicated), search the issues of WillBooster/code-gauge and, if none covers it, create one with a freshly written minimal reproduction, the command, and its output.`;
 
@@ -294,8 +294,8 @@ function formatReport(check: CodeGaugeCheck, lines: string[], branchSummary?: st
 
 /**
  * The share of test code first whatever its level, then the errors with the directive problems
- * (errors too), then the warnings, so that a cut list keeps errors. A branch's share asks only
- * that the change add no test code, not that the whole excess go.
+ * (errors too), then the warnings, so that a cut list keeps errors. A branch's share asks to review
+ * only the tests the change adds, not the whole excess.
  */
 function formatViolationLines(
   violations: Violation[],
@@ -316,10 +316,10 @@ function describeViolation(violation: Violation, inBranch: boolean): string {
   const exceeded = violation.exceeded.map((limit) => formatExceededThreshold(limit, violation)).join(', ');
   if (violation.kind === 'project') {
     return (
-      `${violation.file}: ${exceeded}, test NCSS ${violation.testNcss} of production NCSS ${violation.productionNcss}; ` +
+      `${violation.file}: ${exceeded}, test NCSS ${violation.testNcss} of production NCSS ${violation.productionNcss}` +
       (inBranch
-        ? 'this change edits tests: if it adds test code, delete or merge tests so it adds none'
-        : `delete or merge ${violation.excessTestNcss} test NCSS`)
+        ? `; this change edits tests while test code exceeds ${violation.exceeded[0]?.limit}% of production code: keep a test it adds only when the project's test rule justifies it, and delete or merge the others`
+        : `, ${violation.excessTestNcss} above the strictest limit; review the tests against the project's test rule and delete or merge those it does not justify`)
     );
   }
   if (violation.kind === 'file') return `${violation.file}: ${exceeded}`;
