@@ -29,10 +29,13 @@ if (!result.success) throw new Error(JSON.stringify(result.error?.issues ?? resu
 writeFileSync(resultPath, JSON.stringify(result.data));
 `;
 
-const d1MigrationSettingsSchema = z.object({ dir: z.string().optional(), pattern: z.string().optional() });
+const d1MigrationSettingsSchema = z.object({
+  dir: z.string().optional(),
+  pattern: z.string().optional(),
+  table: z.string().optional(),
+});
 const parsedConfigSchema = z.looseObject({
   accountId: z.string().optional(),
-  containers: z.array(z.unknown()).optional(),
   worker: z.looseObject({
     name: z.string(),
     env: z.record(z.string(), z.unknown()).optional(),
@@ -48,6 +51,8 @@ export interface CloudflareD1Database {
 export interface D1MigrationSettings {
   dir: string;
   pattern?: string;
+  /** The table recording applied migrations, when it is not cf's default. */
+  table?: string;
 }
 
 export interface CfNativeD1Migration {
@@ -74,7 +79,6 @@ export interface ResolvedCloudflareConfig {
   /** Every key of `worker.env`, whatever its kind. */
   envKeys: string[];
   d1Databases: CloudflareD1Database[];
-  hasContainers: boolean;
 }
 
 // Keyed on the project OBJECT (not its directory path): the same shared Project instance flows
@@ -119,10 +123,14 @@ export function getCloudflareMode(project: Pick<Project, 'env'>): string {
  */
 export function resolveCloudflareConfig(
   project: Pick<Project, 'dirPath' | 'env'>,
-  mode = getCloudflareMode(project)
+  mode = getCloudflareMode(project),
+  env?: Record<string, string | undefined>
 ): ResolvedCloudflareConfig | undefined {
   const configPath = findCloudflareConfigPath(project);
   if (!configPath) return;
+  // The config may read the environment, so one evaluated under another environment (the one a
+  // build gets) is a different result and bypasses the cache.
+  if (env) return loadCloudflareConfig(project, configPath, mode, env);
   return resolvedConfigCache
     .getOrInsertComputed(project, () => new Map<string, ResolvedCloudflareConfig>())
     .getOrInsertComputed(mode, () => loadCloudflareConfig(project, configPath, mode));
@@ -131,7 +139,8 @@ export function resolveCloudflareConfig(
 function loadCloudflareConfig(
   project: Pick<Project, 'dirPath' | 'env'>,
   configPath: string,
-  mode: string
+  mode: string,
+  env: Record<string, string | undefined> = project.env
 ): ResolvedCloudflareConfig {
   const resultDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-cloudflare-config-'));
   let config;
@@ -141,7 +150,7 @@ function loadCloudflareConfig(
       cwd: project.dirPath,
       encoding: 'utf8',
       // The config may read the environment (e.g. WB_VERSION), exactly as it does under cf.
-      env: project.env as NodeJS.ProcessEnv,
+      env: env as NodeJS.ProcessEnv,
       // The config's own stdout goes to wb's stderr, keeping wb's stdout for its own output.
       stdio: ['ignore', process.stderr.fd, 'pipe'],
     });
@@ -162,7 +171,6 @@ function loadCloudflareConfig(
     secretNames: [],
     envKeys: Object.keys(config.worker.env ?? {}),
     d1Databases: [],
-    hasContainers: (config.containers?.length ?? 0) > 0,
   };
   for (const [key, value] of Object.entries(config.worker.env ?? {})) {
     const binding = z.looseObject({ type: z.string() }).parse(value);
@@ -181,7 +189,7 @@ function loadCloudflareConfig(
 /**
  * How `cf d1 migrations apply` finds the binding's migrations, or undefined when the binding is
  * not migrated that way. `cloudflare.config.ts` has no migration fields, so the explicit opt-in
- * is `"wb": { "d1Migrations": { "<binding>": { "dir": ..., "pattern": ... } } }` in package.json
+ * is `"wb": { "d1Migrations": { "<binding>": { "dir", "pattern", "table" } } }` in package.json
  * (e.g. for drizzle-kit's nested `<dir>/<name>/migration.sql` layout); without an entry, flat
  * `*.sql` files in `migrations/` (cf's defaults) opt in. A drizzle-kit `out` directory with
  * nested files and no explicit pattern would match nothing and silently apply zero migrations,
@@ -197,7 +205,7 @@ export function findCfNativeD1MigrationSettings(
     .parse((project.packageJson as { wb?: unknown }).wb)?.d1Migrations?.[database.binding];
   // An explicit entry opts in even before the directory exists; cf then fails safely instead
   // of wb silently switching to a different migration engine.
-  if (explicitSettings) return { dir: explicitSettings.dir ?? 'migrations', pattern: explicitSettings.pattern };
+  if (explicitSettings) return { ...explicitSettings, dir: explicitSettings.dir ?? 'migrations' };
 
   const migrationsDirPath = path.resolve(project.dirPath, 'migrations');
   if (!fs.existsSync(migrationsDirPath)) return;

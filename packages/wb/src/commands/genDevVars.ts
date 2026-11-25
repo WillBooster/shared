@@ -8,6 +8,7 @@ import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } fro
 
 import { findSelfProjectOrExit } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { resolveCloudflareConfig } from '../utils/cloudflareConfig.js';
 
 // Cloudflare Workers don't see the process environment; a locally served Worker reads the values
 // of its declared secrets from a .dev.vars file next to its config file instead. This command
@@ -52,6 +53,12 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     // (see ensurePort); the worker runtime reads only .dev.vars, so bridge the derived value too.
     if (envVars.NEXT_PUBLIC_BASE_URL === undefined && project.env.NEXT_PUBLIC_BASE_URL !== undefined) {
       envVars.NEXT_PUBLIC_BASE_URL = project.env.NEXT_PUBLIC_BASE_URL;
+    }
+    // A declared secret may be supplied only by the environment (e.g. a CI workflow env);
+    // `wb deploy` pushes it from there, so the locally served Worker must receive it too.
+    for (const secretName of resolveCloudflareConfig(project)?.secretNames ?? []) {
+      const exportedValue = project.env[secretName];
+      if (envVars[secretName] === undefined && exportedValue !== undefined) envVars[secretName] = exportedValue;
     }
     const lines = Object.entries(envVars)
       .filter(([key, value]) => value !== '' || explicitlyEmptiedKeys.has(key))

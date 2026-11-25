@@ -26,6 +26,7 @@ import {
   resolveCloudflareConfig,
   selectD1Migrations,
 } from '../utils/cloudflareConfig.js';
+import { selectFnoxSourcedKeys } from '../utils/envSources.js';
 import { exitWithError } from '../utils/exit.js';
 import { createSecretFreeBuildEnv } from '../utils/secretFreeEnv.js';
 import { deployRailway, RAILWAY_IAC_FILE_PATH } from './deployRailway.js';
@@ -63,6 +64,8 @@ interface WorkerDeployContext {
   project: Project;
   envName: string;
   resolvedConfig: ResolvedCloudflareConfig;
+  /** The restricted environment of a Vite build; undefined when Wrangler bundles the Worker. */
+  buildEnv: Record<string, string> | undefined;
 }
 
 export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
@@ -90,8 +93,11 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     }
 
     exportCloudflareEnvFiles(project);
-    const resolvedConfig = resolveCloudflareConfigOrExit(project, envName);
-    const context: WorkerDeployContext = { argv, project, envName, resolvedConfig };
+    // The preflight must see the config the build will produce, so both evaluate it under the
+    // same environment.
+    const buildEnv = usesViteBundler(project) ? createViteBuildEnv(project, envName) : undefined;
+    const resolvedConfig = resolveCloudflareConfigOrExit(project, envName, buildEnv);
+    const context: WorkerDeployContext = { argv, project, envName, resolvedConfig, buildEnv };
     const d1Migrations = selectD1MigrationsOrExit(context);
     // Dry runs execute nothing authenticated, so they skip the credential preflight entirely.
     if (!argv.dryRun) assertDeployCredentials(project, d1Migrations.drizzleD1Database);
@@ -142,9 +148,13 @@ function exportCloudflareEnvFiles(project: Project): void {
   }
 }
 
-function resolveCloudflareConfigOrExit(project: Project, envName: string): ResolvedCloudflareConfig {
+function resolveCloudflareConfigOrExit(
+  project: Project,
+  envName: string,
+  buildEnv: Record<string, string> | undefined
+): ResolvedCloudflareConfig {
   try {
-    const resolvedConfig = resolveCloudflareConfig(project, envName);
+    const resolvedConfig = resolveCloudflareConfig(project, envName, buildEnv);
     if (resolvedConfig) return resolvedConfig;
   } catch (error) {
     exitWithError(getErrorMessage(error));
@@ -195,9 +205,7 @@ function selectSecretsOrExit({ argv, project, envName, resolvedConfig }: WorkerD
   // Resolve and validate all secrets before any build or remote mutation, so a missing
   // secret aborts the deploy instead of leaving a migrated database behind an old Worker.
   const [envVars, envSources] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
-  // `mise env` output (reported as a pseudo-source) mixes in host/tool variables such as
-  // CARGO_HOME, which are not the project's own values.
-  const fnoxKeys = new Set(envSources.filter(([source]) => !source.startsWith('mise env')).flatMap(([, keys]) => keys));
+  const fnoxKeys = selectFnoxSourcedKeys(envSources);
   const fnoxValues = Object.fromEntries(Object.entries(envVars).filter(([key]) => fnoxKeys.has(key)));
   const { missingSecretNames, secrets } = selectDeclaredSecrets(resolvedConfig.secretNames, fnoxValues, project.env);
   if (missingSecretNames.length > 0) {
@@ -277,7 +285,7 @@ async function assertWithinCloudflareLimits(
   }
 }
 
-async function buildWorker({ argv, project, envName }: WorkerDeployContext): Promise<void> {
+async function buildWorker({ argv, project, envName, buildEnv }: WorkerDeployContext): Promise<void> {
   // Building before migrating keeps a build failure from leaving a migrated schema behind
   // the old Worker. `cf build` runs the bundler directly, not the package's `build` script.
   // gen-code keeps project.env: it may need a secret to fetch private inputs (e.g. prompt-study
@@ -286,7 +294,7 @@ async function buildWorker({ argv, project, envName }: WorkerDeployContext): Pro
     await runWithSpawn('YARN run gen-code', project, argv);
   }
   await runWithSpawn(buildCfCommand(project, 'build', '', envName), project, argv, {
-    env: usesViteBundler(project) ? createViteBuildEnv(project, envName) : undefined,
+    env: buildEnv,
   });
 }
 

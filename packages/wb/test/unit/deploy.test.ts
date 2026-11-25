@@ -54,7 +54,6 @@ describe('resolveCloudflareConfig', () => {
       secretNames: ['AUTH_SECRET'],
       envKeys: ['WB_ENV', 'LIMITS', 'AUTH_SECRET', 'DB', 'CACHE'],
       d1Databases: [{ binding: 'DB', name: 'my-app-production', id: 'prod-id' }],
-      hasContainers: false,
     });
     const staging = resolveCloudflareConfig({ dirPath, env: { ...process.env, WB_ENV: 'staging' } });
     expect(staging?.workerName).toBe('my-app-staging');

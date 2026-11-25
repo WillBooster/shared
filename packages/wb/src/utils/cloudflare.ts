@@ -46,8 +46,13 @@ export function buildLocalD1MigrationsApplyCommands(project: CloudflareProject):
   );
 }
 
-export function buildD1MigrationOptions({ dir, pattern }: D1MigrationSettings): string {
-  return buildShellCommand(['--dir', dir, ...(pattern ? ['--pattern', pattern] : [])]);
+export function buildD1MigrationOptions({ dir, pattern, table }: D1MigrationSettings): string {
+  return buildShellCommand([
+    '--dir',
+    dir,
+    ...(pattern ? ['--pattern', pattern] : []),
+    ...(table ? ['--table', table] : []),
+  ]);
 }
 
 /**

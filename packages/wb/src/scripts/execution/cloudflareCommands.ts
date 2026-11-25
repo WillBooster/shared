@@ -10,6 +10,7 @@ import {
 } from '../../utils/cloudflare.js';
 import { getCloudflareMode } from '../../utils/cloudflareConfig.js';
 import { getEnsuredPort } from '../../utils/port.js';
+import { shellEscapeArgument } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
 
 /** Whether cf delegates the project's dev server and build to Vite (otherwise to Wrangler). */
@@ -52,7 +53,8 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
     buildCfCommand(project, 'build'),
     buildGenDevVarsCommand(argv, '.dev.vars'),
     ...buildLocalD1MigrationsApplyCommands(project),
-    `YARN vite preview --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
+    // The same mode as the build, for a vite.config that derives anything (e.g. the state path) from it.
+    `YARN vite preview --mode ${shellEscapeArgument(getCloudflareMode(project))} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
 }
 
@@ -69,7 +71,9 @@ function assertViteStateDirConvention(project: Project): void {
     .map((fileName) => path.join(project.dirPath, fileName))
     .find((filePath) => fs.existsSync(filePath));
   if (viteConfigPath && fs.readFileSync(viteConfigPath, 'utf8').includes('.cloudflare/state-')) return;
+  // A static check cannot evaluate arbitrary path expressions, so the rule fixes the spelling:
+  // the file must contain the literal directory prefix.
   throw new Error(
-    `Set the Cloudflare Vite plugin's persistState.path in vite.config to ".cloudflare/state-${mode}" for WB_ENV=${mode} (".cloudflare/state" for development): wb migrates and resets that directory.`
+    `vite.config must set the Cloudflare Vite plugin's persistState.path to ".cloudflare/state-<WB_ENV>" for WB_ENV=${mode} (".cloudflare/state" for development), written with the literal text ".cloudflare/state-" (e.g. \`.cloudflare/state-\${process.env.WB_ENV}\`): wb migrates and resets that directory.`
   );
 }

@@ -165,7 +165,7 @@ Options:
 `wb` drives a Worker through the `cf` CLI and its `cloudflare.config.ts`, passing `WB_ENV` as `--mode` to every cf command.
 
 - A locally served Worker receives from `.dev.vars` only the secrets the config declares with `bindings.secret()`, and `wb deploy` pushes only those. A declared secret without a value (an explicitly empty one counts) aborts the deploy.
-- A D1 binding migrates through `cf d1 migrations apply` when `package.json` sets `"wb": { "d1Migrations": { "<binding>": { "dir": "...", "pattern": "..." } } }` for it or `migrations/` holds flat `*.sql` files; otherwise through drizzle-kit when the drizzle config targets D1.
+- A D1 binding migrates through `cf d1 migrations apply` when `package.json` sets `"wb": { "d1Migrations": { "<binding>": { "dir": "...", "pattern": "...", "table": "..." } } }` for it or `migrations/` holds flat `*.sql` files; otherwise through drizzle-kit when the drizzle config targets D1.
 - `wb deploy --containers-rollout=<none|gradual|immediate>` forwards the rollout strategy to `cf deploy`.
 
 ## Disk cleanup
