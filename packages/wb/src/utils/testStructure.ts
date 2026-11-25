@@ -74,7 +74,7 @@ function collectStrayTestFiles(projectDirPath: string, relativeDirPath: string, 
     // Hidden entries (.git, .tmp, .next, ...) and dependencies are not project-authored test locations:
     // the convention places tests only under test/, so a test file in a hidden directory (e.g.
     // .storybook) is outside the input contract, and enumerating environmental hidden directories
-    // instead would false-positive on any unlisted generated one (.turbo, .wrangler, ...). Visible
+    // instead would false-positive on any unlisted generated one (.turbo, .cloudflare, ...). Visible
     // build outputs such as dist/ are deliberately NOT skipped: wbfy-managed builds never emit
     // test-pattern files there, so any match is an authored file worth flagging.
     // Symlinks fail `isDirectory()` on a Dirent, so cycles are impossible.

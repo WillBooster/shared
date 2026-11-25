@@ -18,13 +18,10 @@ import type { PackageJson } from 'type-fest';
 
 import { prependNodeModulesBinToPath } from './utils/binPath.js';
 import { isCI } from './utils/ci.js';
+import { findCloudflareConfigPath } from './utils/cloudflareConfig.js';
 import { selectFnoxSourcedKeys } from './utils/envSources.js';
 import { hasBunDirectoryMarker, isBunPackageManager, isExplicitNonBunPackageManager } from './utils/runtime.js';
 import { clearTestStructureCache } from './utils/testStructure.js';
-import { findWranglerConfigPath } from './utils/wrangler.js';
-
-/** The file `wrangler types` writes by default. */
-const WORKER_TYPES_FILE_NAME = 'worker-configuration.d.ts';
 
 export type DatabaseOrm = 'prisma' | 'drizzle';
 
@@ -260,21 +257,18 @@ export class Project {
   }
 
   /**
-   * Whether `wrangler types` should generate `worker-configuration.d.ts` here. A wrangler config
-   * and an own wrangler dependency are both required — wrangler exits non-zero without a config,
-   * and in a mixed monorepo a root-level wrangler devDependency must not make every workspace
-   * package emit types it never consumes.
-   *
-   * The package's own committed gitignore rule is the third signal, and the one that says the
-   * package actually CONSUMES the file: wbfy writes that rule only for packages whose own tsconfig
-   * can reference `worker-configuration.d.ts`, and deliberately leaves alone packages that
-   * hand-maintain their `Env` instead. Without this check, such a package would gain an untracked
-   * ~500KB generated file on every install.
+   * Whether `cf workers types` should generate `.cloudflare/types/index.d.ts` here. The config
+   * imports `cf/config` and the generator is cf's own, so a Worker package without its own cf
+   * dependency is a broken manifest, not a package to skip silently.
    */
   @cached
   get generatesWorkerTypes(): boolean {
-    if (!findWranglerConfigPath(this) || !this.hasOwnDependency('wrangler')) return false;
-    return hasManagedGitignoreRule(this.dirPath, WORKER_TYPES_FILE_NAME);
+    const configPath = findCloudflareConfigPath(this);
+    if (!configPath) return false;
+    if (!this.hasOwnDependency('cf')) {
+      throw new Error(`${this.packageJsonPath} must declare cf among its own dependencies: ${configPath} needs it.`);
+    }
+    return true;
   }
 
   @cached
@@ -708,23 +702,4 @@ export async function findWorkspacePackageDirs(
     .filter((manifestPath) => manifestPath !== 'package.json' && isInsideRealRoot(manifestPath, project.dirPath))
     .map((manifestPath) => path.join(project.dirPath, path.posix.dirname(manifestPath)));
   return [...new Set(workspaceDirPaths)].toSorted();
-}
-
-/**
- * Whether the package's own committed .gitignore carries wbfy's managed rule for the file.
- *
- * Deliberately NOT `git check-ignore`: that also honors `.git/info/exclude` and the user's global
- * excludes, which a fresh clone and CI do not have. A developer with a personal
- * `worker-configuration.d.ts` exclude would otherwise turn generation on for a package wbfy
- * deliberately left unmanaged, and the resulting file would be invisible in `git status`.
- */
-function hasManagedGitignoreRule(dirPath: string, fileName: string): boolean {
-  try {
-    return fs
-      .readFileSync(path.join(dirPath, '.gitignore'), 'utf8')
-      .split('\n')
-      .some((line) => line.trim() === `/${fileName}`);
-  } catch {
-    return false;
-  }
 }

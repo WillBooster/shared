@@ -10,14 +10,10 @@ import { findDrizzleConfig, wrapWithDrizzleConfigDir } from '../scripts/drizzleS
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { normalizeBunLockfile } from '../utils/bunLockfile.js';
-import { writeWorkerTypesEnvStub } from '../utils/workerTypesEnv.js';
+import { buildCfCommand } from '../utils/cloudflare.js';
+import { resolveCloudflareMode } from '../utils/cloudflareConfig.js';
 
 const builder = {} as const;
-
-// `wrangler types` derives the Cloudflare `Env`'s secret/var members only from the KEY NAMES in a
-// .dev.vars/.env file (never from process.env), and `--env-file` REPLACES that default file set. So
-// gen-code types a Worker against a throwaway key-only stub written here from committed sources.
-const workerTypesEnvPath = path.join('.wrangler', 'worker-types.env');
 
 const blitzRouteManifestStubByFileName = {
   'index-browser.js': 'exports.Routes = {};\n',
@@ -58,16 +54,6 @@ export const genCodeCommand: CommandModule = {
     }
     for (const { project, scripts } of genCodeTargets) {
       console.info(`Running "gen-code" for ${project.name} ...`);
-      // Write the key stub the first script's `wrangler types --env-file` consumes. It is derived from
-      // committed sources (fnox.toml key names), so it needs no age key, never pulls in
-      // process.env / `mise env` host variables, and does not depend on which profile a run resolves.
-      if (!argv.dryRun && getWranglerTypesScript(project)) {
-        writeWorkerTypesEnvStub(
-          project.dirPath,
-          project.rootDirPath,
-          path.resolve(project.dirPath, workerTypesEnvPath)
-        );
-      }
       for (const script of scripts) {
         await runWithSpawn(script, project, argv);
       }
@@ -96,18 +82,13 @@ function writeBlitzRouteManifestStub(project: Project): void {
 
 export function getGenCodeScripts(project: Project): string[] {
   const scripts: string[] = [];
-  // First: `worker-configuration.d.ts` is gitignored, so on a fresh checkout it does not exist yet,
-  // and the generators below type-check against the Cloudflare `Env` it declares.
-  const wranglerTypesScript = getWranglerTypesScript(project);
-  if (wranglerTypesScript) {
-    // `--env-file` points wrangler at the key stub the handler writes (see writeWorkerTypesEnvStub),
-    // so a fresh checkout with no runtime .dev.vars (e.g. CI) still types every secret. Without it a
-    // bare `wrangler types` yields an `Env` missing every secret and the type-aware generators/linters
-    // below fail (e.g. "Property 'AUTH_SECRET' does not exist on type 'Env'").
-    // `< /dev/null`: with a TTY stdin, wrangler asks follow-up questions after writing the types
-    // (e.g. whether to update Cloudflare agent skills), and gen-code runs as `postinstall` inside
-    // git hooks where nobody answers, so `git pull` hangs indefinitely.
-    scripts.push(`${wranglerTypesScript} --env-file ${workerTypesEnvPath} < /dev/null`);
+  // First: the generated types are gitignored, so on a fresh checkout they do not exist yet,
+  // and the generators below type-check against the Cloudflare `Env` they declare.
+  if (project.generatesWorkerTypes) {
+    // `YARN cf` rather than `bunx cf`: cf needs real Node.js, and `bunx` may resolve a version
+    // other than the lockfile's. `< /dev/null`: gen-code runs as `postinstall` inside git hooks,
+    // where nobody could answer a prompt.
+    scripts.push(`${buildCfCommand(resolveCloudflareMode(project), 'workers types')} < /dev/null`);
   }
   // Yarn-era Blitz repositories need `blitz codegen` for the route manifest (node_modules/.blitz)
   // that @blitzjs/next's type declarations re-export; install scripts do not run it
@@ -137,18 +118,6 @@ export function getGenCodeScripts(project: Project): string[] {
     scripts.push(genI18nTsScript);
   }
   return scripts;
-}
-
-/**
- * `YARN wrangler` rather than `bunx wrangler`: wrangler needs real Node.js, and `bunx` may resolve
- * a version other than the lockfile's. Returns the base command; the caller appends `--env-file`
- * pointing at a generated key-only stub (see getGenCodeScripts) because fnox repositories have no
- * `.env` file for wrangler to infer the secret bindings from. `--strict-vars` is deliberately left
- * out — it is a per-repository type-strictness choice that belongs in the wrangler config.
- */
-function getWranglerTypesScript(project: Project): string | undefined {
-  if (!project.generatesWorkerTypes) return;
-  return 'YARN wrangler types';
 }
 
 function getGenI18nTsScript(project: Project): string | undefined {

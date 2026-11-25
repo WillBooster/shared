@@ -92,6 +92,10 @@
     "@cloudflare/workerd-windows-64": "2026-12-09",
     "@cloudflare/config": "2026-12-09",
     "@cloudflare/runtime-types": "2026-12-09",
-    "@cloudflare/build-output-utils": "2026-12-09"
+    "@cloudflare/build-output-utils": "2026-12-09",
+    "@cloudflare/kv-asset-handler": "2026-12-09",
+    "@cloudflare/vite-plugin": "2026-12-09",
+    "@cloudflare/workers-utils": "2026-12-09",
+    "wrangler": "2026-12-09"
   }
 }

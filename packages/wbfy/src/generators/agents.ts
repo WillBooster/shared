@@ -7,7 +7,7 @@ import fg from 'fast-glob';
 import { enablesViteReactCompiler } from '../fixers/viteConfig.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
-import { generatesWorkerTypes } from '../packageConfig.js';
+import { generatesCfWorkerTypes } from '../packageConfig.js';
 import type { ProjectDirection } from '../projectDirection.js';
 import { readProjectDirection } from '../projectDirection.js';
 import { runAllWithConcurrencyLimit } from '../utils/concurrencyLimit.js';
@@ -15,8 +15,8 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { hasCloudflareDeployWorkflow, invokesWbDeploy } from './workflow.js';
 
 interface DeployFacts {
-  ownsGeneratedWorkerTypes: boolean;
-  ownsWranglerConfig: boolean;
+  ownsCloudflareConfig: boolean;
+  ownsGeneratedCfWorkerTypes: boolean;
   usesWbDeploy: boolean;
 }
 
@@ -28,18 +28,13 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     if (!rootConfig.isRoot) return;
 
     const extraContent = await readAgentsExtraContent(rootConfig.dirPath);
-    const ownsWranglerConfig = allConfigs.some((config) => config.doesContainWranglerConfig);
-    const usesWbDeploy = ownsWranglerConfig && (await hasWbDeployScript(allConfigs));
-
-    // Only claim the file is generated where it actually is: a package that hand-maintains its `Env` (e.g. under
-    // `types: ["bun"]`) is deliberately left unmanaged, and telling an agent to run `wb gen-code` there would send
-    // it after a file that never appears — and away from the `Env` it should be editing.
-    const generatedWorkerTypes = ownsWranglerConfig
-      ? await Promise.all(allConfigs.map((config) => generatesWorkerTypes(config)))
-      : [];
+    const ownsCloudflareConfig = allConfigs.some((config) => config.doesContainCloudflareConfig);
+    const usesWbDeploy = ownsCloudflareConfig && (await hasWbDeployScript(allConfigs));
+    // Only claim the types are generated where they actually are: telling an agent to run
+    // `wb gen-code` where nothing is generated would send it after a file that never appears.
     const deployFacts = {
-      ownsGeneratedWorkerTypes: generatedWorkerTypes.includes(true),
-      ownsWranglerConfig,
+      ownsCloudflareConfig,
+      ownsGeneratedCfWorkerTypes: allConfigs.some((config) => generatesCfWorkerTypes(config)),
       usesWbDeploy,
     };
     const codingStyle = generateAgentCodingStyle(rootConfig, allConfigs, await usesReactCompiler(allConfigs));
@@ -135,7 +130,7 @@ function generateAgentInstruction(
 ${TEST_WRITING_RULES}
 - When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
 - Before raising a concern, a conditional ("if X, ..."), or a question to the user, settle its premise yourself from the code, documentation, issues, and primary sources, and cite that evidence. Ask the user only about what those cannot settle (e.g., the requester's intent or business facts), stating what you checked; never present a premise you could have checked as a possibility.
-- Use any tool available in the development environment, including CLIs already logged in (e.g., \`railway\`, \`wrangler\`), and ask the user only when you cannot proceed on your own (e.g., a login is required), with one exception: always ask before a hard-to-reverse action that the user did not explicitly request on a deployed environment's resources you did not create in the task (e.g., deleting data, variables, volumes, or services), even when you could perform it. Carry out a requested one without asking again.
+- Use any tool available in the development environment, including CLIs already logged in (e.g., \`railway\`, \`cf\`), and ask the user only when you cannot proceed on your own (e.g., a login is required), with one exception: always ask before a hard-to-reverse action that the user did not explicitly request on a deployed environment's resources you did not create in the task (e.g., deleting data, variables, volumes, or services), even when you could perform it. Carry out a requested one without asking again.
 - After making changes, run locally only \`${packageManager} run verify\` (type checking and linting; up to 10 minutes) and the relevant tests; leave the full suite (\`${packageManager} run verify-full\`; up to 1 hour) to the PR's CI, or run it locally if PR CI does not. Fix errors your change caused, including CI failures, and re-run until they pass. Report a failure that also occurs on the base branch or comes from infrastructure, with its evidence, instead of working around it.
   - Run relevant tests with \`${packageManager} wb test test/unit/example.test.ts --grep 'case name'\` (omit \`--grep\` for the whole file${workspaceOption}). \`${packageManager} wb verify --full <test-path> --grep 'case name'\` combines verification with selected tests.
   - Wait for it to finish without restarting it: prefer completion notifications, otherwise the longest permitted wait; no output does not mean it has stopped. If the displayed excerpt is insufficient, read the indicated log file before rerunning. If the environment kills long-running commands, run them detached with a saved log and exit status.
@@ -212,20 +207,22 @@ function generateStackInstructions(
 
 function generateDeployPlatformInstructions(
   rootConfig: PackageConfig,
-  { ownsGeneratedWorkerTypes, ownsWranglerConfig, usesWbDeploy }: DeployFacts,
+  { ownsCloudflareConfig, ownsGeneratedCfWorkerTypes, usesWbDeploy }: DeployFacts,
   packageManager: string
 ): string {
   // Every clause states only a verified fact, reusing the workflow generator's own detectors: the
-  // wrangler-config clause needs an actual config file (isCloudflare also matches a mere wrangler
-  // mention in a script or workflow), the workflow clause needs a live reusable-deploy caller
+  // Worker clause needs an actual `cloudflare.config.ts` (isCloudflare also matches a mere mention
+  // in a script or workflow), the workflow clause needs a live reusable-deploy caller
   // (YAML-parsed jobs.*.uses, not a raw-text/comment match), and the `wb deploy` clause needs a
   // deploy script whose command token is `wb … deploy`.
   const hasDeployWorkflow =
-    ownsWranglerConfig && hasCloudflareDeployWorkflow(path.resolve(rootConfig.dirPath, '.github/workflows'));
+    ownsCloudflareConfig && hasCloudflareDeployWorkflow(path.resolve(rootConfig.dirPath, '.github/workflows'));
   // Independent facts stay separate sentences: the workflow's own deploy mechanism is not
   // inspected, so the wb-deploy clause must not claim the workflow invokes it.
-  const cloudflareInstruction = ownsWranglerConfig
-    ? `\n- This project runs on Cloudflare Workers: the wrangler configuration file holds the Worker's configuration, including bindings and per-environment overrides.${hasDeployWorkflow ? ' The deploy workflows under `.github/workflows` perform deployments.' : ''}${usesWbDeploy ? ' The `deploy` package script runs `wb deploy`.' : ''}${ownsGeneratedWorkerTypes ? `\n- \`worker-configuration.d.ts\` is gitignored and generated by \`${packageManager} wb gen-code\`; after changing bindings or vars in the wrangler configuration, re-run it instead of editing the file by hand.` : ''}`
+  // Only structure wbfy verifies is stated here; how wb and cf behave at run time is left to
+  // their own documentation, which cannot drift from them the way a copy here would.
+  const cloudflareInstruction = ownsCloudflareConfig
+    ? `\n- This project runs on Cloudflare Workers and uses the \`cf\` CLI, not \`wrangler\`: \`cloudflare.config.ts\` holds the Worker's configuration, including bindings.${hasDeployWorkflow ? ' The deploy workflows under `.github/workflows` perform deployments.' : ''}${usesWbDeploy ? ' The `deploy` package script runs `wb deploy`.' : ''} For how \`wb\` drives cf (modes, secrets, D1 migrations), read the "Cloudflare Workers" section of the README of \`@willbooster/wb\`.\n- \`.cloudflare/\` is gitignored and generated.${ownsGeneratedCfWorkerTypes ? ` The \`postinstall\` script regenerates the types under \`.cloudflare/types\` with \`${packageManager} wb gen-code\`; re-run it after changing \`cloudflare.config.ts\` instead of editing them by hand.` : ''}`
     : '';
   const railwayInstruction = !rootConfig.isRailway
     ? ''
@@ -345,12 +342,12 @@ function generateServerInstanceInstruction(allConfigs: PackageConfig[]): string 
   // but Workers deliberately reuse execution contexts, so best-effort isolate-local caches stay
   // legitimate (https://developers.cloudflare.com/workers/reference/how-workers-works/). The
   // signals are correlated PER PACKAGE: a monorepo can host a single-instance server app next to
-  // an unrelated Worker, and neither may override the other's rule. doesContainWranglerConfig is
+  // an unrelated Worker, and neither may override the other's rule. A Worker configuration file is
   // the accurate Workers signal (isCloudflare also matches a mere wrangler mention in a script or
   // workflow).
-  const hasWorkersApp = allConfigs.some((c) => c.doesContainWranglerConfig);
+  const hasWorkersApp = allConfigs.some((c) => c.doesContainCloudflareConfig);
   const hasSingleInstanceServerApp = allConfigs.some(
-    (c) => (c.depending.next || c.depending.vinext) && !c.doesContainWranglerConfig
+    (c) => (c.depending.next || c.depending.vinext) && !c.doesContainCloudflareConfig
   );
   const workersInstruction =
     '- Cloudflare Workers run across many ephemeral isolates, so two requests may hit different instances: never let correctness depend on module-level mutable state; persist authoritative shared state in bindings (D1, KV, R2, Durable Objects). Best-effort isolate-local caches of non-request-scoped data are fine.';
@@ -359,7 +356,7 @@ function generateServerInstanceInstruction(allConfigs: PackageConfig[]): string 
       ? '- Assume a single server instance, but never keep durable data only in memory.'
       : '';
   return hasSingleInstanceServerApp
-    ? `${workersInstruction} This applies to all code running on Cloudflare Workers (the wrangler-configured packages and any workspace package they import); assume a single server instance for the other server apps, but never keep durable data only in memory.`
+    ? `${workersInstruction} This applies to all code running on Cloudflare Workers (the packages with a \`cloudflare.config.ts\` and any workspace package they import); assume a single server instance for the other server apps, but never keep durable data only in memory.`
     : workersInstruction;
 }
 

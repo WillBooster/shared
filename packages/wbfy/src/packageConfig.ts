@@ -1,4 +1,3 @@
-// code-gauge-allow-file fileNcss -- All detection feeding PackageConfig stays together until it is split by concern.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -17,7 +16,6 @@ import {
   hasGitHubToken,
   isGitHubPermissionOrVisibilityError,
 } from './utils/githubUtil.js';
-import { jsoncUtil } from './utils/jsoncUtil.js';
 import { classifyScriptSegment, splitScriptSegments } from './utils/managedScriptSegment.js';
 import { spawnAndReturnStdout } from './utils/spawnUtil.js';
 import { getWorkspacePackageJsonPaths, getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
@@ -37,7 +35,10 @@ export interface PackageConfig {
   repoName?: string;
   isWillBoosterRepo: boolean;
   isCloudflare: boolean;
+  /** Whether the package owns a Worker that still has only a wrangler config, which wbfy refuses. */
   doesContainWranglerConfig: boolean;
+  /** Whether the package owns a Worker configured for the cf CLI (`cloudflare.config.ts`). */
+  doesContainCloudflareConfig: boolean;
   isRailway: boolean;
   isEsmPackage: boolean;
   isWillBoosterConfigs: boolean;
@@ -200,7 +201,9 @@ export async function getPackageConfig(
       workspaceSubDirs.some((workspaceSubDir) =>
         containsAny(pattern, workspaceSubDir.dirPath, workspaceSubDir.globIgnore)
       );
-    const doesContainWranglerConfig = detectWranglerConfig(dirPath);
+    const doesContainCloudflareConfig = fs.existsSync(path.resolve(dirPath, 'cloudflare.config.ts'));
+    // A package converted with `cf migrate` no longer reads the wrangler config it may still hold.
+    const doesContainWranglerConfig = !doesContainCloudflareConfig && detectWranglerConfig(dirPath);
     const workflowContents = readWorkflowFileContents(dirPath);
     const importsPlaywrightAtRuntime = detectPlaywrightRuntimeImport(dirPath, globIgnore);
     const config: PackageConfig = {
@@ -216,8 +219,13 @@ export async function getPackageConfig(
       isWillBoosterRepo: Boolean(
         repository?.startsWith('github:WillBooster/') || repository?.startsWith('github:WillBoosterLab/')
       ),
-      isCloudflare: detectCloudflare(packageJson, doesContainWranglerConfig, workflowContents),
+      isCloudflare: detectCloudflare(
+        packageJson,
+        doesContainWranglerConfig || doesContainCloudflareConfig,
+        workflowContents
+      ),
       doesContainWranglerConfig,
+      doesContainCloudflareConfig,
       isRailway: detectRailway(dirPath, packageJson, workflowContents),
       isEsmPackage: packageJson.type === 'module',
       isWillBoosterConfigs: detectIsWillBoosterConfigs(dirPath, packageJsonPath, repoName),
@@ -467,32 +475,27 @@ function isProjectDir(config: PackageConfig): boolean {
 }
 
 /**
- * Tells whether wbfy manages worker-configuration.d.ts for the package. The file is gitignored and untracked
- * because the `wb gen-code` postinstall regenerates it on every install, so the package has to own a wrangler
- * config (`wrangler types` exits non-zero without one), to depend on wrangler (a package deploying via a
- * CI action cannot resolve the command), and to consume the generated file.
- *
- * INVARIANT — this decision must converge across machines holding the same commit. It must NEVER consult
- * gitignored files (`.dev.vars*`, `.env*`, ...), which `wb start` and `wb deploy` create routinely and which
- * therefore stay untracked on dev machines forever: a former check that treated them as irreproducible inputs
- * made wbfy runs on dev machines re-track the ~15k-line generated file that runs from clean checkouts had
- * untracked, oscillating eternally (e.g. ai-game-builder #684 → #746). Reading committable repository files
- * from the working tree (the wrangler config, package.json, tsconfig — as every wbfy generator does) is fine:
- * any divergence there is transient and disappears once the file is committed or removed.
- * The hazard that check guarded against no longer exists: `wb gen-code` runs `wrangler types --env-file` with
- * a key stub derived solely from the committed fnox.toml (see wb's writeWorkerTypesEnvStub), so local dotenv
- * files never influence the generated `Env`.
+ * Tells whether `wb gen-code` generates `.cloudflare/types` for the package: it runs `cf workers types` only for a
+ * package that owns a `cloudflare.config.ts` and depends on cf itself.
  */
-export async function generatesWorkerTypes(config: PackageConfig): Promise<boolean> {
-  const packageJson = config.packageJson;
-  return (
-    config.doesContainWranglerConfig &&
-    hasWranglerDependency(packageJson) &&
-    (await consumesGeneratedWorkerTypes(config))
-  );
+export function generatesCfWorkerTypes(
+  config: Pick<PackageConfig, 'doesContainCloudflareConfig' | 'packageJson'>
+): boolean {
+  const { dependencies, devDependencies } = config.packageJson ?? {};
+  return config.doesContainCloudflareConfig && !!(dependencies?.cf ?? devDependencies?.cf);
 }
 
-export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJson'>): string | undefined {
+/**
+ * The packages whose Worker is still configured only by a wrangler config. wbfy installs the
+ * latest wb, which serves and deploys a Worker only through the cf CLI and `cloudflare.config.ts`,
+ * so applying it to such a repository would break its start, test, type generation, and deploy.
+ */
+export function findUnconvertedWorkerDirPaths(allPackageConfigs: PackageConfig[]): string[] {
+  return allPackageConfigs.filter((config) => config.doesContainWranglerConfig).map((config) => config.dirPath);
+}
+
+/** Tells why wbfy cannot normalize the package's code-generation scripts, if it cannot. */
+export function getGenCodeScriptError(config: Pick<PackageConfig, 'packageJson'>): string | undefined {
   const scripts = config.packageJson?.scripts ?? {};
   for (const [name, script] of Object.entries(scripts)) {
     if (script === undefined) continue;
@@ -527,188 +530,9 @@ export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJs
   ) {
     return 'postinstall must use bun wb gen-code instead of a non-Bun gen-code runner';
   }
-  for (const [name, script] of Object.entries(scripts)) {
-    if (script === undefined) continue;
-    if (wranglerTypesTextPattern.test(script)) return `${name} must use bun wb gen-code instead of wrangler types`;
-  }
 }
 
-function hasWranglerDependency(packageJson: PackageJson | undefined): boolean {
-  return [
-    packageJson?.dependencies,
-    packageJson?.devDependencies,
-    packageJson?.optionalDependencies,
-    packageJson?.peerDependencies,
-  ].some((dependencies) => dependencies?.wrangler !== undefined);
-}
-
-const shellWordPattern = String.raw`(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:\\.|[^\s"'\\])+)`;
-const wranglerOptionPattern = String.raw`\s+--?[A-Za-z][\w-]*(?:=${shellWordPattern}|\s+(?!-|types\b)${shellWordPattern})?`;
-const wranglerTypesTextPattern = new RegExp(
-  String.raw`["']?\bwrangler(?:@[^\s"']+)?\b["']?(?:${wranglerOptionPattern})*\s+types\b`,
-  'u'
-);
-
-/**
- * A package whose TypeScript project cannot include worker-configuration.d.ts (e.g. one on a hand-maintained
- * minimal `Env` with `types: ["bun"]`, the standard escape when the ambient wrangler globals conflict with the
- * `@types/bun` globals its tests need) gains nothing from regenerating the ~500KB file on every install, so wbfy
- * leaves such packages unmanaged instead of re-adding the generation step. Consumption is detected two ways:
- * a textual `worker-configuration` reference in any tracked file of the package (covers imports, triple-slash
- * references, and explicit tsconfig entries), or a `files`/`include`/`exclude` set that can match the file —
- * resolved through relative `extends` chains with each pattern kept relative to the config that declared it,
- * matching tsc. Whenever the effective set cannot be determined (missing or unparseable tsconfig, package-name
- * `extends` presets, or TypeScript's default `**` inclusion), the current managed behavior is kept.
- */
-export async function consumesGeneratedWorkerTypes(config: Pick<PackageConfig, 'dirPath'>): Promise<boolean> {
-  // `git grep` searches tracked files only, so the gitignored generated file itself never matches.
-  // wbfy's own managed artifacts are excluded: the `.gitignore` rule (`/worker-configuration.d.ts`)
-  // wbfy committed while it managed the package must not count as consumption, or a once-managed
-  // package could never opt out.
-  const grepResult = await spawnAndReturnStdout(
-    'git',
-    // tsconfig files are classified by the resolved files/include/exclude logic below — a textual
-    // hit there (e.g. an `exclude` entry) must not count as consumption.
-    [
-      'grep',
-      '-l',
-      'worker-configuration',
-      '--',
-      '.',
-      ':(exclude).gitignore',
-      ':(exclude).gitattributes',
-      String.raw`:(glob,exclude)**/tsconfig*.json`,
-    ],
-    config.dirPath
-  );
-  if (grepResult.trim()) return true;
-
-  const workerTypesPath = path.resolve(config.dirPath, 'worker-configuration.d.ts');
-  const fileSet = resolveTsconfigFileSet(path.resolve(config.dirPath, 'tsconfig.json'), config.dirPath, 5);
-  if (!fileSet) return true;
-  const matches = (patternSet: TsconfigPatternSet | undefined): boolean => {
-    if (!patternSet || !Array.isArray(patternSet.patterns)) return false;
-    const relativePath = path.relative(patternSet.baseDirPath, workerTypesPath).replaceAll('\\', '/');
-    return patternSet.patterns.some((pattern) => {
-      if (typeof pattern !== 'string') return false;
-      // `${configDir}`-prefixed patterns were expanded to absolute paths at resolve time.
-      if (path.isAbsolute(pattern)) {
-        return tsconfigPatternCouldMatchPath(pattern, workerTypesPath, patternSet.expandsDirectories);
-      }
-      if (relativePath.startsWith('..')) return false;
-      return tsconfigPatternCouldMatchPath(pattern, relativePath, patternSet.expandsDirectories);
-    });
-  };
-  // `files` entries are always part of the program, even when `exclude` matches them.
-  if (matches(fileSet.files)) return true;
-  if (matches(fileSet.exclude)) return false;
-  // Neither include nor files declared: TypeScript's default `**` inclusion covers the file.
-  if (!fileSet.include && !fileSet.files) return true;
-  return matches(fileSet.include);
-}
-
-interface TsconfigPatternSet {
-  /** Directory of the config that declared the patterns; tsc resolves them relative to it. */
-  baseDirPath: string;
-  /** include/exclude treat an extensionless non-glob pattern as a directory subtree; `files` does not. */
-  expandsDirectories: boolean;
-  patterns: unknown;
-}
-
-interface TsconfigFileSet {
-  exclude?: TsconfigPatternSet;
-  files?: TsconfigPatternSet;
-  include?: TsconfigPatternSet;
-}
-
-/** Resolves files/include/exclude through relative `extends` chains; undefined when unreadable. */
-function resolveTsconfigFileSet(
-  filePath: string,
-  consumerDirPath: string,
-  remainingDepth: number
-): TsconfigFileSet | undefined {
-  if (remainingDepth <= 0) return undefined;
-  let content: string;
-  try {
-    content = fs.readFileSync(filePath, 'utf8');
-  } catch {
-    return undefined;
-  }
-  const tsconfig = jsoncUtil.parseObjectIgnoringError<{
-    exclude?: unknown;
-    extends?: unknown;
-    files?: unknown;
-    include?: unknown;
-  }>(content);
-  if (!tsconfig) return undefined;
-  const dirPath = path.dirname(filePath);
-  // `${configDir}` resolves to the directory of the ROOT (consuming) config, wherever it appears.
-  const toPatternSet = (patterns: unknown, expandsDirectories: boolean): TsconfigPatternSet | undefined =>
-    Array.isArray(patterns)
-      ? {
-          baseDirPath: dirPath,
-          expandsDirectories,
-          patterns: patterns.map((pattern) =>
-            typeof pattern === 'string' && pattern.startsWith('${configDir}')
-              ? path.join(consumerDirPath, pattern.slice('${configDir}'.length))
-              : pattern
-          ),
-        }
-      : undefined;
-  const fileSet: TsconfigFileSet = {
-    exclude: toPatternSet(tsconfig.exclude, true),
-    files: toPatternSet(tsconfig.files, false),
-    include: toPatternSet(tsconfig.include, true),
-  };
-  const parents =
-    typeof tsconfig.extends === 'string' ? [tsconfig.extends] : Array.isArray(tsconfig.extends) ? tsconfig.extends : [];
-  // With an `extends` array, later entries override earlier ones, and the child overrides all —
-  // so fill each still-missing key from the last parent that defines it.
-  for (const parent of parents.toReversed()) {
-    if (fileSet.exclude && fileSet.files && fileSet.include) break;
-    // Package-name extends (e.g. `@tsconfig/bun`) are compilerOptions presets without file sets.
-    if (typeof parent !== 'string' || !parent.startsWith('.')) continue;
-    let parentPath = path.resolve(dirPath, parent);
-    if (!fs.existsSync(parentPath) && fs.existsSync(`${parentPath}.json`)) parentPath += '.json';
-    const parentFileSet = resolveTsconfigFileSet(parentPath, consumerDirPath, remainingDepth - 1);
-    if (!parentFileSet) continue;
-    fileSet.exclude ??= parentFileSet.exclude;
-    fileSet.files ??= parentFileSet.files;
-    fileSet.include ??= parentFileSet.include;
-  }
-  return fileSet;
-}
-
-function tsconfigPatternCouldMatchPath(pattern: string, targetPath: string, expandsDirectories: boolean): boolean {
-  const normalized = pattern.replace(/^\.\//u, '');
-  // A bare `.` include covers everything under the config's directory.
-  if (normalized === '' || normalized === '.') return true;
-  // Absolute patterns (expanded `${configDir}`) are matched against the absolute target; drop the
-  // leading slashes from both so the segment-built regex anchors identically.
-  targetPath = targetPath.replace(/^\/+/u, '');
-  const segments = normalized.split('/').filter((segment) => segment !== '');
-  const regexSource = segments
-    .map((segment, index) => {
-      const isLast = index === segments.length - 1;
-      if (segment === '**') return isLast ? '.*' : String.raw`(?:[^/]+/)*`;
-      const segmentSource = segment
-        .replaceAll(/[.+^${}()|[\]\\]/gu, String.raw`\$&`)
-        .replaceAll('*', String.raw`[^/]*`)
-        .replaceAll('?', String.raw`[^/]`);
-      return isLast ? segmentSource : `${segmentSource}/`;
-    })
-    .join('');
-  // tsc treats an extensionless non-glob include/exclude entry as a directory whose subtree is included.
-  const lastSegment = segments.at(-1) ?? '';
-  const directorySuffix =
-    expandsDirectories && !/[*?]/u.test(lastSegment) && !lastSegment.includes('.') ? String.raw`(?:/.*)?` : '';
-  return new RegExp(`^${regexSource}${directorySuffix}$`, 'u').test(targetPath);
-}
-
-/**
- * Tells whether the directory owns a Worker, unlike the isCloudflare heuristic, which also matches a package that
- * merely mentions wrangler in a script or workflow (e.g. the root of a monorepo whose Worker lives in a sub-package).
- */
+/** Tells whether the directory holds the config of a Worker that has not been converted with `cf migrate`. */
 function detectWranglerConfig(dirPath: string): boolean {
   return ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((fileName) =>
     fs.existsSync(path.resolve(dirPath, fileName))
@@ -734,17 +558,13 @@ function detectIsWillBoosterConfigs(dirPath: string, packageJsonPath: string, re
   return packageJsonPath.toLowerCase().includes('/willbooster-configs/');
 }
 
-function detectCloudflare(
-  packageJson: PackageJson,
-  doesContainWranglerConfig: boolean,
-  workflowContents: string[]
-): boolean {
+function detectCloudflare(packageJson: PackageJson, ownsWorker: boolean, workflowContents: string[]): boolean {
   const scripts = packageJson.scripts;
   if (scripts && Object.values(scripts).some((script) => typeof script === 'string' && script.includes('wrangler'))) {
     return true;
   }
 
-  if (doesContainWranglerConfig) {
+  if (ownsWorker) {
     return true;
   }
 

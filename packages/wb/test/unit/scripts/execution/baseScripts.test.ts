@@ -1,6 +1,5 @@
-import { afterAll, describe, expect, it, mock, spyOn } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 
 import yargs from 'yargs';
@@ -18,7 +17,7 @@ import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/
 import * as portUtils from '../../../../src/utils/port.js';
 import * as processUtils from '../../../../src/utils/process.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../../../src/utils/shell.js';
-import { buildD1MigrationsApplyCommands } from '../../../../src/utils/wrangler.js';
+import { createCloudflareProjectDir } from '../../../helpers/cloudflareProject.js';
 
 spyOn(portUtils, 'ensurePort').mockResolvedValue(3000);
 spyOn(processUtils, 'spawnSyncOnExit').mockImplementation(() => {});
@@ -347,167 +346,77 @@ describe('BaseScripts.testE2E', () => {
 
 describe('BaseScripts D1 migration selection', () => {
   const scripts = new TestProductionScripts();
+  let dirPath: string;
+
+  beforeEach(async () => {
+    dirPath = await createCloudflareProjectDir();
+  });
+
+  afterEach(async () => {
+    await fs.rm(dirPath, { force: true, recursive: true });
+  });
 
   it('does not treat an unrelated drizzle config as a D1 migration mechanism', async () => {
-    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-base-scripts-test-'));
-    try {
-      await fs.writeFile(
-        path.join(dirPath, 'wrangler.jsonc'),
-        JSON.stringify({ d1_databases: [{ binding: 'DB', database_name: 'app' }] })
-      );
-      await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'postgresql' };`);
-      const project = buildD1Project(dirPath);
-      const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    await writeCloudflareConfig(dirPath, ['DB']);
+    await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'postgresql' };`);
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
 
-      const migrationCommand = scripts.getMigrationCommands(project).join(' && ');
-      expect(migrationCommand).toContain('YARN drizzle-kit migrate');
-      expect(migrationCommand).not.toContain('wrangler d1 execute');
-      expect(migrationCommand).not.toContain('export DATABASE_URL');
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('No D1 migration mechanism detected for DB'));
-      warn.mockRestore();
-    } finally {
-      await fs.rm(dirPath, { force: true, recursive: true });
-    }
-  });
-
-  it('uses drizzle-kit when an empty migrations directory is not wrangler-native', async () => {
-    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-base-scripts-test-'));
-    try {
-      await fs.mkdir(path.join(dirPath, 'migrations'));
-      await fs.writeFile(
-        path.join(dirPath, 'wrangler.jsonc'),
-        JSON.stringify({ d1_databases: [{ binding: 'DB', database_name: 'app', migrations_dir: 'migrations' }] })
-      );
-      await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
-      const project = buildD1Project(dirPath);
-
-      expect(scripts.getMigrationCommands(project).join(' && ')).toContain('YARN drizzle-kit migrate');
-      expect(buildD1MigrationsApplyCommands(project)).toEqual([]);
-    } finally {
-      await fs.rm(dirPath, { force: true, recursive: true });
-    }
-  });
-
-  it('uses wrangler-native migrations when an explicit pattern opts in before the directory exists', async () => {
-    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-base-scripts-test-'));
-    try {
-      await fs.writeFile(
-        path.join(dirPath, 'wrangler.jsonc'),
-        JSON.stringify({
-          d1_databases: [
-            {
-              binding: 'DB',
-              database_name: 'app',
-              migrations_dir: 'migrations',
-              migrations_pattern: 'migrations/*/migration.sql',
-            },
-          ],
-        })
-      );
-      await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
-      const project = buildD1Project(dirPath);
-
-      expect(scripts.getMigrationCommands(project).join(' && ')).not.toContain('YARN drizzle-kit migrate');
-      expect(buildD1MigrationsApplyCommands(project).join(' && ')).toContain('YARN wrangler d1 migrations apply app');
-    } finally {
-      await fs.rm(dirPath, { force: true, recursive: true });
-    }
-  });
-
-  it('rejects mixed wrangler-native and drizzle-kit D1 layouts', async () => {
-    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-base-scripts-test-'));
-    try {
-      await fs.mkdir(path.join(dirPath, 'native'));
-      await fs.writeFile(path.join(dirPath, 'native', '0001.sql'), 'CREATE TABLE native_table (id);');
-      await fs.writeFile(
-        path.join(dirPath, 'wrangler.jsonc'),
-        JSON.stringify({
-          d1_databases: [
-            { binding: 'NATIVE', database_name: 'native-db', migrations_dir: 'native' },
-            { binding: 'DRIZZLE', database_name: 'drizzle-db' },
-          ],
-        })
-      );
-      await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
-
-      expect(() => scripts.getMigrationCommands(buildD1Project(dirPath))).toThrow(
-        'wb does not support mixing wrangler-native and non-native D1 migration layouts.'
-      );
-    } finally {
-      await fs.rm(dirPath, { force: true, recursive: true });
-    }
+    scripts.getMigrationCommands(buildD1Project(dirPath));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('No D1 migration mechanism detected for DB'));
+    warn.mockRestore();
   });
 
   it('rejects multiple drizzle-kit D1 bindings', async () => {
-    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-base-scripts-test-'));
-    try {
-      await fs.writeFile(
-        path.join(dirPath, 'wrangler.jsonc'),
-        JSON.stringify({
-          d1_databases: [
-            { binding: 'FIRST', database_name: 'first-db' },
-            { binding: 'SECOND', database_name: 'second-db' },
-          ],
-        })
-      );
-      await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
+    await writeCloudflareConfig(dirPath, ['FIRST', 'SECOND']);
+    await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
 
-      expect(() => scripts.getMigrationCommands(buildD1Project(dirPath))).toThrow(
-        'wb supports drizzle-kit migrations only for a single D1 binding; found multiple.'
-      );
-    } finally {
-      await fs.rm(dirPath, { force: true, recursive: true });
-    }
+    expect(() => scripts.getMigrationCommands(buildD1Project(dirPath))).toThrow(
+      'wb supports drizzle-kit migrations only for a single D1 binding; found multiple.'
+    );
   });
 
-  it('applies every wrangler-native D1 binding locally', async () => {
-    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-base-scripts-test-'));
-    try {
-      await fs.writeFile(
-        path.join(dirPath, 'wrangler.jsonc'),
-        JSON.stringify({
-          d1_databases: [
-            {
-              binding: 'FIRST',
-              database_name: 'first-db',
-              migrations_dir: 'first',
-              migrations_pattern: 'first/*.sql',
-            },
-            {
-              binding: 'SECOND',
-              database_name: 'second-db',
-              migrations_dir: 'second',
-              migrations_pattern: 'second/*.sql',
-            },
-          ],
-          env: {
-            staging: {
-              d1_databases: [{ binding: 'STAGING', database_name: 'staging-db', migrations_dir: 'staging' }],
-            },
-          },
-        })
-      );
-      const project = buildD1Project(dirPath);
-      project.env.CLOUDFLARE_ENV = 'staging';
+  it('rejects mixing cf-native and drizzle-kit D1 bindings', async () => {
+    await writeCloudflareConfig(dirPath, ['NATIVE', 'DRIZZLE']);
+    await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
 
-      expect(buildD1MigrationsApplyCommands(project)).toEqual([
-        expect.stringMatching(/^env -u CLOUDFLARE_ENV .*d1 migrations apply first-db/u),
-        expect.stringMatching(/^env -u CLOUDFLARE_ENV .*d1 migrations apply second-db/u),
-      ]);
-    } finally {
-      await fs.rm(dirPath, { force: true, recursive: true });
-    }
+    expect(() => scripts.getMigrationCommands(buildD1Project(dirPath, { NATIVE: { dir: 'native' } }))).toThrow(
+      'wb does not support mixing cf-native and drizzle-kit D1 migrations in one package.'
+    );
   });
 });
 
-function buildD1Project(dirPath: string): Project {
+// cf rejects a D1 database ID that is not a UUID.
+const d1DatabaseIds: Record<string, string> = {
+  DB: '00000000-0000-4000-8000-000000000001',
+  FIRST: '00000000-0000-4000-8000-000000000002',
+  SECOND: '00000000-0000-4000-8000-000000000003',
+  NATIVE: '00000000-0000-4000-8000-000000000004',
+  DRIZZLE: '00000000-0000-4000-8000-000000000005',
+};
+
+async function writeCloudflareConfig(dirPath: string, d1BindingNames: string[]): Promise<void> {
+  await fs.writeFile(
+    path.join(dirPath, 'cloudflare.config.ts'),
+    `import { bindings, defineConfig } from 'cf/config';
+
+    export default defineConfig({
+      worker: {
+        name: 'app',
+        compatibilityDate: '2026-09-01',
+        env: { ${d1BindingNames.map((name) => `${name}: bindings.d1({ id: '${d1DatabaseIds[name]}' })`).join(', ')} },
+      },
+    });`
+  );
+}
+
+function buildD1Project(dirPath: string, d1Migrations?: Record<string, { dir: string }>): Project {
   return {
     buildCommand: 'build',
     dirPath,
-    env: { WB_ENV: 'test', PORT: '3000' },
+    env: { ...process.env, WB_ENV: 'test', PORT: '3000' },
     hasDrizzle: true,
     hasPrisma: false,
-    packageJson: { scripts: {} },
+    packageJson: { scripts: {}, ...(d1Migrations && { wb: { d1Migrations } }) },
     rootDirPath: dirPath,
   } as unknown as Project;
 }

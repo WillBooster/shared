@@ -1,16 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import { parse as parseDotenv } from 'dotenv';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findSelfProjectOrExit } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { resolveCloudflareMode, resolveLocalCloudflareConfig } from '../utils/cloudflareConfig.js';
+import { resolveDeclaredSecrets } from '../utils/workerSecrets.js';
 
-// Cloudflare Workers don't see the process environment; wrangler dev reads vars from a .dev.vars
-// file next to its config file instead. This command bridges the fnox-managed values to that file.
+// Cloudflare Workers don't see the process environment; a locally served Worker reads the values
+// of its declared secrets from a .dev.vars file next to its config file instead. This command
+// bridges the fnox-managed values to that file.
 const builder = {} as const;
 
 type GenDevVarsCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
@@ -19,59 +21,38 @@ type GenDevVarsCommandArgv = ArgumentsCamelCase<GenDevVarsCommandOptions & { pat
 export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions> = {
   command: 'gen-dev-vars [path]',
   describe:
-    'Generate a .dev.vars file for `wrangler dev` from the environment variables loaded from fnox (plus WB_ENV and NEXT_PUBLIC_WB_ENV).',
+    'Generate a .dev.vars file for a locally served Worker: the secrets cloudflare.config.ts declares with bindings.secret(), with their values from fnox or the environment.',
   builder: (yargs) =>
     yargs.positional('path', {
-      description: 'Output path of the generated .dev.vars file.',
+      description:
+        'Output path of the generated file (default: .dev.vars.<mode>, which the local runtime reads for that mode).',
       type: 'string',
-      default: '.dev.vars',
     }) as unknown as Argv<GenDevVarsCommandOptions>,
   async handler(argv: GenDevVarsCommandArgv) {
     const project = findSelfProjectOrExit(argv);
 
-    // Restrict to variables loaded from the project's declared environment sources so that
-    // unrelated process environment variables never leak into the generated file. Ignore
-    // process.env because the parent wb process injects the fnox values into it, which would
-    // otherwise suppress loading them here. wbfy declares the WB_ENV-family keys in fnox, so
-    // they are already included; process-only keys are intentionally outside this allowlist.
-    const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
-    // Explicitly exported environment variables must win over fnox values for configured keys
-    // (project.env applies that precedence), or `AUTH_SECRET=... wb start` would serve the
-    // stale configured value. An export that empties a non-empty configured value is deliberate
-    // and must survive the empty-value filter below (unlike `KEY=` placeholders, which stay
-    // omitted so they cannot override wrangler `vars` with empty strings).
-    const explicitlyEmptiedKeys = new Set<string>();
-    for (const key of Object.keys(envVars)) {
-      const effectiveValue = project.env[key];
-      if (effectiveValue === undefined) continue;
-      if (effectiveValue === '' && envVars[key] !== '') explicitlyEmptiedKeys.add(key);
-      envVars[key] = effectiveValue;
-    }
-    // wb derives NEXT_PUBLIC_BASE_URL from the auto-selected port when fnox does not define it
-    // (see ensurePort); the worker runtime reads only .dev.vars, so bridge the derived value too.
-    if (envVars.NEXT_PUBLIC_BASE_URL === undefined && project.env.NEXT_PUBLIC_BASE_URL !== undefined) {
-      envVars.NEXT_PUBLIC_BASE_URL = project.env.NEXT_PUBLIC_BASE_URL;
-    }
-    const lines = Object.entries(envVars)
-      .filter(([key, value]) => value !== '' || explicitlyEmptiedKeys.has(key))
+    const mode = resolveCloudflareMode(project);
+    const secretNames = resolveLocalCloudflareConfig(project, mode)?.secretNames ?? [];
+    const { secrets } = resolveDeclaredSecrets(argv, project, secretNames);
+    const lines = Object.entries(secrets)
       .toSorted(([a], [b]) => a.localeCompare(b))
       .map(([key, value]) => `${key}=${quoteDotenvValue(key, value)}`);
-    const outputPath = path.resolve(project.dirPath, argv.path ?? '.dev.vars');
+    const outputPath = path.resolve(project.dirPath, argv.path ?? `.dev.vars.${mode}`);
     if (argv.dryRun) {
-      console.info(chalk.cyan(`Would generate ${outputPath} with ${lines.length} environment variables.`));
+      console.info(chalk.cyan(`Would generate ${outputPath} with ${lines.length} declared secrets.`));
       return;
     }
 
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, lines.join('\n') + '\n');
-    console.info(chalk.green(`Generated ${outputPath} with ${lines.length} environment variables.`));
+    console.info(chalk.green(`Generated ${outputPath} with ${lines.length} declared secrets.`));
   },
 };
 
 /**
- * Quote a value for dotenv (which wrangler uses for .dev.vars). Every candidate representation
- * is verified by actually parsing it back (our dotenv parser matches wrangler's bundled dotenv
- * 16 for these constructs), so a value is either serialized losslessly or rejected — never
+ * Quote a value for dotenv (the format of .dev.vars). Every candidate representation
+ * is verified by actually parsing it back (our dotenv parser matches the local Worker runtime's
+ * for these constructs), so a value is either serialized losslessly or rejected — never
  * silently corrupted. Candidates: single quotes (literal span; closed early by an apostrophe),
  * backticks (equally literal), then double quotes with escaped newlines/CRs (dotenv does not
  * unescape inner \" — a `#` after an embedded quote starts a comment, which the round-trip

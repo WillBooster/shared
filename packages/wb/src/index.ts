@@ -60,8 +60,8 @@ await yargs(hideBin(process.argv))
     // check false-positives whenever a real node precedes it.
     const nodeOnPath = findFirstNodeOnPath();
     if (nodeOnPath && isBunNodeShim(nodeOnPath)) {
-      // Not fixed up here: tools requiring real Node.js (Playwright, wrangler, vinext) may hang or
-      // crash under the shim, and some (wrangler dev) fail silently, so surface the cause upfront.
+      // Not fixed up here: tools requiring real Node.js (Playwright, cf, vinext) may hang or
+      // crash under the shim, and some fail silently, so surface the cause upfront.
       console.warn(
         `Warning: \`node\` on PATH is a Bun shim (${nodeOnPath}); ` +
           'run wb without `--bun` and remove `[run] bun` from bunfig.toml.'
