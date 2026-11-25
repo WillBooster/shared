@@ -50,10 +50,14 @@ export interface D1MigrationSettings {
   pattern?: string;
 }
 
+export interface CfNativeD1Migration {
+  database: CloudflareD1Database;
+  settings: D1MigrationSettings;
+}
+
 export interface D1Migrations {
   /** D1 bindings migrated with `cf d1 migrations apply`. */
-  cfNativeD1Databases: CloudflareD1Database[];
-  cfNativeSettings?: D1MigrationSettings;
+  cfNativeD1Migrations: CfNativeD1Migration[];
   /** The D1 binding migrated with `drizzle-kit migrate`. */
   drizzleD1Database?: CloudflareD1Database;
   errorMessage?: string;
@@ -175,22 +179,23 @@ function loadCloudflareConfig(
 }
 
 /**
- * How `cf d1 migrations apply` finds the package's migrations, or undefined when the package
- * does not migrate D1 that way. `cloudflare.config.ts` has no migration fields, so the explicit
- * opt-in is `"wb": { "d1Migrations": { "dir": ..., "pattern": ... } }` in package.json (e.g. for
- * drizzle-kit's nested `<dir>/<name>/migration.sql` layout); without it, flat `*.sql` files in
- * `migrations/` (cf's defaults) opt in. A drizzle-kit `out` directory with nested files and no
- * explicit pattern would match nothing and silently apply zero migrations, so it must fall
- * through to the drizzle-kit mechanism.
+ * How `cf d1 migrations apply` finds the binding's migrations, or undefined when the binding is
+ * not migrated that way. `cloudflare.config.ts` has no migration fields, so the explicit opt-in
+ * is `"wb": { "d1Migrations": { "<binding>": { "dir": ..., "pattern": ... } } }` in package.json
+ * (e.g. for drizzle-kit's nested `<dir>/<name>/migration.sql` layout); without an entry, flat
+ * `*.sql` files in `migrations/` (cf's defaults) opt in. A drizzle-kit `out` directory with
+ * nested files and no explicit pattern would match nothing and silently apply zero migrations,
+ * so it must fall through to the drizzle-kit mechanism.
  */
 export function findCfNativeD1MigrationSettings(
-  project: Pick<Project, 'dirPath' | 'packageJson'>
+  project: Pick<Project, 'dirPath' | 'packageJson'>,
+  database: CloudflareD1Database
 ): D1MigrationSettings | undefined {
   const explicitSettings = z
-    .looseObject({ d1Migrations: d1MigrationSettingsSchema.optional() })
+    .looseObject({ d1Migrations: z.record(z.string(), d1MigrationSettingsSchema).optional() })
     .optional()
-    .parse((project.packageJson as { wb?: unknown }).wb)?.d1Migrations;
-  // An explicit setting opts in even before the directory exists; cf then fails safely instead
+    .parse((project.packageJson as { wb?: unknown }).wb)?.d1Migrations?.[database.binding];
+  // An explicit entry opts in even before the directory exists; cf then fails safely instead
   // of wb silently switching to a different migration engine.
   if (explicitSettings) return { dir: explicitSettings.dir ?? 'migrations', pattern: explicitSettings.pattern };
 
@@ -206,21 +211,29 @@ export function selectD1Migrations(
   d1Databases: CloudflareD1Database[],
   drizzleKitManagesD1: boolean
 ): D1Migrations {
-  const cfNativeSettings = d1Databases.length > 0 ? findCfNativeD1MigrationSettings(project) : undefined;
-  if (cfNativeSettings) {
-    return { cfNativeD1Databases: d1Databases, cfNativeSettings, unmanagedD1Databases: [] };
+  const cfNativeD1Migrations: CfNativeD1Migration[] = [];
+  const otherD1Databases: CloudflareD1Database[] = [];
+  for (const database of d1Databases) {
+    const settings = findCfNativeD1MigrationSettings(project, database);
+    if (settings) {
+      cfNativeD1Migrations.push({ database, settings });
+    } else {
+      otherD1Databases.push(database);
+    }
   }
-  if (!drizzleKitManagesD1) {
-    return { cfNativeD1Databases: [], unmanagedD1Databases: d1Databases };
+  if (!drizzleKitManagesD1 || otherD1Databases.length === 0) {
+    return { cfNativeD1Migrations, unmanagedD1Databases: otherD1Databases };
   }
-  if (d1Databases.length > 1) {
-    return {
-      cfNativeD1Databases: [],
-      errorMessage: 'wb supports drizzle-kit migrations only for a single D1 binding; found multiple.',
-      unmanagedD1Databases: [],
-    };
-  }
-  return { cfNativeD1Databases: [], drizzleD1Database: d1Databases[0], unmanagedD1Databases: [] };
+  // drizzle's generated SQL is not idempotent, so one package must not run both engines.
+  const errorMessage =
+    cfNativeD1Migrations.length > 0
+      ? 'wb does not support mixing cf-native and drizzle-kit D1 migrations in one package.'
+      : otherD1Databases.length > 1
+        ? 'wb supports drizzle-kit migrations only for a single D1 binding; found multiple.'
+        : undefined;
+  return errorMessage
+    ? { cfNativeD1Migrations, errorMessage, unmanagedD1Databases: [] }
+    : { cfNativeD1Migrations, drizzleD1Database: otherD1Databases[0], unmanagedD1Databases: [] };
 }
 
 export function formatD1DatabaseNames(d1Databases: CloudflareD1Database[]): string {

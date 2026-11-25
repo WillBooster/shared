@@ -169,7 +169,7 @@ function selectD1MigrationsOrExit({ project, resolvedConfig }: WorkerDeployConte
     console.warn(
       chalk.yellow(
         `No D1 migration mechanism detected for ${formatD1DatabaseNames(d1Migrations.unmanagedD1Databases)} ` +
-          '(no "wb.d1Migrations" in package.json, no flat SQL files in migrations/, and no drizzle config targeting sqlite/d1-http/durable-sqlite); wb deploy will not run D1 migrations for them.'
+          '(no "wb.d1Migrations" entry in package.json, no flat SQL files in migrations/, and no drizzle config targeting sqlite/d1-http/durable-sqlite); wb deploy will not run D1 migrations for them.'
       )
     );
   }
@@ -225,10 +225,11 @@ function selectSecretsOrExit({ argv, project, envName, resolvedConfig }: WorkerD
 }
 
 async function assertWithinCloudflareLimits(
-  { argv, project, resolvedConfig }: WorkerDeployContext,
+  context: WorkerDeployContext,
   secrets: Record<string, string>,
   secretKeys: string[]
 ): Promise<void> {
+  const { resolvedConfig } = context;
   // Cloudflare limits a bulk upload to 100 secrets, each variable/secret value to 5 KB, and
   // the combined variable+secret count to 128 (64 on the Free plan, which cannot be detected
   // here — hence a warning). Failing before any build or migration keeps an oversized payload
@@ -253,7 +254,7 @@ async function assertWithinCloudflareLimits(
   // round-trip, which dry runs skip; when the listing fails for any reason other than a
   // not-yet-created Worker, degrade to the local-only count instead of blocking a deploy that
   // cf itself might accept.
-  const remoteSecretNames = argv.dryRun ? [] : await listRemoteWorkerSecretNames(project, argv, resolvedConfig);
+  const remoteSecretNames = context.argv.dryRun ? [] : await listRemoteWorkerSecretNames(context);
   const inheritedSecretNames = selectInheritedRemoteSecretNames(
     remoteSecretNames ?? [],
     secrets,
@@ -284,14 +285,14 @@ async function buildWorker({ argv, project, envName }: WorkerDeployContext): Pro
   if (project.packageJson.scripts?.['gen-code']) {
     await runWithSpawn('YARN run gen-code', project, argv);
   }
-  await runWithSpawn(buildCfCommand(project, 'build'), project, argv, {
+  await runWithSpawn(buildCfCommand(project, 'build', '', envName), project, argv, {
     env: usesViteBundler(project) ? createViteBuildEnv(project, envName) : undefined,
   });
 }
 
-async function validateWorkerBuild({ argv, project }: WorkerDeployContext): Promise<void> {
+async function validateWorkerBuild({ argv, project, envName }: WorkerDeployContext): Promise<void> {
   await runWithSpawn(
-    buildCfCommand(project, 'deploy', `--prebuilt --dry-run${buildRolloutOption(argv)}`),
+    buildCfCommand(project, 'deploy', `--prebuilt --dry-run${buildRolloutOption(argv)}`, envName),
     project,
     argv
   );
@@ -325,21 +326,19 @@ function createViteBuildEnv(project: Project, envName: string): Record<string, s
 
 async function applyD1Migrations(
   { argv, project, envName }: WorkerDeployContext,
-  { cfNativeD1Databases, cfNativeSettings, drizzleD1Database }: D1Migrations,
+  { cfNativeD1Migrations, drizzleD1Database }: D1Migrations,
   accountId: string | undefined
 ): Promise<void> {
   // Apply D1 migrations to the remote database with the project's single migration mechanism.
   // Migrations must be backward compatible: the old Worker serves traffic until
   // deployCodeAndSecrets replaces it.
-  if (cfNativeSettings) {
-    for (const database of cfNativeD1Databases) {
-      // CI=true suppresses cf's interactive confirmation prompt.
-      await runWithSpawn(
-        `CI=true ${buildCfCommand(project, 'd1 migrations apply', `${getD1DatabaseIdOrExit(database)} ${buildD1MigrationOptions(cfNativeSettings)}`)}`,
-        project,
-        argv
-      );
-    }
+  for (const { database, settings } of cfNativeD1Migrations) {
+    // CI=true suppresses cf's interactive confirmation prompt.
+    await runWithSpawn(
+      `CI=true ${buildCfCommand(project, 'd1 migrations apply', `${getD1DatabaseIdOrExit(database)} ${buildD1MigrationOptions(settings)}`, envName)}`,
+      project,
+      argv
+    );
   }
   if (drizzleD1Database) {
     const databaseId = getD1DatabaseIdOrExit(drizzleD1Database);
@@ -542,21 +541,14 @@ export function selectDeclaredSecrets(
  * (network, a token without secret-read permission) into a deploy blocker; this preflight must
  * only ever add failures that cf itself would raise after the migrations.
  */
-async function listRemoteWorkerSecretNames(
-  project: Project,
-  argv: DeployCommandArgv,
-  resolvedConfig: ResolvedCloudflareConfig
-): Promise<string[] | undefined> {
+async function listRemoteWorkerSecretNames({
+  argv,
+  project,
+  envName,
+  resolvedConfig,
+}: WorkerDeployContext): Promise<string[] | undefined> {
   prepareLocalBinPath(project);
-  const listArgs = [
-    'workers',
-    'secrets',
-    'list',
-    '--worker',
-    resolvedConfig.workerName,
-    '--mode',
-    project.env.WB_ENV ?? '',
-  ];
+  const listArgs = ['workers', 'secrets', 'list', '--worker', resolvedConfig.workerName, '--mode', envName];
   console.info(chalk.cyan(`Running: cf ${listArgs.join(' ')}`));
   let ret;
   try {

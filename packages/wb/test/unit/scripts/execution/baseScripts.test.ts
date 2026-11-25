@@ -387,7 +387,7 @@ describe('BaseScripts D1 migration selection', () => {
   it('uses cf-native migrations when package.json opts in before the directory exists', async () => {
     await writeCloudflareConfig(dirPath, ['DB']);
     await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
-    const project = buildD1Project(dirPath, { dir: 'drizzle', pattern: 'drizzle/*/migration.sql' });
+    const project = buildD1Project(dirPath, { DB: { dir: 'drizzle', pattern: 'drizzle/*/migration.sql' } });
 
     expect(scripts.getMigrationCommands(project).join(' && ')).not.toContain('YARN drizzle-kit migrate');
     expect(buildLocalD1MigrationsApplyCommands(project)).toEqual([
@@ -404,15 +404,24 @@ describe('BaseScripts D1 migration selection', () => {
     );
   });
 
-  it('applies flat SQL migrations to every D1 binding locally', async () => {
+  it('applies each D1 binding its own migrations locally, flat SQL in migrations/ by default', async () => {
     await fs.mkdir(path.join(dirPath, 'migrations'));
     await fs.writeFile(path.join(dirPath, 'migrations', '0001.sql'), 'CREATE TABLE t (id);');
     await writeCloudflareConfig(dirPath, ['FIRST', 'SECOND']);
 
-    expect(buildLocalD1MigrationsApplyCommands(buildD1Project(dirPath))).toEqual([
-      expect.stringContaining('d1 migrations apply --mode test FIRST-id --local'),
-      expect.stringContaining('d1 migrations apply --mode test SECOND-id --local'),
+    expect(buildLocalD1MigrationsApplyCommands(buildD1Project(dirPath, { SECOND: { dir: 'second' } }))).toEqual([
+      expect.stringMatching(/d1 migrations apply --mode test FIRST-id --local .* --dir migrations$/u),
+      expect.stringMatching(/d1 migrations apply --mode test SECOND-id --local .* --dir second$/u),
     ]);
+  });
+
+  it('rejects mixing cf-native and drizzle-kit D1 bindings', async () => {
+    await writeCloudflareConfig(dirPath, ['NATIVE', 'DRIZZLE']);
+    await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
+
+    expect(() => scripts.getMigrationCommands(buildD1Project(dirPath, { NATIVE: { dir: 'native' } }))).toThrow(
+      'wb does not support mixing cf-native and drizzle-kit D1 migrations in one package.'
+    );
   });
 });
 
@@ -431,7 +440,7 @@ async function writeCloudflareConfig(dirPath: string, d1BindingNames: string[]):
   );
 }
 
-function buildD1Project(dirPath: string, d1Migrations?: { dir: string; pattern: string }): Project {
+function buildD1Project(dirPath: string, d1Migrations?: Record<string, { dir: string; pattern?: string }>): Project {
   return {
     buildCommand: 'build',
     dirPath,

@@ -21,8 +21,13 @@ export function buildGenDevVarsCommand(argv: ScriptArgv, outputPath: string): st
  * Build a cf command for the project's mode. cf requires real Node.js: `bun run` respects the
  * bin's node shebang, and wb never composes `--bun` (whose node->bun PATH shim breaks cf).
  */
-export function buildCfCommand(project: Pick<Project, 'env'>, command: string, args = ''): string {
-  return `YARN cf ${command} --mode ${shellEscapeArgument(getCloudflareMode(project))} ${args}`.trim();
+export function buildCfCommand(
+  project: Pick<Project, 'env'>,
+  command: string,
+  args = '',
+  mode = getCloudflareMode(project)
+): string {
+  return `YARN cf ${command} --mode ${shellEscapeArgument(mode)} ${args}`.trim();
 }
 
 /**
@@ -30,15 +35,14 @@ export function buildCfCommand(project: Pick<Project, 'env'>, command: string, a
  * CI=true suppresses cf's interactive confirmation prompt.
  */
 export function buildLocalD1MigrationsApplyCommands(project: CloudflareProject): string[] {
-  const { cfNativeD1Databases, cfNativeSettings } = selectD1Migrations(
+  const { cfNativeD1Migrations } = selectD1Migrations(
     project,
     resolveCloudflareConfig(project)?.d1Databases ?? [],
     false
   );
-  if (!cfNativeSettings) return [];
-  return cfNativeD1Databases.map(
-    (database) =>
-      `CI=true ${buildCfCommand(project, 'd1 migrations apply', `${getD1DatabaseId(database)} --local --persist-to "${getLocalStateDir(project)}" ${buildD1MigrationOptions(cfNativeSettings)}`)}`
+  return cfNativeD1Migrations.map(
+    ({ database, settings }) =>
+      `CI=true ${buildCfCommand(project, 'd1 migrations apply', `${getD1DatabaseId(database)} --local --persist-to "${getLocalStateDir(project)}" ${buildD1MigrationOptions(settings)}`)}`
   );
 }
 
