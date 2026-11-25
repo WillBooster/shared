@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { getAbsoluteFileDatabaseUrlPath, isProjectEnvironment, type Project } from '../project.js';
+import { buildMaterializeLocalD1Command, findLocalD1Database, getLocalStateDir } from '../utils/cloudflare.js';
 import { buildShellCommand } from '../utils/shell.js';
-import { buildMaterializeLocalD1Command, getD1DatabaseName, getLocalWranglerStateDir } from '../utils/wrangler.js';
 import { getLitestreamConfigOption } from './litestream.js';
 
 class DrizzleScripts {
@@ -14,12 +14,12 @@ class DrizzleScripts {
   }
 
   reset(project: Project, additionalOptions = ''): string {
-    const d1DatabaseName = getD1DatabaseName(project);
-    if (d1DatabaseName) {
+    const d1Database = findLocalD1Database(project);
+    if (d1Database) {
       // Remove only the D1 subtree so that other locally-persisted bindings (KV, R2, Durable Objects) survive,
       // then re-materialize the D1 SQLite file. Its path is deterministic, so a DATABASE_URL exported
       // before the removal stays valid.
-      return `rm -Rf "${getLocalWranglerStateDir(project)}/v3/d1" && ${buildMaterializeLocalD1Command(project, d1DatabaseName)} && ${this.migrate(project, additionalOptions)}`;
+      return `rm -Rf "${getLocalStateDir(project)}/v3/d1" && ${buildMaterializeLocalD1Command(project, d1Database)} && ${this.migrate(project, additionalOptions)}`;
     }
 
     const removeCommand = buildRemoveSqliteDbCommand(project);
@@ -37,7 +37,10 @@ class DrizzleScripts {
   }
 
   migrateForStart(project: Project, additionalOptions = ''): string {
-    if (isProjectEnvironment(project, 'test') && (buildRemoveSqliteDbCommand(project) || getD1DatabaseName(project))) {
+    if (
+      isProjectEnvironment(project, 'test') &&
+      (buildRemoveSqliteDbCommand(project) || findLocalD1Database(project))
+    ) {
       return this.reset(project, additionalOptions);
     }
     return this.migrate(project, additionalOptions);

@@ -14,7 +14,7 @@ nonGoals:
 
 ## Supported Platforms
 
-`wb` runs on macOS and Linux with Bun >= 1.4.4 or Node.js >= 26. The packaged command uses Bun (`bun wb <command>`). To run it with Node.js, invoke `bin/index.js` with `node`. Keep real Node.js 26 on `PATH` for tools such as Playwright, Wrangler, and vinext.
+`wb` runs on macOS and Linux with Bun >= 1.4.4 or Node.js >= 26. The packaged command uses Bun (`bun wb <command>`). To run it with Node.js, invoke `bin/index.js` with `node`. Keep real Node.js 26 on `PATH` for tools such as Playwright, cf, and vinext.
 
 ## Usage
 
@@ -33,9 +33,10 @@ Commands:
                                  failing
   wb concurrently <commands...>  Run commands concurrently
   wb deploy                      Deploy to the WB_ENV environment. A Cloudflare
-                                 Workers app (vinext or plain Worker): validate
-                                 secrets, build, apply remote D1 migrations,
-                                 then deploy code and secrets atomically. A
+                                 Workers app (cloudflare.config.ts): validate
+                                 secrets, build with `cf build --mode <WB_ENV>`,
+                                 apply remote D1 migrations, then deploy the
+                                 build and its secrets atomically. A
                                  Railway service (.railway/railway.ts): check
                                  the IaC plan, sync fnox variables, apply the
                                  plan, then railway up and wait until the
@@ -47,9 +48,9 @@ Commands:
                                  build artifacts: under the ghq root locally, or
                                  stale job workspaces on a CI runner.
   wb gen-code                    Generate code for the current project
-  wb gen-dev-vars [path]         Generate a .dev.vars file for `wrangler dev`
-                                 from the environment variables loaded from fnox
-                                 (plus WB_ENV and NEXT_PUBLIC_WB_ENV).
+  wb gen-dev-vars [path]         Generate a .dev.vars file for a locally served
+                                 Worker from the environment variables loaded
+                                 from fnox (plus WB_ENV and NEXT_PUBLIC_WB_ENV).
   wb gen-docker-env [path]       Generate a .docker.env file to bake into a
                                  Docker image, containing only the non-secret
                                  (plaintext default) values of fnox.toml for the
@@ -159,18 +160,13 @@ Options:
       --help              Show help                                    [boolean]
 ```
 
-## Cloudflare Container rollouts
+## Cloudflare Workers
 
-`wb deploy --containers-rollout=<mode>` forwards the selected mode to Wrangler for build validation and deployment:
+`wb` drives a Worker through the `cf` CLI and its `cloudflare.config.ts`, passing `WB_ENV` as `--mode` to every cf command.
 
-- `none` deploys Worker code and secrets without container image lookup, build, push, or reuse.
-- `gradual` and `immediate` reuse published images from unchanged committed build contexts before deploying with the selected rollout mode.
-
-Omitting the option uses the normal Wrangler deployment without image reuse.
-
-Image reuse supports container entries with either `name` or `class_name` that build a local Dockerfile, through `image` or through `images` entries with `dockerfile` (the Durable Object scheduling policy). An `images` entry is deployed as a digest-pinned registry reference. Docker is required on a cache miss. Commit the Dockerfile inside its Git build context. Builds exclude untracked and generated files and reject uncommitted changes to tracked context files.
-
-The reuse key includes the deployment's Worker name, the context's Git tree, the relative Dockerfile path, `image_vars` of an `image` entry or `build_vars` of an `images` entry, and `linux/amd64`. Changes to tracked documentation or files excluded by `.dockerignore` also rebuild the image. To refresh external dependencies, update the committed context. Serialize deployments of the same Worker. Changes to other container settings can still trigger replacement by Cloudflare.
+- A locally served Worker receives from `.dev.vars` only the secrets the config declares with `bindings.secret()`, and `wb deploy` pushes only those. A declared secret without a value (an explicitly empty one counts) aborts the deploy.
+- D1 migrations run through `cf d1 migrations apply` when `migrations/` holds flat `*.sql` files or `package.json` sets `"wb": { "d1Migrations": { "dir": "...", "pattern": "..." } }`; otherwise through drizzle-kit when the drizzle config targets D1.
+- `wb deploy --containers-rollout=<none|gradual|immediate>` forwards the rollout strategy to `cf deploy`.
 
 ## Disk cleanup
 

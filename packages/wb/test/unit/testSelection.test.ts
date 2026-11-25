@@ -60,10 +60,7 @@ it.each(['plain', 'http', 'worker'].flatMap((kind) => ['headless', 'docker'].map
         JSON.stringify({ name: 'selection-fixture', packageManager: 'bun@1.4.2', dependencies: { express: '5.1.0' } })
       );
     } else if (kind === 'worker') {
-      await fs.writeFile(
-        path.join(dir, 'wrangler.jsonc'),
-        JSON.stringify({ name: 'selection-fixture', main: 'src/index.ts', compatibility_date: '2026-09-01' })
-      );
+      await fs.writeFile(path.join(dir, 'cloudflare.config.ts'), 'export default {};');
     }
     const result = await runCli(dir, ['test', '--e2e', e2e, '--grep', 'selected case$', '--', '--workers=1']);
     expect(result.status, result.stdout + result.stderr).not.toBe(0);

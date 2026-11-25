@@ -1,45 +1,22 @@
 import type { Project } from '../../project.js';
-import { getEnsuredPort } from '../../utils/port.js';
-import {
-  buildD1MigrationsApplyCommands,
-  buildGenDevVarsCommand,
-  buildWranglerDevCommand,
-  getLocalWranglerStateDir,
-} from '../../utils/wrangler.js';
 import type { ScriptArgv } from '../builder.js';
+import { buildCloudflareBuiltStartCommands, buildCloudflareDevCommands } from './cloudflareCommands.js';
 import { HttpServerScripts } from './httpServerScripts.js';
 
 /**
- * A collection of scripts for executing plain Cloudflare Workers apps (detected via a wrangler
- * config file when no other framework matches; vinext apps have their own scripts).
+ * A collection of scripts for executing plain Cloudflare Workers apps (detected via
+ * `cloudflare.config.ts` when the app is not a vinext one, which has its own scripts).
  * Extends HttpServerScripts so that e2e tests run via the unit-test runner against the running
  * worker when the project has no Playwright config.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class WorkersScripts extends HttpServerScripts {
   protected override startDevProtected(project: Project, argv: ScriptArgv): string {
-    return this.buildWranglerDevCommands(project, argv).join(' && ');
+    return buildCloudflareDevCommands(project, argv, { appliesD1Migrations: true }).join(' && ');
   }
 
   protected override buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {
-    // wrangler dev bundles the worker itself, so no separate build step is needed.
-    return this.buildWranglerDevCommands(project, argv);
-  }
-
-  private buildWranglerDevCommands(project: Project, argv: ScriptArgv): string[] {
-    const port = getEnsuredPort(project);
-    const stateDir = getLocalWranglerStateDir(project);
-
-    // These helpers read the default-named wrangler config; that is safe because workersScripts
-    // itself is only selected when such a config file exists in the project directory.
-    return [
-      buildGenDevVarsCommand(argv, '.dev.vars'),
-      // Apply wrangler-native D1 migrations (if any) so the local database matches the deployed one.
-      ...buildD1MigrationsApplyCommands(project),
-      buildWranglerDevCommand(
-        `dev --ip 127.0.0.1 --port ${port} --persist-to "${stateDir}" ${argv.normalizedArgsText ?? ''}`.trim()
-      ),
-    ];
+    return buildCloudflareBuiltStartCommands(project, argv);
   }
 }
 

@@ -9,8 +9,9 @@ import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } fro
 import { findSelfProjectOrExit } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
-// Cloudflare Workers don't see the process environment; wrangler dev reads vars from a .dev.vars
-// file next to its config file instead. This command bridges the fnox-managed values to that file.
+// Cloudflare Workers don't see the process environment; a locally served Worker reads the values
+// of its declared secrets from a .dev.vars file next to its config file instead. This command
+// bridges the fnox-managed values to that file.
 const builder = {} as const;
 
 type GenDevVarsCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
@@ -19,7 +20,7 @@ type GenDevVarsCommandArgv = ArgumentsCamelCase<GenDevVarsCommandOptions & { pat
 export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions> = {
   command: 'gen-dev-vars [path]',
   describe:
-    'Generate a .dev.vars file for `wrangler dev` from the environment variables loaded from fnox (plus WB_ENV and NEXT_PUBLIC_WB_ENV).',
+    'Generate a .dev.vars file for a locally served Worker from the environment variables loaded from fnox (plus WB_ENV and NEXT_PUBLIC_WB_ENV).',
   builder: (yargs) =>
     yargs.positional('path', {
       description: 'Output path of the generated .dev.vars file.',
@@ -39,7 +40,7 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     // (project.env applies that precedence), or `AUTH_SECRET=... wb start` would serve the
     // stale configured value. An export that empties a non-empty configured value is deliberate
     // and must survive the empty-value filter below (unlike `KEY=` placeholders, which stay
-    // omitted so they cannot override wrangler `vars` with empty strings).
+    // omitted so they cannot shadow a configured value with empty strings).
     const explicitlyEmptiedKeys = new Set<string>();
     for (const key of Object.keys(envVars)) {
       const effectiveValue = project.env[key];
@@ -69,9 +70,9 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
 };
 
 /**
- * Quote a value for dotenv (which wrangler uses for .dev.vars). Every candidate representation
- * is verified by actually parsing it back (our dotenv parser matches wrangler's bundled dotenv
- * 16 for these constructs), so a value is either serialized losslessly or rejected — never
+ * Quote a value for dotenv (the format of .dev.vars). Every candidate representation
+ * is verified by actually parsing it back (our dotenv parser matches the local Worker runtime's
+ * for these constructs), so a value is either serialized losslessly or rejected — never
  * silently corrupted. Candidates: single quotes (literal span; closed early by an apostrophe),
  * backticks (equally literal), then double quotes with escaped newlines/CRs (dotenv does not
  * unescape inner \" — a `#` after an embedded quote starts a comment, which the round-trip

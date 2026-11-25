@@ -13,72 +13,25 @@ const cliPath = path.resolve('bin/index.js');
 
 beforeAll(buildWb, 120_000);
 
-// `wrangler types` reads its secret key names from the stub generateWorkerTypesEnvStub writes; the
-// script here just points wrangler at that stub via --env-file.
-const WORKER_TYPES_ENV = path.join('.wrangler', 'worker-types.env');
-const WRANGLER_TYPES = `YARN wrangler types --env-file ${WORKER_TYPES_ENV} < /dev/null`;
+const WORKER_TYPES = 'YARN cf workers types < /dev/null';
 
 describe('getGenCodeScripts', () => {
   it('generates worker types first, before the other generators', async () => {
-    const dirPath = await createWorkerProject({ devDependencies: { wrangler: '4.70.0' } }, true);
+    const dirPath = await createWorkerProject({ devDependencies: { cf: '1.0.0' } });
 
     try {
-      // Worker types must precede the later generators because worker-configuration.d.ts is gitignored
-      // and they type-check against the `Env` it declares. --env-file points wrangler at the key stub.
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))[0]).toBe(WRANGLER_TYPES);
+      // The later generators type-check against the `Env` the gitignored types declare.
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))[0]).toBe(WORKER_TYPES);
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
   });
 
-  it('does not generate worker types without an own wrangler dependency', async () => {
-    const dirPath = await createWorkerProject({}, true);
+  it('does not generate worker types without an own cf dependency', async () => {
+    const dirPath = await createWorkerProject({});
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain(WRANGLER_TYPES);
-    } finally {
-      await fs.rm(dirPath, { force: true, recursive: true });
-    }
-  });
-
-  it('does not generate worker types the project does not consume', async () => {
-    // No gitignore entry means wbfy left the package unmanaged because its tsconfig cannot
-    // reference the file (e.g. a hand-maintained Env), so generating it would only leave an
-    // untracked ~500KB file behind.
-    const dirPath = await createWorkerProject({ devDependencies: { wrangler: '4.70.0' } }, false);
-
-    try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain(WRANGLER_TYPES);
-    } finally {
-      await fs.rm(dirPath, { force: true, recursive: true });
-    }
-  });
-
-  it('generates worker types despite an env-file invocation naming an existing file', async () => {
-    // gen-code's own `--env-file` stub (derived from the committed fnox.toml) replaces the dotenv inference,
-    // so an env-file-only invocation is equivalent to the managed generation. Local file existence must not
-    // change the answer, or this predicate would disagree with wbfy's across machines.
-    const dirPath = await createWorkerProject(
-      { devDependencies: { wrangler: '4.70.0' }, scripts: { 'gen-types': 'wrangler types --env-file custom.env' } },
-      true
-    );
-    await fs.writeFile(path.join(dirPath, 'custom.env'), 'API_KEY=\n');
-
-    try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain(WRANGLER_TYPES);
-    } finally {
-      await fs.rm(dirPath, { force: true, recursive: true });
-    }
-  });
-
-  it('generates canonical worker types despite an output-changing project invocation', async () => {
-    const dirPath = await createWorkerProject(
-      { devDependencies: { wrangler: '4.70.0' }, scripts: { 'gen-types': 'wrangler types --strict-vars=false' } },
-      true
-    );
-
-    try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain(WRANGLER_TYPES);
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain(WORKER_TYPES);
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
@@ -262,15 +215,8 @@ async function createProject(packageJson: Record<string, unknown>): Promise<stri
   return dirPath;
 }
 
-/**
- * The package's committed gitignore rule is the signal that it consumes the generated file.
- */
-async function createWorkerProject(packageJson: Record<string, unknown>, ignoresWorkerTypes: boolean): Promise<string> {
+async function createWorkerProject(packageJson: Record<string, unknown>): Promise<string> {
   const dirPath = await createProject(packageJson);
-  await fs.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{}');
-  if (ignoresWorkerTypes) {
-    // The exact rule wbfy generates; an anchored path is what marks the package as managed.
-    await fs.writeFile(path.join(dirPath, '.gitignore'), '/worker-configuration.d.ts\n');
-  }
+  await fs.writeFile(path.join(dirPath, 'cloudflare.config.ts'), 'export default {};');
   return dirPath;
 }

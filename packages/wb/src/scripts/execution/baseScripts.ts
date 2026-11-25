@@ -7,14 +7,15 @@ import type { Project } from '../../project.js';
 import { isProjectEnvironment } from '../../project.js';
 import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
 import { readBunTestTimeout } from '../../utils/bunfig.js';
+import { getLocalStateDir, wrapWithLocalD1DatabaseUrl } from '../../utils/cloudflare.js';
+import {
+  findCloudflareConfigPath,
+  formatD1DatabaseNames,
+  resolveCloudflareConfig,
+  selectD1Migrations,
+} from '../../utils/cloudflareConfig.js';
 import { ensurePort } from '../../utils/port.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../utils/shell.js';
-import { findWranglerConfigPath, getLocalWranglerStateDir, wrapWithLocalD1DatabaseUrl } from '../../utils/wrangler.js';
-import {
-  formatD1DatabaseNames,
-  resolveWranglerConfig,
-  selectD1MigrationMechanisms,
-} from '../../utils/wranglerConfig.js';
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
@@ -116,15 +117,15 @@ export abstract class BaseScripts {
   }
 
   protected buildMigrationCommands(project: Project): string[] {
-    // Test-environment wrangler state is disposable; wipe it entirely (not just D1) before
+    // Test-environment Worker state is disposable; wipe it entirely (not just D1) before
     // migrating, since stale KV cache entries or Durable Object storage can break e2e tests.
-    const wranglerStateWipeCommands =
-      isProjectEnvironment(project, 'test') && findWranglerConfigPath(project)
-        ? [`rm -Rf "${getLocalWranglerStateDir(project)}"`]
+    const localStateWipeCommands =
+      isProjectEnvironment(project, 'test') && findCloudflareConfigPath(project)
+        ? [`rm -Rf "${getLocalStateDir(project)}"`]
         : [];
-    const d1Databases = resolveWranglerConfig(project)?.d1Databases ?? [];
+    const d1Databases = resolveCloudflareConfig(project)?.d1Databases ?? [];
     const drizzleKitManagesD1 = usesDrizzleKitForD1(project);
-    const { drizzleD1Database, errorMessage, unmanagedD1Databases } = selectD1MigrationMechanisms(
+    const { drizzleD1Database, errorMessage, unmanagedD1Databases } = selectD1Migrations(
       project,
       d1Databases,
       drizzleKitManagesD1
@@ -135,7 +136,7 @@ export abstract class BaseScripts {
         `No D1 migration mechanism detected for ${formatD1DatabaseNames(unmanagedD1Databases)}; wb will not run local D1 migrations for them.`
       );
     }
-    // The start commands apply wrangler-native migrations separately. Drizzle must stay ORM-only
+    // The start commands apply cf-native migrations separately. Drizzle must stay ORM-only
     // for those bindings because its generated SQL is not idempotent. A config targeting another
     // database still needs to migrate that database, without receiving the local D1 URL.
     const drizzleMigrationCommand = !project.hasDrizzle
@@ -148,7 +149,7 @@ export abstract class BaseScripts {
             ? drizzleScripts.migrate(project)
             : undefined;
     return [
-      ...wranglerStateWipeCommands,
+      ...localStateWipeCommands,
       ...(project.hasPrisma ? [prismaScripts.migrate(project)] : []),
       ...(drizzleMigrationCommand ? [drizzleMigrationCommand] : []),
     ];
@@ -324,7 +325,7 @@ export function buildE2EReadinessCommand(port: string | number, isDocker: boolea
   const respondingCommand = buildHttpReadinessCommand(port, readinessPath);
   // docker-proxy accepts TCP before the app is ready, so every path requires an HTTP response.
   // Direct servers then require another response after the normal two-second polling interval.
-  // Wrangler exposes no stronger readiness signal than a completed response, and starting a full
+  // A local Worker server exposes no stronger readiness signal than a completed response, and starting a full
   // client burst immediately after its first response can race workerd startup and crash it with
   // broken pipes. curl intentionally accepts redirects and authentication errors.
   return isDocker

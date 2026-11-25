@@ -1,14 +1,8 @@
 import type { Project } from '../../project.js';
 import { isProjectEnvironment } from '../../project.js';
-import { getEnsuredPort } from '../../utils/port.js';
-import {
-  buildD1MigrationsApplyCommands,
-  buildGenDevVarsCommand,
-  buildWranglerDevCommand,
-  getLocalWranglerStateDir,
-} from '../../utils/wrangler.js';
 import type { ScriptArgv } from '../builder.js';
 import { BaseScripts } from './baseScripts.js';
+import { buildCloudflareBuiltStartCommands, buildCloudflareDevCommands } from './cloudflareCommands.js';
 
 /**
  * A collection of scripts for executing vinext (Next.js on Vite) apps targeting Cloudflare Workers.
@@ -20,35 +14,15 @@ class VinextScripts extends BaseScripts {
   }
 
   protected override startDevProtected(project: Project, argv: ScriptArgv): string {
-    // Unlike `next dev`, Vite-based vinext does not read the PORT environment variable.
-    const devCommand = `YARN vinext dev --port ${getEnsuredPort(project)} ${argv.normalizedArgsText ?? ''}`.trim();
-    // The Cloudflare vite plugin (miniflare) reads runtime vars only from a .dev.vars file,
-    // so it must be regenerated from the fnox-managed values before serving.
-    const commands = [buildGenDevVarsCommand(argv, '.dev.vars')];
-    // `vinext dev` (miniflare) starts with an empty local D1 and applies no migrations itself;
-    // the test environment wipes its state directory, so every page would 500 without this.
-    if (isProjectEnvironment(project, 'test')) commands.push(...buildD1MigrationsApplyCommands(project));
-    return [...commands, devCommand].join(' && ');
+    // The test environment wipes its state directory, so every page would 500 without migrations.
+    return buildCloudflareDevCommands(project, argv, {
+      appliesD1Migrations: isProjectEnvironment(project, 'test'),
+    }).join(' && ');
   }
 
   protected override buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {
-    const port = getEnsuredPort(project);
-    // Serving the built worker starts from an empty (or wiped) local D1, so wrangler-native
-    // migrations (if any) must be applied first; drizzle/prisma migrations are handled by
-    // buildProductionCommand.
-    const d1MigrationCommands = buildD1MigrationsApplyCommands(project);
-    // `vinext build` emits a worker bundle and its wrangler config under dist/server, so the
-    // .dev.vars file exposing wb-managed environment variables must be generated after building.
-    // `--local-upstream` keeps request URLs on the local host; otherwise, wrangler dev simulates
-    // the production custom domain declared in the wrangler config routes.
-    return [
-      project.buildCommand,
-      buildGenDevVarsCommand(argv, 'dist/server/.dev.vars'),
-      ...d1MigrationCommands,
-      buildWranglerDevCommand(
-        `dev --config dist/server/wrangler.json --ip 127.0.0.1 --port ${port} --persist-to "${getLocalWranglerStateDir(project)}" --local-upstream localhost:${port} ${argv.normalizedArgsText ?? ''}`.trim()
-      ),
-    ];
+    // drizzle/prisma migrations are handled by buildProductionCommand.
+    return buildCloudflareBuiltStartCommands(project, argv);
   }
 }
 

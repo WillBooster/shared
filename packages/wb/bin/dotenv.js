@@ -29,7 +29,7 @@ function runCommandWithEnvironment(command, usage) {
   // src/commands/dotenv.ts + src/utils/binPath.ts for this startup fast path.
   // The temporary folder is deliberately NOT restored when .bin directories exist: it also
   // contains node/yarn shims, and a leaked node shim would violate wb's real-Node guarantee
-  // for tools like wrangler/vinext. Child `yarn` invocations stay resolvable through the
+  // for tools like cf/vinext. Child `yarn` invocations stay resolvable through the
   // launcher on the base PATH (mise/corepack), which every supported environment has —
   // nothing could have started `yarn run`/`wb dotenv` without it.
   if (!prependNodeModulesBinToPath(cwd, process.env) && berryBinFolderPath) {

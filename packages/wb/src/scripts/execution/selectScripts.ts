@@ -1,6 +1,6 @@
 import { httpServerPackages } from '../../commands/httpServerPackages.js';
 import type { Project } from '../../project.js';
-import { findWranglerConfigPath } from '../../utils/wrangler.js';
+import { findCloudflareConfigPath } from '../../utils/cloudflareConfig.js';
 import type { BaseScripts } from './baseScripts.js';
 import { httpServerScripts } from './httpServerScripts.js';
 import { nextScripts } from './nextScripts.js';
@@ -21,9 +21,9 @@ export function selectFrameworkScripts(project: Project): BaseScripts | undefine
   // vinext apps also depend on next, so this check must come first.
   if (deps.vinext || devDeps.vinext) return vinextScripts;
   if (deps.next) return nextScripts;
+  // Plain Cloudflare Workers app (vinext apps are detected above), bundled by Vite or Wrangler.
+  if (findCloudflareConfigPath(project)) return workersScripts;
   if (devDeps.vite) return viteScripts;
-  // Plain Cloudflare Workers app; vinext apps are detected above.
-  if (findWranglerConfigPath(project)) return workersScripts;
   return;
 }
 

@@ -20,9 +20,9 @@ import { runWithSpawn } from '../scripts/run.js';
 import { isTursoDatabaseUrl, restoreTursoDatabase } from '../scripts/tursoRestore.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isDockerEnabled } from '../utils/ci.js';
+import { wrapWithLocalD1DatabaseUrl } from '../utils/cloudflare.js';
 import { collectPlaintextFnoxValues } from '../utils/fnoxToml.js';
 import { buildShellCommand } from '../utils/shell.js';
-import { wrapWithLocalD1DatabaseUrl } from '../utils/wrangler.js';
 import { prepareForRunningCommand } from './commandUtils.js';
 import { standardWbEnvModes } from './genDockerEnv.js';
 

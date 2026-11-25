@@ -213,7 +213,7 @@ async function spawnWithMergedOutput(
  */
 export function normalizeScript(script: string, project: Project): { printable: string; runnable: string } {
   // No `--bun`: its node->bun PATH shim leaks into every child process and breaks tools requiring
-  // real Node.js (Playwright, wrangler, vinext).
+  // real Node.js (Playwright, cf, vinext).
   const projectPackageManagerWithRun = project.usesBunPackageManager ? 'bun run' : 'yarn';
   let newScript = script
     .replaceAll('\n', '')
