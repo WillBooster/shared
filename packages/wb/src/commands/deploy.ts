@@ -617,14 +617,13 @@ async function listRemoteWorkerSecretNames({
 }
 
 /**
- * cf evaluates the config for this command, whose own output (bracketed log lines, even JSON
- * arrays) may precede the listing on stdout: the listing is the last line-initial `[` from which
- * the rest of stdout parses as the expected array.
+ * cf evaluates the config for this command, whose own output (progress text without a newline,
+ * bracketed log lines, even JSON arrays) may precede the listing on stdout: the listing is the
+ * first `[` from which the rest of stdout parses as the expected array.
  */
 function parseSecretNames(stdout: string): string[] | undefined {
-  const starts = [...stdout.matchAll(/^\[/gmu)].map((match) => match.index);
-  for (const start of starts.toReversed()) {
-    const parsed = z.array(z.looseObject({ name: z.string() })).safeParse(parseJsonOrUndefined(stdout.slice(start)));
+  for (const { index } of stdout.matchAll(/\[/gu)) {
+    const parsed = z.array(z.looseObject({ name: z.string() })).safeParse(parseJsonOrUndefined(stdout.slice(index)));
     if (parsed.success) return parsed.data.map(({ name }) => name);
   }
   return undefined;
