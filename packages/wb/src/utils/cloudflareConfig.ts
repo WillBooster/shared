@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import { z } from 'zod';
@@ -12,19 +13,20 @@ const WRANGLER_CONFIG_FILE_NAMES = ['wrangler.jsonc', 'wrangler.json', 'wrangler
 // Runs under real Node.js because cf cannot load `cloudflare.config.ts` on Bun. The loader is
 // the one cf itself uses (it understands `cf-worker` import attributes); `@cloudflare/config`
 // is a dependency of cf, not of the project, so it is resolved beside the installed cf package.
+// The result goes to a file, because the config may print diagnostics of its own to stdout.
 const LOAD_CONFIG_SCRIPT = `
-import { realpathSync } from 'node:fs';
+import { realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const [configPath, mode] = process.argv.slice(1);
+const [configPath, mode, resultPath] = process.argv.slice(1);
 const cfPackageJsonPath = realpathSync(createRequire(configPath).resolve('cf/package.json'));
 const loaderPath = path.join(path.dirname(cfPackageJsonPath), '..', '@cloudflare', 'config', 'dist', 'index.mjs');
 const { loadAndParseConfig } = await import(pathToFileURL(loaderPath).href);
 const { result } = await loadAndParseConfig(configPath, { mode: mode || undefined, isPreview: false });
 if (!result.success) throw new Error(JSON.stringify(result.error?.issues ?? result.error ?? result));
-process.stdout.write(JSON.stringify(result.data));
+writeFileSync(resultPath, JSON.stringify(result.data));
 `;
 
 const d1MigrationSettingsSchema = z.object({ dir: z.string().optional(), pattern: z.string().optional() });
@@ -127,18 +129,28 @@ function loadCloudflareConfig(
   configPath: string,
   mode: string
 ): ResolvedCloudflareConfig {
-  const ret = spawnSync('node', ['--input-type=module', '-e', LOAD_CONFIG_SCRIPT, configPath, mode], {
-    cwd: project.dirPath,
-    encoding: 'utf8',
-    // The config may read the environment (e.g. WB_VERSION), exactly as it does under cf.
-    env: project.env as NodeJS.ProcessEnv,
-  });
-  if (ret.status !== 0) {
-    throw new Error(
-      `Failed to evaluate ${configPath} for mode "${mode}" (is the cf package installed?):\n${(ret.stderr || String(ret.error ?? '')).trim()}`
-    );
+  const resultDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-cloudflare-config-'));
+  let config;
+  try {
+    const resultPath = path.join(resultDirPath, 'config.json');
+    const ret = spawnSync('node', ['--input-type=module', '-e', LOAD_CONFIG_SCRIPT, configPath, mode, resultPath], {
+      cwd: project.dirPath,
+      encoding: 'utf8',
+      // The config may read the environment (e.g. WB_VERSION), exactly as it does under cf.
+      env: project.env as NodeJS.ProcessEnv,
+      // The config's own stdout goes to wb's stderr, keeping wb's stdout for its own output.
+      stdio: ['ignore', process.stderr.fd, 'pipe'],
+    });
+    if (ret.status !== 0) {
+      throw new Error(
+        `Failed to evaluate ${configPath} for mode "${mode}" (is the cf package installed?):\n${(ret.stderr || String(ret.error ?? '')).trim()}`
+      );
+    }
+    if (ret.stderr) process.stderr.write(ret.stderr);
+    config = parsedConfigSchema.parse(JSON.parse(fs.readFileSync(resultPath, 'utf8')));
+  } finally {
+    fs.rmSync(resultDirPath, { force: true, recursive: true });
   }
-  const config = parsedConfigSchema.parse(JSON.parse(ret.stdout));
   const resolvedConfig: ResolvedCloudflareConfig = {
     workerName: config.worker.name,
     accountId: config.accountId,

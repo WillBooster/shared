@@ -13,7 +13,8 @@ const cliPath = path.resolve('bin/index.js');
 
 beforeAll(buildWb, 120_000);
 
-const WORKER_TYPES = 'YARN cf workers types < /dev/null';
+// A function-form config may reject an undefined mode, so the types are generated for wb's mode.
+const WORKER_TYPES = `YARN cf workers types --mode ${process.env.WB_ENV || 'development'} < /dev/null`;
 
 describe('getGenCodeScripts', () => {
   it('generates worker types first, before the other generators', async () => {

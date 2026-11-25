@@ -10,6 +10,7 @@ import { findDrizzleConfig, wrapWithDrizzleConfigDir } from '../scripts/drizzleS
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { normalizeBunLockfile } from '../utils/bunLockfile.js';
+import { buildCfCommand } from '../utils/cloudflare.js';
 
 const builder = {} as const;
 
@@ -86,7 +87,7 @@ export function getGenCodeScripts(project: Project): string[] {
     // `YARN cf` rather than `bunx cf`: cf needs real Node.js, and `bunx` may resolve a version
     // other than the lockfile's. `< /dev/null`: gen-code runs as `postinstall` inside git hooks,
     // where nobody could answer a prompt.
-    scripts.push('YARN cf workers types < /dev/null');
+    scripts.push(`${buildCfCommand(project, 'workers types')} < /dev/null`);
   }
   // Yarn-era Blitz repositories need `blitz codegen` for the route manifest (node_modules/.blitz)
   // that @blitzjs/next's type declarations re-export; install scripts do not run it
