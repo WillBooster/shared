@@ -367,7 +367,10 @@ function addIncludesForFrameworkProject(settings: TsConfigJson, config: PackageC
   // "all TS/TSX files" behavior, which already covers scripts. That default skips dot
   // directories, so the cf types need an explicit include, which must then restate the default.
   if (!settings.include) {
-    if (config.doesContainCloudflareConfig) settings.include = ['**/*', CF_WORKER_TYPES_INCLUDE];
+    // With `extends`, the effective include may be inherited, and a local one would replace it.
+    if (config.doesContainCloudflareConfig && !settings.extends) {
+      settings.include = ['**/*', CF_WORKER_TYPES_INCLUDE];
+    }
     return;
   }
   const includeCount = settings.include.length;
