@@ -175,9 +175,6 @@ src-tauri/gen/schemas/
     // Everything cf generates for the package: Build Output, types, and local state.
     rules += `.cloudflare/
 `;
-    // The types wrangler generated for the package before its conversion are no longer ignored
-    // or read, and no repository tracks them.
-    fs.rmSync(path.resolve(config.dirPath, 'worker-configuration.d.ts'), { force: true });
   }
   return { names, rules };
 }

@@ -53,7 +53,12 @@ import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
 import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
-import { getGenCodeScriptError, getPackageConfig, readWbfyConfig } from './packageConfig.js';
+import {
+  findUnconvertedWorkerDirPaths,
+  getGenCodeScriptError,
+  getPackageConfig,
+  readWbfyConfig,
+} from './packageConfig.js';
 import { readProjectDirection } from './projectDirection.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
@@ -447,15 +452,8 @@ async function loadPackageConfigs(
   return { rootConfig, allPackageConfigs: [rootConfig, ...subPackageConfigs] };
 }
 
-/**
- * wbfy installs the latest wb, which serves and deploys a Worker only through the cf CLI and
- * `cloudflare.config.ts`, so applying it to a Worker still on a wrangler config would break the
- * repository's start, test, type generation, and deploy in one run.
- */
 function findUnconvertedWorkerError(rootConfig: PackageConfig, allPackageConfigs: PackageConfig[]): string | undefined {
-  const unconvertedDirPaths = allPackageConfigs
-    .filter((config) => config.doesContainWranglerConfig)
-    .map((config) => config.dirPath);
+  const unconvertedDirPaths = findUnconvertedWorkerDirPaths(allPackageConfigs);
   return unconvertedDirPaths.length > 0
     ? `Skip ${rootConfig.dirPath}: convert each Worker below from its wrangler config to cloudflare.config.ts with \`cf migrate\` (and upgrade wb in the same change) before applying wbfy.\n${unconvertedDirPaths.join('\n')}`
     : undefined;

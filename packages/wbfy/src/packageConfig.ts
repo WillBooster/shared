@@ -486,6 +486,15 @@ export function generatesCfWorkerTypes(
   return config.doesContainCloudflareConfig && !!(dependencies?.cf ?? devDependencies?.cf);
 }
 
+/**
+ * The packages whose Worker is still configured only by a wrangler config. wbfy installs the
+ * latest wb, which serves and deploys a Worker only through the cf CLI and `cloudflare.config.ts`,
+ * so applying it to such a repository would break its start, test, type generation, and deploy.
+ */
+export function findUnconvertedWorkerDirPaths(allPackageConfigs: PackageConfig[]): string[] {
+  return allPackageConfigs.filter((config) => config.doesContainWranglerConfig).map((config) => config.dirPath);
+}
+
 /** Tells why wbfy cannot normalize the package's code-generation scripts, if it cannot. */
 export function getGenCodeScriptError(config: Pick<PackageConfig, 'packageJson'>): string | undefined {
   const scripts = config.packageJson?.scripts ?? {};

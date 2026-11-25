@@ -219,8 +219,10 @@ function generateDeployPlatformInstructions(
     ownsCloudflareConfig && hasCloudflareDeployWorkflow(path.resolve(rootConfig.dirPath, '.github/workflows'));
   // Independent facts stay separate sentences: the workflow's own deploy mechanism is not
   // inspected, so the wb-deploy clause must not claim the workflow invokes it.
+  // Only structure wbfy verifies is stated here; how wb and cf behave at run time is left to
+  // their own documentation, which cannot drift from them the way a copy here would.
   const cloudflareInstruction = ownsCloudflareConfig
-    ? `\n- This project runs on Cloudflare Workers and uses the \`cf\` CLI, not \`wrangler\`: \`cloudflare.config.ts\` holds the Worker's configuration, including bindings, for the mode given as cf's \`--mode\`; \`wb\` passes \`WB_ENV\` as that mode, and a cf command run directly needs \`--mode\` itself.${hasDeployWorkflow ? ' The deploy workflows under `.github/workflows` perform deployments.' : ''}${usesWbDeploy ? ' The `deploy` package script runs `wb deploy`.' : ''}\n- \`.cloudflare/\` is gitignored and generated (Build Output, local state, and the types under \`.cloudflare/types\`).${ownsGeneratedCfWorkerTypes ? ` After changing bindings in \`cloudflare.config.ts\`, re-run \`${packageManager} wb gen-code\` instead of editing the types by hand.` : ''} Declare every secret the Worker reads with \`bindings.secret()\` in \`cloudflare.config.ts\`: once one is declared, a locally served Worker receives from \`.dev.vars\` only the declared ones.`
+    ? `\n- This project runs on Cloudflare Workers and uses the \`cf\` CLI, not \`wrangler\`: \`cloudflare.config.ts\` holds the Worker's configuration, including bindings.${hasDeployWorkflow ? ' The deploy workflows under `.github/workflows` perform deployments.' : ''}${usesWbDeploy ? ' The `deploy` package script runs `wb deploy`.' : ''} For how \`wb\` drives cf (modes, secrets, D1 migrations), read the "Cloudflare Workers" section of the README of \`@willbooster/wb\`.\n- \`.cloudflare/\` is gitignored and generated.${ownsGeneratedCfWorkerTypes ? ` The \`postinstall\` script regenerates the types under \`.cloudflare/types\` with \`${packageManager} wb gen-code\`; re-run it after changing \`cloudflare.config.ts\` instead of editing them by hand.` : ''}`
     : '';
   const railwayInstruction = !rootConfig.isRailway
     ? ''
