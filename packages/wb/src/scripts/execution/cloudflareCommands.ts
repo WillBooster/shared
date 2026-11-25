@@ -10,7 +10,7 @@ import {
 } from '../../utils/cloudflare.js';
 import { getCloudflareMode } from '../../utils/cloudflareConfig.js';
 import { getEnsuredPort } from '../../utils/port.js';
-import { shellEscapeArgument } from '../../utils/shell.js';
+import { buildShellEnvironmentAssignment, shellEscapeArgument } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
 
 /** Whether cf delegates the project's dev server and build to Vite (otherwise to Wrangler). */
@@ -35,7 +35,7 @@ export function buildCloudflareDevCommands(
     buildGenDevVarsCommand(argv, '.dev.vars'),
     // The local D1 starts empty and no dev server applies migrations itself.
     ...(appliesD1Migrations ? buildLocalD1MigrationsApplyCommands(project) : []),
-    buildCfCommand(project, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim()),
+    `${usesVite ? buildViteModeEnvPrefix(project) : ''}${buildCfCommand(project, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
   ];
 }
 
@@ -50,12 +50,21 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
     // The same build `wb deploy` runs, so the served Worker has the config of wb's mode: the
     // local D1 migrated below is the one whose ID that config declares.
     ...(project.packageJson.scripts?.['gen-code'] ? ['YARN run gen-code'] : []),
-    buildCfCommand(project, 'build'),
+    `${buildViteModeEnvPrefix(project)}${buildCfCommand(project, 'build')}`,
     buildGenDevVarsCommand(argv, '.dev.vars'),
     ...buildLocalD1MigrationsApplyCommands(project),
     // The same mode as the build, for a vite.config that derives anything (e.g. the state path) from it.
-    `YARN vite preview --mode ${shellEscapeArgument(getCloudflareMode(project))} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
+    `${buildViteModeEnvPrefix(project)}YARN vite preview --mode ${shellEscapeArgument(getCloudflareMode(project))} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
+}
+
+/**
+ * A vite.config selects the per-mode state directory from `WB_ENV`, which can differ from wb's
+ * mode (e.g. `MISE_ENV=test` with `WB_ENV=development`), so Vite runs with `WB_ENV` set to the mode.
+ */
+function buildViteModeEnvPrefix(project: Project): string {
+  const mode = getCloudflareMode(project);
+  return project.env.WB_ENV === mode ? '' : `${buildShellEnvironmentAssignment('WB_ENV', mode)} `;
 }
 
 /**

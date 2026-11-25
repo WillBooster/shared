@@ -378,7 +378,7 @@ describe('BaseScripts D1 migration selection', () => {
 
     const migrationCommand = scripts.getMigrationCommands(project).join(' && ');
     expect(migrationCommand).toContain(
-      'YARN cf d1 raw --mode test DB-id --local --persist-to ".cloudflare/state-test"'
+      `YARN cf d1 raw --mode test ${d1DatabaseIds.DB} --local --persist-to ".cloudflare/state-test"`
     );
     expect(migrationCommand).toContain('YARN drizzle-kit migrate');
     expect(buildLocalD1MigrationsApplyCommands(project)).toEqual([]);
@@ -391,7 +391,7 @@ describe('BaseScripts D1 migration selection', () => {
 
     expect(scripts.getMigrationCommands(project).join(' && ')).not.toContain('YARN drizzle-kit migrate');
     expect(buildLocalD1MigrationsApplyCommands(project)).toEqual([
-      `CI=true YARN cf d1 migrations apply --mode test DB-id --local --persist-to ".cloudflare/state-test" --dir drizzle --pattern 'drizzle/*/migration.sql'`,
+      `CI=true YARN cf d1 migrations apply --mode test ${d1DatabaseIds.DB} --local --persist-to ".cloudflare/state-test" --dir drizzle --pattern 'drizzle/*/migration.sql'`,
     ]);
   });
 
@@ -410,8 +410,8 @@ describe('BaseScripts D1 migration selection', () => {
     await writeCloudflareConfig(dirPath, ['FIRST', 'SECOND']);
 
     expect(buildLocalD1MigrationsApplyCommands(buildD1Project(dirPath, { SECOND: { dir: 'second' } }))).toEqual([
-      expect.stringMatching(/d1 migrations apply --mode test FIRST-id --local .* --dir migrations$/u),
-      expect.stringMatching(/d1 migrations apply --mode test SECOND-id --local .* --dir second$/u),
+      `CI=true YARN cf d1 migrations apply --mode test ${d1DatabaseIds.FIRST} --local --persist-to ".cloudflare/state-test" --dir migrations`,
+      `CI=true YARN cf d1 migrations apply --mode test ${d1DatabaseIds.SECOND} --local --persist-to ".cloudflare/state-test" --dir second`,
     ]);
   });
 
@@ -425,6 +425,15 @@ describe('BaseScripts D1 migration selection', () => {
   });
 });
 
+// cf rejects a D1 database ID that is not a UUID.
+const d1DatabaseIds: Record<string, string> = {
+  DB: '00000000-0000-4000-8000-000000000001',
+  FIRST: '00000000-0000-4000-8000-000000000002',
+  SECOND: '00000000-0000-4000-8000-000000000003',
+  NATIVE: '00000000-0000-4000-8000-000000000004',
+  DRIZZLE: '00000000-0000-4000-8000-000000000005',
+};
+
 async function writeCloudflareConfig(dirPath: string, d1BindingNames: string[]): Promise<void> {
   await fs.writeFile(
     path.join(dirPath, 'cloudflare.config.ts'),
@@ -434,7 +443,7 @@ async function writeCloudflareConfig(dirPath: string, d1BindingNames: string[]):
       worker: {
         name: 'app',
         compatibilityDate: '2026-09-01',
-        env: { ${d1BindingNames.map((name) => `${name}: bindings.d1({ id: '${name}-id' })`).join(', ')} },
+        env: { ${d1BindingNames.map((name) => `${name}: bindings.d1({ id: '${d1DatabaseIds[name]}' })`).join(', ')} },
       },
     });`
   );

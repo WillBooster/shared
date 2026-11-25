@@ -97,6 +97,13 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     // same environment.
     const buildEnv = usesViteBundler(project) ? createViteBuildEnv(project, envName) : undefined;
     const resolvedConfig = resolveCloudflareConfigOrExit(project, envName, buildEnv);
+    // cf's resource commands prefer an exported CLOUDFLARE_ACCOUNT_ID over the config's
+    // accountId, while the upload uses the account of the build; every authenticated step must
+    // target the account the Worker is deployed to.
+    if (resolvedConfig.accountId) {
+      process.env.CLOUDFLARE_ACCOUNT_ID = resolvedConfig.accountId;
+      project.env.CLOUDFLARE_ACCOUNT_ID = resolvedConfig.accountId;
+    }
     const context: WorkerDeployContext = { argv, project, envName, resolvedConfig, buildEnv };
     const d1Migrations = selectD1MigrationsOrExit(context);
     // Dry runs execute nothing authenticated, so they skip the credential preflight entirely.
@@ -552,16 +559,17 @@ export function selectDeclaredSecrets(
 async function listRemoteWorkerSecretNames({
   argv,
   project,
-  envName,
   resolvedConfig,
 }: WorkerDeployContext): Promise<string[] | undefined> {
   prepareLocalBinPath(project);
-  const listArgs = ['workers', 'secrets', 'list', '--worker', resolvedConfig.workerName, '--mode', envName];
+  const listArgs = ['workers', 'secrets', 'list', '--worker', resolvedConfig.workerName];
   console.info(chalk.cyan(`Running: cf ${listArgs.join(' ')}`));
   let ret;
   try {
     ret = await spawnAsync('cf', listArgs, {
-      cwd: project.dirPath,
+      // Outside the project, cf finds no config to evaluate, so the config's own output cannot
+      // mix into the JSON on stdout; the account comes from CLOUDFLARE_ACCOUNT_ID.
+      cwd: os.tmpdir(),
       env: project.env as NodeJS.ProcessEnv,
       stdio: 'pipe',
       killOnExit: true,

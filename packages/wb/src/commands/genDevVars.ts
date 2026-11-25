@@ -56,12 +56,14 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     }
     // A declared secret may be supplied only by the environment (e.g. a CI workflow env);
     // `wb deploy` pushes it from there, so the locally served Worker must receive it too.
-    for (const secretName of resolveCloudflareConfig(project)?.secretNames ?? []) {
+    // An empty value of a declared secret is a value there too, so it is kept here.
+    const secretNames = new Set(resolveCloudflareConfig(project)?.secretNames);
+    for (const secretName of secretNames) {
       const exportedValue = project.env[secretName];
       if (envVars[secretName] === undefined && exportedValue !== undefined) envVars[secretName] = exportedValue;
     }
     const lines = Object.entries(envVars)
-      .filter(([key, value]) => value !== '' || explicitlyEmptiedKeys.has(key))
+      .filter(([key, value]) => value !== '' || explicitlyEmptiedKeys.has(key) || secretNames.has(key))
       .toSorted(([a], [b]) => a.localeCompare(b))
       .map(([key, value]) => `${key}=${quoteDotenvValue(key, value)}`);
     const outputPath = path.resolve(project.dirPath, argv.path ?? '.dev.vars');

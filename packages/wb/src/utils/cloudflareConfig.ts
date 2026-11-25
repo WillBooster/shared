@@ -12,17 +12,20 @@ const WRANGLER_CONFIG_FILE_NAMES = ['wrangler.jsonc', 'wrangler.json', 'wrangler
 
 // Runs under real Node.js because cf cannot load `cloudflare.config.ts` on Bun. The loader is
 // the one cf itself uses (it understands `cf-worker` import attributes); `@cloudflare/config`
-// is a dependency of cf, not of the project, so it is resolved beside the installed cf package.
+// is a dependency of cf, not of the project, so it is resolved from cf's own location, the way
+// cf's imports resolve it (a nested copy wins over one hoisted for another dependent).
 // The result goes to a file, because the config may print diagnostics of its own to stdout.
 const LOAD_CONFIG_SCRIPT = `
-import { realpathSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { createRequire, findPackageJSON } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const [configPath, mode, resultPath] = process.argv.slice(1);
 const cfPackageJsonPath = realpathSync(createRequire(configPath).resolve('cf/package.json'));
-const loaderPath = path.join(path.dirname(cfPackageJsonPath), '..', '@cloudflare', 'config', 'dist', 'index.mjs');
+const loaderPackageJsonPath = findPackageJSON('@cloudflare/config', pathToFileURL(cfPackageJsonPath));
+const loaderEntry = JSON.parse(readFileSync(loaderPackageJsonPath, 'utf8')).exports['.'].import;
+const loaderPath = path.join(path.dirname(loaderPackageJsonPath), loaderEntry);
 const { loadAndParseConfig } = await import(pathToFileURL(loaderPath).href);
 const { result } = await loadAndParseConfig(configPath, { mode: mode || undefined, isPreview: false });
 if (!result.success) throw new Error(JSON.stringify(result.error?.issues ?? result.error ?? result));
