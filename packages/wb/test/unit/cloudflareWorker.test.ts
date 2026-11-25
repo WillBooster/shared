@@ -11,7 +11,12 @@ import { createCloudflareProjectDir } from '../helpers/cloudflareProject.js';
 
 const cliPath = path.resolve('bin/index.js');
 const { BUN_TEST_WORKER_ID: _bunWorkerId, JEST_WORKER_ID: _jestWorkerId, ...baseEnv } = process.env;
-const workerEnv = { ...baseEnv, AUTH_SECRET: 's3cret', EMPTY_SECRET: '', UNDECLARED_SECRET: 'never-sent' };
+const workerEnv = {
+  ...baseEnv,
+  AUTH_SECRET: 's3cret',
+  EMPTY_SECRET: '',
+  UNDECLARED_SECRET: 'never-sent',
+};
 
 let dirPath: string;
 
@@ -28,7 +33,13 @@ it('serves a Worker that sees its declared secrets and the D1 schema of its migr
   const server = spawn('node', [cliPath, 'start'], {
     cwd: dirPath,
     detached: true,
-    env: { ...workerEnv, PORT: undefined, WB_ENV: 'development', MISE_ENV: undefined },
+    env: {
+      ...workerEnv,
+      PORT: undefined,
+      NEXT_PUBLIC_BASE_URL: undefined,
+      WB_ENV: 'development',
+      MISE_ENV: undefined,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   try {
@@ -47,7 +58,11 @@ it('serves a Worker that sees its declared secrets and the D1 schema of its migr
 }, 120_000);
 
 it('generates the Worker types that infer the bindings from the config', async () => {
-  const result = await spawnAsync('node', [cliPath, 'gen-code'], { cwd: dirPath, env: workerEnv, timeout: 100_000 });
+  const result = await spawnAsync('node', [cliPath, 'gen-code'], {
+    cwd: dirPath,
+    env: workerEnv,
+    timeout: 100_000,
+  });
 
   expect(result.status, result.stdout + result.stderr).toBe(0);
   const types = await fs.readFile(path.join(dirPath, '.cloudflare/types/index.d.ts'), 'utf8');
@@ -105,7 +120,11 @@ async function createWorkerProject(): Promise<string> {
       packageManager: 'bun@1.4.2',
       type: 'module',
       devDependencies: { cf: '1.0.0', wrangler: '4.0.0' },
-      wb: { d1Migrations: { DB: { dir: 'd1', pattern: 'd1/*/migration.sql', table: 'migration_history' } } },
+      wb: {
+        d1Migrations: {
+          DB: { dir: 'd1', pattern: 'd1/*/migration.sql', table: 'migration_history' },
+        },
+      },
     })
   );
   await fs.writeFile(
