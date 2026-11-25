@@ -201,28 +201,32 @@ esac
   );
 }
 
-/** Resolves with the URL of the port wb chose (printed in the command it starts), once it responds. */
+/**
+ * Resolves with the URL of the port wb chose (printed in the command it starts) once it responds,
+ * and rejects with wb's output when wb exits first.
+ */
 async function waitForServerUrl(server: ChildProcess): Promise<string> {
-  const port = await new Promise<string>((resolve, reject) => {
-    let output = '';
-    const onData = (chunk: Buffer): void => {
-      output += chunk.toString();
-      const chosenPort = /cf dev .*--port (\d+)/u.exec(output)?.[1];
-      if (chosenPort) resolve(chosenPort);
-    };
-    server.stdout?.on('data', onData);
-    server.stderr?.on('data', onData);
-    server.once('exit', (code) => {
-      reject(new Error(`wb start exited with ${code} before serving:\n${output}`));
-    });
+  let output = '';
+  let exitCode: number | null | undefined;
+  const onData = (chunk: Buffer): void => {
+    output += chunk.toString();
+  };
+  server.stdout?.on('data', onData);
+  server.stderr?.on('data', onData);
+  server.once('exit', (code) => {
+    exitCode = code;
   });
-  const url = `http://127.0.0.1:${port}/`;
   for (;;) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) return url;
-    } catch {
-      // Not listening yet: the test's timeout bounds the wait.
+    if (exitCode !== undefined) throw new Error(`wb start exited with ${exitCode} before serving:\n${output}`);
+    const port = /cf dev .*--port (\d+)/u.exec(output)?.[1];
+    if (port) {
+      const url = `http://127.0.0.1:${port}/`;
+      try {
+        const response = await fetch(url);
+        if (response.ok) return url;
+      } catch {
+        // Not listening yet: the test's timeout bounds the wait.
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
