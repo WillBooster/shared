@@ -364,15 +364,10 @@ function removeGeneratedUndiciTypesPathMapping(settings: TsConfigJson): void {
 
 function addIncludesForFrameworkProject(settings: TsConfigJson, config: PackageConfig): void {
   // Omitting include lets framework tsconfigs keep TypeScript's default
-  // "all TS/TSX files" behavior, which already covers scripts. That default skips dot
-  // directories, so the cf types need an explicit include, which must then restate the default.
-  if (!settings.include) {
-    // With `extends`, the effective include may be inherited, and a local one would replace it.
-    if (config.doesContainCloudflareConfig && !settings.extends) {
-      settings.include = ['**/*', CF_WORKER_TYPES_INCLUDE];
-    }
-    return;
-  }
+  // "all TS/TSX files" behavior, which already covers scripts. Such a tsconfig is left as
+  // authored: its effective file set may come from `files` or an inherited `include`, which a
+  // generated local `include` would replace.
+  if (!settings.include) return;
   const includeCount = settings.include.length;
   addIncludePath(settings, 'scripts/**/*');
   // Include wildcards skip dot directories, so framework globs such as `**/*.ts` never reach `.railway/`.
