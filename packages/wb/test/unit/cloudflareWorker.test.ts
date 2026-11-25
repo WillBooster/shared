@@ -78,7 +78,7 @@ it("deploys the build and exactly the declared secrets to the config's account",
       .trim()
       .split('\n')
   ).toEqual([
-    'config-account: workers secrets list --worker fixture-staging',
+    'config-account: workers secrets list --mode staging --worker fixture-staging',
     'config-account: deploy --mode staging --prebuilt --dry-run',
     'config-account: d1 migrations apply --mode staging 00000000-0000-4000-8000-000000000001 --dir d1 --pattern d1/*/migration.sql --table migration_history',
     'config-account: deploy --prebuilt --mode staging --secrets-file <file>',
@@ -116,6 +116,7 @@ export default defineConfig(({ mode = 'development' }) => ({
     entrypoint: './src/index.ts',
     compatibilityDate: '2026-09-01',
     env: {
+      WB_ENV: bindings.text(mode),
       AUTH_SECRET: bindings.secret(),
       EMPTY_SECRET: bindings.secret(),
       DB: bindings.d1({ name: 'fixture', id: '00000000-0000-4000-8000-000000000001' }),

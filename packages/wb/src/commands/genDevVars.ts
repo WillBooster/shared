@@ -32,7 +32,7 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     const project = findSelfProjectOrExit(argv);
 
     // Exactly the secrets `wb deploy` would push for this mode: a locally served Worker reads
-    // nothing else from the file, and a secret without a value stays unset as it would deployed.
+    // nothing else from the file, and a secret without a value stays unset.
     const mode = resolveCloudflareMode(project);
     const secretNames = resolveLocalCloudflareConfig(project, mode)?.secretNames ?? [];
     const { secrets } = resolveDeclaredSecrets(argv, project, secretNames);

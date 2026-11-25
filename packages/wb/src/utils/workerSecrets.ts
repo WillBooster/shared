@@ -50,7 +50,8 @@ export function selectDeclaredSecrets(
   const secrets: Record<string, string> = {};
   const missingSecretNames: string[] = [];
   for (const name of secretNames) {
-    const value = effectiveEnv[name] ?? fnoxValues[name];
+    // Own entries only: a secret may be named like an Object.prototype member (e.g. toString).
+    const value = getOwnValue(effectiveEnv, name) ?? getOwnValue(fnoxValues, name);
     if (value === undefined) {
       missingSecretNames.push(name);
     } else {
@@ -58,4 +59,8 @@ export function selectDeclaredSecrets(
     }
   }
   return { missingSecretNames, secrets };
+}
+
+function getOwnValue(values: Record<string, string | undefined>, name: string): string | undefined {
+  return Object.hasOwn(values, name) ? values[name] : undefined;
 }

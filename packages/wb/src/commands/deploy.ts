@@ -195,6 +195,13 @@ function selectD1MigrationsOrExit({ project, resolvedConfig }: WorkerDeployConte
       )
     );
   }
+  // Every target must be addressable before the first remote migration runs.
+  for (const database of [
+    ...d1Migrations.cfNativeD1Migrations.map((migration) => migration.database),
+    ...(d1Migrations.drizzleD1Database ? [d1Migrations.drizzleD1Database] : []),
+  ]) {
+    getD1DatabaseIdOrExit(database);
+  }
   return d1Migrations;
 }
 
@@ -336,6 +343,7 @@ function describeDeployTarget(config: ResolvedCloudflareConfig): string {
     config.workerName,
     config.accountId,
     config.envKeys.toSorted(),
+    Object.entries(config.vars).toSorted(([a], [b]) => a.localeCompare(b)),
     config.secretNames.toSorted(),
     config.d1Databases.map((database) => [database.binding, database.id]).toSorted(),
   ]);
@@ -567,18 +575,17 @@ export function readCloudflareEnvFiles(dirPath: string, rootDirPath: string | un
 async function listRemoteWorkerSecretNames({
   argv,
   project,
+  envName,
   resolvedConfig,
   authEnv,
 }: WorkerDeployContext): Promise<string[] | undefined> {
-  const listArgs = ['workers', 'secrets', 'list', '--worker', resolvedConfig.workerName];
+  const listArgs = ['workers', 'secrets', 'list', '--mode', envName, '--worker', resolvedConfig.workerName];
   console.info(chalk.cyan(`Running: cf ${listArgs.join(' ')}`));
   let ret;
   try {
     ret = await spawnAsync('cf', listArgs, {
-      // At the filesystem root, cf finds no config to evaluate (it searches upward from the
-      // working directory), so the config's own output cannot mix into the JSON on stdout; the
-      // account comes from authEnv's CLOUDFLARE_ACCOUNT_ID.
-      cwd: path.parse(project.dirPath).root,
+      // The Worker's directory, as for the upload: cf selects an OAuth profile bound to it.
+      cwd: project.dirPath,
       env: authEnv as NodeJS.ProcessEnv,
       stdio: 'pipe',
       killOnExit: true,
@@ -593,7 +600,11 @@ async function listRemoteWorkerSecretNames({
     return undefined;
   }
   if (ret.status === 0) {
-    const parsed = z.array(z.looseObject({ name: z.string() })).safeParse(parseJsonOrUndefined(ret.stdout));
+    // cf evaluates the config here, whose own output may precede the JSON array on stdout.
+    const jsonStart = ret.stdout.search(/^\[/mu);
+    const parsed = z
+      .array(z.looseObject({ name: z.string() }))
+      .safeParse(parseJsonOrUndefined(ret.stdout.slice(Math.max(jsonStart, 0))));
     if (parsed.success) return parsed.data.map(({ name }) => name);
   } else if (/\b100(07|90)\b/u.test(ret.stdout + ret.stderr)) {
     // The Worker does not exist yet, so a first deploy inherits nothing: the Cloudflare API
