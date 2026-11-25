@@ -35,6 +35,7 @@ describe('resolving cloudflare.config.ts', () => {
           env: {
             WB_ENV: bindings.text(mode ?? 'development'),
             LIMITS: bindings.json({ max: 3 }),
+            BUILD_MARKER: bindings.text(process.env.WB_TEST_BUILD_MARKER ?? 'absent'),
             AUTH_SECRET: bindings.secret(),
             DB: bindings.d1({ name: \`my-app-\${mode}\`, id: mode === 'staging' ? 'stg-id' : 'prod-id' }),
             CACHE: bindings.kv({ id: 'kv-id' }),
@@ -47,12 +48,17 @@ describe('resolving cloudflare.config.ts', () => {
     expect(resolveLocalCloudflareConfig({ dirPath, env: process.env }, 'production')).toEqual({
       workerName: 'my-app',
       accountId: 'acc-1',
-      vars: { WB_ENV: 'production', LIMITS: { max: 3 } },
+      vars: { WB_ENV: 'production', LIMITS: { max: 3 }, BUILD_MARKER: 'absent' },
       secretNames: ['AUTH_SECRET'],
-      envKeys: ['WB_ENV', 'LIMITS', 'AUTH_SECRET', 'DB', 'CACHE'],
+      envKeys: ['WB_ENV', 'LIMITS', 'BUILD_MARKER', 'AUTH_SECRET', 'DB', 'CACHE'],
       d1Databases: [{ binding: 'DB', name: 'my-app-production', id: 'prod-id' }],
     });
-    const staging = resolveDeployCloudflareConfig({ dirPath }, 'staging', process.env);
+    // The deploy preflight must see the config under the environment its build gets.
+    const staging = resolveDeployCloudflareConfig({ dirPath }, 'staging', {
+      ...process.env,
+      WB_TEST_BUILD_MARKER: 'build',
+    });
+    expect(staging?.vars.BUILD_MARKER).toBe('build');
     expect(staging?.workerName).toBe('my-app-staging');
     expect(staging?.secretNames).toEqual(['AUTH_SECRET', 'OMITTED']);
     expect(staging?.d1Databases).toEqual([{ binding: 'DB', name: 'my-app-staging', id: 'stg-id' }]);
