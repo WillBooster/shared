@@ -215,7 +215,8 @@ function assertDeployCredentials(project: Project, drizzleD1Database: Cloudflare
   if (drizzleD1Database && !project.env.CLOUDFLARE_API_TOKEN) {
     exitWithError('CLOUDFLARE_API_TOKEN is required for remote drizzle-kit migrations.');
   }
-  if (isCI(project.env.CI) && !project.env.CLOUDFLARE_API_TOKEN) {
+  // cf still accepts its deprecated CF_API_TOKEN spelling.
+  if (isCI(project.env.CI) && !project.env.CLOUDFLARE_API_TOKEN && !project.env.CF_API_TOKEN) {
     exitWithError('CLOUDFLARE_API_TOKEN is required to deploy on CI.');
   }
 }
