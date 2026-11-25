@@ -64,6 +64,8 @@ it("deploys the build and exactly the declared secrets to the config's account",
     env: {
       ...workerEnv,
       CLOUDFLARE_ACCOUNT_ID: 'shell-account',
+      // A deploy on CI requires a token; nothing here contacts Cloudflare.
+      CLOUDFLARE_API_TOKEN: 'unused-token',
       WB_ENV: 'staging',
       WB_TEST_CF_LOG: logDirPath,
     },
