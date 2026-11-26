@@ -45,11 +45,9 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
     : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(project, mode)}"`;
   return [
     ...buildLocalD1MigrationCommands(project, mode),
-    `${buildServerEnvPrefix(project, mode)}${
-      usesVite
-        ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(project, mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
-        : buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())
-    }`,
+    usesVite
+      ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(project, mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
+      : `${buildWranglerServerEnvPrefix(project, mode)}${buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
   ];
 }
 
@@ -68,21 +66,22 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
     ...(project.packageJson.scripts?.['gen-code'] ? ['YARN run gen-code'] : []),
     `${stateDirPrefix}${buildViteCommand(project, mode, 'build')}`,
     ...buildLocalD1MigrationCommands(project, mode),
-    `${buildServerEnvPrefix(project, mode)}${stateDirPrefix}YARN ${getViteExecutable(project)} preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
+    `${stateDirPrefix}YARN ${getViteExecutable(project)} preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
 }
 
 const SHELL_NAME_PATTERN = /^[A-Za-z_]\w*$/u;
 
 /**
- * A local server reads the values of the declared secrets from its process environment, and the
- * runtime also lets that environment override the config's other values; so the server process
+ * A local server reads the values of the declared secrets from its process environment, and
+ * Wrangler (unlike the Cloudflare Vite plugin) also lets that environment override the config's
+ * other values; so the server process
  * gets the config's own value for each exported key whose value differs (wb keeps the exported one,
  * e.g. PORT), which also leaves a config that derives the value from that key unchanged. A value
  * travels in a variable of its own because the script text is normalized; a JSON value cannot come
  * from the environment, so its key is removed.
  */
-function buildServerEnvPrefix(project: Project, mode: string): string {
+function buildWranglerServerEnvPrefix(project: Project, mode: string): string {
   const unsetArgs: string[] = [];
   const assignments: string[] = [];
   for (const [key, value] of Object.entries(resolveLocalCloudflareConfig(project, mode)?.vars ?? {})) {
