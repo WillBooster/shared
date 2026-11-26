@@ -18,6 +18,7 @@ import type { PackageJson } from 'type-fest';
 
 import { prependNodeModulesBinToPath } from './utils/binPath.js';
 import { isCI } from './utils/ci.js';
+import { applyIsolatedInstancePort } from './utils/cloudflare.js';
 import { findCloudflareConfigPath } from './utils/cloudflareConfig.js';
 import { selectFnoxSourcedKeys } from './utils/envSources.js';
 import { hasBunDirectoryMarker, isBunPackageManager, isExplicitNonBunPackageManager } from './utils/runtime.js';
@@ -143,6 +144,8 @@ export class Project {
       mergedEnv,
       envPathAndLoadedEnvVarNamePairs.some(([source]) => !source.startsWith('mise env'))
     );
+    const isolatedInstancePort = process.env.WB_ISOLATED_INSTANCE_PORT;
+    if (isolatedInstancePort) applyIsolatedInstancePort(mergedEnv, isolatedInstancePort);
     return mergedEnv;
   }
 

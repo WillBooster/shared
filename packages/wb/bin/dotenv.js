@@ -108,6 +108,9 @@ function readAndApplyEnvironmentVariables(cwd) {
     }
   }
   const envVars = expand({ parsed, processEnv: referenceEnv }).parsed ?? parsed;
+  // The wb start of an isolated instance already set its own port and origin, which outrank the
+  // forced profile (see applyIsolatedInstancePort in src/utils/cloudflare.ts).
+  const keptKeys = new Set(process.env.WB_ISOLATED_INSTANCE_PORT ? ['PORT', 'NEXT_PUBLIC_BASE_URL'] : []);
   for (const [key, value] of Object.entries(envVars)) {
     if (!(key in process.env)) {
       process.env[key] = value;
@@ -116,7 +119,7 @@ function readAndApplyEnvironmentVariables(cwd) {
     if (process.env[key] === value) continue;
     // A process.env-shadowed key reaches here only when the forced profile overrides it (see
     // readFnoxEnvironmentVariables); on CI such keys are never returned, so no branch is needed.
-    if (modeFileOverridesProcessEnv) {
+    if (modeFileOverridesProcessEnv && !keptKeys.has(key)) {
       console.warn(
         `Warning: ${key} in the "${mode}" mode's env sources overrides the value inherited from the parent environment because WB_ENV is explicitly set.`
       );
