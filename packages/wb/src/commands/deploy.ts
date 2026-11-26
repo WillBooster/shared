@@ -374,8 +374,10 @@ async function buildWorker(
     { env }
   );
   // Wrangler would have refused a missing directory; it uploads an empty one.
-  if (hookAssetsDirPath && fs.readdirSync(hookAssetsDirPath).length === 0) {
-    exitWithError(`The build command of wrangler.config.ts left its assetsDirectory empty: ${hookAssetsDirPath}`);
+  if (hookAssetsDirPath && !containsFile(hookAssetsDirPath)) {
+    exitWithError(
+      `The build command of wrangler.config.ts left its assetsDirectory without files: ${hookAssetsDirPath}`
+    );
   }
 }
 
@@ -394,14 +396,18 @@ function createWranglerAssetsDirectory(
 ): string | undefined {
   try {
     const assetsDirPath = resolveWranglerBuildHookAssetsDirectory(project, envName, buildEnv);
-    // An empty directory counts as missing: a failed earlier deploy may have left it.
-    if (!assetsDirPath || (fs.existsSync(assetsDirPath) && fs.readdirSync(assetsDirPath).length > 0)) return;
+    // A directory without files counts as missing: a failed earlier deploy may have left it.
+    if (!assetsDirPath || (fs.existsSync(assetsDirPath) && containsFile(assetsDirPath))) return;
     if (!resolveCloudflareConfigOrExit(project, envName, buildEnv).hasEntrypoint) return;
     fs.mkdirSync(assetsDirPath, { recursive: true });
     return assetsDirPath;
   } catch (error) {
     exitWithError(getErrorMessage(error));
   }
+}
+
+function containsFile(dirPath: string): boolean {
+  return fs.readdirSync(dirPath, { recursive: true, withFileTypes: true }).some((entry) => !entry.isDirectory());
 }
 
 /**
