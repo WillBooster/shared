@@ -144,7 +144,8 @@ export class Project {
       mergedEnv,
       envPathAndLoadedEnvVarNamePairs.some(([source]) => !source.startsWith('mise env'))
     );
-    applyIsolatedInstancePort(mergedEnv);
+    const isolatedInstancePort = process.env.WB_ISOLATED_INSTANCE_PORT;
+    if (isolatedInstancePort) applyIsolatedInstancePort(mergedEnv, isolatedInstancePort);
     return mergedEnv;
   }
 

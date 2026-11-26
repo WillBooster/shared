@@ -61,7 +61,7 @@ async function claimIsolatedInstancePort(project: Project): Promise<number> {
       `PORT ${port} is in use. wb does not stop another process for an instance on WB_CLOUDFLARE_STATE_DIR; export a free PORT.`
     );
   }
-  applyIsolatedInstancePort(project.env);
+  applyIsolatedInstancePort(project.env, String(port));
   return port;
 }
 
