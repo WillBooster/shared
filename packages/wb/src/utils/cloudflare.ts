@@ -157,6 +157,20 @@ export function getChosenLocalStateDir(project: Pick<Project, 'env'>): string | 
   return path.resolve(stateDir);
 }
 
+/**
+ * Gives an isolated instance (one on a chosen state directory) the given port and the origin
+ * derived from it, whatever the fnox profile pins or the caller inherited. Every wb process of the
+ * instance, including nested ones such as `wb concurrently`, reloads its environment, where off CI
+ * a forced mode's fnox profile overrides exported values; the port therefore also travels in
+ * WB_ISOLATED_INSTANCE_PORT, which each of them honors again (Project.env and `wb dotenv`). Only wb sets
+ * that variable, so a later command run from the caller's shell (e.g. a deploy) is unaffected.
+ */
+export function applyIsolatedInstancePort(env: Record<string, string | undefined>, port: string): void {
+  env.WB_ISOLATED_INSTANCE_PORT = port;
+  env.PORT = port;
+  env.NEXT_PUBLIC_BASE_URL = `http://localhost:${port}`;
+}
+
 /** A `wb db` reset of a chosen state directory removes its whole D1 state, so it serves one package. */
 export function assertSingleProjectForChosenStateDir(projects: Pick<Project, 'env' | 'name'>[]): void {
   if (projects.length > 1 && projects.some((project) => getChosenLocalStateDir(project))) {

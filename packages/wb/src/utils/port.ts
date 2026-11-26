@@ -1,6 +1,7 @@
 import { createServer } from 'node:net';
 
 import type { Project } from '../project.js';
+import { applyIsolatedInstancePort, getChosenLocalStateDir } from './cloudflare.js';
 import { publishLocalServerUrl } from './localServerUrl.js';
 import { killPortProcessImmediatelyAndOnExit } from './process.js';
 
@@ -15,7 +16,7 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
  * Resolves the port for launching the project's app, storing it in `project.env.PORT`.
  *
  * An explicitly configured PORT (exported or defined in fnox.toml, e.g. for Docker repositories)
- * is used as-is, killing any process occupying it as before. Otherwise a free port is searched
+ * is used as-is, killing any process occupying it. Otherwise a free port is searched
  * upward from a deterministic preferred port derived from the package name and WB_ENV, so
  * repositories need no manually assigned, non-conflicting ports while the local URL stays stable
  * across runs (e.g. for OAuth redirect URIs), and a development server can coexist with an e2e
@@ -24,18 +25,62 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
  * it keep working without fnox definitions. The resolved URL is also published (see
  * publishLocalServerUrl) so consuming commands can reach it while this server is alive and serving.
  *
- * Callers may run this more than once per command; repeating checkAndKillPortProcess is
- * deliberate, not redundancy to cache away: it reclaims a port still held by a previous phase's
- * server (e.g. `wb test-on-ci` between the startup check and e2e), and its probe is cheap.
+ * Callers may run this more than once per command; repeating checkAndKillPortProcess for a
+ * configured PORT is deliberate, not redundancy to cache away: it reclaims a port still held by a
+ * previous phase's server (e.g. `wb test-on-ci` between the startup check and e2e), and its probe
+ * is cheap. A port selected for the project is never reclaimed that way, in any call or in a wb
+ * process it starts (e.g. the `wb start` a Playwright `webServer` runs), which learns of the
+ * selection from WB_SELECTED_PORT in the environment it inherits: the search found nothing
+ * listening there, so a process holding it later did not necessarily come from wb (a previous
+ * phase's server is stopped by its own phase, and a container by its name), and such a call fails
+ * instead. Nor does a selected port get the port-wide exit cleanup a configured one does: wb's
+ * own servers are its descendants, which its shutdown tree-kills, and a container it starts is
+ * stopped by name on exit (see dockerScripts.start).
+ *
+ * An instance on a caller-chosen state directory is resolved by claimIsolatedInstancePort instead
+ * and is never published: its caller manages and addresses it, and publishing it would replace the
+ * mode's regular server.
  */
 export async function ensurePort(project: Project): Promise<number> {
+  if (getChosenLocalStateDir(project)) return claimIsolatedInstancePort(project);
+  let port: number;
   if (!project.env.PORT) {
     assertNoPinnedPortInBaseUrl(project.env.NEXT_PUBLIC_BASE_URL);
-    project.env.PORT = String(await findFreePort(computePreferredPort(project)));
+    port = await findFreePort(computePreferredPort(project));
+    project.env.PORT = String(port);
+    project.env.WB_SELECTED_PORT = project.env.PORT;
+  } else if (project.env.WB_SELECTED_PORT === project.env.PORT) {
+    port = Number(project.env.PORT);
+    if (!(await isPortAvailable(port))) {
+      throw new Error(
+        `PORT ${port}, which wb selected, is now in use by another process; wb does not stop it. Run the command again to select another port.`
+      );
+    }
+  } else {
+    port = await checkAndKillPortProcess(project.env.PORT, project);
   }
-  const port = await checkAndKillPortProcess(project.env.PORT, project);
   project.env.NEXT_PUBLIC_BASE_URL ||= `http://localhost:${port}`;
   publishLocalServerUrl(project, project.env.NEXT_PUBLIC_BASE_URL);
+  return port;
+}
+
+/**
+ * An isolated instance never kills a process to get its port: it runs beside servers it did not
+ * start (e.g. the caller's primary test server).
+ */
+async function claimIsolatedInstancePort(project: Project): Promise<number> {
+  // Not project.env: off CI, a forced mode's fnox profile overrides the exported PORT there.
+  const rawPort = process.env.PORT;
+  const port = Number(rawPort);
+  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+    throw new Error(`An instance on WB_CLOUDFLARE_STATE_DIR requires an exported PORT, but it is "${rawPort ?? ''}".`);
+  }
+  if (!(await isPortAvailable(port))) {
+    throw new Error(
+      `PORT ${port} is in use. wb does not stop another process for an instance on WB_CLOUDFLARE_STATE_DIR; export a free PORT.`
+    );
+  }
+  applyIsolatedInstancePort(project.env, String(port));
   return port;
 }
 
@@ -119,8 +164,9 @@ async function checkAndKillPortProcess(rawPort: unknown, project: Project): Prom
  * @returns A promise that resolves to true if the port is available, false otherwise
  */
 export async function isPortAvailable(port: number): Promise<boolean> {
-  // Check both stacks to catch processes bound only on IPv6 or IPv4.
-  for (const host of ['127.0.0.1', '::']) {
+  // On macOS a bind beside another process's listener succeeds unless both name the same address
+  // (or overlapping IPv6 ones), so probe every address a listener answering loopback can hold.
+  for (const host of ['127.0.0.1', '0.0.0.0', '::', '::1']) {
     const available = await probePort(host, port);
     if (!available) return false;
   }

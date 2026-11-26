@@ -45,8 +45,9 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
   const mode = resolveCloudflareMode(project);
   const port = getEnsuredPort(project);
   const usesVite = usesViteBundler(project);
+  // Vite otherwise moves to the next port when this one is taken, away from the origin wb derived.
   const serverArgs = usesVite
-    ? `--port ${port}`
+    ? `--port ${port} --strictPort`
     : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(project, mode)}"`;
   return [
     ...buildGenDevVarsCommands(project, argv),
@@ -89,11 +90,11 @@ function buildGenDevVarsCommands(project: Project, argv: ScriptArgv): string[] {
  * The command `cf dev` / `cf build` delegates to for a Vite project, run directly: cf first
  * detects the project's framework from its dependencies and stops, without a terminal, when it
  * finds more than two (e.g. a vinext app that also depends on hono), although the answer would
- * not change the command. The variable mirrors what cf sets when it delegates.
+ * not change the command.
  */
 export function buildViteCommand(project: Project, mode: string, command: 'dev' | 'build', args = ''): string {
   assertVitePluginReadsCloudflareConfig(project);
-  return `CLOUDFLARE_VITE_FORCE_BUILD_OUTPUT=true YARN ${getViteExecutable(project)} ${command} --mode ${shellEscapeArgument(mode)} ${args}`.trim();
+  return `YARN ${getViteExecutable(project)} ${command} --mode ${shellEscapeArgument(mode)} ${args}`.trim();
 }
 
 /**
