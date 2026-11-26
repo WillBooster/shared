@@ -171,7 +171,7 @@ Options:
 - To run an isolated local instance, export an absolute `WB_CLOUDFLARE_STATE_DIR` of letters, digits, and `_.@+-/` (and a `PORT`): wb then uses that directory instead of the mode's, never wipes or seeds it on start (`wb db migrate` does both migrating and seeding), and does not publish the server's URL for `wb run`; `wb db` stops when such a directory would serve several packages. Arguments after `--` reach `cf dev` (or Vite, which takes neither of the `cf dev` options below). Such an instance does not write `.dev.vars.<mode>`: its server reads the declared secrets from that file when a regular start of the mode generated it (or from a leftover `.dev.vars`, which the runtime reads next, so delete one), else from its own environment, where Wrangler also lets an exported variable replace a text or JSON binding of the same name. For example, a test can start several Wrangler-bundled Workers at once, each on fresh state, and read that state with `cf d1 raw --local --persist-to <dir>`:
 
   ```sh
-  WB_CLOUDFLARE_STATE_DIR=/tmp/instance-1 PORT=20001 bun wb start --mode test -- --inspector-port 20002
+  WB_CLOUDFLARE_STATE_DIR=/tmp/instance-1 WB_ENV=test PORT=20001 bun wb start --mode test -- --inspector-port 20002
   WB_CLOUDFLARE_STATE_DIR=/tmp/instance-1 WB_ENV=test bun wb db migrate   # migrates without starting a server
   ```
 
