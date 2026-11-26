@@ -1,6 +1,7 @@
 import type { Project } from '../project.js';
 import {
   buildLocalD1MigrationsApplyCommands,
+  getChosenLocalStateDir,
   getLocalStateDir,
   wrapWithLocalD1DatabaseUrl,
 } from '../utils/cloudflare.js';
@@ -23,7 +24,8 @@ export function buildLocalD1MigrationCommands(project: Project, mode: string, se
           wrapWithLocalD1DatabaseUrl(
             project,
             mode,
-            seeds ? drizzleScripts.migrate(project) : drizzleScripts.deploy(project)
+            // A chosen state directory belongs to its caller, who seeds it with `wb db migrate`.
+            seeds && !getChosenLocalStateDir(project) ? drizzleScripts.migrate(project) : drizzleScripts.deploy(project)
           ),
         ]
       : []),
