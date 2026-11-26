@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { spawnAsync } from '@willbooster/shared-lib-node/src';
+import { resolveCascade, spawnAsync } from '@willbooster/shared-lib-node/src';
 import { getErrorMessage } from '@willbooster/shared-lib/src';
 import chalk from 'chalk';
 import { config } from 'dotenv';
@@ -266,9 +266,14 @@ function selectSecretsOrExit({ argv, project, envName, resolvedConfig }: WorkerD
     resolvedConfig.secretNames
   );
   if (missingSecretNames.length > 0) {
+    // The profile the environment reader selected, which --cascade-env may set apart from WB_ENV.
+    const cascade = resolveCascade(argv);
+    const profileSources = cascade
+      ? `fnox (base secrets or the ${cascade} profile), the mise environment ${cascade}`
+      : "fnox's base secrets, the default mise environment";
     exitWithError(
       `Secrets that cloudflare.config.ts declares with bindings.secret() for ${envName} are not provided: ${missingSecretNames.join(', ')}. ` +
-        `Set each (an explicitly empty value counts) in fnox (base secrets or the ${envName} profile), the mise environment ${envName}, an exported environment variable, or a .env.cloudflare file beside cloudflare.config.ts or at the repository root, or stop declaring it for this mode.`
+        `Set each (an explicitly empty value counts) in ${profileSources}, an exported environment variable, or a .env.cloudflare file beside cloudflare.config.ts or at the repository root, or stop declaring it for this mode.`
     );
   }
   // The deployed Worker must be able to report its version even when the config declares no
