@@ -288,8 +288,14 @@ async function buildAndPushImage(
     const archive = path.join(directory, 'context.tar');
     const contextDir = path.join(directory, 'context');
     fs.mkdirSync(contextDir);
-    runGit(['archive', '--format=tar', `--output=${archive}`, source.treeish], source.repository);
-    execFileSync('tar', ['-xf', archive, '-C', contextDir]);
+    await runStoppingWithWb(
+      'git',
+      ['-C', source.repository, 'archive', '--format=tar', `--output=${archive}`, source.treeish],
+      project,
+      project.env,
+      removeDirectory
+    );
+    await runStoppingWithWb('tar', ['-xf', archive, '-C', contextDir], project, project.env, removeDirectory);
     console.info(chalk.cyan(`Building the container image ${image} from ${source.treeish}.`));
     await runStoppingWithWb(
       'docker',
