@@ -59,7 +59,7 @@ const builder = {
   'build-only': {
     type: 'boolean',
     description:
-      "For a Worker: run every step up to the build, its comparison with the validated config, and cf's offline check of it, then stop before anything that contacts Cloudflare (no remote secret listing, image push, D1 migration, upload, or deploy/post).",
+      "For a Worker: run every step up to the build, its comparison with the validated config, and cf's local check of it, then stop before any step that reads or changes Cloudflare resources (no remote secret listing, image push, D1 migration, upload, or deploy/post).",
   },
   'containers-rollout': {
     type: 'string',

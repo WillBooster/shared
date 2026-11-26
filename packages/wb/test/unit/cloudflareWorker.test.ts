@@ -364,8 +364,9 @@ export default defineConfig(({ mode = 'development' }) => ({
 }
 
 /**
- * Replaces the project's cf with one that runs the real build and records every other call
- * (all of which need a Cloudflare account) with the account it would target.
+ * Replaces the project's cf with one that runs the real build and records every other call with
+ * the account it would target; of those, only the offline check of the build runs for real, while
+ * the others need a Cloudflare account.
  */
 async function recordAuthenticatedCfCalls(): Promise<void> {
   const cfPath = path.join(dirPath, 'node_modules/.bin/cf');
@@ -375,6 +376,7 @@ async function recordAuthenticatedCfCalls(): Promise<void> {
     `#!/bin/sh
 if [ "$1" = build ]; then exec "${path.resolve('node_modules/.bin/cf')}" "$@"; fi
 printf '%s\\n' "$CLOUDFLARE_ACCOUNT_ID: $*" >> "$WB_TEST_CF_LOG/calls"
+case "$*" in deploy*--prebuilt*--dry-run*) exec "${path.resolve('node_modules/.bin/cf')}" "$@" ;; esac
 for last; do :; done
 case "$*" in
   *--secrets-file*) cp "$last" "$WB_TEST_CF_LOG/secrets.json" ;;
