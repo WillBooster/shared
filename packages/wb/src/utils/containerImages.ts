@@ -94,7 +94,7 @@ async function resolveImageEnv(
   const placeholderEnv = Object.fromEntries(
     images.map((image) => [image.variableName, createPlaceholderReference(registryHost, image)])
   );
-  assertConfigUsesImageReferences(deployment, placeholderEnv);
+  assertConfigUsesImageReferences(deployment, images, placeholderEnv);
   if (rollout !== 'gradual' && rollout !== 'immediate') {
     console.info(
       `Not building container images (${images.map(({ name }) => name).join(', ')}): the deploy keeps the deployed Containers.`
@@ -115,7 +115,7 @@ async function resolveImageEnv(
   for (const source of sources) {
     env[source.image.variableName] = await publishImage(source, registryHost, deployment);
   }
-  assertConfigUsesImageReferences(deployment, env);
+  assertConfigUsesImageReferences(deployment, images, env);
   return env;
 }
 
@@ -371,17 +371,24 @@ async function runStoppingWithWb(
  */
 function assertConfigUsesImageReferences(
   { project, envName, buildEnv }: ContainerImageDeployment,
+  images: DockerfileImage[],
   env: Record<string, string>
 ): void {
   const containerImages =
     resolveDeployCloudflareConfig(project, envName, { ...buildEnv, ...env })?.containerImages ?? [];
-  const ignoredImages = containerImages.filter(({ name, source }) => {
-    const reference = env[toVariableName(name)];
-    return 'dockerfile' in source || (reference !== undefined && source.reference !== reference);
-  });
-  if (ignoredImages.length > 0) {
+  const ignoredImageNames = [
+    // A planned image must keep its place with exactly the reference wb supplies.
+    ...images
+      .filter(({ name, variableName }) => {
+        const source = containerImages.find((image) => image.name === name)?.source;
+        return !source || !('reference' in source) || source.reference !== env[variableName];
+      })
+      .map(({ name }) => name),
+    ...containerImages.filter(({ source }) => 'dockerfile' in source).map(({ name }) => name),
+  ];
+  if (ignoredImageNames.length > 0) {
     throw new Error(
-      `cloudflare.config.ts must declare each container image built from a Dockerfile as \`{ reference: process.env.<variable> }\` while wb sets that variable: ${ignoredImages.map(({ name }) => `${name} (${toVariableName(name)})`).join(', ')}.`
+      `cloudflare.config.ts must declare each container image built from a Dockerfile as \`{ reference: process.env.<variable> }\` while wb sets that variable: ${[...new Set(ignoredImageNames)].map((name) => `${name} (${toVariableName(name)})`).join(', ')}.`
     );
   }
 }
