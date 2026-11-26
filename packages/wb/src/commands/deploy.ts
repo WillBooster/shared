@@ -274,13 +274,17 @@ function selectSecretsOrExit({ argv, project, envName, resolvedConfig }: WorkerD
     // process.env, not project.env: the fnox and mise subprocesses inherit only the ambient
     // environment, so a selector that mise.toml or fnox itself sets never selects anything.
     const { FNOX_PROFILE: fnoxProfile, MISE_ENV: miseEnv } = process.env;
-    const profileSources = cascade
-      ? `fnox (base secrets or the ${cascade} profile), the mise environment ${cascade}`
-      : `fnox (${fnoxProfile ? `base secrets or the ${fnoxProfile} profile from FNOX_PROFILE` : 'base secrets'}), ${miseEnv ? `the mise environment ${miseEnv} from MISE_ENV` : 'the default mise environment'}`;
+    const fnoxProfileName = cascade ?? fnoxProfile;
+    const fnoxSource = `fnox (${fnoxProfileName ? `base secrets or the ${fnoxProfileName} profile${cascade ? '' : ' from FNOX_PROFILE'}` : 'base secrets'})`;
+    const miseSource = cascade
+      ? `the mise environment ${cascade}`
+      : miseEnv
+        ? `the mise environment ${miseEnv} from MISE_ENV`
+        : 'the default mise environment';
     exitWithError(
       `Secrets that cloudflare.config.ts declares with bindings.secret() for ${envName} are not provided: ${missingSecretNames.join(', ')}. ` +
-        `Set each in ${profileSources} (an explicitly empty value counts), or stop declaring it for this mode. ` +
-        `wb deploy also reads exported environment variables and the deploy-credential file ${formatCloudflareEnvFilePaths(project)}, which wb start does not read.`
+        `Set each in ${fnoxSource}, where an explicitly empty value counts, or stop declaring it for this mode. ` +
+        `wb deploy also reads ${miseSource}, exported environment variables, and the deploy-credential file ${formatCloudflareEnvFilePaths(project)} (which wb start does not read).`
     );
   }
   // The deployed Worker must be able to report its version even when the config declares no
