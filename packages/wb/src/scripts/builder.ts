@@ -24,6 +24,8 @@ export type ScriptArgv = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof s
   '--'?: string[];
   normalizedArgsText?: string;
   normalizedDockerOptionsText?: string;
+  /** Whether the start prepares the data of a Worker's local D1, running the package's seed after migrating it. */
+  seedsLocalD1?: boolean;
   silent?: boolean;
   verbose?: boolean;
 };

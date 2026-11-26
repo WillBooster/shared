@@ -40,11 +40,8 @@ export function usesViteBundler(project: Project): boolean {
   return false;
 }
 
-/**
- * Commands serving the Worker from source. A production-style start passes `seeds` to run the
- * package's seed after migrating; a development start leaves the existing data alone.
- */
-export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv, seeds = false): string[] {
+/** Commands serving the Worker from source. */
+export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): string[] {
   const mode = resolveCloudflareMode(project);
   const port = getEnsuredPort(project);
   const usesVite = usesViteBundler(project);
@@ -53,7 +50,7 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv, s
     : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(project, mode)}"`;
   return [
     ...buildGenDevVarsCommands(project, argv),
-    ...buildLocalD1MigrationCommands(project, mode, seeds),
+    ...buildLocalD1MigrationCommands(project, mode, !!argv.seedsLocalD1),
     usesVite
       ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(project, mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
       : buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim()),
@@ -65,7 +62,7 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv, s
  * Wrangler's dev server bundles the Worker itself.
  */
 export function buildCloudflareBuiltStartCommands(project: Project, argv: ScriptArgv): string[] {
-  if (!usesViteBundler(project)) return buildCloudflareDevCommands(project, argv, true);
+  if (!usesViteBundler(project)) return buildCloudflareDevCommands(project, { ...argv, seedsLocalD1: true });
   const mode = resolveCloudflareMode(project);
   const stateDirPrefix = buildViteStateDirPrefix(project, mode);
   return [

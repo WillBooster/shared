@@ -174,12 +174,13 @@ export abstract class BaseScripts {
     // In the test environment the dev server runs against fresh, disposable state (e.g. an empty
     // local D1), so the schema must be migrated first — an app whose pages query the database
     // would otherwise answer 500 and the startup check would never see a 2xx.
-    const migrationCommands = isProjectEnvironment(project, 'test') ? this.buildMigrationCommands(project) : [];
+    const preparesData = isProjectEnvironment(project, 'test');
+    const migrationCommands = preparesData ? this.buildMigrationCommands(project) : [];
     // Use empty NODE_ENV to avoid "production" mode in some frameworks.
     const startupCheckCommand = `${buildShellEnvironmentAssignment('NODE_ENV', '')} ${buildConcurrentlyCommand(
       argv,
       untilFirstSuccess,
-      [this.startDevProtected(project, argv), this.waitApp(project)]
+      [this.startDevProtected(project, { ...argv, seedsLocalD1: preparesData }), this.waitApp(project)]
     )}`;
     return [...migrationCommands, startupCheckCommand].join(' && ');
   }
