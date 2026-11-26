@@ -271,7 +271,7 @@ it('deploys a Worker whose wrangler.config.ts build command creates its assets d
   );
 }, 120_000);
 
-it('builds and checks a deploy mode without contacting Cloudflare when only building', async () => {
+it('builds and checks a deploy mode without touching Cloudflare resources when only building', async () => {
   const logDirPath = path.join(dirPath, 'cf-log');
   await fs.mkdir(logDirPath);
   await recordAuthenticatedCfCalls();
