@@ -62,7 +62,7 @@ export async function ensurePort(project: Project): Promise<number> {
     }
     if (!(await isPortAvailable(port))) {
       throw new Error(
-        `PORT ${port}, selected as free (WB_SELECTED_PORT), is now in use by another process; wb does not stop it. Run the command again with another free port as both PORT and WB_SELECTED_PORT, or with PORT defined nowhere (neither exported nor in the fnox profile) so that wb selects one.`
+        `PORT ${port}, selected as free (WB_SELECTED_PORT), is now in use by another process; wb does not stop it.`
       );
     }
   } else {
