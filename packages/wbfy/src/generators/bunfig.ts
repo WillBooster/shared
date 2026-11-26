@@ -85,7 +85,15 @@ export function updateBunReleaseAgeExcludes(rootDirPath: string): void {
       `Could not update the release-age excludes in ${filePath}: write minimumReleaseAge and minimumReleaseAgeExcludes as unquoted assignments under [install], the latter as an array without comments, and rerun.`
     );
   }
-  fs.writeFileSync(filePath, newContent);
+  // Staged: this run changes nothing else, so an interrupted write must not cost the repository
+  // its working bunfig.toml.
+  const stagedFilePath = `${filePath}.wbfy-tmp`;
+  try {
+    fs.writeFileSync(stagedFilePath, newContent);
+    fs.renameSync(stagedFilePath, filePath);
+  } finally {
+    fs.rmSync(stagedFilePath, { force: true });
+  }
   console.info(`Updated the release-age excludes in ${filePath}`);
 }
 
