@@ -119,9 +119,11 @@ describe('ensurePort', () => {
   });
 
   it('refuses, without reclaiming it, a port the caller selected and another process took', async () => {
-    const port = await ensurePort(createFakeProject());
+    const server = await occupyPort(0);
+    const address = server?.address();
+    if (!address || typeof address === 'string') throw new Error('The fixture server has no port.');
+    const port = address.port;
     const project = createFakeProject({ PORT: String(port), WB_SELECTED_PORT: String(port) });
-    const server = await occupyPort(port);
     try {
       await expect(ensurePort(project)).rejects.toThrow(
         `PORT ${port}, selected as free (WB_SELECTED_PORT), is now in use`
