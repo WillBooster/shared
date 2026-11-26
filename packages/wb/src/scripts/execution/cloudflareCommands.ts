@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import semver from 'semver';
+import { z } from 'zod';
+
 import type { Project } from '../../project.js';
 import {
   buildCfCommand,
@@ -18,9 +21,9 @@ import { usesDrizzleKitForD1 } from '../drizzleScripts.js';
 const VITE_PLUGIN_PACKAGE_NAME = '@cloudflare/vite-plugin';
 
 /**
- * Whether cf delegates the project's dev server and build to Vite (otherwise to Wrangler). cf
- * decides by the package's own dependency, so a vite.config using the plugin without declaring it
- * would be served by one tool and prepared for the other.
+ * Whether Vite serves and builds the project (otherwise Wrangler does, through cf). The package's
+ * own dependency decides, as it does for cf, so a vite.config using the plugin without declaring
+ * it would be served by one tool and prepared for the other.
  */
 export function usesViteBundler(project: Project): boolean {
   if (project.hasOwnDependency(VITE_PLUGIN_PACKAGE_NAME)) return true;
@@ -37,7 +40,7 @@ export function usesViteBundler(project: Project): boolean {
   return false;
 }
 
-/** Commands serving the Worker from source with `cf dev`. */
+/** Commands serving the Worker from source. */
 export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): string[] {
   const mode = resolveCloudflareMode(project);
   const port = getEnsuredPort(project);
@@ -50,7 +53,9 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
     buildGenDevVarsCommand(argv),
     // The local D1 starts empty and no dev server applies migrations itself.
     ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
-    `${usesVite ? buildViteStateDirPrefix(project, mode) : ''}${buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
+    usesVite
+      ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(project, mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
+      : buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim()),
   ];
 }
 
@@ -66,11 +71,51 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
     // The same build `wb deploy` runs, so the served Worker has the config of wb's mode: the
     // local D1 migrated below is the one whose ID that config declares.
     ...(project.packageJson.scripts?.['gen-code'] ? ['YARN run gen-code'] : []),
-    `${stateDirPrefix}${buildCfCommand(mode, 'build')}`,
+    `${stateDirPrefix}${buildViteCommand(project, mode, 'build')}`,
     buildGenDevVarsCommand(argv),
     ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
-    `${stateDirPrefix}YARN vite preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
+    `${stateDirPrefix}YARN ${getViteExecutable(project)} preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
+}
+
+/**
+ * The command `cf dev` / `cf build` delegates to for a Vite project, run directly: cf first
+ * detects the project's framework from its dependencies and stops, without a terminal, when it
+ * finds more than two (e.g. a vinext app that also depends on hono), although the answer would
+ * not change the command. The variable mirrors what cf sets when it delegates.
+ */
+export function buildViteCommand(project: Project, mode: string, command: 'dev' | 'build', args = ''): string {
+  assertVitePluginReadsCloudflareConfig(project);
+  return `CLOUDFLARE_VITE_FORCE_BUILD_OUTPUT=true YARN ${getViteExecutable(project)} ${command} --mode ${shellEscapeArgument(mode)} ${args}`.trim();
+}
+
+/**
+ * A 1.x plugin serves the Worker of a wrangler config instead of `cloudflare.config.ts`, which
+ * wb prepares secrets and migrations from, and a 2.0 beta writes another Build Output version;
+ * cf refuses both before delegating, so wb does too.
+ */
+function assertVitePluginReadsCloudflareConfig(project: Project): void {
+  for (let dirPath = project.dirPath; ; dirPath = path.dirname(dirPath)) {
+    const packageJsonPath = path.join(dirPath, 'node_modules', VITE_PLUGIN_PACKAGE_NAME, 'package.json');
+    if (fs.existsSync(packageJsonPath)) {
+      const { version } = z.object({ version: z.string() }).parse(JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')));
+      // cf's own range, >=2.0.0-rc.0 <3: earlier 2.0 betas write Build Output v0, which wb cannot read.
+      if (!semver.satisfies(version, '>=2.0.0-rc.0 <3', { includePrerelease: true })) {
+        throw new Error(
+          `${VITE_PLUGIN_PACKAGE_NAME} ${version} cannot build cloudflare.config.ts for wb; install ^2.0.0-rc.0 in ${project.packageJsonPath}.`
+        );
+      }
+      return;
+    }
+    if (dirPath === path.dirname(dirPath)) return;
+  }
+}
+
+/** Vite+ (`vp`) when the package declares it, as cf chooses: such a package has no `vite` executable. */
+function getViteExecutable(project: Project): string {
+  // cf's rule exactly: optional and peer dependencies do not select vp.
+  const { dependencies, devDependencies } = project.packageJson;
+  return dependencies?.['vite-plus'] || devDependencies?.['vite-plus'] ? 'vp' : 'vite';
 }
 
 /**

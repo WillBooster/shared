@@ -34,9 +34,9 @@ Commands:
   wb concurrently <commands...>  Run commands concurrently
   wb deploy                      Deploy to the WB_ENV environment. A Cloudflare
                                  Workers app (cloudflare.config.ts): validate
-                                 secrets, build with `cf build --mode <WB_ENV>`,
-                                 apply remote D1 migrations, then deploy the
-                                 build and its secrets atomically. A
+                                 secrets, build for the mode <WB_ENV>, apply
+                                 remote D1 migrations, then deploy the build
+                                 and its secrets atomically. A
                                  Railway service (.railway/railway.ts): check
                                  the IaC plan, sync fnox variables, apply the
                                  plan, then railway up and wait until the
@@ -163,7 +163,7 @@ Options:
 
 ## Cloudflare Workers
 
-`wb` drives a Worker through the `cf` CLI and its `cloudflare.config.ts`, passing `WB_ENV` as `--mode` to every cf command. What a repository must provide for this (dependencies, `vite.config`, D1 migration settings, containers) is in [the expected repository rules](https://github.com/WillBooster/shared/blob/main/docs/expected-repository-rules.md).
+`wb` drives a Worker through the `cf` CLI and its `cloudflare.config.ts`, passing `WB_ENV` as `--mode` to every cf command. A Vite-bundled Worker is served and built by running Vite itself with that mode (the commands `cf dev` and `cf build` delegate to), since cf's framework detection stops on some dependency combinations. What a repository must provide for this (dependencies, `vite.config`, D1 migration settings, containers) is in [the expected repository rules](https://github.com/WillBooster/shared/blob/main/docs/expected-repository-rules.md).
 
 - The secrets the config declares with `bindings.secret()` are the only ones wb supplies: `wb start`/`wb test` write them to `.dev.vars.<mode>` and `wb deploy` uploads them, both with values from fnox or the environment; `wb deploy` also pushes `WB_VERSION` when it is set and the config has no `WB_VERSION` entry. Cloudflare keeps the secrets of the previous version that an upload does not name, so delete an obsolete one with `cf workers secrets delete <name> --mode <WB_ENV>` (a bare cf command evaluates the config without a mode). A declared secret without a value (an explicitly empty one counts) aborts the deploy.
 - Local state lives in `.cloudflare/state` for `development` and `.cloudflare/state-<mode>` otherwise; wb migrates and resets that directory and exports it to Vite commands as `WB_CLOUDFLARE_STATE_DIR`.

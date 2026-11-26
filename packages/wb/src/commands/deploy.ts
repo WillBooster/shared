@@ -13,7 +13,7 @@ import { z } from 'zod';
 import type { Project } from '../project.js';
 import { findSelfProjectOrExit } from '../project.js';
 import { buildDrizzleKitCommand, usesDrizzleKitForD1 } from '../scripts/drizzleScripts.js';
-import { usesViteBundler } from '../scripts/execution/cloudflareCommands.js';
+import { buildViteCommand, usesViteBundler } from '../scripts/execution/cloudflareCommands.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isCI } from '../utils/ci.js';
@@ -79,7 +79,7 @@ interface WorkerDeployContext {
 export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
   command: 'deploy',
   describe:
-    'Deploy to the WB_ENV environment. A Cloudflare Workers app (cloudflare.config.ts): validate secrets, build with `cf build --mode <WB_ENV>`, apply remote D1 migrations, then deploy the build and its secrets atomically. A Railway service (.railway/railway.ts): check the IaC plan, sync fnox variables, apply the plan, then railway up and wait until the created deployment succeeds; --dry-run only checks the plan of every environment.',
+    'Deploy to the WB_ENV environment. A Cloudflare Workers app (cloudflare.config.ts): validate secrets, build for the mode <WB_ENV>, apply remote D1 migrations, then deploy the build and its secrets atomically. A Railway service (.railway/railway.ts): check the IaC plan, sync fnox variables, apply the plan, then railway up and wait until the created deployment succeeds; --dry-run only checks the plan of every environment.',
   builder: (yargs) => yargs.options(builder) as unknown as Argv<DeployCommandOptions>,
   async handler(argv: DeployCommandArgv) {
     const project = findSelfProjectOrExit(argv);
@@ -306,7 +306,7 @@ async function assertWithinCloudflareLimits(
 
 async function buildWorker({ argv, project, envName, buildEnv }: WorkerDeployContext): Promise<void> {
   // Building before migrating keeps a build failure from leaving a migrated schema behind
-  // the old Worker. `cf build` runs the bundler directly, not the package's `build` script.
+  // the old Worker. The bundler runs directly, not through the package's `build` script.
   // gen-code keeps project.env: it may need a secret to fetch private inputs (e.g. prompt-study
   // clones a private repository), and it emits sources that the restricted build compiles.
   if (project.packageJson.scripts?.['gen-code']) {
@@ -314,9 +314,12 @@ async function buildWorker({ argv, project, envName, buildEnv }: WorkerDeployCon
     // mode even inside a shell whose mise environment is another one (e.g. test).
     await runWithSpawn('YARN run gen-code', project, argv, { env: { ...project.env, MISE_ENV: envName } });
   }
-  await runWithSpawn(buildCfCommand(envName, 'build'), project, argv, {
-    env: buildEnv,
-  });
+  await runWithSpawn(
+    usesViteBundler(project) ? buildViteCommand(project, envName, 'build') : buildCfCommand(envName, 'build'),
+    project,
+    argv,
+    { env: buildEnv }
+  );
 }
 
 /**
@@ -331,7 +334,7 @@ function assertBuildMatchesPreflight({ argv, project, resolvedConfig }: WorkerDe
   if (argv.dryRun) return;
   const builtConfig = readBuiltCloudflareConfig(project);
   if (!builtConfig) {
-    exitWithError('cf build produced no default Worker under .cloudflare/output/v1.');
+    exitWithError('The build produced no default Worker under .cloudflare/output/v1.');
   }
   if (describeDeployTarget(builtConfig) !== describeDeployTarget(resolvedConfig)) {
     exitWithError(
