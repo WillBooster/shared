@@ -57,7 +57,7 @@ export async function ensurePort(project: Project): Promise<number> {
     if (project.env.WB_SELECTED_PORT !== project.env.PORT) {
       // A forced mode's fnox profile overrides the exported PORT but not WB_SELECTED_PORT.
       throw new Error(
-        `PORT ${port} differs from WB_SELECTED_PORT ${project.env.WB_SELECTED_PORT} (e.g. the fnox profile defines PORT); wb does not stop a process on a port while WB_SELECTED_PORT is set. Remove PORT from the profile, or unset WB_SELECTED_PORT to let wb reclaim PORT.`
+        `PORT ${port} differs from WB_SELECTED_PORT ${project.env.WB_SELECTED_PORT} (e.g. the fnox profile defines PORT); wb does not stop a process on a port while WB_SELECTED_PORT is set.`
       );
     }
     if (!(await isPortAvailable(port))) {
