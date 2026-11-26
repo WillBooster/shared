@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import semver from 'semver';
 import { z } from 'zod';
 
 import type { Project } from '../../project.js';
@@ -99,7 +100,7 @@ function assertVitePluginReadsCloudflareConfig(project: Project): void {
     if (fs.existsSync(packageJsonPath)) {
       const { version } = z.object({ version: z.string() }).parse(JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')));
       // cf's own range, >=2.0.0-rc.0 <3: earlier 2.0 betas write Build Output v0, which wb cannot read.
-      if (!/^2\.\d+\.\d+(?:-rc\.\d+)?$/u.test(version)) {
+      if (!semver.satisfies(version, '>=2.0.0-rc.0 <3', { includePrerelease: true })) {
         throw new Error(
           `${VITE_PLUGIN_PACKAGE_NAME} ${version} cannot build cloudflare.config.ts for wb; install ^2.0.0-rc.0 in ${project.packageJsonPath}.`
         );
