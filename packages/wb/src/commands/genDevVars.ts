@@ -8,6 +8,7 @@ import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } fro
 
 import { findSelfProjectOrExit } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { getChosenLocalStateDir } from '../utils/cloudflare.js';
 import { resolveCloudflareMode, resolveLocalCloudflareConfig } from '../utils/cloudflareConfig.js';
 import { resolveDeclaredSecrets } from '../utils/workerSecrets.js';
 
@@ -47,7 +48,14 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     const content = lines.join('\n') + '\n';
     // Concurrent servers of one mode share the file, and a starting server must never read it
     // half-written, so an unchanged file stays untouched and a changed one is replaced atomically.
-    if (!fs.existsSync(outputPath) || fs.readFileSync(outputPath, 'utf8') !== content) {
+    const existingContent = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf8') : undefined;
+    if (existingContent !== content) {
+      // An isolated instance must not hand its values to another instance of the mode.
+      if (existingContent !== undefined && getChosenLocalStateDir(project)) {
+        throw new Error(
+          `${outputPath} holds other values than this instance's, and instances on a chosen WB_CLOUDFLARE_STATE_DIR share it: give an instance its own value with \`--var <name>:<value>\` after \`--\`, or regenerate the file with \`wb gen-dev-vars\` without WB_CLOUDFLARE_STATE_DIR.`
+        );
+      }
       writeFileAtomicSync(outputPath, content);
     }
     console.info(chalk.green(`Generated ${outputPath} with ${lines.length} declared secrets.`));
