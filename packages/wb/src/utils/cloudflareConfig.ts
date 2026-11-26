@@ -212,19 +212,23 @@ export function readBuiltCloudflareConfig(project: Pick<Project, 'dirPath'>): Re
 
 /**
  * The absolute assets directory that the `wrangler.config.ts` of a Wrangler-bundled Worker names
- * for the mode, or undefined when it names none.
+ * for the mode when it also names a build command, which may be what creates the directory, or
+ * undefined otherwise.
  */
-export function resolveWranglerAssetsDirectory(
+export function resolveWranglerBuildHookAssetsDirectory(
   project: Pick<Project, 'dirPath'>,
   mode: string,
   env: Record<string, string | undefined>
 ): string | undefined {
   const configPath = path.join(project.dirPath, WRANGLER_TOOLING_CONFIG_FILE_NAME);
   if (!fs.existsSync(configPath)) return;
-  const { assetsDirectory } = z
-    .looseObject({ assetsDirectory: z.string().optional() })
+  const { assetsDirectory, build } = z
+    .looseObject({
+      assetsDirectory: z.string().optional(),
+      build: z.looseObject({ command: z.string().optional() }).optional(),
+    })
     .parse(evaluateConfig(project.dirPath, configPath, mode, env, 'wrangler'));
-  return assetsDirectory === undefined ? undefined : path.resolve(project.dirPath, assetsDirectory);
+  return assetsDirectory === undefined || !build?.command ? undefined : path.resolve(project.dirPath, assetsDirectory);
 }
 
 function loadCloudflareConfig(

@@ -25,7 +25,7 @@ import {
   formatD1DatabaseNames,
   readBuiltCloudflareConfig,
   resolveDeployCloudflareConfig,
-  resolveWranglerAssetsDirectory,
+  resolveWranglerBuildHookAssetsDirectory,
   selectD1Migrations,
 } from '../utils/cloudflareConfig.js';
 import type { ContainersRollout } from '../utils/containerImages.js';
@@ -373,7 +373,7 @@ async function buildWorker(
 /**
  * `cf build` (unlike `cf dev`) checks that the assets directory exists before it runs the build
  * command of `wrangler.config.ts`, which may be the one creating it, so the command still runs
- * exactly once.
+ * exactly once. Without such a command the check stays: the directory must come from elsewhere.
  */
 function ensureWranglerAssetsDirectory(
   project: Project,
@@ -381,7 +381,7 @@ function ensureWranglerAssetsDirectory(
   buildEnv: Record<string, string | undefined>
 ): void {
   try {
-    const assetsDirPath = resolveWranglerAssetsDirectory(project, envName, buildEnv);
+    const assetsDirPath = resolveWranglerBuildHookAssetsDirectory(project, envName, buildEnv);
     if (assetsDirPath) fs.mkdirSync(assetsDirPath, { recursive: true });
   } catch (error) {
     exitWithError(getErrorMessage(error));
