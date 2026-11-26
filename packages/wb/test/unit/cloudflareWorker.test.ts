@@ -82,6 +82,9 @@ it("serves concurrent test instances on the state directories their callers chos
       }))
     );
     expect(await fs.exists(sentinelPath)).toBe(true);
+    for (const { stateDirPath } of instances) {
+      expect(await fs.exists(path.join(stateDirPath, 'v3/d1/miniflare-D1DatabaseObject'))).toBe(true);
+    }
   } finally {
     for (const server of servers) stopWb(server);
   }
