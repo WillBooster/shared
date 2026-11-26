@@ -89,19 +89,14 @@ export function updateBunReleaseAgeExcludes(rootDirPath: string): void {
       `Could not update the release-age excludes in ${filePath}: write minimumReleaseAge and minimumReleaseAgeExcludes as unquoted assignments under [install], the latter as an array without comments, and rerun.`
     );
   }
-  // Staged: this run changes nothing else, so an interrupted write must not cost the repository
-  // its working bunfig.toml.
-  const stagedFilePath = `${filePath}.${process.pid}.wbfy-tmp`;
-  // The rename would replace a read-only file and its permissions.
-  fs.accessSync(filePath, fs.constants.W_OK);
+  // Written in place, not renamed over: a replacement file would drop the original's mode, ACL,
+  // and links. This run changes nothing else, so an interrupted write must not cost the repository
+  // its working bunfig.toml either.
   try {
-    // Created private, then given the target's mode: a creation mode is narrowed by the umask,
-    // and the default one would expose a restricted file's content until the chmod.
-    fs.writeFileSync(stagedFilePath, newContent, { mode: 0o600 });
-    fs.chmodSync(stagedFilePath, fs.statSync(filePath).mode);
-    fs.renameSync(stagedFilePath, filePath);
-  } finally {
-    fs.rmSync(stagedFilePath, { force: true });
+    fs.writeFileSync(filePath, newContent);
+  } catch (error) {
+    fs.writeFileSync(filePath, content);
+    throw error;
   }
   console.info(`Updated the release-age excludes in ${filePath}`);
 }
