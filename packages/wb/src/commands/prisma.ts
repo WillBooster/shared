@@ -26,7 +26,11 @@ import { runWithSpawn } from '../scripts/run.js';
 import { isTursoDatabaseUrl, restoreTursoDatabase } from '../scripts/tursoRestore.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isDockerEnabled } from '../utils/ci.js';
-import { getChosenLocalStateDir, wrapWithLocalD1DatabaseUrl } from '../utils/cloudflare.js';
+import {
+  assertSingleProjectForChosenStateDir,
+  getChosenLocalStateDir,
+  wrapWithLocalD1DatabaseUrl,
+} from '../utils/cloudflare.js';
 import { findCloudflareConfigPath, resolveCloudflareMode } from '../utils/cloudflareConfig.js';
 import { collectPlaintextFnoxValues } from '../utils/fnoxToml.js';
 import { buildShellCommand } from '../utils/shell.js';
@@ -592,6 +596,7 @@ async function findDatabaseProjects(argv: EnvReaderOptions, includesCfNativeD1: 
     console.error(chalk.red('No supported database ORM project found.'));
     process.exit(1);
   }
+  assertSingleProjectForChosenStateDir(filtered.map(({ project }) => project));
   return filtered;
 }
 

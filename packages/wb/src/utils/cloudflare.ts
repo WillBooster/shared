@@ -154,3 +154,12 @@ export function getChosenLocalStateDir(project: Pick<Project, 'env'>): string | 
   }
   return stateDir;
 }
+
+/** One chosen state directory holds the local state of one package, which a reset removes as a whole. */
+export function assertSingleProjectForChosenStateDir(projects: Pick<Project, 'env' | 'name'>[]): void {
+  if (projects.length > 1 && projects.some((project) => getChosenLocalStateDir(project))) {
+    throw new Error(
+      `WB_CLOUDFLARE_STATE_DIR serves one package; run the command in one of ${projects.map(({ name }) => name).join(', ')}.`
+    );
+  }
+}

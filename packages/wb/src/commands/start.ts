@@ -9,6 +9,8 @@ import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { dependsOnHttpServerPackage, selectFrameworkScripts } from '../scripts/execution/selectScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { assertSingleProjectForChosenStateDir } from '../utils/cloudflare.js';
+import { findCloudflareConfigPath } from '../utils/cloudflareConfig.js';
 
 const builder = {
   ...scriptOptionsBuilder,
@@ -36,6 +38,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
       process.exit(1);
     }
 
+    assertSingleProjectForChosenStateDir(projects.descendants.filter((project) => findCloudflareConfigPath(project)));
     for (const project of projects.descendants) {
       const deps = project.packageJson.dependencies ?? {};
       const devDeps = project.packageJson.devDependencies ?? {};
