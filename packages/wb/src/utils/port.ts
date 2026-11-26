@@ -3,7 +3,7 @@ import { createServer } from 'node:net';
 import type { Project } from '../project.js';
 import { applyIsolatedInstancePort, getChosenLocalStateDir } from './cloudflare.js';
 import { publishLocalServerUrl } from './localServerUrl.js';
-import { cancelPortProcessKillOnExit, killPortProcessImmediatelyAndOnExit, killPortProcessOnExit } from './process.js';
+import { killPortProcessImmediatelyAndOnExit } from './process.js';
 
 // The auto-selected range must stay below every default ephemeral-port range (32768+ on Linux,
 // 49152+ on macOS) so OS-assigned outgoing connections rarely occupy a preferred port, and above
@@ -33,7 +33,9 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
  * selection from WB_SELECTED_PORT in the environment it inherits: the search found nothing
  * listening there, so a process holding it later did not necessarily come from wb (a previous
  * phase's server is stopped by its own phase, and a container by its name), and such a call fails
- * instead. Only the exit-time cleanup that every served port gets is registered for it.
+ * instead. Nor does a selected port get the port-wide exit cleanup a configured one does: wb's
+ * own servers are its descendants, which its shutdown tree-kills, and a container it starts is
+ * stopped by name on exit (see dockerScripts.start).
  *
  * An instance on a caller-chosen state directory is resolved by claimIsolatedInstancePort instead
  * and is never published: its caller manages and addresses it, and publishing it would replace the
@@ -47,11 +49,9 @@ export async function ensurePort(project: Project): Promise<number> {
     port = await findFreePort(computePreferredPort(project));
     project.env.PORT = String(port);
     project.env.WB_SELECTED_PORT = project.env.PORT;
-    killPortProcessOnExit(port, project);
   } else if (project.env.WB_SELECTED_PORT === project.env.PORT) {
     port = Number(project.env.PORT);
     if (!(await isPortAvailable(port))) {
-      cancelPortProcessKillOnExit(port);
       throw new Error(
         `PORT ${port}, which wb selected, is now in use by another process; wb does not stop it. Run the command again to select another port.`
       );
