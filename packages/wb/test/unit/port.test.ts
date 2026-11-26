@@ -109,7 +109,23 @@ describe('ensurePort', () => {
     const port = await ensurePort(project);
     const server = await occupyPort(port);
     try {
-      await expect(ensurePort(project)).rejects.toThrow(`PORT ${port}, which wb selected, is now in use`);
+      await expect(ensurePort(project)).rejects.toThrow(
+        `PORT ${port}, selected as free (WB_SELECTED_PORT), is now in use`
+      );
+      expect(processUtils.killPortProcessImmediatelyAndOnExit).not.toHaveBeenCalledWith(port, project);
+    } finally {
+      server?.close();
+    }
+  });
+
+  it('refuses, without reclaiming it, a port the caller selected and another process took', async () => {
+    const port = await ensurePort(createFakeProject());
+    const project = createFakeProject({ PORT: String(port), WB_SELECTED_PORT: String(port) });
+    const server = await occupyPort(port);
+    try {
+      await expect(ensurePort(project)).rejects.toThrow(
+        `PORT ${port}, selected as free (WB_SELECTED_PORT), is now in use`
+      );
       expect(processUtils.killPortProcessImmediatelyAndOnExit).not.toHaveBeenCalledWith(port, project);
     } finally {
       server?.close();

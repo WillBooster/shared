@@ -35,7 +35,9 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
  * phase's server is stopped by its own phase, and a container by its name), and such a call fails
  * instead. Nor does a selected port get the port-wide exit cleanup a configured one does: wb's
  * own servers are its descendants, which its shutdown tree-kills, and a container it starts is
- * stopped by name on exit (see dockerScripts.start).
+ * stopped by name on exit (see dockerScripts.start). A caller that selected a free port itself
+ * gets the same treatment by exporting it as both PORT and WB_SELECTED_PORT, a documented contract
+ * (docs/expected-repository-rules.md) that lets it run servers beside others it did not start.
  *
  * An instance on a caller-chosen state directory is resolved by claimIsolatedInstancePort instead
  * and is never published: its caller manages and addresses it, and publishing it would replace the
@@ -53,7 +55,7 @@ export async function ensurePort(project: Project): Promise<number> {
     port = Number(project.env.PORT);
     if (!(await isPortAvailable(port))) {
       throw new Error(
-        `PORT ${port}, which wb selected, is now in use by another process; wb does not stop it. Run the command again to select another port.`
+        `PORT ${port}, selected as free (WB_SELECTED_PORT), is now in use by another process; wb does not stop it. Run the command again so that a free port is selected.`
       );
     }
   } else {
