@@ -146,8 +146,9 @@ async function deployBuiltWorker(
   secrets: Record<string, string>
 ): Promise<void> {
   await runGenCode(context);
-  const { rollout, env: imageEnv } = await planContainerImagesOrExit(context);
-  await buildWorker(context, imageEnv);
+  const generatedConfig = resolveGeneratedConfigOrExit(context);
+  const { rollout, env: imageEnv } = await planContainerImagesOrExit(context, generatedConfig);
+  await buildWorker(context, generatedConfig, imageEnv);
   assertBuildMatchesPreflight(context);
   await validateWorkerBuild(context, rollout);
   await applyD1Migrations(context, d1Migrations);
@@ -164,13 +165,22 @@ function createBuildEnv(project: Project, envName: string): Record<string, strin
   return buildEnv;
 }
 
-async function planContainerImagesOrExit(
-  context: WorkerDeployContext
-): Promise<Awaited<ReturnType<typeof planContainerImages>>> {
-  const { project, envName, buildEnv, resolvedConfig } = context;
-  // gen-code may have changed what the config reads, and images are published for this Worker.
+/** gen-code may have changed what the config reads, and the build and its images are for this Worker. */
+function resolveGeneratedConfigOrExit({
+  project,
+  envName,
+  buildEnv,
+  resolvedConfig,
+}: WorkerDeployContext): ResolvedCloudflareConfig {
   const generatedConfig = resolveCloudflareConfigOrExit(project, envName, buildEnv);
   assertSameDeployTarget(generatedConfig, resolvedConfig, 'cloudflare.config.ts after gen-code describes');
+  return generatedConfig;
+}
+
+async function planContainerImagesOrExit(
+  context: WorkerDeployContext,
+  generatedConfig: ResolvedCloudflareConfig
+): Promise<Awaited<ReturnType<typeof planContainerImages>>> {
   try {
     return await planContainerImages(
       {
@@ -358,12 +368,13 @@ async function runGenCode({ argv, project, envName }: WorkerDeployContext): Prom
 }
 
 async function buildWorker(
-  { argv, project, envName, buildEnv, resolvedConfig }: WorkerDeployContext,
+  { argv, project, envName, buildEnv }: WorkerDeployContext,
+  generatedConfig: ResolvedCloudflareConfig,
   imageEnv: Record<string, string>
 ): Promise<void> {
   const usesVite = usesViteBundler(project);
   const env = { ...buildEnv, ...imageEnv };
-  if (!usesVite && resolvedConfig.hasEntrypoint && !argv.dryRun) {
+  if (!usesVite && generatedConfig.hasEntrypoint && !argv.dryRun) {
     ensureWranglerAssetsDirectory(project, envName, env);
   }
   // Building before migrating keeps a build failure from leaving a migrated schema behind
