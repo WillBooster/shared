@@ -176,7 +176,19 @@ Options:
   ```
 
 - `wb gen-code` generates the Worker's types into `.cloudflare/types` and removes a `worker-configuration.d.ts` that wrangler generated in the package before its conversion.
-- `wb deploy --containers-rollout=<none|gradual|immediate>` forwards the rollout strategy to `cf deploy`.
+- A container image built from a Dockerfile is declared so that `wb deploy` can hand the build a published image instead (wb stops before the build when an image ignores its variable, so the build never runs Docker):
+
+  ```ts
+  const appImage = process.env.WB_CONTAINER_IMAGE_RUNNER_APP; // `runner` + `-` + `app`, upper-cased, `_` for other characters
+  const runner = defineContainer({
+    name: 'runner',
+    schedulingPolicy: 'durable-object',
+    images: { app: appImage ? { reference: appImage } : { dockerfile: './runner/Dockerfile' } },
+  });
+  // A Container with one image: `image: process.env.WB_CONTAINER_IMAGE_<NAME> ? { reference: ... } : { dockerfile: ... }`, <NAME> from its `name`.
+  ```
+
+  `wb deploy --containers-rollout=gradual|immediate` sets each variable to the digest-pinned reference of the image built from the build context's committed Git tree: it reuses the image an earlier deploy published to Cloudflare's managed registry for the same tree, Worker name, Dockerfile path, `buildVars`, and platform, and otherwise builds it from `git archive` with Docker and pushes it with `cf containers push`; uncommitted changes to tracked files in a build context stop the deploy before any build. `--containers-rollout=none`, and an omitted flag when the config has such an image, set placeholders instead and deploy with `--containers-rollout=none`, keeping the deployed Containers without Docker or registry access. `--dry-run` prints the image tag each context would use.
 
 ## Disk cleanup
 

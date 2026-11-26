@@ -52,6 +52,7 @@ describe('resolving cloudflare.config.ts', () => {
       secretNames: ['AUTH_SECRET'],
       envKeys: ['WB_ENV', 'LIMITS', 'BUILD_MARKER', 'AUTH_SECRET', 'DB', 'CACHE'],
       d1Databases: [{ binding: 'DB', name: 'my-app-production', id: 'prod-id' }],
+      containerImages: [],
     });
     // The deploy preflight must see the config under the environment its build gets.
     const staging = resolveDeployCloudflareConfig({ dirPath }, 'staging', {

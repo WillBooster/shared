@@ -37,13 +37,42 @@ const d1MigrationSettingsSchema = z.object({
   pattern: z.string().optional(),
   table: z.string().optional(),
 });
+const containerImageSchema = z.union([
+  z.object({
+    dockerfile: z.string(),
+    buildContext: z.string().optional(),
+    buildVars: z.record(z.string(), z.string()).optional(),
+  }),
+  z.object({ reference: z.string() }),
+]);
 const parsedConfigSchema = z.looseObject({
   accountId: z.string().optional(),
   worker: z.looseObject({
     name: z.string(),
     env: z.record(z.string(), z.unknown()).optional(),
   }),
+  containers: z
+    .array(
+      z.looseObject({
+        name: z.string(),
+        image: containerImageSchema.optional(),
+        images: z.record(z.string(), containerImageSchema).optional(),
+      })
+    )
+    .optional(),
 });
+
+/** A Container image as `cloudflare.config.ts` declares it, with paths relative to the config's directory. */
+export type ContainerImageSource = z.infer<typeof containerImageSchema>;
+
+export interface ContainerImage {
+  /**
+   * The repository name cf gives the image: the Container's name, or `<Container name>-<image name>`
+   * for a named image of a Durable Object-managed Container.
+   */
+  name: string;
+  source: ContainerImageSource;
+}
 
 export interface CloudflareD1Database {
   binding: string;
@@ -82,6 +111,7 @@ export interface ResolvedCloudflareConfig {
   /** Every key of `worker.env`, whatever its kind. */
   envKeys: string[];
   d1Databases: CloudflareD1Database[];
+  containerImages: ContainerImage[];
 }
 
 // Keyed on the project OBJECT (not its directory path): the same shared Project instance flows
@@ -206,6 +236,13 @@ function toResolvedConfig(rawConfig: unknown): ResolvedCloudflareConfig {
     secretNames: [],
     envKeys: Object.keys(config.worker.env ?? {}),
     d1Databases: [],
+    containerImages: (config.containers ?? []).flatMap((container) => [
+      ...(container.image ? [{ name: container.name, source: container.image }] : []),
+      ...Object.entries(container.images ?? {}).map(([imageName, source]) => ({
+        name: `${container.name}-${imageName}`,
+        source,
+      })),
+    ]),
   };
   for (const [key, value] of Object.entries(config.worker.env ?? {})) {
     const binding = z.looseObject({ type: z.string() }).parse(value);

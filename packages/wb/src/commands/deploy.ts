@@ -27,6 +27,8 @@ import {
   resolveDeployCloudflareConfig,
   selectD1Migrations,
 } from '../utils/cloudflareConfig.js';
+import type { ContainersRollout } from '../utils/containerImages.js';
+import { CONTAINER_IMAGE_ENV_PREFIX, resolveContainerImageEnv } from '../utils/containerImages.js';
 import { exitWithError } from '../utils/exit.js';
 import { createSecretFreeBuildEnv } from '../utils/secretFreeEnv.js';
 import { resolveDeclaredSecrets } from '../utils/workerSecrets.js';
@@ -53,7 +55,8 @@ const builder = {
   'containers-rollout': {
     type: 'string',
     choices: ['none', 'gradual', 'immediate'],
-    description: 'Select the Cloudflare container rollout strategy (forwarded to `cf deploy`).',
+    description:
+      'Roll out containers: gradual/immediate deploy images built from committed contexts (reusing published ones); none (the default) keeps the deployed containers.',
   },
 } as const;
 
@@ -74,6 +77,8 @@ interface WorkerDeployContext {
    */
   authEnv: Readonly<Record<string, string | undefined>>;
   accountId: string | undefined;
+  /** The strategy passed to `cf deploy`: `none` when the flag is omitted and the config builds an image from a Dockerfile. */
+  containersRollout: ContainersRollout | undefined;
 }
 
 export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
@@ -106,11 +111,21 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     prepareLocalBinPath(project);
     // The preflight must see the config the build will produce, so both evaluate it under the
     // same environment.
-    const buildEnv = usesViteBundler(project) ? createViteBuildEnv(project, envName) : { ...project.env };
+    const buildEnv = createBuildEnv(project, envName);
     const resolvedConfig = resolveCloudflareConfigOrExit(project, envName, buildEnv);
     const accountId = resolvedConfig.accountId ?? project.env.CLOUDFLARE_ACCOUNT_ID;
     const authEnv = { ...project.env, ...(accountId && { CLOUDFLARE_ACCOUNT_ID: accountId }) };
-    const context: WorkerDeployContext = { argv, project, envName, resolvedConfig, buildEnv, authEnv, accountId };
+    const containersRollout = selectContainersRollout(argv, resolvedConfig);
+    const context: WorkerDeployContext = {
+      argv,
+      project,
+      envName,
+      resolvedConfig,
+      buildEnv,
+      authEnv,
+      accountId,
+      containersRollout,
+    };
     const d1Migrations = selectD1MigrationsOrExit(context);
     // Dry runs execute nothing authenticated, so they skip the credential preflight entirely.
     if (!argv.dryRun) assertDeployCredentials(project, d1Migrations.drizzleD1Database);
@@ -139,12 +154,40 @@ async function deployBuiltWorker(
   d1Migrations: D1Migrations,
   secrets: Record<string, string>
 ): Promise<void> {
-  await buildWorker(context);
+  let imageEnv: Record<string, string>;
+  try {
+    imageEnv = await resolveContainerImageEnv({
+      ...context,
+      rollout: context.containersRollout,
+      dryRun: context.argv.dryRun,
+    });
+  } catch (error) {
+    exitWithError(getErrorMessage(error));
+  }
+  await buildWorker(context, imageEnv);
   assertBuildMatchesPreflight(context);
   await validateWorkerBuild(context);
   await applyD1Migrations(context, d1Migrations);
   if (!(await deployCodeAndSecrets(context, secrets))) return;
   await runPostDeployHook(context);
+}
+
+function createBuildEnv(project: Project, envName: string): Record<string, string | undefined> {
+  const buildEnv = usesViteBundler(project) ? createViteBuildEnv(project, envName) : { ...project.env };
+  // Only wb sets the image references, so that an exported one never replaces a Dockerfile image.
+  for (const key of Object.keys(buildEnv)) {
+    if (key.startsWith(CONTAINER_IMAGE_ENV_PREFIX)) delete buildEnv[key];
+  }
+  return buildEnv;
+}
+
+/** Without the flag, a Dockerfile image gets no image to roll out, so the deploy keeps the deployed Containers. */
+function selectContainersRollout(
+  argv: DeployCommandArgv,
+  resolvedConfig: ResolvedCloudflareConfig
+): ContainersRollout | undefined {
+  if (argv.containersRollout) return argv.containersRollout as ContainersRollout;
+  return resolvedConfig.containerImages.some(({ source }) => 'dockerfile' in source) ? 'none' : undefined;
 }
 
 function exportCloudflareEnvFiles(project: Project): void {
@@ -304,7 +347,10 @@ async function assertWithinCloudflareLimits(
   }
 }
 
-async function buildWorker({ argv, project, envName, buildEnv }: WorkerDeployContext): Promise<void> {
+async function buildWorker(
+  { argv, project, envName, buildEnv }: WorkerDeployContext,
+  imageEnv: Record<string, string>
+): Promise<void> {
   // Building before migrating keeps a build failure from leaving a migrated schema behind
   // the old Worker. The bundler runs directly, not through the package's `build` script.
   // gen-code keeps project.env: it may need a secret to fetch private inputs (e.g. prompt-study
@@ -318,7 +364,7 @@ async function buildWorker({ argv, project, envName, buildEnv }: WorkerDeployCon
     usesViteBundler(project) ? buildViteCommand(project, envName, 'build') : buildCfCommand(envName, 'build'),
     project,
     argv,
-    { env: buildEnv }
+    { env: { ...buildEnv, ...imageEnv } }
   );
 }
 
@@ -354,17 +400,23 @@ function describeDeployTarget(config: ResolvedCloudflareConfig): string {
   ]);
 }
 
-async function validateWorkerBuild({ argv, project, envName, authEnv }: WorkerDeployContext): Promise<void> {
+async function validateWorkerBuild({
+  argv,
+  project,
+  envName,
+  authEnv,
+  containersRollout,
+}: WorkerDeployContext): Promise<void> {
   await runWithSpawn(
-    buildCfCommand(envName, 'deploy', `--prebuilt --dry-run${buildRolloutOption(argv)}`),
+    buildCfCommand(
+      envName,
+      'deploy',
+      `--prebuilt --dry-run${containersRollout ? ` --containers-rollout=${containersRollout}` : ''}`
+    ),
     project,
     argv,
     { env: authEnv }
   );
-}
-
-function buildRolloutOption(argv: DeployCommandArgv): string {
-  return argv.containersRollout ? ` --containers-rollout=${argv.containersRollout}` : '';
 }
 
 /**
@@ -435,7 +487,7 @@ function getD1DatabaseIdOrExit(database: CloudflareD1Database): string {
 
 /** Resolves to false when a shutdown signal interrupted the deploy. */
 async function deployCodeAndSecrets(
-  { argv, project, envName, authEnv }: WorkerDeployContext,
+  { argv, project, envName, authEnv, containersRollout }: WorkerDeployContext,
   secrets: Record<string, string>
 ): Promise<boolean> {
   // Deploy the validated build and its secrets atomically (no post-deploy secret push that
@@ -448,7 +500,7 @@ async function deployCodeAndSecrets(
     '--prebuilt',
     '--mode',
     envName,
-    ...(argv.containersRollout ? [`--containers-rollout=${argv.containersRollout}`] : []),
+    ...(containersRollout ? [`--containers-rollout=${containersRollout}`] : []),
     '--secrets-file',
   ];
   console.info(chalk.cyan(`Running: cf ${deployArgs.join(' ')} <temporary secrets file>`));
