@@ -157,6 +157,20 @@ export function getChosenLocalStateDir(project: Pick<Project, 'env'>): string | 
   return path.resolve(stateDir);
 }
 
+/**
+ * Gives an isolated instance (one on a chosen state directory) the PORT its caller exported and
+ * the origin derived from it, whatever the fnox profile pins or the caller inherited. Every wb
+ * process of the instance, including nested ones such as `wb concurrently`, reloads its
+ * environment, which off CI lets a forced mode's fnox profile override exported values, so each
+ * one applies this to the environment it loads.
+ */
+export function applyIsolatedInstancePort(env: Record<string, string | undefined>): void {
+  const port = process.env.PORT;
+  if (!env.WB_CLOUDFLARE_STATE_DIR || !port) return;
+  env.PORT = port;
+  env.NEXT_PUBLIC_BASE_URL = `http://localhost:${port}`;
+}
+
 /** A `wb db` reset of a chosen state directory removes its whole D1 state, so it serves one package. */
 export function assertSingleProjectForChosenStateDir(projects: Pick<Project, 'env' | 'name'>[]): void {
   if (projects.length > 1 && projects.some((project) => getChosenLocalStateDir(project))) {

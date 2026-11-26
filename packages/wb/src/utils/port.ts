@@ -1,7 +1,7 @@
 import { createServer } from 'node:net';
 
 import type { Project } from '../project.js';
-import { getChosenLocalStateDir } from './cloudflare.js';
+import { applyIsolatedInstancePort, getChosenLocalStateDir } from './cloudflare.js';
 import { publishLocalServerUrl } from './localServerUrl.js';
 import { killPortProcessImmediatelyAndOnExit } from './process.js';
 
@@ -46,10 +46,8 @@ export async function ensurePort(project: Project): Promise<number> {
 }
 
 /**
- * An isolated instance serves on the PORT its caller exported, with NEXT_PUBLIC_BASE_URL derived
- * from it, and never kills a process to get the port: it runs beside servers it did not start
- * (e.g. the caller's primary test server), so another value or another listener would make it
- * serve the wrong origin or terminate an unrelated process.
+ * An isolated instance never kills a process to get its port: it runs beside servers it did not
+ * start (e.g. the caller's primary test server).
  */
 async function claimIsolatedInstancePort(project: Project): Promise<number> {
   // Not project.env: off CI, a forced mode's fnox profile overrides the exported PORT there.
@@ -63,8 +61,7 @@ async function claimIsolatedInstancePort(project: Project): Promise<number> {
       `PORT ${port} is in use. wb does not stop another process for an instance on WB_CLOUDFLARE_STATE_DIR; export a free PORT.`
     );
   }
-  project.env.PORT = String(port);
-  project.env.NEXT_PUBLIC_BASE_URL = `http://localhost:${port}`;
+  applyIsolatedInstancePort(project.env);
   return port;
 }
 
