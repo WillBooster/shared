@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { writeFileAtomicSync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import { parse as parseDotenv } from 'dotenv';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
@@ -43,8 +44,12 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
       return;
     }
 
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    fs.writeFileSync(outputPath, lines.join('\n') + '\n');
+    const content = lines.join('\n') + '\n';
+    // Concurrent servers of one mode share the file, and a starting server must never read it
+    // half-written, so an unchanged file stays untouched and a changed one is replaced atomically.
+    if (!fs.existsSync(outputPath) || fs.readFileSync(outputPath, 'utf8') !== content) {
+      writeFileAtomicSync(outputPath, content);
+    }
     console.info(chalk.green(`Generated ${outputPath} with ${lines.length} declared secrets.`));
   },
 };

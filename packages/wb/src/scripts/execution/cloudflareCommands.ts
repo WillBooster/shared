@@ -8,7 +8,6 @@ import type { Project } from '../../project.js';
 import {
   buildCfCommand,
   buildGenDevVarsCommand,
-  buildLocalD1MigrationsApplyCommands,
   getAbsoluteLocalStateDir,
   getLocalStateDir,
 } from '../../utils/cloudflare.js';
@@ -16,7 +15,7 @@ import { resolveCloudflareMode } from '../../utils/cloudflareConfig.js';
 import { getEnsuredPort } from '../../utils/port.js';
 import { buildShellEnvironmentAssignment, shellEscapeArgument } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
-import { usesDrizzleKitForD1 } from '../drizzleScripts.js';
+import { buildLocalD1MigrationCommands } from '../localD1Scripts.js';
 
 const VITE_PLUGIN_PACKAGE_NAME = '@cloudflare/vite-plugin';
 
@@ -47,12 +46,11 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
   const usesVite = usesViteBundler(project);
   const serverArgs = usesVite
     ? `--port ${port}`
-    : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(mode)}"`;
+    : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(project, mode)}"`;
   return [
     // A locally served Worker reads the values of its declared secrets only from this file.
     buildGenDevVarsCommand(argv),
-    // The local D1 starts empty and no dev server applies migrations itself.
-    ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
+    ...buildLocalD1MigrationCommands(project, mode),
     usesVite
       ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(project, mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
       : buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim()),
@@ -73,7 +71,7 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
     ...(project.packageJson.scripts?.['gen-code'] ? ['YARN run gen-code'] : []),
     `${stateDirPrefix}${buildViteCommand(project, mode, 'build')}`,
     buildGenDevVarsCommand(argv),
-    ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
+    ...buildLocalD1MigrationCommands(project, mode),
     `${stateDirPrefix}YARN ${getViteExecutable(project)} preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
 }

@@ -3,11 +3,9 @@ import path from 'node:path';
 import type { Project } from '../project.js';
 import type { ScriptArgv } from '../scripts/builder.js';
 import { buildEnvReaderOptionArgs } from '../sharedOptionsBuilder.js';
-import type { CloudflareD1Database, D1MigrationSettings } from './cloudflareConfig.js';
-import { resolveLocalCloudflareConfig, selectD1Migrations } from './cloudflareConfig.js';
+import type { CfNativeD1Migration, CloudflareD1Database, D1MigrationSettings } from './cloudflareConfig.js';
+import { resolveLocalCloudflareConfig } from './cloudflareConfig.js';
 import { buildShellCommand, shellEscapeArgument } from './shell.js';
-
-type CloudflareProject = Pick<Project, 'dirPath' | 'env' | 'packageJson'>;
 
 /**
  * Build a command generating the mode's `.dev.vars.<mode>` file (via `wb gen-dev-vars`) so that a
@@ -29,23 +27,17 @@ export function buildCfCommand(mode: string, command: string, args = ''): string
 }
 
 /**
- * Build commands applying cf-native D1 migrations to every local D1 binding.
+ * Build commands applying the given cf-native D1 migrations to the local state directory.
  * CI=true suppresses cf's interactive confirmation prompt.
  */
 export function buildLocalD1MigrationsApplyCommands(
-  project: CloudflareProject,
+  project: Pick<Project, 'dirPath' | 'env'>,
   mode: string,
-  drizzleKitManagesD1: boolean
+  cfNativeD1Migrations: CfNativeD1Migration[]
 ): string[] {
-  const { cfNativeD1Migrations, errorMessage } = selectD1Migrations(
-    project,
-    resolveLocalCloudflareConfig(project, mode)?.d1Databases ?? [],
-    drizzleKitManagesD1
-  );
-  if (errorMessage) throw new Error(errorMessage);
   return cfNativeD1Migrations.map(
     ({ database, settings }) =>
-      `CI=true ${buildCfCommand(mode, 'd1 migrations apply', `${getD1DatabaseId(database)} --local --persist-to "${getLocalStateDir(mode)}" ${buildD1MigrationOptions(settings)}`)}`
+      `CI=true ${buildCfCommand(mode, 'd1 migrations apply', `${getD1DatabaseId(database)} --local --persist-to "${getLocalStateDir(project, mode)}" ${buildD1MigrationOptions(settings)}`)}`
   );
 }
 
@@ -77,7 +69,7 @@ export function wrapWithLocalD1DatabaseUrl(
   // Projects with multiple D1 databases are not supported: the hash-named files cannot be
   // distinguished cheaply (materialization does not even update the target file's mtime).
   const exportCommand = `export DATABASE_URL="file:$(ls "${getAbsoluteLocalStateDir(project, mode)}"/v3/d1/miniflare-D1DatabaseObject/*.sqlite | grep -v metadata | head -1)"`;
-  return `${buildMaterializeLocalD1Command(mode, database)} && ${exportCommand} && ${script}`;
+  return `${buildMaterializeLocalD1Command(project, mode, database)} && ${exportCommand} && ${script}`;
 }
 
 /** The first D1 binding of the mode. */
@@ -93,8 +85,12 @@ export function findLocalD1Database(
  * A no-op query forces miniflare to create the SQLite file if it doesn't exist yet.
  * Only stdout is suppressed; cf reports errors on stderr, which must stay visible.
  */
-export function buildMaterializeLocalD1Command(mode: string, database: CloudflareD1Database): string {
-  return `${buildCfCommand(mode, 'd1 raw', `${getD1DatabaseId(database)} --local --persist-to "${getLocalStateDir(mode)}" --sql "SELECT 1"`)} > /dev/null`;
+export function buildMaterializeLocalD1Command(
+  project: Pick<Project, 'env'>,
+  mode: string,
+  database: CloudflareD1Database
+): string {
+  return `${buildCfCommand(mode, 'd1 raw', `${getD1DatabaseId(database)} --local --persist-to "${getLocalStateDir(project, mode)}" --sql "SELECT 1"`)} > /dev/null`;
 }
 
 /**
@@ -119,17 +115,33 @@ const CF_D1_DATABASE_ID_PATTERN =
   /^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[0-9a-f]{32})$/iu;
 
 /**
- * Get the local miniflare state directory of the mode.
+ * Get the local miniflare state directory: the absolute `WB_CLOUDFLARE_STATE_DIR` when the caller
+ * exports one (an isolated instance, which wb never wipes), else the mode's own directory.
  * Development follows cf's default directory so that plain `cf dev` and `cf ... --local`
  * (without a persist-path override) share the same data as wb-managed commands.
  * Other modes (e.g. test) get their own directory so that they can be reset
  * without destroying development state.
  */
-export function getLocalStateDir(mode: string): string {
+export function getLocalStateDir(project: Pick<Project, 'env'>, mode: string): string {
+  const chosenStateDir = getChosenLocalStateDir(project);
+  if (chosenStateDir) return chosenStateDir;
   return mode === 'development' ? '.cloudflare/state' : `.cloudflare/state-${mode}`;
 }
 
 /** Absolute, because a consumer (a wrapped script, Vite) may run from another directory. */
-export function getAbsoluteLocalStateDir(project: Pick<Project, 'dirPath'>, mode: string): string {
-  return path.resolve(project.dirPath, getLocalStateDir(mode));
+export function getAbsoluteLocalStateDir(project: Pick<Project, 'dirPath' | 'env'>, mode: string): string {
+  return path.resolve(project.dirPath, getLocalStateDir(project, mode));
+}
+
+/**
+ * The state directory the caller chose by exporting `WB_CLOUDFLARE_STATE_DIR`, or undefined.
+ * It must be absolute: wb and the commands it runs resolve paths from different directories.
+ */
+export function getChosenLocalStateDir(project: Pick<Project, 'env'>): string | undefined {
+  const stateDir = project.env.WB_CLOUDFLARE_STATE_DIR;
+  if (!stateDir) return;
+  if (!path.isAbsolute(stateDir)) {
+    throw new Error(`WB_CLOUDFLARE_STATE_DIR must be an absolute path: ${stateDir}`);
+  }
+  return stateDir;
 }
