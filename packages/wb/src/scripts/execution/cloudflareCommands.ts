@@ -112,7 +112,9 @@ function assertVitePluginReadsCloudflareConfig(project: Project): void {
 
 /** Vite+ (`vp`) when the package declares it, as cf chooses: such a package has no `vite` executable. */
 function getViteExecutable(project: Project): string {
-  return project.hasOwnDependency('vite-plus') ? 'vp' : 'vite';
+  // cf's rule exactly: optional and peer dependencies do not select vp.
+  const { dependencies, devDependencies } = project.packageJson;
+  return dependencies?.['vite-plus'] || devDependencies?.['vite-plus'] ? 'vp' : 'vite';
 }
 
 /**
