@@ -142,7 +142,10 @@ function resolveCommittedImageSource(
   if (!runGit(['ls-tree', '--name-only', treeish, '--', dockerfilePath], repository)) {
     throw new Error(`Commit the Dockerfile of the container image ${image.name}: ${dockerfile}`);
   }
-  const buildVars = Object.entries(image.buildVars).toSorted(([a], [b]) => a.localeCompare(b));
+  // Code-unit order, as the keys of images published by earlier wb versions were computed.
+  const buildVars = Object.keys(image.buildVars)
+    .toSorted()
+    .map((name) => [name, image.buildVars[name]] as const);
   const key = createHash('sha256')
     .update(
       JSON.stringify({
