@@ -362,8 +362,9 @@ async function buildWorker(
   imageEnv: Record<string, string>
 ): Promise<void> {
   const usesVite = usesViteBundler(project);
+  const env = { ...buildEnv, ...imageEnv };
   if (!usesVite && resolvedConfig.hasEntrypoint && !argv.dryRun) {
-    ensureWranglerAssetsDirectory(project, envName, buildEnv);
+    ensureWranglerAssetsDirectory(project, envName, env);
   }
   // Building before migrating keeps a build failure from leaving a migrated schema behind
   // the old Worker. The bundler runs directly, not through the package's `build` script.
@@ -371,7 +372,7 @@ async function buildWorker(
     usesVite ? buildViteCommand(project, envName, 'build') : buildCfCommand(envName, 'build'),
     project,
     argv,
-    { env: { ...buildEnv, ...imageEnv } }
+    { env }
   );
 }
 
