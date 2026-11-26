@@ -106,7 +106,7 @@ it('passes the startup check only for a Worker that serves requests', async () =
   const runTestOnCi = (): ReturnType<typeof spawnAsync> =>
     spawnAsync('node', [cliPath, 'test-on-ci'], {
       cwd: dirPath,
-      env: { ...workerEnv, MISE_ENV: undefined, PORT: undefined, WB_ENV: 'test' },
+      env: { ...workerEnv, MISE_ENV: undefined, NEXT_PUBLIC_BASE_URL: undefined, PORT: undefined, WB_ENV: 'test' },
       timeout: 100_000,
     });
 
