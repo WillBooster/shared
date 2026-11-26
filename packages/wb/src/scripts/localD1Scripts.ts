@@ -6,7 +6,7 @@ import {
   wrapWithLocalD1DatabaseUrl,
 } from '../utils/cloudflare.js';
 import type { D1Migrations } from '../utils/cloudflareConfig.js';
-import { resolveLocalCloudflareConfig, selectD1Migrations } from '../utils/cloudflareConfig.js';
+import { formatD1DatabaseNames, resolveLocalCloudflareConfig, selectD1Migrations } from '../utils/cloudflareConfig.js';
 import { drizzleScripts, usesDrizzleKitForD1 } from './drizzleScripts.js';
 
 /**
@@ -43,8 +43,14 @@ export function buildCfNativeD1DatabaseCommands(
   mode: string,
   kind: 'deploy' | 'migrate' | 'reset'
 ): string[] | undefined {
-  const { cfNativeD1Migrations } = selectLocalD1Migrations(project, mode);
+  const { cfNativeD1Migrations, unmanagedD1Databases } = selectLocalD1Migrations(project, mode);
   if (cfNativeD1Migrations.length === 0) return;
+  // A reset removes every local D1 of the state directory, including ones wb could not rebuild.
+  if (kind === 'reset' && unmanagedD1Databases.length > 0) {
+    throw new Error(
+      `wb db reset would delete the local data of ${formatD1DatabaseNames(unmanagedD1Databases)}, which wb does not migrate; reset ${project.name} with cf instead.`
+    );
+  }
 
   const seedCommand = kind !== 'deploy' && usesDrizzleKitForD1(project) ? drizzleScripts.seed(project) : 'true';
   // The seed gets its database through wrapWithLocalD1DatabaseUrl, which cannot tell D1 files apart.
