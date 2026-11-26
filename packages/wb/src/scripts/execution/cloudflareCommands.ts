@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 import type { Project } from '../../project.js';
 import { buildCfCommand, getAbsoluteLocalStateDir, getLocalStateDir } from '../../utils/cloudflare.js';
-import { resolveCloudflareMode, resolveLocalCloudflareConfig } from '../../utils/cloudflareConfig.js';
+import { resolveCloudflareMode } from '../../utils/cloudflareConfig.js';
 import { getEnsuredPort } from '../../utils/port.js';
 import { buildShellEnvironmentAssignment, shellEscapeArgument } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
@@ -50,7 +50,9 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv, s
     ...buildLocalD1MigrationCommands(project, mode, seeds),
     usesVite
       ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(project, mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
-      : `${buildWranglerServerEnvPrefix(project, mode)}${buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
+      : // Wrangler lets the environment override a config value of the same name, so the server's
+        // WB_ENV is the mode wb resolved (test wins a disagreement between WB_ENV and MISE_ENV).
+        `${buildShellEnvironmentAssignment('WB_ENV', mode)} ${buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
   ];
 }
 
@@ -71,35 +73,6 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
     ...buildLocalD1MigrationCommands(project, mode, true),
     `${stateDirPrefix}YARN ${getViteExecutable(project)} preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
-}
-
-const SHELL_NAME_PATTERN = /^[A-Za-z_]\w*$/u;
-
-/**
- * A local server reads the values of the declared secrets from its process environment, and
- * Wrangler (unlike the Cloudflare Vite plugin) also lets that environment override the config's
- * other values; so the server process
- * gets the config's own value for each exported key whose value differs (wb keeps the exported one,
- * e.g. PORT), which also leaves a config that derives the value from that key unchanged. A value
- * travels in a variable of its own because the script text is normalized; a JSON value cannot come
- * from the environment, so its key is removed.
- */
-function buildWranglerServerEnvPrefix(project: Project, mode: string): string {
-  const unsetArgs: string[] = [];
-  const assignments: string[] = [];
-  for (const [key, value] of Object.entries(resolveLocalCloudflareConfig(project, mode)?.vars ?? {})) {
-    if (project.env[key] === undefined || project.env[key] === value) continue;
-    if (typeof value === 'string' && SHELL_NAME_PATTERN.test(key)) {
-      const valueVariableName = `WB_CLOUDFLARE_VAR_${key}`;
-      project.env[valueVariableName] = value;
-      unsetArgs.push(`-u ${valueVariableName}`);
-      assignments.push(`${key}="$${valueVariableName}"`);
-    } else {
-      unsetArgs.push(`-u ${shellEscapeArgument(key)}`);
-    }
-  }
-  const envArgs = [...unsetArgs, ...assignments];
-  return envArgs.length > 0 ? `env ${envArgs.join(' ')} ` : '';
 }
 
 /**
