@@ -61,7 +61,6 @@ const parsedConfigSchema = z.looseObject({
   accountId: z.string().optional(),
   worker: z.looseObject({
     name: z.string(),
-    entrypoint: z.string().optional(),
     env: z.record(z.string(), z.unknown()).optional(),
   }),
   containers: z
@@ -116,8 +115,6 @@ export interface D1Migrations {
 
 export interface ResolvedCloudflareConfig {
   workerName: string;
-  /** False for an assets-only Worker, whose build Wrangler runs without its build command. */
-  hasEntrypoint: boolean;
   accountId?: string;
   /** Values of the `bindings.text()` / `bindings.json()` entries (they count against Cloudflare's limits). */
   vars: Record<string, unknown>;
@@ -234,6 +231,23 @@ export function resolveWranglerBuildHookAssetsDirectory(
   return assetsDirectory === undefined || !build?.command ? undefined : path.resolve(project.dirPath, assetsDirectory);
 }
 
+/**
+ * Whether `cloudflare.config.ts` names an entrypoint for the mode: Wrangler builds an assets-only
+ * Worker without running the build command of `wrangler.config.ts`.
+ */
+export function hasCloudflareConfigEntrypoint(
+  project: Pick<Project, 'dirPath'>,
+  mode: string,
+  env: Record<string, string | undefined>
+): boolean {
+  const configPath = findCloudflareConfigPath(project);
+  if (!configPath) return false;
+  const { worker } = z
+    .looseObject({ worker: z.looseObject({ entrypoint: z.string().optional() }) })
+    .parse(evaluateConfig(project.dirPath, configPath, mode, env, 'cloudflare'));
+  return worker.entrypoint !== undefined;
+}
+
 function loadCloudflareConfig(
   dirPath: string,
   configPath: string,
@@ -281,7 +295,6 @@ function toResolvedConfig(rawConfig: unknown): ResolvedCloudflareConfig {
   const config = parsedConfigSchema.parse(rawConfig);
   const resolvedConfig: ResolvedCloudflareConfig = {
     workerName: config.worker.name,
-    hasEntrypoint: config.worker.entrypoint !== undefined,
     accountId: config.accountId,
     vars: {},
     secretNames: [],

@@ -23,6 +23,7 @@ import {
   findCloudflareConfigPath,
   findUnmigratedWranglerConfigPath,
   formatD1DatabaseNames,
+  hasCloudflareConfigEntrypoint,
   readBuiltCloudflareConfig,
   resolveDeployCloudflareConfig,
   resolveWranglerBuildHookAssetsDirectory,
@@ -407,7 +408,7 @@ function createWranglerAssetsDirectory(
     const assetsDirPath = resolveWranglerBuildHookAssetsDirectory(project, envName, buildEnv);
     // A directory without files counts as missing: a failed earlier deploy may have left it.
     if (!assetsDirPath || (fs.existsSync(assetsDirPath) && containsFile(assetsDirPath))) return;
-    if (!resolveCloudflareConfigOrExit(project, envName, buildEnv).hasEntrypoint) return;
+    if (!hasCloudflareConfigEntrypoint(project, envName, buildEnv)) return;
     fs.mkdirSync(assetsDirPath, { recursive: true });
     return assetsDirPath;
   } catch (error) {
