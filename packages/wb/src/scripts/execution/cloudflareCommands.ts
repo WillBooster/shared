@@ -90,16 +90,18 @@ export function buildViteCommand(project: Project, mode: string, command: 'dev' 
 
 /**
  * A 1.x plugin serves the Worker of a wrangler config instead of `cloudflare.config.ts`, which
- * wb prepares secrets and migrations from; cf refuses it before delegating, so wb does too.
+ * wb prepares secrets and migrations from, and a 2.0 beta writes another Build Output version;
+ * cf refuses both before delegating, so wb does too.
  */
 function assertVitePluginReadsCloudflareConfig(project: Project): void {
   for (let dirPath = project.dirPath; ; dirPath = path.dirname(dirPath)) {
     const packageJsonPath = path.join(dirPath, 'node_modules', VITE_PLUGIN_PACKAGE_NAME, 'package.json');
     if (fs.existsSync(packageJsonPath)) {
       const { version } = z.object({ version: z.string() }).parse(JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')));
-      if (Number(version.split('.')[0]) < 2) {
+      // cf's own range, >=2.0.0-rc.0 <3: earlier 2.0 betas write Build Output v0, which wb cannot read.
+      if (!/^2\.\d+\.\d+(?:-rc\.\d+)?$/u.test(version)) {
         throw new Error(
-          `${VITE_PLUGIN_PACKAGE_NAME} ${version} does not read cloudflare.config.ts; upgrade it to ^2.0.0-rc.0 in ${project.packageJsonPath}.`
+          `${VITE_PLUGIN_PACKAGE_NAME} ${version} cannot build cloudflare.config.ts for wb; install ^2.0.0-rc.0 in ${project.packageJsonPath}.`
         );
       }
       return;
