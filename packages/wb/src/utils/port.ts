@@ -3,7 +3,7 @@ import { createServer } from 'node:net';
 import type { Project } from '../project.js';
 import { applyIsolatedInstancePort, getChosenLocalStateDir } from './cloudflare.js';
 import { publishLocalServerUrl } from './localServerUrl.js';
-import { killPortProcessImmediatelyAndOnExit } from './process.js';
+import { killPortProcessImmediatelyAndOnExit, killPortProcessOnExit } from './process.js';
 
 // The auto-selected range must stay below every default ephemeral-port range (32768+ on Linux,
 // 49152+ on macOS) so OS-assigned outgoing connections rarely occupy a preferred port, and above
@@ -11,6 +11,8 @@ import { killPortProcessImmediatelyAndOnExit } from './process.js';
 const AUTO_PORT_RANGE_START = 20_000;
 const AUTO_PORT_RANGE_SIZE = 12_768;
 const AUTO_PORT_MAX_PROBE_COUNT = 100;
+
+const selectedPorts = new Set<string>();
 
 /**
  * Resolves the port for launching the project's app, storing it in `project.env.PORT`.
@@ -25,11 +27,13 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
  * it keep working without fnox definitions. The resolved URL is also published (see
  * publishLocalServerUrl) so consuming commands can reach it while this server is alive and serving.
  *
- * The call that selects a port kills nothing there: the search found no listener on it, so a
- * process holding it now did not come from wb. Callers may run this more than once per command; a
- * later call finds PORT set and repeats checkAndKillPortProcess deliberately, not as redundancy to
- * cache away: it reclaims a port still held by a previous phase's server (e.g. `wb test-on-ci`
- * between the startup check and e2e), and its probe is cheap.
+ * Callers may run this more than once per command; repeating checkAndKillPortProcess for a
+ * configured PORT is deliberate, not redundancy to cache away: it reclaims a port still held by a
+ * previous phase's server (e.g. `wb test-on-ci` between the startup check and e2e), and its probe
+ * is cheap. A port this process selected is never reclaimed that way, in any call: the search
+ * found nothing listening there, so a process holding it later did not necessarily come from wb
+ * (a previous phase's server is stopped by its own phase, and a container by its name). Only the
+ * exit-time cleanup of wb's own server is registered for it.
  *
  * An instance on a caller-chosen state directory is resolved by claimIsolatedInstancePort instead
  * and is never published: its caller manages and addresses it, and publishing it would replace the
@@ -38,12 +42,16 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
 export async function ensurePort(project: Project): Promise<number> {
   if (getChosenLocalStateDir(project)) return claimIsolatedInstancePort(project);
   let port: number;
-  if (project.env.PORT) {
-    port = await checkAndKillPortProcess(project.env.PORT, project);
-  } else {
+  if (!project.env.PORT) {
     assertNoPinnedPortInBaseUrl(project.env.NEXT_PUBLIC_BASE_URL);
     port = await findFreePort(computePreferredPort(project));
     project.env.PORT = String(port);
+    selectedPorts.add(project.env.PORT);
+    killPortProcessOnExit(port, project);
+  } else if (selectedPorts.has(project.env.PORT)) {
+    port = Number(project.env.PORT);
+  } else {
+    port = await checkAndKillPortProcess(project.env.PORT, project);
   }
   project.env.NEXT_PUBLIC_BASE_URL ||= `http://localhost:${port}`;
   publishLocalServerUrl(project, project.env.NEXT_PUBLIC_BASE_URL);

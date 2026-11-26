@@ -10,6 +10,7 @@ import { computePreferredPort, ensurePort, getEnsuredPort } from '../../src/util
 import * as processUtils from '../../src/utils/process.js';
 
 spyOn(processUtils, 'killPortProcessImmediatelyAndOnExit').mockResolvedValue(undefined);
+spyOn(processUtils, 'killPortProcessOnExit').mockReturnValue(undefined);
 
 const AUTO_PORT_RANGE_START = 20_000;
 const AUTO_PORT_RANGE_END_EXCLUSIVE = 32_768;

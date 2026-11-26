@@ -18,7 +18,11 @@ export async function killPortProcessImmediatelyAndOnExit(port: number, project:
   if (!available) {
     await killPortContainerAndProcess(port, project);
   }
+  killPortProcessOnExit(port, project);
+}
 
+/** Stops what listens on the port when wb exits: the server wb started there. */
+export function killPortProcessOnExit(port: number, project: Project): void {
   const killFunc = async (): Promise<void> => {
     if (killed.has(port)) return;
 
