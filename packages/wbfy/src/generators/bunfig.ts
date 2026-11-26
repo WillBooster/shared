@@ -74,8 +74,12 @@ export function updateBunReleaseAgeExcludes(rootDirPath: string): void {
     : content.replace(/^[ \t]*minimumReleaseAge\s*=.*$/mu, (gateLine) => `${gateLine}\n${excludesBlock}`);
   const install = parseBunfigToml(content)?.install;
   const sharedExcludes = bunMinimumReleaseAgeExcludes.join('\n');
-  // Nothing to lift, or already the shared list.
-  if (install?.minimumReleaseAge === undefined || install.minimumReleaseAgeExcludes?.join('\n') === sharedExcludes) {
+  // Neither key (the global policy alone applies), or already the shared list. A list without a
+  // local gate still counts: Bun applies it to the global one.
+  if (
+    (install?.minimumReleaseAge === undefined && install?.minimumReleaseAgeExcludes === undefined) ||
+    install.minimumReleaseAgeExcludes?.join('\n') === sharedExcludes
+  ) {
     return;
   }
   // A text edit of a file wbfy did not just generate: write it only when the result is the
