@@ -36,6 +36,10 @@ export function buildCfNativeD1DatabaseCommands(
   if (cfNativeD1Migrations.length === 0) return;
 
   const seedCommand = kind !== 'deploy' && usesDrizzleKitForD1(project) ? drizzleScripts.seed(project) : 'true';
+  // The seed gets its database through wrapWithLocalD1DatabaseUrl, which cannot tell D1 files apart.
+  if (seedCommand !== 'true' && cfNativeD1Migrations.length > 1) {
+    throw new Error(`wb db ${kind} seeds only a package with a single D1 binding; ${project.name} has several.`);
+  }
   return [
     ...(kind === 'reset' ? [`rm -Rf "${getLocalStateDir(project, mode)}/v3/d1"`] : []),
     ...buildLocalD1MigrationsApplyCommands(project, mode, cfNativeD1Migrations),
