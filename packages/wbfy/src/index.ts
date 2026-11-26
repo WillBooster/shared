@@ -223,12 +223,26 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   const packageConfigs = await loadPackageConfigs(rootDirPath, subDirPaths);
   if (!packageConfigs) return false;
   const { rootConfig, allPackageConfigs } = packageConfigs;
-  const configError =
-    findUnknownVisibilityError(rootConfig) ??
-    findUnconvertedWorkerError(rootConfig, allPackageConfigs) ??
-    (await findTrackedCloudflareEnvError(rootConfig, allPackageConfigs));
-  if (configError) {
-    console.error(configError);
+  const visibilityError = findUnknownVisibilityError(rootConfig);
+  if (visibilityError) {
+    console.error(visibilityError);
+    return false;
+  }
+  const unconvertedWorkerError = findUnconvertedWorkerError(rootConfig, allPackageConfigs);
+  if (unconvertedWorkerError) {
+    // The conversion has to install the cf toolchain first, which the release-age gate blocks
+    // until bunfig.toml carries the shared temporary excludes.
+    await generateBunfigToml(
+      rootConfig,
+      resolveBunGlobalStore(allPackageConfigs, readBunGlobalStore(rootDirPath), skipDeps),
+      allPackageConfigs
+    );
+    console.error(unconvertedWorkerError);
+    return false;
+  }
+  const cloudflareEnvError = await findTrackedCloudflareEnvError(rootConfig, allPackageConfigs);
+  if (cloudflareEnvError) {
+    console.error(cloudflareEnvError);
     return false;
   }
   warnIfGitHubTokenIsMissing(rootConfig);
@@ -455,7 +469,7 @@ async function loadPackageConfigs(
 function findUnconvertedWorkerError(rootConfig: PackageConfig, allPackageConfigs: PackageConfig[]): string | undefined {
   const unconvertedDirPaths = findUnconvertedWorkerDirPaths(allPackageConfigs);
   return unconvertedDirPaths.length > 0
-    ? `Skip ${rootConfig.dirPath}: convert each Worker below from its wrangler config to cloudflare.config.ts with \`cf migrate\` (and upgrade wb in the same change) before applying wbfy.\n${unconvertedDirPaths.join('\n')}`
+    ? `Skip ${rootConfig.dirPath} (only bunfig.toml was updated, so that the cf toolchain can be installed): convert each Worker below from its wrangler config to cloudflare.config.ts with \`cf migrate\` (and upgrade wb in the same change) before applying wbfy.\n${unconvertedDirPaths.join('\n')}`
     : undefined;
 }
 
