@@ -164,12 +164,19 @@ function createBuildEnv(project: Project, envName: string): Record<string, strin
 async function planContainerImagesOrExit(
   context: WorkerDeployContext
 ): Promise<Awaited<ReturnType<typeof planContainerImages>>> {
+  const { project, envName, buildEnv, resolvedConfig } = context;
+  // gen-code may have changed what the config reads, and images are published for this Worker.
+  const generatedConfig = resolveCloudflareConfigOrExit(project, envName, buildEnv);
+  assertSameDeployTarget(generatedConfig, resolvedConfig, 'cloudflare.config.ts after gen-code describes');
   try {
-    return await planContainerImages({
-      ...context,
-      rollout: context.argv.containersRollout as ContainersRollout | undefined,
-      dryRun: context.argv.dryRun,
-    });
+    return await planContainerImages(
+      {
+        ...context,
+        rollout: context.argv.containersRollout as ContainersRollout | undefined,
+        dryRun: context.argv.dryRun,
+      },
+      generatedConfig.containerImages
+    );
   } catch (error) {
     exitWithError(getErrorMessage(error));
   }
@@ -369,9 +376,17 @@ function assertBuildMatchesPreflight({ argv, project, resolvedConfig }: WorkerDe
   if (!builtConfig) {
     exitWithError('The build produced no default Worker under .cloudflare/output/v1.');
   }
-  if (describeDeployTarget(builtConfig) !== describeDeployTarget(resolvedConfig)) {
+  assertSameDeployTarget(builtConfig, resolvedConfig, 'The build produced');
+}
+
+function assertSameDeployTarget(
+  config: ResolvedCloudflareConfig,
+  resolvedConfig: ResolvedCloudflareConfig,
+  source: string
+): void {
+  if (describeDeployTarget(config) !== describeDeployTarget(resolvedConfig)) {
     exitWithError(
-      'The built Worker differs from the one wb validated before building (name, account, binding names, text/JSON values, secret names, or D1 ids): make cloudflare.config.ts return the same configuration for the same mode and environment.'
+      `${source} a Worker that differs from the one wb validated before building (name, account, binding names, text/JSON values, secret names, or D1 ids): make cloudflare.config.ts return the same configuration for the same mode and environment.`
     );
   }
 }

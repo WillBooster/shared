@@ -62,13 +62,14 @@ interface CommittedImageSource {
 }
 
 /**
- * Plans the container images of a deploy from the config as the build will evaluate it, after
- * `gen-code`. Without the flag, a Dockerfile image gets no image to roll out, and cf takes one
+ * Plans the given container images, which the config declares as the build will evaluate it (after
+ * `gen-code`). Without the flag, a Dockerfile image gets no image to roll out, and cf takes one
  * strategy for all Containers, so a config with any container image keeps every deployed Container.
  */
-export async function planContainerImages(deployment: ContainerImageDeployment): Promise<ContainerImagePlan> {
-  const { project, envName, buildEnv } = deployment;
-  const containerImages = resolveDeployCloudflareConfig(project, envName, buildEnv)?.containerImages ?? [];
+export async function planContainerImages(
+  deployment: ContainerImageDeployment,
+  containerImages: ContainerImage[]
+): Promise<ContainerImagePlan> {
   const rollout = deployment.rollout ?? (containerImages.length > 0 ? 'none' : undefined);
   return { rollout, env: await resolveImageEnv(deployment, selectDockerfileImages(containerImages), rollout) };
 }
