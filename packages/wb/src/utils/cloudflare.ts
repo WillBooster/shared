@@ -152,7 +152,9 @@ export function getChosenLocalStateDir(project: Pick<Project, 'env'>): string | 
       `WB_CLOUDFLARE_STATE_DIR must be an absolute path of letters, digits, and "_.@+-/" only: ${stateDir}`
     );
   }
-  return stateDir;
+  // Resolved lexically, as cf resolves --persist-to, so that `rm` (which follows a symlink before
+  // `..`) deletes the directory cf migrates.
+  return path.resolve(stateDir);
 }
 
 /** A `wb db` reset of a chosen state directory removes its whole D1 state, so it serves one package. */
