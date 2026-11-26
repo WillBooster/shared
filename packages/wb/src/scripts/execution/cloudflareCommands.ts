@@ -5,12 +5,7 @@ import semver from 'semver';
 import { z } from 'zod';
 
 import type { Project } from '../../project.js';
-import {
-  buildCfCommand,
-  buildGenDevVarsCommand,
-  getAbsoluteLocalStateDir,
-  getLocalStateDir,
-} from '../../utils/cloudflare.js';
+import { buildCfCommand, getAbsoluteLocalStateDir, getLocalStateDir } from '../../utils/cloudflare.js';
 import { resolveCloudflareMode } from '../../utils/cloudflareConfig.js';
 import { getEnsuredPort } from '../../utils/port.js';
 import { buildShellEnvironmentAssignment, shellEscapeArgument } from '../../utils/shell.js';
@@ -42,14 +37,13 @@ export function usesViteBundler(project: Project): boolean {
 /** Commands serving the Worker from source. */
 export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): string[] {
   const mode = resolveCloudflareMode(project);
+  assertNoDevVarsFile(project, mode);
   const port = getEnsuredPort(project);
   const usesVite = usesViteBundler(project);
   const serverArgs = usesVite
     ? `--port ${port}`
     : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(project, mode)}"`;
   return [
-    // A locally served Worker reads the values of its declared secrets only from this file.
-    buildGenDevVarsCommand(argv),
     ...buildLocalD1MigrationCommands(project, mode),
     usesVite
       ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(project, mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
@@ -64,16 +58,32 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
 export function buildCloudflareBuiltStartCommands(project: Project, argv: ScriptArgv): string[] {
   if (!usesViteBundler(project)) return buildCloudflareDevCommands(project, argv);
   const mode = resolveCloudflareMode(project);
+  assertNoDevVarsFile(project, mode);
   const stateDirPrefix = buildViteStateDirPrefix(project, mode);
   return [
     // The same build `wb deploy` runs, so the served Worker has the config of wb's mode: the
     // local D1 migrated below is the one whose ID that config declares.
     ...(project.packageJson.scripts?.['gen-code'] ? ['YARN run gen-code'] : []),
     `${stateDirPrefix}${buildViteCommand(project, mode, 'build')}`,
-    buildGenDevVarsCommand(argv),
     ...buildLocalD1MigrationCommands(project, mode),
     `${stateDirPrefix}YARN ${getViteExecutable(project)} preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
+}
+
+/**
+ * A local server reads the declared secrets from its process environment, to which wb hands their
+ * values from fnox or the environment, only while no `.dev.vars.<mode>` or `.dev.vars` exists
+ * beside the config: the runtime would read that file instead.
+ */
+function assertNoDevVarsFile(project: Project, mode: string): void {
+  const devVarsFileNames = [`.dev.vars.${mode}`, '.dev.vars'].filter((fileName) =>
+    fs.existsSync(path.join(project.dirPath, fileName))
+  );
+  if (devVarsFileNames.length > 0) {
+    throw new Error(
+      `Delete ${devVarsFileNames.join(' and ')} in ${project.dirPath}: wb hands a locally served Worker the values of its declared secrets through the environment, which the runtime ignores while such a file exists.`
+    );
+  }
 }
 
 /**

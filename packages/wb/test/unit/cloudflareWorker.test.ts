@@ -41,9 +41,6 @@ it('serves a Worker that sees its declared secrets and the D1 schema of its migr
       tables: ['example', 'migration_history'],
       undeclared: false,
     });
-    expect(await fs.readFile(path.join(dirPath, '.dev.vars.development'), 'utf8')).toBe(
-      "AUTH_SECRET='s3cret'\nEMPTY_SECRET=''\n"
-    );
   } finally {
     stopWb(server);
   }
@@ -62,10 +59,13 @@ it("serves concurrent test instances on the state directories their callers chos
   );
 
   const servers = instances.map(({ inspectorPort, port, stateDirPath }) =>
-    startWb(
-      ['start', '--mode', 'test', '--', '--inspector-port', String(inspectorPort), '--var', `AUTH_SECRET:${port}`],
-      { PORT: String(port), NEXT_PUBLIC_BASE_URL: undefined, WB_ENV: 'test', WB_CLOUDFLARE_STATE_DIR: stateDirPath }
-    )
+    startWb(['start', '--mode', 'test', '--', '--inspector-port', String(inspectorPort)], {
+      AUTH_SECRET: String(port),
+      PORT: String(port),
+      NEXT_PUBLIC_BASE_URL: undefined,
+      WB_ENV: 'test',
+      WB_CLOUDFLARE_STATE_DIR: stateDirPath,
+    })
   );
   try {
     const bodies = await Promise.all(

@@ -93,7 +93,7 @@ export function readEnvironmentVariables(
     /**
      * Load variables even if they already exist in process.env.
      * Useful when a parent process has already injected the fnox values into the environment
-     * and the configured variables themselves are needed (e.g. `wb gen-dev-vars`).
+     * and the configured variables themselves are needed (e.g. the secret upload of `wb deploy`).
      */
     ignoreProcessEnv?: boolean;
     /**
@@ -395,7 +395,7 @@ function readMiseEnvironmentVariables(
     if (typeof value !== 'string' || key in currentEnvVars) continue;
     if (options?.ignoreProcessEnv) {
       // `mise env` always emits PATH due to tool shims; consumers of file-defined variables
-      // (e.g. `wb gen-dev-vars`) must not propagate it.
+      // (e.g. the secret upload of `wb deploy`) must not propagate it.
       if (key === 'PATH') continue;
     } else if (process.env[key] === value) {
       continue;

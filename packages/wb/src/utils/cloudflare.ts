@@ -1,21 +1,9 @@
 import path from 'node:path';
 
 import type { Project } from '../project.js';
-import type { ScriptArgv } from '../scripts/builder.js';
-import { buildEnvReaderOptionArgs } from '../sharedOptionsBuilder.js';
 import type { CfNativeD1Migration, CloudflareD1Database, D1MigrationSettings } from './cloudflareConfig.js';
 import { resolveLocalCloudflareConfig } from './cloudflareConfig.js';
 import { buildShellCommand, shellEscapeArgument } from './shell.js';
-
-/**
- * Build a command generating the mode's `.dev.vars.<mode>` file (via `wb gen-dev-vars`) so that a
- * locally served Worker can see the wb-managed values of its declared secrets. The local runtime
- * prefers that file over `.dev.vars`, so servers of different modes (a dev server and a test
- * run) never rewrite each other's file.
- */
-export function buildGenDevVarsCommand(argv: ScriptArgv): string {
-  return buildShellCommand(['YARN', 'wb', 'gen-dev-vars', ...buildEnvReaderOptionArgs(argv)]);
-}
 
 /**
  * Build a cf command for the mode its command entry resolved. cf requires real Node.js:
