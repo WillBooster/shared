@@ -35,7 +35,10 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
  * phase's server is stopped by its own phase, and a container by its name), and such a call fails
  * instead. Nor does a selected port get the port-wide exit cleanup a configured one does: wb's
  * own servers are its descendants, which its shutdown tree-kills, and a container it starts is
- * stopped by name on exit (see dockerScripts.start).
+ * stopped by name on exit (see dockerScripts.start). A caller that selected a free port itself
+ * gets the same treatment by exporting it as both PORT and WB_SELECTED_PORT, a documented contract
+ * (docs/expected-repository-rules.md) that lets it run servers beside others it did not start; while
+ * WB_SELECTED_PORT is set, a PORT resolved to another value fails instead of being reclaimed.
  *
  * An instance on a caller-chosen state directory is resolved by claimIsolatedInstancePort instead
  * and is never published: its caller manages and addresses it, and publishing it would replace the
@@ -49,11 +52,17 @@ export async function ensurePort(project: Project): Promise<number> {
     port = await findFreePort(computePreferredPort(project));
     project.env.PORT = String(port);
     project.env.WB_SELECTED_PORT = project.env.PORT;
-  } else if (project.env.WB_SELECTED_PORT === project.env.PORT) {
+  } else if (project.env.WB_SELECTED_PORT) {
     port = Number(project.env.PORT);
+    if (project.env.WB_SELECTED_PORT !== project.env.PORT) {
+      // A forced mode's fnox profile overrides the exported PORT but not WB_SELECTED_PORT.
+      throw new Error(
+        `PORT ${port} differs from WB_SELECTED_PORT ${project.env.WB_SELECTED_PORT} (e.g. the fnox profile defines PORT); wb does not stop a process on a port while WB_SELECTED_PORT is set.`
+      );
+    }
     if (!(await isPortAvailable(port))) {
       throw new Error(
-        `PORT ${port}, which wb selected, is now in use by another process; wb does not stop it. Run the command again to select another port.`
+        `PORT ${port}, selected as free (WB_SELECTED_PORT), is now in use by another process; wb does not stop it.`
       );
     }
   } else {
