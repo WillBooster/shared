@@ -125,9 +125,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     const authEnv = { ...project.env, ...(accountId && { CLOUDFLARE_ACCOUNT_ID: accountId }) };
     const context: WorkerDeployContext = { argv, project, envName, resolvedConfig, buildEnv, authEnv, accountId };
     const d1Migrations = selectD1MigrationsOrExit(context);
-    // Dry runs and build-only runs execute nothing authenticated, so they skip the credential
-    // preflight entirely.
-    if (!argv.dryRun && !argv.buildOnly) assertDeployCredentials(project, d1Migrations.drizzleD1Database);
+    if (contactsCloudflare(argv)) assertDeployCredentials(project, d1Migrations.drizzleD1Database);
 
     // App-specific validation hook (e.g. secret pairs that must be both-set-or-both-empty).
     // The reusable deploy.yml already runs it on CI; run it here for local deploys.
@@ -188,8 +186,7 @@ async function planContainerImagesOrExit(
       {
         ...context,
         rollout: context.argv.containersRollout as ContainersRollout | undefined,
-        // A build-only run publishes no image either: the build gets the same placeholders.
-        dryRun: context.argv.dryRun || context.argv.buildOnly,
+        dryRun: !contactsCloudflare(context.argv),
       },
       generatedConfig.containerImages
     );
@@ -347,8 +344,7 @@ async function assertWithinCloudflareLimits(
   // round-trip, which dry runs and build-only runs skip; when the listing fails for any reason other than a
   // not-yet-created Worker, degrade to the local-only count instead of blocking a deploy that
   // cf itself might accept.
-  const remoteSecretNames =
-    context.argv.dryRun || context.argv.buildOnly ? [] : await listRemoteWorkerSecretNames(context);
+  const remoteSecretNames = contactsCloudflare(context.argv) ? await listRemoteWorkerSecretNames(context) : [];
   const inheritedSecretNames = selectInheritedRemoteSecretNames(
     remoteSecretNames ?? [],
     secrets,
@@ -797,4 +793,9 @@ function prepareLocalBinPath(project: Project): void {
   if (!project.binExists) {
     console.warn(chalk.yellow('node_modules/.bin not found; relying on PATH to resolve cf.'));
   }
+}
+
+/** Dry runs only print the remote steps, and build-only runs stop before them. */
+function contactsCloudflare(argv: DeployCommandArgv): boolean {
+  return !argv.dryRun && !argv.buildOnly;
 }
