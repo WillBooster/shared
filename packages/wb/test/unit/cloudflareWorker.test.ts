@@ -109,6 +109,33 @@ it("serves concurrent test instances on their callers' ports and state directori
   }
 }, 120_000);
 
+it('passes the startup check only for a Worker that serves requests', async () => {
+  await fs.mkdir(path.join(dirPath, 'test/e2e'), { recursive: true });
+  await fs.writeFile(
+    path.join(dirPath, 'test/e2e/served.test.ts'),
+    "import { it } from 'bun:test';\nit('runs', () => {});\n"
+  );
+  const runTestOnCi = (): ReturnType<typeof spawnAsync> =>
+    spawnAsync('node', [cliPath, 'test-on-ci'], {
+      cwd: dirPath,
+      env: { ...workerEnv, MISE_ENV: undefined, NEXT_PUBLIC_BASE_URL: undefined, PORT: undefined, WB_ENV: 'test' },
+      timeout: 100_000,
+    });
+
+  const served = await runTestOnCi();
+  expect(served.status, served.stdout + served.stderr).toBe(0);
+
+  // The server's port opens before the Worker fails to start.
+  const entrypointPath = path.join(dirPath, 'src/index.ts');
+  await fs.writeFile(
+    entrypointPath,
+    `throw new Error('startup failure');\n${await fs.readFile(entrypointPath, 'utf8')}`
+  );
+  const crashed = await runTestOnCi();
+  expect(crashed.status).not.toBe(0);
+  expect(crashed.stdout).toMatch(/FAIL {2}worker-fixture \/ startup/u);
+}, 240_000);
+
 it('refuses to start a test instance on an occupied port, leaving its listener running', async () => {
   const listener = await startPlainServer();
 
@@ -216,6 +243,32 @@ it("deploys the build with the declared secrets and the version to the config's 
     EMPTY_SECRET: '',
     WB_VERSION: 'v1.2.3',
   });
+}, 120_000);
+
+it('deploys a Worker whose wrangler.config.ts build command creates its assets directory', async () => {
+  await fs.writeFile(
+    path.join(dirPath, 'wrangler.config.ts'),
+    `export default ({ mode }) => ({
+  build: { command: \`sh -c "echo run >> build.log && mkdir -p public-\${mode} && echo hi > public-\${mode}/index.html"\` },
+  assetsDirectory: \`./public-\${mode}\`,
+});
+`
+  );
+  const logDirPath = path.join(dirPath, 'cf-log');
+  await fs.mkdir(logDirPath);
+  await recordAuthenticatedCfCalls();
+
+  const result = await spawnAsync('node', [cliPath, 'deploy'], {
+    cwd: dirPath,
+    env: { ...workerEnv, CLOUDFLARE_API_TOKEN: 'unused-token', WB_ENV: 'staging', WB_TEST_CF_LOG: logDirPath },
+    timeout: 100_000,
+  });
+
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  expect(await fs.readFile(path.join(dirPath, 'build.log'), 'utf8')).toBe('run\n');
+  expect(await fs.readFile(path.join(dirPath, '.cloudflare/output/v1/workers/default/assets/index.html'), 'utf8')).toBe(
+    'hi\n'
+  );
 }, 120_000);
 
 /**

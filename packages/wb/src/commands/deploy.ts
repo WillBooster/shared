@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { spawnAsync } from '@willbooster/shared-lib-node/src';
+import { resolveCascade, spawnAsync } from '@willbooster/shared-lib-node/src';
 import { getErrorMessage } from '@willbooster/shared-lib/src';
 import chalk from 'chalk';
 import { config } from 'dotenv';
@@ -23,8 +23,10 @@ import {
   findCloudflareConfigPath,
   findUnmigratedWranglerConfigPath,
   formatD1DatabaseNames,
+  hasCloudflareConfigEntrypoint,
   readBuiltCloudflareConfig,
   resolveDeployCloudflareConfig,
+  resolveWranglerBuildHookAssetsDirectory,
   selectD1Migrations,
 } from '../utils/cloudflareConfig.js';
 import type { ContainersRollout } from '../utils/containerImages.js';
@@ -33,6 +35,8 @@ import { exitWithError } from '../utils/exit.js';
 import { createSecretFreeBuildEnv } from '../utils/secretFreeEnv.js';
 import { resolveDeclaredSecrets } from '../utils/workerSecrets.js';
 import { deployRailway, RAILWAY_IAC_FILE_PATH } from './deployRailway.js';
+
+const CLOUDFLARE_ENV_FILE_NAME = '.env.cloudflare';
 
 /**
  * fnox keys that drive the deploy itself, so their absence from `cloudflare.config.ts` is not
@@ -265,9 +269,24 @@ function selectSecretsOrExit({ argv, project, envName, resolvedConfig }: WorkerD
     resolvedConfig.secretNames
   );
   if (missingSecretNames.length > 0) {
+    // The profile the environment reader selected, which --cascade-env may set apart from WB_ENV;
+    // without one, fnox and mise run without a profile option and select from their own variables.
+    // An empty --cascade-env selects nothing, as for the reader.
+    const cascade = resolveCascade(argv) || undefined;
+    // process.env, not project.env: the fnox and mise subprocesses inherit only the ambient
+    // environment, so a selector that mise.toml or fnox itself sets never selects anything.
+    const { FNOX_PROFILE: fnoxProfile, MISE_ENV: miseEnv } = process.env;
+    const fnoxProfileName = cascade ?? fnoxProfile;
+    const fnoxSource = `fnox (${fnoxProfileName ? `base secrets or the ${fnoxProfileName} profile${cascade ? '' : ' from FNOX_PROFILE'}` : 'base secrets'})`;
+    const miseSource = cascade
+      ? `the mise environment ${cascade}`
+      : miseEnv
+        ? `the mise environment ${miseEnv} from MISE_ENV`
+        : 'the default mise environment';
     exitWithError(
       `Secrets that cloudflare.config.ts declares with bindings.secret() for ${envName} are not provided: ${missingSecretNames.join(', ')}. ` +
-        'Set each in fnox (an explicitly empty value counts) or stop declaring it for this mode.'
+        `Set each in ${fnoxSource}, where an explicitly empty value counts, or stop declaring it for this mode. ` +
+        `wb deploy also reads ${miseSource}, exported environment variables, and the deploy-credential file ${formatCloudflareEnvFilePaths(project)} (which wb start does not read).`
     );
   }
   // The deployed Worker must be able to report its version even when the config declares no
@@ -352,14 +371,53 @@ async function buildWorker(
   { argv, project, envName, buildEnv }: WorkerDeployContext,
   imageEnv: Record<string, string>
 ): Promise<void> {
+  const usesVite = usesViteBundler(project);
+  const env = { ...buildEnv, ...imageEnv };
+  const hookAssetsDirPath =
+    !usesVite && !argv.dryRun ? createWranglerAssetsDirectory(project, envName, env) : undefined;
   // Building before migrating keeps a build failure from leaving a migrated schema behind
   // the old Worker. The bundler runs directly, not through the package's `build` script.
   await runWithSpawn(
-    usesViteBundler(project) ? buildViteCommand(project, envName, 'build') : buildCfCommand(envName, 'build'),
+    usesVite ? buildViteCommand(project, envName, 'build') : buildCfCommand(envName, 'build'),
     project,
     argv,
-    { env: { ...buildEnv, ...imageEnv } }
+    { env }
   );
+  // Wrangler would have refused a missing directory; it uploads an empty one.
+  if (hookAssetsDirPath && !containsFile(hookAssetsDirPath)) {
+    exitWithError(
+      `The build command of wrangler.config.ts left its assetsDirectory without files: ${hookAssetsDirPath}`
+    );
+  }
+}
+
+/**
+ * `cf build` (unlike `cf dev`) checks that the assets directory exists before it runs the build
+ * command of `wrangler.config.ts`, which may be the one creating it, so the command still runs
+ * exactly once. Without such a command the check stays: the directory must come from elsewhere.
+ * So it does for an assets-only Worker, whose build never runs the command. Both configs are
+ * evaluated under the build's own environment, which may decide either. Returns the directory
+ * when the build command must fill it.
+ */
+function createWranglerAssetsDirectory(
+  project: Project,
+  envName: string,
+  buildEnv: Record<string, string | undefined>
+): string | undefined {
+  try {
+    const assetsDirPath = resolveWranglerBuildHookAssetsDirectory(project, envName, buildEnv);
+    // A directory without files counts as missing: a failed earlier deploy may have left it.
+    if (!assetsDirPath || (fs.existsSync(assetsDirPath) && containsFile(assetsDirPath))) return;
+    if (!hasCloudflareConfigEntrypoint(project, envName, buildEnv)) return;
+    fs.mkdirSync(assetsDirPath, { recursive: true });
+    return assetsDirPath;
+  } catch (error) {
+    exitWithError(getErrorMessage(error));
+  }
+}
+
+function containsFile(dirPath: string): boolean {
+  return fs.readdirSync(dirPath, { recursive: true, withFileTypes: true }).some((entry) => !entry.isDirectory());
 }
 
 /**
@@ -602,6 +660,12 @@ async function runPostDeployHook({ argv, project, resolvedConfig, authEnv }: Wor
   });
 }
 
+function formatCloudflareEnvFilePaths(project: Project): string {
+  return listCloudflareEnvFileDirPaths(project.dirPath, project.rootDirPath)
+    .map((dirPath) => path.join(dirPath, CLOUDFLARE_ENV_FILE_NAME))
+    .join(' or ');
+}
+
 /**
  * Read the Cloudflare API token that CI drops in a `.env.cloudflare` file (e.g. the reusable
  * deploy workflow's `file_path_1`), looking beside the Worker's config and at the monorepo
@@ -610,8 +674,8 @@ async function runPostDeployHook({ argv, project, resolvedConfig, authEnv }: Wor
  */
 export function readCloudflareEnvFiles(dirPath: string, rootDirPath: string | undefined): Record<string, string> {
   const envVars: Record<string, string> = {};
-  for (const currentDirPath of new Set(rootDirPath ? [dirPath, rootDirPath] : [dirPath])) {
-    const cloudflareEnvPath = path.join(currentDirPath, '.env.cloudflare');
+  for (const currentDirPath of listCloudflareEnvFileDirPaths(dirPath, rootDirPath)) {
+    const cloudflareEnvPath = path.join(currentDirPath, CLOUDFLARE_ENV_FILE_NAME);
     if (!fs.existsSync(cloudflareEnvPath)) continue;
     const parsed = config({ path: cloudflareEnvPath, processEnv: {}, quiet: true }).parsed ?? {};
     for (const [key, value] of Object.entries(parsed)) {
@@ -619,6 +683,10 @@ export function readCloudflareEnvFiles(dirPath: string, rootDirPath: string | un
     }
   }
   return envVars;
+}
+
+function listCloudflareEnvFileDirPaths(dirPath: string, rootDirPath: string | undefined): string[] {
+  return [...new Set(rootDirPath ? [dirPath, rootDirPath] : [dirPath])];
 }
 
 /**

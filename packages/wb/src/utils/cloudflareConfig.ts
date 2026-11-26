@@ -8,6 +8,8 @@ import { z } from 'zod';
 import type { Project } from '../project.js';
 
 const CLOUDFLARE_CONFIG_FILE_NAME = 'cloudflare.config.ts';
+/** Wrangler's own settings for a Wrangler-bundled Worker (e.g. a build command and the assets directory). */
+const WRANGLER_TOOLING_CONFIG_FILE_NAME = 'wrangler.config.ts';
 const WRANGLER_CONFIG_FILE_NAMES = ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'];
 
 // Runs under real Node.js because cf cannot load `cloudflare.config.ts` on Bun. The loader is
@@ -15,21 +17,31 @@ const WRANGLER_CONFIG_FILE_NAMES = ['wrangler.jsonc', 'wrangler.json', 'wrangler
 // is a dependency of cf, not of the project, so it is resolved from cf's own location, the way
 // cf's imports resolve it (a nested copy wins over one hoisted for another dependent).
 // The result goes to a file, because the config may print diagnostics of its own to stdout.
+// Wrangler loads `wrangler.config.ts` with the same loader and, when its default export is a
+// function, calls it with the same context.
 const LOAD_CONFIG_SCRIPT = `
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire, findPackageJSON } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const [configPath, mode, resultPath] = process.argv.slice(1);
+const [configPath, mode, resultPath, kind] = process.argv.slice(1);
 const cfPackageJsonPath = realpathSync(createRequire(configPath).resolve('cf/package.json'));
 const loaderPackageJsonPath = findPackageJSON('@cloudflare/config', pathToFileURL(cfPackageJsonPath));
 const loaderEntry = JSON.parse(readFileSync(loaderPackageJsonPath, 'utf8')).exports['.'].import;
 const loaderPath = path.join(path.dirname(loaderPackageJsonPath), loaderEntry);
-const { loadAndParseConfig } = await import(pathToFileURL(loaderPath).href);
-const { result } = await loadAndParseConfig(configPath, { mode: mode || undefined, isPreview: false });
-if (!result.success) throw new Error(JSON.stringify(result.error?.issues ?? result.error ?? result));
-writeFileSync(resultPath, JSON.stringify(result.data));
+const { loadAndParseConfig, loadConfig } = await import(pathToFileURL(loaderPath).href);
+const context = { mode: mode || undefined, isPreview: false };
+let data;
+if (kind === 'wrangler') {
+  const { config } = await loadConfig(configPath);
+  data = await (typeof config === 'function' ? config(context) : config);
+} else {
+  const { result } = await loadAndParseConfig(configPath, context);
+  if (!result.success) throw new Error(JSON.stringify(result.error?.issues ?? result.error ?? result));
+  data = result.data;
+}
+writeFileSync(resultPath, JSON.stringify(data ?? {}));
 `;
 
 const d1MigrationSettingsSchema = z.object({
@@ -198,30 +210,82 @@ export function readBuiltCloudflareConfig(project: Pick<Project, 'dirPath'>): Re
   });
 }
 
+/**
+ * The absolute assets directory that the `wrangler.config.ts` of a Wrangler-bundled Worker names
+ * for the mode when it also names a build command, which may be what creates the directory, or
+ * undefined otherwise.
+ */
+export function resolveWranglerBuildHookAssetsDirectory(
+  project: Pick<Project, 'dirPath'>,
+  mode: string,
+  env: Record<string, string | undefined>
+): string | undefined {
+  const configPath = path.join(project.dirPath, WRANGLER_TOOLING_CONFIG_FILE_NAME);
+  if (!fs.existsSync(configPath)) return;
+  const { assetsDirectory, build } = z
+    .looseObject({
+      assetsDirectory: z.string().optional(),
+      build: z.looseObject({ command: z.string().optional() }).optional(),
+    })
+    .parse(evaluateConfig(project.dirPath, configPath, mode, env, 'wrangler'));
+  return assetsDirectory === undefined || !build?.command ? undefined : path.resolve(project.dirPath, assetsDirectory);
+}
+
+/**
+ * Whether `cloudflare.config.ts` names an entrypoint for the mode: Wrangler builds an assets-only
+ * Worker without running the build command of `wrangler.config.ts`.
+ */
+export function hasCloudflareConfigEntrypoint(
+  project: Pick<Project, 'dirPath'>,
+  mode: string,
+  env: Record<string, string | undefined>
+): boolean {
+  const configPath = findCloudflareConfigPath(project);
+  if (!configPath) return false;
+  const { worker } = z
+    .looseObject({ worker: z.looseObject({ entrypoint: z.string().optional() }) })
+    .parse(evaluateConfig(project.dirPath, configPath, mode, env, 'cloudflare'));
+  return worker.entrypoint !== undefined;
+}
+
 function loadCloudflareConfig(
   dirPath: string,
   configPath: string,
   mode: string,
   env: Record<string, string | undefined>
 ): ResolvedCloudflareConfig {
+  return toResolvedConfig(evaluateConfig(dirPath, configPath, mode, env, 'cloudflare'));
+}
+
+function evaluateConfig(
+  dirPath: string,
+  configPath: string,
+  mode: string,
+  env: Record<string, string | undefined>,
+  kind: 'cloudflare' | 'wrangler'
+): unknown {
   const resultDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-cloudflare-config-'));
   try {
     const resultPath = path.join(resultDirPath, 'config.json');
-    const ret = spawnSync('node', ['--input-type=module', '-e', LOAD_CONFIG_SCRIPT, configPath, mode, resultPath], {
-      cwd: dirPath,
-      encoding: 'utf8',
-      // The config may read the environment (e.g. WB_VERSION), exactly as it does under cf.
-      env: env as NodeJS.ProcessEnv,
-      // The config's own stdout goes to wb's stderr, keeping wb's stdout for its own output.
-      stdio: ['ignore', process.stderr.fd, 'pipe'],
-    });
+    const ret = spawnSync(
+      'node',
+      ['--input-type=module', '-e', LOAD_CONFIG_SCRIPT, configPath, mode, resultPath, kind],
+      {
+        cwd: dirPath,
+        encoding: 'utf8',
+        // The config may read the environment (e.g. WB_VERSION), exactly as it does under cf.
+        env: env as NodeJS.ProcessEnv,
+        // The config's own stdout goes to wb's stderr, keeping wb's stdout for its own output.
+        stdio: ['ignore', process.stderr.fd, 'pipe'],
+      }
+    );
     if (ret.status !== 0) {
       throw new Error(
         `Failed to evaluate ${configPath} for mode "${mode}" (is the cf package installed?):\n${(ret.stderr || String(ret.error ?? '')).trim()}`
       );
     }
     if (ret.stderr) process.stderr.write(ret.stderr);
-    return toResolvedConfig(JSON.parse(fs.readFileSync(resultPath, 'utf8')));
+    return JSON.parse(fs.readFileSync(resultPath, 'utf8')) as unknown;
   } finally {
     fs.rmSync(resultDirPath, { force: true, recursive: true });
   }
