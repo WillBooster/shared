@@ -91,7 +91,7 @@ export function updateBunReleaseAgeExcludes(rootDirPath: string): void {
   }
   // Staged: this run changes nothing else, so an interrupted write must not cost the repository
   // its working bunfig.toml.
-  const stagedFilePath = `${filePath}.wbfy-tmp`;
+  const stagedFilePath = `${filePath}.${process.pid}.wbfy-tmp`;
   // The rename would replace a read-only file and its permissions.
   fs.accessSync(filePath, fs.constants.W_OK);
   try {
