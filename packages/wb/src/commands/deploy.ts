@@ -279,7 +279,8 @@ function selectSecretsOrExit({ argv, project, envName, resolvedConfig }: WorkerD
       : `fnox (${fnoxProfile ? `base secrets or the ${fnoxProfile} profile from FNOX_PROFILE` : 'base secrets'}), ${miseEnv ? `the mise environment ${miseEnv} from MISE_ENV` : 'the default mise environment'}`;
     exitWithError(
       `Secrets that cloudflare.config.ts declares with bindings.secret() for ${envName} are not provided: ${missingSecretNames.join(', ')}. ` +
-        `Set each (an explicitly empty value counts) in ${profileSources}, an exported environment variable, or ${formatCloudflareEnvFilePaths(project)}, or stop declaring it for this mode.`
+        `Set each in ${profileSources} (an explicitly empty value counts), or stop declaring it for this mode. ` +
+        `wb deploy also reads exported environment variables and the deploy-credential file ${formatCloudflareEnvFilePaths(project)}, which wb start does not read.`
     );
   }
   // The deployed Worker must be able to report its version even when the config declares no
