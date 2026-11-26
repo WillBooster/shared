@@ -147,13 +147,13 @@ it('stops before any build when the build context has uncommitted changes', asyn
 
 it('deploys without Docker or the registry, keeping the deployed containers, unless a rollout is requested', async () => {
   await fs.writeFile(path.join(dirPath, 'agent/source.txt'), 'uncommitted');
+  await fs.writeFile(path.join(dirPath, 'fake-bin/docker'), '#!/bin/sh\nexit 1\n');
 
   for (const args of [['--containers-rollout=none'], []]) {
     const result = await deploy(args);
     expect(result.status, result.stdout + result.stderr).toBe(0);
   }
 
-  expect(await readDockerBuilds()).toEqual([]);
   expect(apiRequests).toEqual([]);
   expect(await readDeployRollouts()).toEqual(['none', 'none', 'none', 'none']);
 }, 120_000);
@@ -289,10 +289,12 @@ esac
     `#!/bin/sh
 # cf's build lists the tags of its previous builds, which tolerates a missing Docker.
 if [ "$1" != build ]; then exit 0; fi
-for context; do :; done
+context=$(mktemp -d)
+tar -xf - -C "$context"
 untracked=false
 if [ -e "$context/untracked.txt" ]; then untracked=true; fi
 printf '{"source":"%s","untracked":%s}\\n' "$(cat "$context/source.txt")" "$untracked" >> "$WB_TEST_LOG_DIR/docker-builds"
+rm -rf "$context"
 `,
     { mode: 0o755 }
   );
