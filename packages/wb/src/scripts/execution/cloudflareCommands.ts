@@ -74,22 +74,15 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
 
 /**
  * A local server reads the values of the declared secrets from its process environment, and the
- * runtime also lets that environment override the config's other values; so the server alone gets
- * the config's own text values for exported keys of those (a JSON value cannot come from the
- * environment, so its key is removed), while wb keeps its environment (e.g. PORT) for itself.
+ * runtime also lets that environment override the config's other values; so the server runs
+ * without the exported keys whose values differ from the config's (wb keeps them, e.g. PORT).
+ * Their values never enter the script text, whose normalization would alter them.
  */
 function buildServerEnvPrefix(project: Project, mode: string): string {
-  const overriddenVars = Object.entries(resolveLocalCloudflareConfig(project, mode)?.vars ?? {}).filter(
-    ([key, value]) => project.env[key] !== undefined && project.env[key] !== value
-  );
-  // env takes every -u option before the first assignment.
-  const envArgs = [
-    ...overriddenVars.filter(([, value]) => typeof value !== 'string').map(([key]) => `-u ${shellEscapeArgument(key)}`),
-    ...overriddenVars.flatMap(([key, value]) =>
-      typeof value === 'string' ? [buildShellEnvironmentAssignment(key, value)] : []
-    ),
-  ];
-  return envArgs.length > 0 ? `env ${envArgs.join(' ')} ` : '';
+  const overriddenKeys = Object.entries(resolveLocalCloudflareConfig(project, mode)?.vars ?? {})
+    .filter(([key, value]) => project.env[key] !== undefined && project.env[key] !== value)
+    .map(([key]) => `-u ${shellEscapeArgument(key)}`);
+  return overriddenKeys.length > 0 ? `env ${overriddenKeys.join(' ')} ` : '';
 }
 
 /**
