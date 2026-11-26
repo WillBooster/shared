@@ -15,6 +15,7 @@ interface BunfigToml {
     exact?: boolean;
     globalStore?: boolean;
     linker?: string;
+    minimumReleaseAge?: number;
     minimumReleaseAgeExcludes?: string[];
   };
 }
@@ -55,6 +56,49 @@ export function hasCurrentBunReleaseAgeExcludes(rootDirPath: string): boolean {
   if (!fs.existsSync(filePath)) return true;
   const excludes = parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.minimumReleaseAgeExcludes;
   return excludes?.join('\n') === bunMinimumReleaseAgeExcludes.join('\n');
+}
+
+/**
+ * Rewrites only the release-age excludes of an existing bunfig.toml, leaving every other setting
+ * as it is: the files that depend on those settings are not regenerated in the same run.
+ */
+export function updateBunReleaseAgeExcludes(rootDirPath: string): void {
+  const filePath = path.resolve(rootDirPath, 'bunfig.toml');
+  // Without a bunfig.toml the repository has no gate of its own to lift.
+  if (!fs.existsSync(filePath)) return;
+  const content = fs.readFileSync(filePath, 'utf8');
+  const excludesBlock = `minimumReleaseAgeExcludes = [\n${bunMinimumReleaseAgeExcludes.map((packageName) => `  "${packageName}",`).join('\n')}\n]`;
+  const excludesPattern = /^[ \t]*minimumReleaseAgeExcludes\s*=\s*\[[^\]]*\]/mu;
+  const newContent = excludesPattern.test(content)
+    ? content.replace(excludesPattern, excludesBlock)
+    : content.replace(/^[ \t]*minimumReleaseAge\s*=.*$/mu, (gateLine) => `${gateLine}\n${excludesBlock}`);
+  const install = parseBunfigToml(content)?.install;
+  const sharedExcludes = bunMinimumReleaseAgeExcludes.join('\n');
+  // Neither key (the global policy alone applies), or already the shared list. A list without a
+  // local gate still counts: Bun applies it to the global one.
+  if (
+    (install?.minimumReleaseAge === undefined && install?.minimumReleaseAgeExcludes === undefined) ||
+    install.minimumReleaseAgeExcludes?.join('\n') === sharedExcludes
+  ) {
+    return;
+  }
+  // A text edit of a file wbfy did not just generate: write it only when the result is the
+  // intended TOML (e.g. a quoted key would otherwise be defined twice).
+  if (parseBunfigToml(newContent)?.install?.minimumReleaseAgeExcludes?.join('\n') !== sharedExcludes) {
+    throw new Error(
+      `Could not update the release-age excludes in ${filePath}: write minimumReleaseAge and minimumReleaseAgeExcludes as unquoted assignments under [install], the latter as an array without comments, and rerun.`
+    );
+  }
+  // Written in place, not renamed over: a replacement file would drop the original's mode, ACL,
+  // and links. This run changes nothing else, so an interrupted write must not cost the repository
+  // its working bunfig.toml either.
+  try {
+    fs.writeFileSync(filePath, newContent);
+  } catch (error) {
+    fs.writeFileSync(filePath, content);
+    throw error;
+  }
+  console.info(`Updated the release-age excludes in ${filePath}`);
 }
 
 export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
