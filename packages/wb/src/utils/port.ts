@@ -32,8 +32,8 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
  * process it starts (e.g. the `wb start` a Playwright `webServer` runs), which learns of the
  * selection from WB_SELECTED_PORT in the environment it inherits: the search found nothing
  * listening there, so a process holding it later did not necessarily come from wb (a previous
- * phase's server is stopped by its own phase, and a container by its name). Only the exit-time
- * cleanup of wb's own server is registered for it.
+ * phase's server is stopped by its own phase, and a container by its name), and such a call fails
+ * instead. Only the exit-time cleanup that every served port gets is registered for it.
  *
  * An instance on a caller-chosen state directory is resolved by claimIsolatedInstancePort instead
  * and is never published: its caller manages and addresses it, and publishing it would replace the
@@ -50,6 +50,11 @@ export async function ensurePort(project: Project): Promise<number> {
     killPortProcessOnExit(port, project);
   } else if (project.env.WB_SELECTED_PORT === project.env.PORT) {
     port = Number(project.env.PORT);
+    if (!(await isPortAvailable(port))) {
+      throw new Error(
+        `PORT ${port}, which wb selected, is now in use by another process; wb does not stop it. Run the command again to select another port.`
+      );
+    }
   } else {
     port = await checkAndKillPortProcess(project.env.PORT, project);
   }
