@@ -69,7 +69,9 @@ export function wrapWithLocalD1DatabaseUrl(
   // Projects with multiple D1 databases are not supported: the hash-named files cannot be
   // distinguished cheaply (materialization does not even update the target file's mtime).
   const exportCommand = `export DATABASE_URL="file:$(ls "${getAbsoluteLocalStateDir(project, mode)}"/v3/d1/miniflare-D1DatabaseObject/*.sqlite | grep -v '/metadata[.]sqlite$' | head -1)"`;
-  return `${buildMaterializeLocalD1Command(project, mode, database)} && ${exportCommand} && ${script}`;
+  // The drizzle config takes its remote target from CLOUDFLARE_D1_DATABASE_ID, which wb sets only
+  // for a remote migration, so an exported one must not turn this local command into a remote one.
+  return `${buildMaterializeLocalD1Command(project, mode, database)} && unset CLOUDFLARE_D1_DATABASE_ID && ${exportCommand} && ${script}`;
 }
 
 /** The first D1 binding of the mode. */
