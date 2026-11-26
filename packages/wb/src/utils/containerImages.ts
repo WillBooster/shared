@@ -31,8 +31,16 @@ interface ContainerImageDeployment {
   resolvedConfig: ResolvedCloudflareConfig;
   buildEnv: Readonly<Record<string, string | undefined>>;
   authEnv: Readonly<Record<string, string | undefined>>;
+  /** The `--containers-rollout` flag. */
   rollout: ContainersRollout | undefined;
   dryRun: boolean | undefined;
+}
+
+interface ContainerImagePlan {
+  /** The strategy to pass to `cf deploy`. */
+  rollout: ContainersRollout | undefined;
+  /** The image references the build gets, keyed on the variable that carries each. */
+  env: Record<string, string>;
 }
 
 interface DockerfileImage {
@@ -54,23 +62,37 @@ interface CommittedImageSource {
 }
 
 /**
- * The image references `cloudflare.config.ts` must use in place of its Dockerfile images, keyed on
- * the variable that carries each. For a `gradual`/`immediate` rollout, each is the digest-pinned
- * reference of the image built from the committed build context: published by an earlier deploy,
- * or built and pushed now. Otherwise the deploy keeps the deployed Containers (`none`), so each is
- * a placeholder that the build records but the upload never sends. Either way the build needs no
- * Docker: wb verifies that the config takes the placeholders before any image work, and the
- * published references again before the build.
+ * Plans the container images of a deploy from the config as the build will evaluate it, after
+ * `gen-code`. Without the flag, a Dockerfile image gets no image to roll out, and cf takes one
+ * strategy for all Containers, so a config with any container image keeps every deployed Container.
  */
-export async function resolveContainerImageEnv(deployment: ContainerImageDeployment): Promise<Record<string, string>> {
-  const images = selectDockerfileImages(deployment.resolvedConfig.containerImages);
+export async function planContainerImages(deployment: ContainerImageDeployment): Promise<ContainerImagePlan> {
+  const { project, envName, buildEnv } = deployment;
+  const containerImages = resolveDeployCloudflareConfig(project, envName, buildEnv)?.containerImages ?? [];
+  const rollout = deployment.rollout ?? (containerImages.length > 0 ? 'none' : undefined);
+  return { rollout, env: await resolveImageEnv(deployment, selectDockerfileImages(containerImages), rollout) };
+}
+
+/**
+ * The references `cloudflare.config.ts` must use in place of its Dockerfile images. For a
+ * `gradual`/`immediate` rollout, each is the digest-pinned reference of the image built from the
+ * committed build context: published by an earlier deploy, or built and pushed now. Otherwise the
+ * deploy keeps the deployed Containers (`none`), so each is a placeholder that the build records but
+ * the upload never sends. Either way the build needs no Docker: wb verifies that the config takes
+ * the placeholders before any image work, and the published references again before the build.
+ */
+async function resolveImageEnv(
+  deployment: ContainerImageDeployment,
+  images: DockerfileImage[],
+  rollout: ContainersRollout | undefined
+): Promise<Record<string, string>> {
   if (images.length === 0) return {};
   const registryHost = deployment.project.env.CLOUDFLARE_CONTAINER_REGISTRY || 'registry.cloudflare.com';
   const placeholderEnv = Object.fromEntries(
     images.map((image) => [image.variableName, createPlaceholderReference(registryHost, image)])
   );
-  assertConfigUsesImageReferences(deployment, images, placeholderEnv);
-  if (deployment.rollout !== 'gradual' && deployment.rollout !== 'immediate') {
+  assertConfigUsesImageReferences(deployment, placeholderEnv);
+  if (rollout !== 'gradual' && rollout !== 'immediate') {
     console.info(
       `Not building container images (${images.map(({ name }) => name).join(', ')}): the deploy keeps the deployed Containers.`
     );
@@ -90,7 +112,7 @@ export async function resolveContainerImageEnv(deployment: ContainerImageDeploym
   for (const source of sources) {
     env[source.image.variableName] = await publishImage(source, registryHost, deployment);
   }
-  assertConfigUsesImageReferences(deployment, images, env);
+  assertConfigUsesImageReferences(deployment, env);
   return env;
 }
 
@@ -303,22 +325,22 @@ function runInheriting(
 
 /**
  * Running the build with a Dockerfile image left in the config would build it from the working
- * tree, so the config must take every reference wb hands it before the build starts.
+ * tree, so the config must declare no Dockerfile image, and take every reference wb hands it,
+ * before the build starts.
  */
 function assertConfigUsesImageReferences(
   { project, envName, buildEnv }: ContainerImageDeployment,
-  images: DockerfileImage[],
   env: Record<string, string>
 ): void {
   const containerImages =
     resolveDeployCloudflareConfig(project, envName, { ...buildEnv, ...env })?.containerImages ?? [];
-  const ignoredImages = images.filter(({ name, variableName }) => {
-    const source = containerImages.find((image) => image.name === name)?.source;
-    return !source || !('reference' in source) || source.reference !== env[variableName];
+  const ignoredImages = containerImages.filter(({ name, source }) => {
+    const reference = env[toVariableName(name)];
+    return 'dockerfile' in source || (reference !== undefined && source.reference !== reference);
   });
   if (ignoredImages.length > 0) {
     throw new Error(
-      `cloudflare.config.ts must declare each container image built from a Dockerfile as \`{ reference: process.env.<variable> }\` while wb sets that variable: ${ignoredImages.map(({ name, variableName }) => `${name} (${variableName})`).join(', ')}.`
+      `cloudflare.config.ts must declare each container image built from a Dockerfile as \`{ reference: process.env.<variable> }\` while wb sets that variable: ${ignoredImages.map(({ name }) => `${name} (${toVariableName(name)})`).join(', ')}.`
     );
   }
 }
