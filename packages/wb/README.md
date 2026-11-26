@@ -175,7 +175,7 @@ Options:
   WB_CLOUDFLARE_STATE_DIR=/tmp/instance-1 WB_ENV=test bun wb db migrate   # migrates without starting a server
   ```
 
-- For a Wrangler-bundled Worker with an `entrypoint` whose `wrangler.config.ts` names both a `build.command` and an `assetsDirectory`, `wb deploy` creates that directory when it holds no file before running `cf build`, which requires the directory before it runs the command, so the command may be what fills or creates it; the deploy stops when the command leaves it without a file.
+- For a Wrangler-bundled Worker with an `entrypoint` whose `wrangler.config.ts` names both a `build.command` and an `assetsDirectory`, `wb deploy` creates that directory when it holds no file before running `cf build`, which requires the directory before it runs the command, so the command may be what fills or creates it; in that case the deploy stops when the command leaves it without a file (a directory that already held a file is left to Wrangler, which accepts it whatever the command does).
 - `wb gen-code` generates the Worker's types into `.cloudflare/types` and removes a `worker-configuration.d.ts` that wrangler generated in the package before its conversion.
 - A container image built from a Dockerfile is declared so that `wb deploy` can hand the build a published image instead (wb stops before the build when an image ignores its variable, so the build never builds an image with Docker):
 
