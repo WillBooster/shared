@@ -474,7 +474,7 @@ async function loadPackageConfigs(
 function findUnconvertedWorkerError(rootConfig: PackageConfig, allPackageConfigs: PackageConfig[]): string | undefined {
   const unconvertedDirPaths = findUnconvertedWorkerDirPaths(allPackageConfigs);
   return unconvertedDirPaths.length > 0
-    ? `Skip ${rootConfig.dirPath} (wbfy writes only bunfig.toml for such a repository, so that the cf toolchain can be installed; an error above means it could not): convert each Worker below from its wrangler config to cloudflare.config.ts with \`cf migrate\` (and upgrade wb in the same change) before applying wbfy.\n${unconvertedDirPaths.join('\n')}`
+    ? `Skip ${rootConfig.dirPath} (wbfy writes only this directory's bunfig.toml for such a repository, so that the cf toolchain can be installed: run it at the repository root, whose bunfig.toml Bun reads; an error above means it could not): convert each Worker below from its wrangler config to cloudflare.config.ts with \`cf migrate\` (and upgrade wb in the same change) before applying wbfy.\n${unconvertedDirPaths.join('\n')}`
     : undefined;
 }
 
