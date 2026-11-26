@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite';
 import { afterEach, beforeAll, beforeEach, expect, it } from 'bun:test';
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { createServer } from 'node:net';
@@ -40,8 +41,10 @@ it('serves a Worker that sees its declared secrets and the D1 schema of its migr
   // Without PORT, wb picks a free port itself; with one, it would kill whatever listens there.
   const server = startWb(['start'], { PORT: undefined, NEXT_PUBLIC_BASE_URL: undefined, WB_ENV: 'development' });
   try {
-    const response = await fetch(await waitForServerUrl(server));
+    const url = await waitForServerUrl(server);
+    const response = await fetch(url);
     expect(await response.json()).toEqual({
+      baseUrl: `http://localhost:${new URL(url).port}`,
       secret: 's3cret',
       tables: ['example', 'migration_history'],
       undeclared: false,
@@ -54,10 +57,14 @@ it('serves a Worker that sees its declared secrets and the D1 schema of its migr
   }
 }, 120_000);
 
-it("serves concurrent test instances on the state directories their callers chose, leaving the mode's own", async () => {
+it("serves concurrent test instances on their callers' ports and state directories, leaving the mode's own", async () => {
   const sentinelPath = path.join(dirPath, '.cloudflare/state-test/sentinel');
   await fs.mkdir(path.dirname(sentinelPath), { recursive: true });
   await fs.writeFile(sentinelPath, '');
+  // A primary server the instances run beside: its origin is pinned in the profile and inherited.
+  const primary = await startPlainServer();
+  const primaryUrl = `http://localhost:${primary.port}`;
+  await writeTestProfile(primary.port);
   const instances = await Promise.all(
     ['first', 'second'].map(async (name) => ({
       port: await findFreePort(),
@@ -68,8 +75,10 @@ it("serves concurrent test instances on the state directories their callers chos
 
   const servers = instances.map(({ inspectorPort, port, stateDirPath }) =>
     startWb(['start', '--mode', 'test', '--', '--inspector-port', String(inspectorPort)], {
+      // Off CI, the test profile's values override the exported ones.
+      CI: undefined,
       PORT: String(port),
-      NEXT_PUBLIC_BASE_URL: undefined,
+      NEXT_PUBLIC_BASE_URL: primaryUrl,
       WB_ENV: 'test',
       WB_CLOUDFLARE_STATE_DIR: stateDirPath,
     })
@@ -82,18 +91,43 @@ it("serves concurrent test instances on the state directories their callers chos
       })
     );
     expect(bodies).toEqual(
-      instances.map(() => ({
+      instances.map(({ port }) => ({
+        baseUrl: `http://localhost:${port}`,
         secret: 's3cret',
         tables: ['example', 'migration_history'],
         undeclared: false,
       }))
     );
+    expect(await fetchText(primary.port)).toBe('primary');
     expect(await fs.exists(sentinelPath)).toBe(true);
     for (const { stateDirPath } of instances) {
       expect(await fs.exists(path.join(stateDirPath, 'v3/d1/miniflare-D1DatabaseObject'))).toBe(true);
     }
   } finally {
     for (const server of servers) stopWb(server);
+    primary.close();
+  }
+}, 120_000);
+
+it('refuses to start a test instance on an occupied port, leaving its listener running', async () => {
+  const listener = await startPlainServer();
+  try {
+    const result = await spawnAsync('node', [cliPath, 'start', '--mode', 'test'], {
+      cwd: dirPath,
+      env: {
+        ...workerEnv,
+        PORT: String(listener.port),
+        WB_ENV: 'test',
+        WB_CLOUDFLARE_STATE_DIR: path.join(dirPath, 'isolated'),
+      },
+      timeout: 100_000,
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain(`PORT ${listener.port} is in use`);
+    expect(await fetchText(listener.port)).toBe('primary');
+  } finally {
+    listener.close();
   }
 }, 120_000);
 
@@ -221,6 +255,7 @@ export default defineConfig(({ mode = 'development' }) => ({
       WB_ENV: bindings.text(mode),
       AUTH_SECRET: bindings.secret(),
       EMPTY_SECRET: bindings.secret(),
+      NEXT_PUBLIC_BASE_URL: bindings.text(process.env.NEXT_PUBLIC_BASE_URL ?? ''),
       DB: bindings.d1({ name: 'fixture', id: '00000000-0000-4000-8000-000000000001' }),
     },
   },
@@ -236,6 +271,7 @@ export default defineConfig(({ mode = 'development' }) => ({
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
     ).all();
     return Response.json({
+      baseUrl: env.NEXT_PUBLIC_BASE_URL,
       secret: env.AUTH_SECRET,
       tables: results.map((row) => row.name),
       undeclared: 'UNDECLARED_SECRET' in env,
@@ -275,6 +311,39 @@ esac
 `,
     { mode: 0o755 }
   );
+}
+
+/** A test profile pinning the origin of the server on the given port. */
+async function writeTestProfile(port: number): Promise<void> {
+  await fs.writeFile(
+    path.join(dirPath, 'fnox.toml'),
+    `[profiles.test.secrets]
+PORT = { default = "${port}" }
+NEXT_PUBLIC_BASE_URL = { default = "http://localhost:${port}" }
+`
+  );
+}
+
+/**
+ * An HTTP server wb did not start, answering "primary". It runs in its own process so that wb
+ * killing it fails the test instead of terminating the test runner.
+ */
+async function startPlainServer(): Promise<{ port: number; close: () => void }> {
+  const server = spawn(
+    'node',
+    [
+      '-e',
+      "const s = require('node:http').createServer((_, r) => r.end('primary')); s.listen(0, '127.0.0.1', () => console.log(s.address().port));",
+    ],
+    { stdio: ['ignore', 'pipe', 'inherit'] }
+  );
+  const [chunk] = (await once(server.stdout, 'data')) as [Buffer];
+  return { port: Number(chunk.toString()), close: () => server.kill() };
+}
+
+async function fetchText(port: number): Promise<string> {
+  const response = await fetch(`http://127.0.0.1:${port}/`);
+  return response.text();
 }
 
 function startWb(args: string[], env: Record<string, string | undefined>): ChildProcess {

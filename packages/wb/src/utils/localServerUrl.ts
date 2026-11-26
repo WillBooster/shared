@@ -6,7 +6,6 @@ import path from 'node:path';
 import { isProcessAlive, writeFileAtomicSync } from '@willbooster/shared-lib-node/src';
 
 import type { Project } from '../project.js';
-import { getChosenLocalStateDir } from './cloudflare.js';
 
 // Only local environments serve a URL that cannot be known ahead of time; staging and production
 // always carry a fixed, deployed URL that a local file must never shadow.
@@ -53,9 +52,6 @@ interface LocalServerPublication {
  * keeps concurrent app servers of one monorepo apart.
  */
 export function publishLocalServerUrl(project: Project, baseUrl: string): void {
-  // A server on a state directory its caller chose is one of several instances that caller
-  // manages and addresses itself; publishing it would replace the mode's regular server.
-  if (getChosenLocalStateDir(project)) return;
   // The Git repository, not Project#rootDirPath, whose depth-2 heuristic would disagree with the
   // reader for a workspace nested at another depth (e.g. `apps/group/*`) and silently no-op.
   // Outside a repository there is nowhere a reader would look, so publishing would only litter.
