@@ -104,6 +104,18 @@ describe('ensurePort', () => {
     }
   );
 
+  it('refuses, without reclaiming it, a selected port another process took before a later phase', async () => {
+    const project = createFakeProject();
+    const port = await ensurePort(project);
+    const server = await occupyPort(port);
+    try {
+      await expect(ensurePort(project)).rejects.toThrow(`PORT ${port}, which wb selected, is now in use`);
+      expect(processUtils.killPortProcessImmediatelyAndOnExit).not.toHaveBeenCalledWith(port, project);
+    } finally {
+      server?.close();
+    }
+  });
+
   it('keeps wrapped fallback probes inside the range at the top edge', async () => {
     // `pkg-3620` in the test environment hashes to the range's last port, 32767.
     const project = { name: 'pkg-3620', dirPath, rootDirPath: dirPath, env: { WB_ENV: 'test' } } as unknown as Project;
