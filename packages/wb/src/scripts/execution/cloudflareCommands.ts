@@ -45,8 +45,9 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
   const mode = resolveCloudflareMode(project);
   const port = getEnsuredPort(project);
   const usesVite = usesViteBundler(project);
+  // Vite otherwise moves to the next port when this one is taken, away from the origin wb derived.
   const serverArgs = usesVite
-    ? `--port ${port}`
+    ? `--port ${port} --strictPort`
     : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(project, mode)}"`;
   return [
     ...buildGenDevVarsCommands(project, argv),
