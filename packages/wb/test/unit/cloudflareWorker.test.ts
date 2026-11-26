@@ -28,12 +28,14 @@ const workerEnv = {
 };
 
 let dirPath: string;
+const plainServers: ChildProcess[] = [];
 
 beforeAll(buildWb, 120_000);
 beforeEach(async () => {
   dirPath = await createWorkerProject();
 });
 afterEach(async () => {
+  for (const server of plainServers.splice(0)) server.kill();
   await fs.rm(dirPath, { force: true, recursive: true });
 });
 
@@ -105,30 +107,26 @@ it("serves concurrent test instances on their callers' ports and state directori
     }
   } finally {
     for (const server of servers) stopWb(server);
-    primary.close();
   }
 }, 120_000);
 
 it('refuses to start a test instance on an occupied port, leaving its listener running', async () => {
   const listener = await startPlainServer();
-  try {
-    const result = await spawnAsync('node', [cliPath, 'start', '--mode', 'test'], {
-      cwd: dirPath,
-      env: {
-        ...workerEnv,
-        PORT: String(listener.port),
-        WB_ENV: 'test',
-        WB_CLOUDFLARE_STATE_DIR: path.join(dirPath, 'isolated'),
-      },
-      timeout: 100_000,
-    });
 
-    expect(result.status).not.toBe(0);
-    expect(result.stdout + result.stderr).toContain(`PORT ${listener.port} is in use`);
-    expect(await fetchText(listener.port)).toBe('primary');
-  } finally {
-    listener.close();
-  }
+  const result = await spawnAsync('node', [cliPath, 'start', '--mode', 'test'], {
+    cwd: dirPath,
+    env: {
+      ...workerEnv,
+      PORT: String(listener.port),
+      WB_ENV: 'test',
+      WB_CLOUDFLARE_STATE_DIR: path.join(dirPath, 'isolated'),
+    },
+    timeout: 100_000,
+  });
+
+  expect(result.status).not.toBe(0);
+  expect(result.stdout + result.stderr).toContain(`PORT ${listener.port} is in use`);
+  expect(await fetchText(listener.port)).toBe('primary');
 }, 120_000);
 
 it("migrates a Drizzle package's cf-native D1 into a chosen state directory with cf, not drizzle-kit", async () => {
@@ -325,10 +323,10 @@ NEXT_PUBLIC_BASE_URL = { default = "http://localhost:${port}" }
 }
 
 /**
- * An HTTP server wb did not start, answering "primary". It runs in its own process so that wb
- * killing it fails the test instead of terminating the test runner.
+ * An HTTP server wb did not start, answering "primary" until the test ends. It runs in its own
+ * process so that wb killing it fails the test instead of terminating the test runner.
  */
-async function startPlainServer(): Promise<{ port: number; close: () => void }> {
+async function startPlainServer(): Promise<{ port: number }> {
   const server = spawn(
     'node',
     [
@@ -337,8 +335,9 @@ async function startPlainServer(): Promise<{ port: number; close: () => void }> 
     ],
     { stdio: ['ignore', 'pipe', 'inherit'] }
   );
+  plainServers.push(server);
   const [chunk] = (await once(server.stdout, 'data')) as [Buffer];
-  return { port: Number(chunk.toString()), close: () => server.kill() };
+  return { port: Number(chunk.toString()) };
 }
 
 async function fetchText(port: number): Promise<string> {
