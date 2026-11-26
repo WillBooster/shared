@@ -63,9 +63,12 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
  * instance published first, whose values must then equal this instance's.
  */
 function publishOwnDevVars(outputPath: string, content: string, mode: string): void {
+  if (fs.existsSync(outputPath) && fs.readFileSync(outputPath, 'utf8') === content) return;
+
   const tempPath = `${outputPath}.${process.pid}.${randomUUID()}.tmp`;
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(tempPath, content);
+  // The file holds secrets, and the hard link publishes it with this mode.
+  fs.writeFileSync(tempPath, content, { mode: 0o600 });
   try {
     fs.linkSync(tempPath, outputPath);
   } catch (error) {
