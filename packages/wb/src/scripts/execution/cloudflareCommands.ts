@@ -72,17 +72,32 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
   ];
 }
 
+const SHELL_NAME_PATTERN = /^[A-Za-z_]\w*$/u;
+
 /**
  * A local server reads the values of the declared secrets from its process environment, and the
- * runtime also lets that environment override the config's other values; so the server runs
- * without the exported keys whose values differ from the config's (wb keeps them, e.g. PORT).
- * Their values never enter the script text, whose normalization would alter them.
+ * runtime also lets that environment override the config's other values; so the server process
+ * gets the config's own value for each exported key whose value differs (wb keeps the exported one,
+ * e.g. PORT), which also leaves a config that derives the value from that key unchanged. A value
+ * travels in a variable of its own because the script text is normalized; a JSON value cannot come
+ * from the environment, so its key is removed.
  */
 function buildServerEnvPrefix(project: Project, mode: string): string {
-  const overriddenKeys = Object.entries(resolveLocalCloudflareConfig(project, mode)?.vars ?? {})
-    .filter(([key, value]) => project.env[key] !== undefined && project.env[key] !== value)
-    .map(([key]) => `-u ${shellEscapeArgument(key)}`);
-  return overriddenKeys.length > 0 ? `env ${overriddenKeys.join(' ')} ` : '';
+  const unsetArgs: string[] = [];
+  const assignments: string[] = [];
+  for (const [key, value] of Object.entries(resolveLocalCloudflareConfig(project, mode)?.vars ?? {})) {
+    if (project.env[key] === undefined || project.env[key] === value) continue;
+    if (typeof value === 'string' && SHELL_NAME_PATTERN.test(key)) {
+      const valueVariableName = `WB_CLOUDFLARE_VAR_${key}`;
+      project.env[valueVariableName] = value;
+      unsetArgs.push(`-u ${valueVariableName}`);
+      assignments.push(`${key}="$${valueVariableName}"`);
+    } else {
+      unsetArgs.push(`-u ${shellEscapeArgument(key)}`);
+    }
+  }
+  const envArgs = [...unsetArgs, ...assignments];
+  return envArgs.length > 0 ? `env ${envArgs.join(' ')} ` : '';
 }
 
 /**
