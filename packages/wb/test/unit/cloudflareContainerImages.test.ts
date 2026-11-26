@@ -289,12 +289,10 @@ esac
     `#!/bin/sh
 # cf's build lists the tags of its previous builds, which tolerates a missing Docker.
 if [ "$1" != build ]; then exit 0; fi
-context=$(mktemp -d)
-tar -xf - -C "$context"
+for context; do :; done
 untracked=false
 if [ -e "$context/untracked.txt" ]; then untracked=true; fi
 printf '{"source":"%s","untracked":%s}\\n' "$(cat "$context/source.txt")" "$untracked" >> "$WB_TEST_LOG_DIR/docker-builds"
-rm -rf "$context"
 `,
     { mode: 0o755 }
   );

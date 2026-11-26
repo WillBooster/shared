@@ -1,9 +1,10 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import type { Readable } from 'node:stream';
 
-import { spawnAsync } from '@willbooster/shared-lib-node/src';
+import { treeKill } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import { z } from 'zod';
 
@@ -17,6 +18,7 @@ export type ContainersRollout = 'none' | 'gradual' | 'immediate';
 export const CONTAINER_IMAGE_ENV_PREFIX = 'WB_CONTAINER_IMAGE_';
 
 const PLATFORM = 'linux/amd64';
+const SHUTDOWN_SIGNALS = ['SIGHUP', 'SIGINT', 'SIGTERM', 'SIGQUIT'] as const;
 
 const registryCredentialsSchema = z.object({
   account_id: z.string(),
@@ -278,54 +280,82 @@ async function buildAndPushImage(
   { project, envName, authEnv }: ContainerImageDeployment
 ): Promise<void> {
   const image = `${source.repositoryName}:${source.tag}`;
-  console.info(chalk.cyan(`Building the container image ${image} from ${source.treeish}.`));
-  // Docker reads the committed tree as a tar stream, so uncommitted and untracked files never reach
-  // the image, and no extracted copy is left behind when wb is stopped.
-  const archive = spawn('git', ['archive', '--format=tar', source.treeish], {
-    cwd: source.repository,
-    stdio: ['ignore', 'pipe', 'inherit'],
-  });
-  // 'exit', not 'close': Docker holds the stdout handed to it, which therefore never closes here.
-  const archiveStatus = new Promise<number | null>((resolve) => archive.on('exit', resolve));
-  await runStoppingWithWb(
-    'docker',
-    [
-      'build',
-      '--load',
-      '--provenance=false',
-      '--platform',
-      PLATFORM,
-      '-f',
-      source.dockerfilePath,
-      '-t',
-      image,
-      ...Object.entries(source.image.buildVars).flatMap(([name, value]) => ['--build-arg', `${name}=${value}`]),
-      '-',
-    ],
-    project,
-    project.env,
-    archive.stdout
-  );
-  if ((await archiveStatus) !== 0) throw new Error(`git archive ${source.treeish} failed.`);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-container-image-'));
+  const removeDirectory = (): void => fs.rmSync(directory, { force: true, recursive: true });
+  try {
+    // Only the committed tree reaches Docker: uncommitted and untracked files stay out of the image.
+    // A directory, not a tar stream on stdin, so that Docker applies the context's .dockerignore.
+    const archive = path.join(directory, 'context.tar');
+    const contextDir = path.join(directory, 'context');
+    fs.mkdirSync(contextDir);
+    runGit(['archive', '--format=tar', `--output=${archive}`, source.treeish], source.repository);
+    execFileSync('tar', ['-xf', archive, '-C', contextDir]);
+    console.info(chalk.cyan(`Building the container image ${image} from ${source.treeish}.`));
+    await runStoppingWithWb(
+      'docker',
+      [
+        'build',
+        '--load',
+        '--provenance=false',
+        '--platform',
+        PLATFORM,
+        '-f',
+        path.join(contextDir, source.dockerfilePath),
+        '-t',
+        image,
+        ...Object.entries(source.image.buildVars).flatMap(([name, value]) => ['--build-arg', `${name}=${value}`]),
+        contextDir,
+      ],
+      project,
+      project.env,
+      removeDirectory
+    );
+  } finally {
+    removeDirectory();
+  }
   await runStoppingWithWb('cf', ['containers', 'push', '--tag', image, '--mode', envName], project, authEnv);
 }
 
-/** Runs the command with wb's output; a shutdown signal to wb stops its process tree as well. */
+/**
+ * Runs the command with wb's output. A shutdown signal to wb stops the command's process tree,
+ * runs `cleanUp`, and then ends wb with that signal: wb registers no handler of its own while a
+ * command runs, so the signal's default action would otherwise end wb alone.
+ */
 async function runStoppingWithWb(
   command: string,
   args: string[],
   project: Project,
   env: Readonly<Record<string, string | undefined>>,
-  stdin: Readable | 'ignore' = 'ignore'
+  cleanUp?: () => void
 ): Promise<void> {
   console.info(chalk.cyan(`Running: ${buildShellCommand([command, ...args])}`));
-  const ret = await spawnAsync(command, args, {
-    cwd: project.dirPath,
-    env: env as NodeJS.ProcessEnv,
-    stdio: [stdin, 'inherit', 'inherit'],
-    killOnExit: true,
+  const child = spawn(command, args, { cwd: project.dirPath, env: env as NodeJS.ProcessEnv, stdio: 'inherit' });
+  const handlers = SHUTDOWN_SIGNALS.map((signal) => {
+    const handler = (): void => {
+      removeHandlers();
+      try {
+        if (child.pid) treeKill(child.pid);
+      } catch {
+        // The command already exited.
+      }
+      cleanUp?.();
+      process.kill(process.pid, signal);
+    };
+    process.on(signal, handler);
+    return [signal, handler] as const;
   });
-  if (ret.status !== 0) throw new Error(`${command} ${args[0] ?? ''} failed with ${ret.status ?? ret.signal}.`);
+  const removeHandlers = (): void => {
+    for (const [signal, handler] of handlers) process.off(signal, handler);
+  };
+  try {
+    const status = await new Promise<number | string>((resolve) => {
+      child.on('error', (error) => resolve(error.message));
+      child.on('exit', (code, signal) => resolve(code ?? signal ?? 'an unknown status'));
+    });
+    if (status !== 0) throw new Error(`${command} ${args[0] ?? ''} failed with ${status}.`);
+  } finally {
+    removeHandlers();
+  }
 }
 
 /**
