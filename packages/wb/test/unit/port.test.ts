@@ -31,13 +31,17 @@ function createFakeProject(env: Record<string, string | undefined> = {}): Projec
   } as unknown as Project;
 }
 
-async function occupyPort(port: number, host = '127.0.0.1'): Promise<Server> {
+/** A listener on the port, or undefined where the host lacks the address (e.g. no IPv6 loopback). */
+async function occupyPort(port: number, host = '127.0.0.1'): Promise<Server | undefined> {
   const server = createServer();
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(port, host, resolve);
+  const listening = await new Promise<boolean>((resolve, reject) => {
+    server.once('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EAFNOSUPPORT' || error.code === 'EADDRNOTAVAIL') resolve(false);
+      else reject(error);
+    });
+    server.listen(port, host, () => resolve(true));
   });
-  return server;
+  return listening ? server : undefined;
 }
 
 describe('ensurePort', () => {
@@ -82,12 +86,14 @@ describe('ensurePort', () => {
     expect(project.env.NEXT_PUBLIC_BASE_URL).toBe('https://example.willbooster.com');
   });
 
-  // A listener on ::1 alone goes unnoticed by the wildcard probes on macOS.
-  it.each(['127.0.0.1', '::1'])(
+  // On macOS a probe of one address misses a listener on another, so each loopback-reachable one counts.
+  it.each(['127.0.0.1', '0.0.0.0', '::', '::1'])(
     'searches another in-range port when the preferred port is occupied on %s',
     async (host) => {
       const preferredPort = await ensurePort(createFakeProject());
       const server = await occupyPort(preferredPort, host);
+      // Vacuous where the host lacks the address; any other bind failure rejects above.
+      if (!server) return;
       try {
         const fallbackPort = await ensurePort(createFakeProject());
         expect(fallbackPort).not.toBe(preferredPort);
@@ -109,7 +115,7 @@ describe('ensurePort', () => {
       expect(fallbackPort).toBeGreaterThanOrEqual(AUTO_PORT_RANGE_START);
       expect(fallbackPort).toBeLessThan(AUTO_PORT_RANGE_END_EXCLUSIVE);
     } finally {
-      server.close();
+      server?.close();
     }
   });
 

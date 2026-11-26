@@ -158,9 +158,9 @@ async function checkAndKillPortProcess(rawPort: unknown, project: Project): Prom
  * @returns A promise that resolves to true if the port is available, false otherwise
  */
 export async function isPortAvailable(port: number): Promise<boolean> {
-  // A wildcard bind succeeds on macOS while another process holds only a loopback address, so
-  // probe the loopback addresses too.
-  for (const host of ['127.0.0.1', '::', '::1']) {
+  // On macOS a bind beside another process's listener succeeds unless both name the same address
+  // (or overlapping IPv6 ones), so probe every address a listener answering loopback can hold.
+  for (const host of ['127.0.0.1', '0.0.0.0', '::', '::1']) {
     const available = await probePort(host, port);
     if (!available) return false;
   }
