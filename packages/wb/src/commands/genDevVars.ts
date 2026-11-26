@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -46,21 +47,39 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     }
 
     const content = lines.join('\n') + '\n';
-    // Concurrent servers of one mode share the file, and a starting server must never read it
-    // half-written, so an unchanged file stays untouched and a changed one is replaced atomically.
-    const existingContent = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf8') : undefined;
-    if (existingContent !== content) {
-      // An isolated instance must not hand its values to another instance of the mode.
-      if (existingContent !== undefined && getChosenLocalStateDir(project)) {
-        throw new Error(
-          `${outputPath} holds other values than this instance's, and instances on a chosen WB_CLOUDFLARE_STATE_DIR share it: give an instance its own value with \`--var <name>:<value>\` after \`--\`, or regenerate the file with \`wb gen-dev-vars\` without WB_CLOUDFLARE_STATE_DIR.`
-        );
-      }
+    if (getChosenLocalStateDir(project)) {
+      publishOwnDevVars(outputPath, content);
+    } else if (!fs.existsSync(outputPath) || fs.readFileSync(outputPath, 'utf8') !== content) {
+      // A starting server must never read the file half-written.
       writeFileAtomicSync(outputPath, content);
     }
     console.info(chalk.green(`Generated ${outputPath} with ${lines.length} declared secrets.`));
   },
 };
+
+/**
+ * Concurrent instances on chosen state directories share the mode's file, so an isolated instance
+ * only creates it, never replaces it: a hard link publishes the complete file and fails when another
+ * instance published first, whose values must then equal this instance's.
+ */
+function publishOwnDevVars(outputPath: string, content: string): void {
+  const tempPath = `${outputPath}.${process.pid}.${randomUUID()}.tmp`;
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(tempPath, content);
+  try {
+    fs.linkSync(tempPath, outputPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    if (fs.readFileSync(outputPath, 'utf8') !== content) {
+      throw new Error(
+        `${outputPath} holds other values than this instance's, and instances on a chosen WB_CLOUDFLARE_STATE_DIR share it: give an instance its own value with \`--var <name>:<value>\` after \`--\`, or regenerate the file with \`wb gen-dev-vars\` without WB_CLOUDFLARE_STATE_DIR.`,
+        { cause: error }
+      );
+    }
+  } finally {
+    fs.rmSync(tempPath, { force: true });
+  }
+}
 
 /**
  * Quote a value for dotenv (the format of .dev.vars). Every candidate representation
