@@ -72,7 +72,7 @@ function publishOwnDevVars(outputPath: string, content: string): void {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     if (fs.readFileSync(outputPath, 'utf8') !== content) {
       throw new Error(
-        `${outputPath} holds other values than this instance's, and instances on a chosen WB_CLOUDFLARE_STATE_DIR share it: give every instance of the mode the same values of the declared secrets (an instance's own value goes to its server as \`--var <name>:<value>\` after \`--\`), or regenerate the file with \`wb gen-dev-vars\` without WB_CLOUDFLARE_STATE_DIR.`,
+        `${outputPath} holds other values than this instance's, and instances on a chosen WB_CLOUDFLARE_STATE_DIR share it: give every instance of the mode the same values of the declared secrets (a Wrangler-bundled Worker's server takes an instance's own value as \`--var <name>:<value>\` after \`--\`), or regenerate the file with \`wb gen-dev-vars\` without WB_CLOUDFLARE_STATE_DIR.`,
         { cause: error }
       );
     }
