@@ -271,6 +271,35 @@ it('deploys a Worker whose wrangler.config.ts build command creates its assets d
   );
 }, 120_000);
 
+it('builds and checks a deploy mode without touching Cloudflare resources when only building', async () => {
+  const logDirPath = path.join(dirPath, 'cf-log');
+  await fs.mkdir(logDirPath);
+  await recordAuthenticatedCfCalls();
+
+  // On CI, a real deploy would stop without a token.
+  const result = await spawnAsync('node', [cliPath, 'deploy', '--build-only'], {
+    cwd: dirPath,
+    env: {
+      ...workerEnv,
+      CI: '1',
+      CF_API_TOKEN: undefined,
+      CLOUDFLARE_API_TOKEN: undefined,
+      WB_ENV: 'production',
+      WB_TEST_CF_LOG: logDirPath,
+    },
+    timeout: 100_000,
+  });
+
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  const calls = await fs.readFile(path.join(logDirPath, 'calls'), 'utf8');
+  expect(calls).toBe('config-account: deploy --mode production --prebuilt --dry-run\n');
+  const builtWorker = await fs.readFile(
+    path.join(dirPath, '.cloudflare/output/v1/workers/default/worker.config.json'),
+    'utf8'
+  );
+  expect(JSON.parse(builtWorker)).toMatchObject({ name: 'fixture-production' });
+}, 120_000);
+
 /**
  * A Wrangler-bundled Worker whose toolchain is this package's own: cf requires the bundler in
  * the project's own node_modules, so both are linked instead of installed.
@@ -342,8 +371,9 @@ export default defineConfig(({ mode = 'development' }) => ({
 }
 
 /**
- * Replaces the project's cf with one that runs the real build and records every other call
- * (all of which need a Cloudflare account) with the account it would target.
+ * Replaces the project's cf with one that runs the real build and records every other call with
+ * the account it would target; of those, only the offline check of the build runs for real, while
+ * the others need a Cloudflare account.
  */
 async function recordAuthenticatedCfCalls(): Promise<void> {
   const cfPath = path.join(dirPath, 'node_modules/.bin/cf');
@@ -353,6 +383,7 @@ async function recordAuthenticatedCfCalls(): Promise<void> {
     `#!/bin/sh
 if [ "$1" = build ]; then exec "${path.resolve('node_modules/.bin/cf')}" "$@"; fi
 printf '%s\\n' "$CLOUDFLARE_ACCOUNT_ID: $*" >> "$WB_TEST_CF_LOG/calls"
+case "$*" in deploy*--prebuilt*--dry-run*) exec "${path.resolve('node_modules/.bin/cf')}" "$@" ;; esac
 for last; do :; done
 case "$*" in
   *--secrets-file*) cp "$last" "$WB_TEST_CF_LOG/secrets.json" ;;
