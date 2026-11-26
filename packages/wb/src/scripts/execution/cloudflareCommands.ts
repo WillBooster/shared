@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { z } from 'zod';
+
 import type { Project } from '../../project.js';
 import {
   buildCfCommand,
@@ -79,10 +81,31 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
  * The command `cf dev` / `cf build` delegates to for a Vite project, run directly: cf first
  * detects the project's framework from its dependencies and stops, without a terminal, when it
  * finds more than two (e.g. a vinext app that also depends on hono), although the answer would
- * not change the command. The variable is the one cf sets to make the plugin write Build Output.
+ * not change the command. The variable mirrors what cf sets when it delegates.
  */
 export function buildViteCommand(project: Project, mode: string, command: 'dev' | 'build', args = ''): string {
+  assertVitePluginReadsCloudflareConfig(project);
   return `CLOUDFLARE_VITE_FORCE_BUILD_OUTPUT=true YARN ${getViteExecutable(project)} ${command} --mode ${shellEscapeArgument(mode)} ${args}`.trim();
+}
+
+/**
+ * A 1.x plugin serves the Worker of a wrangler config instead of `cloudflare.config.ts`, which
+ * wb prepares secrets and migrations from; cf refuses it before delegating, so wb does too.
+ */
+function assertVitePluginReadsCloudflareConfig(project: Project): void {
+  for (let dirPath = project.dirPath; ; dirPath = path.dirname(dirPath)) {
+    const packageJsonPath = path.join(dirPath, 'node_modules', VITE_PLUGIN_PACKAGE_NAME, 'package.json');
+    if (fs.existsSync(packageJsonPath)) {
+      const { version } = z.object({ version: z.string() }).parse(JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')));
+      if (Number(version.split('.')[0]) < 2) {
+        throw new Error(
+          `${VITE_PLUGIN_PACKAGE_NAME} ${version} does not read cloudflare.config.ts; upgrade it to ^2.0.0-rc.0 in ${project.packageJsonPath}.`
+        );
+      }
+      return;
+    }
+    if (dirPath === path.dirname(dirPath)) return;
+  }
 }
 
 /** Vite+ (`vp`) when the package declares it, as cf chooses: such a package has no `vite` executable. */
