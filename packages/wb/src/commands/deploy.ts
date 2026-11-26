@@ -266,11 +266,12 @@ function selectSecretsOrExit({ argv, project, envName, resolvedConfig }: WorkerD
     resolvedConfig.secretNames
   );
   if (missingSecretNames.length > 0) {
-    // The profile the environment reader selected, which --cascade-env may set apart from WB_ENV.
+    // The profile the environment reader selected, which --cascade-env may set apart from WB_ENV;
+    // without one, fnox and mise run without a profile option.
     const cascade = resolveCascade(argv);
     const profileSources = cascade
       ? `fnox (base secrets or the ${cascade} profile), the mise environment ${cascade}`
-      : "fnox's base secrets, the default mise environment";
+      : 'fnox or mise (each with the profile or environment it selects itself, e.g. from FNOX_PROFILE or MISE_ENV)';
     exitWithError(
       `Secrets that cloudflare.config.ts declares with bindings.secret() for ${envName} are not provided: ${missingSecretNames.join(', ')}. ` +
         `Set each (an explicitly empty value counts) in ${profileSources}, an exported environment variable, or a .env.cloudflare file beside cloudflare.config.ts or at the repository root, or stop declaring it for this mode.`
