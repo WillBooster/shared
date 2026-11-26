@@ -270,7 +270,8 @@ function selectSecretsOrExit({ argv, project, envName, resolvedConfig }: WorkerD
   if (missingSecretNames.length > 0) {
     // The profile the environment reader selected, which --cascade-env may set apart from WB_ENV;
     // without one, fnox and mise run without a profile option and select from their own variables.
-    const cascade = resolveCascade(argv);
+    // An empty --cascade-env selects nothing, as for the reader.
+    const cascade = resolveCascade(argv) || undefined;
     // process.env, not project.env: the fnox and mise subprocesses inherit only the ambient
     // environment, so a selector that mise.toml or fnox itself sets never selects anything.
     const { FNOX_PROFILE: fnoxProfile, MISE_ENV: miseEnv } = process.env;
