@@ -63,7 +63,6 @@ it("serves concurrent test instances on the state directories their callers chos
 
   const servers = instances.map(({ inspectorPort, port, stateDirPath }) =>
     startWb(['start', '--mode', 'test', '--', '--inspector-port', String(inspectorPort)], {
-      AUTH_SECRET: String(port),
       PORT: String(port),
       NEXT_PUBLIC_BASE_URL: undefined,
       WB_ENV: 'test',
@@ -78,8 +77,8 @@ it("serves concurrent test instances on the state directories their callers chos
       })
     );
     expect(bodies).toEqual(
-      instances.map(({ port }) => ({
-        secret: String(port),
+      instances.map(() => ({
+        secret: 's3cret',
         tables: ['example', 'migration_history'],
         undeclared: false,
       }))
