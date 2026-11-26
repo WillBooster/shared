@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { writeFileAtomicSync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import { parse as parseDotenv } from 'dotenv';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
@@ -10,9 +11,10 @@ import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { resolveCloudflareMode, resolveLocalCloudflareConfig } from '../utils/cloudflareConfig.js';
 import { resolveDeclaredSecrets } from '../utils/workerSecrets.js';
 
-// Cloudflare Workers don't see the process environment; a locally served Worker reads the values
-// of its declared secrets from a .dev.vars file next to its config file instead. This command
-// bridges the fnox-managed values to that file.
+// A locally served Worker reads the values of its declared secrets from a .dev.vars file next to
+// its config file in preference to its process environment, from which Wrangler would also let
+// any variable named like a config value replace it. This command bridges the fnox-managed values
+// to that file.
 const builder = {} as const;
 
 type GenDevVarsCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
@@ -43,8 +45,12 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
       return;
     }
 
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    fs.writeFileSync(outputPath, lines.join('\n') + '\n');
+    const content = lines.join('\n') + '\n';
+    // Servers on caller-chosen state directories read this file while a regular start of the mode
+    // may regenerate it, so it changes only atomically and only when its content does.
+    if (!fs.existsSync(outputPath) || fs.readFileSync(outputPath, 'utf8') !== content) {
+      writeFileAtomicSync(outputPath, content);
+    }
     console.info(chalk.green(`Generated ${outputPath} with ${lines.length} declared secrets.`));
   },
 };

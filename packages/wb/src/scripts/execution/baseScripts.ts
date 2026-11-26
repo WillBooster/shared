@@ -7,13 +7,12 @@ import type { Project } from '../../project.js';
 import { isProjectEnvironment } from '../../project.js';
 import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
 import { readBunTestTimeout } from '../../utils/bunfig.js';
-import { getLocalStateDir, wrapWithLocalD1DatabaseUrl } from '../../utils/cloudflare.js';
+import { getChosenLocalStateDir, getLocalStateDir } from '../../utils/cloudflare.js';
 import {
   findCloudflareConfigPath,
   formatD1DatabaseNames,
   resolveCloudflareMode,
   resolveLocalCloudflareConfig,
-  selectD1Migrations,
 } from '../../utils/cloudflareConfig.js';
 import { ensurePort } from '../../utils/port.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../utils/shell.js';
@@ -21,6 +20,7 @@ import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 import { drizzleScripts, findDrizzleConfig, usesDrizzleKitForD1 } from '../drizzleScripts.js';
+import { buildLocalD1MigrationCommands, selectLocalD1Migrations } from '../localD1Scripts.js';
 import { prismaScripts } from '../prismaScripts.js';
 
 export interface TestE2EOptions {
@@ -85,6 +85,7 @@ export abstract class BaseScripts {
       // the root, like Docker's WORKDIR, so its cwd must be the directory containing scripts/.
       const scriptRootDirPath = path.dirname(path.dirname(customStartScriptPath));
       return this.buildProductionCommand(project, argv, [
+        ...buildCustomWorkerStartD1MigrationCommands(project),
         project.buildCommand,
         scriptRootDirPath === project.dirPath
           ? startCommand
@@ -94,7 +95,11 @@ export abstract class BaseScripts {
 
     const ecosystemConfigPath = findEcosystemConfigPath(project);
     const commands = ecosystemConfigPath
-      ? [project.buildCommand, `pm2-runtime start --no-autorestart ${ecosystemConfigPath}`]
+      ? [
+          ...buildCustomWorkerStartD1MigrationCommands(project),
+          project.buildCommand,
+          `pm2-runtime start --no-autorestart ${ecosystemConfigPath}`,
+        ]
       : this.buildDefaultProductionStartCommands(project, argv);
 
     return this.buildProductionCommand(project, argv, commands);
@@ -121,33 +126,28 @@ export abstract class BaseScripts {
     const mode = resolveCloudflareMode(project);
     // Test-environment Worker state is disposable; wipe it entirely (not just D1) before
     // migrating, since stale KV cache entries or Durable Object storage can break e2e tests.
+    // A state directory the caller chose belongs to the caller, who may run several instances.
     const localStateWipeCommands =
-      mode === 'test' && findCloudflareConfigPath(project) ? [`rm -Rf "${getLocalStateDir(mode)}"`] : [];
+      mode === 'test' && findCloudflareConfigPath(project) && !getChosenLocalStateDir(project)
+        ? [`rm -Rf "${getLocalStateDir(project, mode)}"`]
+        : [];
     const d1Databases = resolveLocalCloudflareConfig(project, mode)?.d1Databases ?? [];
-    const drizzleKitManagesD1 = usesDrizzleKitForD1(project);
-    const { drizzleD1Database, errorMessage, unmanagedD1Databases } = selectD1Migrations(
-      project,
-      d1Databases,
-      drizzleKitManagesD1
-    );
-    if (errorMessage) throw new Error(errorMessage);
+    const { unmanagedD1Databases } = selectLocalD1Migrations(project, mode);
     if (unmanagedD1Databases.length > 0) {
       console.warn(
         `No D1 migration mechanism detected for ${formatD1DatabaseNames(unmanagedD1Databases)}; wb will not run local D1 migrations for them.`
       );
     }
-    // The start commands apply cf-native migrations separately. Drizzle must stay ORM-only
-    // for those bindings because its generated SQL is not idempotent. A config targeting another
-    // database still needs to migrate that database, without receiving the local D1 URL.
+    // The Worker's start commands migrate its D1 bindings with whichever mechanism they use. A
+    // drizzle config targeting another database still needs to migrate that database, without
+    // receiving the local D1 URL.
     const drizzleMigrationCommand = !project.hasDrizzle
       ? undefined
-      : drizzleD1Database
-        ? wrapWithLocalD1DatabaseUrl(project, mode, drizzleScripts.migrateForStart(project))
-        : d1Databases.length === 0
-          ? drizzleScripts.migrateForStart(project)
-          : !drizzleKitManagesD1 && findDrizzleConfig(project)
-            ? drizzleScripts.migrate(project)
-            : undefined;
+      : d1Databases.length === 0
+        ? drizzleScripts.migrateForStart(project)
+        : !usesDrizzleKitForD1(project) && findDrizzleConfig(project)
+          ? drizzleScripts.migrate(project)
+          : undefined;
     return [
       ...localStateWipeCommands,
       ...(project.hasPrisma ? [prismaScripts.migrate(project)] : []),
@@ -174,12 +174,13 @@ export abstract class BaseScripts {
     // In the test environment the dev server runs against fresh, disposable state (e.g. an empty
     // local D1), so the schema must be migrated first — an app whose pages query the database
     // would otherwise answer 500 and the startup check would never see a 2xx.
-    const migrationCommands = isProjectEnvironment(project, 'test') ? this.buildMigrationCommands(project) : [];
+    const preparesData = isProjectEnvironment(project, 'test');
+    const migrationCommands = preparesData ? this.buildMigrationCommands(project) : [];
     // Use empty NODE_ENV to avoid "production" mode in some frameworks.
     const startupCheckCommand = `${buildShellEnvironmentAssignment('NODE_ENV', '')} ${buildConcurrentlyCommand(
       argv,
       untilFirstSuccess,
-      [this.startDevProtected(project, argv), this.waitApp(project)]
+      [this.startDevProtected(project, { ...argv, seedsLocalD1: preparesData }), this.waitApp(project)]
     )}`;
     return [...migrationCommands, startupCheckCommand].join(' && ');
   }
@@ -357,6 +358,16 @@ export function buildWaitOnLoopbackCommand(port: string | number | undefined, wa
  */
 function buildHttpReadinessCommand(port: string | number, readinessPath: string): string {
   return `curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:${port}${readinessPath}`;
+}
+
+/**
+ * A custom start of a Worker bypasses the Worker's start commands, which migrate its local D1, so
+ * the migration runs before it.
+ */
+function buildCustomWorkerStartD1MigrationCommands(project: Project): string[] {
+  return findCloudflareConfigPath(project)
+    ? buildLocalD1MigrationCommands(project, resolveCloudflareMode(project), true)
+    : [];
 }
 
 function findCustomProductionStartScriptPath(project: Project): string | undefined {

@@ -16,12 +16,12 @@ class DrizzleScripts {
 
   reset(project: Project, additionalOptions = ''): string {
     const mode = resolveCloudflareMode(project);
-    const d1Database = findLocalD1Database(project, mode);
+    const d1Database = usesDrizzleKitForD1(project) ? findLocalD1Database(project, mode) : undefined;
     if (d1Database) {
       // Remove only the D1 subtree so that other locally-persisted bindings (KV, R2, Durable Objects) survive,
       // then re-materialize the D1 SQLite file. Its path is deterministic, so a DATABASE_URL exported
       // before the removal stays valid.
-      return `rm -Rf "${getLocalStateDir(mode)}/v3/d1" && ${buildMaterializeLocalD1Command(mode, d1Database)} && ${this.migrate(project, additionalOptions)}`;
+      return `rm -Rf "${getLocalStateDir(project, mode)}/v3/d1" && ${buildMaterializeLocalD1Command(project, mode, d1Database)} && ${this.migrate(project, additionalOptions)}`;
     }
 
     const removeCommand = buildRemoveSqliteDbCommand(project);
@@ -38,13 +38,10 @@ class DrizzleScripts {
     return seedCommand === 'true' ? migrateCommand : `${migrateCommand} && ${seedCommand}`;
   }
 
+  /** For a package without a D1 binding, whose Worker start commands migrate its local D1 instead. */
   migrateForStart(project: Project, additionalOptions = ''): string {
-    // A local D1 is disposable only as the test mode's state; a file database, in the test environment.
-    const mode = resolveCloudflareMode(project);
-    const isDisposable = findLocalD1Database(project, mode)
-      ? mode === 'test'
-      : isProjectEnvironment(project, 'test') && !!buildRemoveSqliteDbCommand(project);
-    if (isDisposable) {
+    // A file database is disposable in the test environment.
+    if (isProjectEnvironment(project, 'test') && buildRemoveSqliteDbCommand(project)) {
       return this.reset(project, additionalOptions);
     }
     return this.migrate(project, additionalOptions);

@@ -1,7 +1,10 @@
+import { Database } from 'bun:sqlite';
 import { afterEach, beforeAll, beforeEach, expect, it } from 'bun:test';
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
+import type { AddressInfo } from 'node:net';
+import { createServer } from 'node:net';
 import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
@@ -10,7 +13,12 @@ import { buildWb } from '../helpers/build.js';
 import { createCloudflareProjectDir } from '../helpers/cloudflareProject.js';
 
 const cliPath = path.resolve('bin/index.js');
-const { BUN_TEST_WORKER_ID: _bunWorkerId, JEST_WORKER_ID: _jestWorkerId, ...baseEnv } = process.env;
+const {
+  BUN_TEST_WORKER_ID: _bunWorkerId,
+  JEST_WORKER_ID: _jestWorkerId,
+  WB_CLOUDFLARE_STATE_DIR: _stateDir,
+  ...baseEnv
+} = process.env;
 const workerEnv = {
   ...baseEnv,
   AUTH_SECRET: 's3cret',
@@ -30,18 +38,7 @@ afterEach(async () => {
 
 it('serves a Worker that sees its declared secrets and the D1 schema of its migration settings', async () => {
   // Without PORT, wb picks a free port itself; with one, it would kill whatever listens there.
-  const server = spawn('node', [cliPath, 'start'], {
-    cwd: dirPath,
-    detached: true,
-    env: {
-      ...workerEnv,
-      PORT: undefined,
-      NEXT_PUBLIC_BASE_URL: undefined,
-      WB_ENV: 'development',
-      MISE_ENV: undefined,
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const server = startWb(['start'], { PORT: undefined, NEXT_PUBLIC_BASE_URL: undefined, WB_ENV: 'development' });
   try {
     const response = await fetch(await waitForServerUrl(server));
     expect(await response.json()).toEqual({
@@ -53,12 +50,84 @@ it('serves a Worker that sees its declared secrets and the D1 schema of its migr
       "AUTH_SECRET='s3cret'\nEMPTY_SECRET=''\n"
     );
   } finally {
-    try {
-      if (server.pid) process.kill(-server.pid, 'SIGTERM');
-    } catch {
-      // The group already exited: keep the startup error instead of this one.
-    }
+    stopWb(server);
   }
+}, 120_000);
+
+it("serves concurrent test instances on the state directories their callers chose, leaving the mode's own", async () => {
+  const sentinelPath = path.join(dirPath, '.cloudflare/state-test/sentinel');
+  await fs.mkdir(path.dirname(sentinelPath), { recursive: true });
+  await fs.writeFile(sentinelPath, '');
+  const instances = await Promise.all(
+    ['first', 'second'].map(async (name) => ({
+      port: await findFreePort(),
+      inspectorPort: await findFreePort(),
+      stateDirPath: path.join(dirPath, name),
+    }))
+  );
+
+  const servers = instances.map(({ inspectorPort, port, stateDirPath }) =>
+    startWb(['start', '--mode', 'test', '--', '--inspector-port', String(inspectorPort)], {
+      PORT: String(port),
+      NEXT_PUBLIC_BASE_URL: undefined,
+      WB_ENV: 'test',
+      WB_CLOUDFLARE_STATE_DIR: stateDirPath,
+    })
+  );
+  try {
+    const bodies = await Promise.all(
+      servers.map(async (server, index) => {
+        const response = await fetch(await waitForServerUrl(server, instances[index]?.port));
+        return response.json();
+      })
+    );
+    expect(bodies).toEqual(
+      instances.map(() => ({
+        secret: 's3cret',
+        tables: ['example', 'migration_history'],
+        undeclared: false,
+      }))
+    );
+    expect(await fs.exists(sentinelPath)).toBe(true);
+    for (const { stateDirPath } of instances) {
+      expect(await fs.exists(path.join(stateDirPath, 'v3/d1/miniflare-D1DatabaseObject'))).toBe(true);
+    }
+  } finally {
+    for (const server of servers) stopWb(server);
+  }
+}, 120_000);
+
+it("migrates a Drizzle package's cf-native D1 into a chosen state directory with cf, not drizzle-kit", async () => {
+  // drizzle-kit is not installed: running it would fail the command.
+  const packageJsonPath = path.join(dirPath, 'package.json');
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as Record<string, unknown>;
+  await fs.writeFile(packageJsonPath, JSON.stringify({ ...packageJson, dependencies: { 'drizzle-orm': '1.0.0' } }));
+  await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite', out: 'd1' };\n`);
+  const stateDirPath = path.join(dirPath, 'isolated');
+
+  const result = await spawnAsync('node', [cliPath, 'db', 'migrate'], {
+    cwd: dirPath,
+    env: { ...workerEnv, WB_ENV: 'test', WB_CLOUDFLARE_STATE_DIR: stateDirPath },
+    timeout: 100_000,
+  });
+
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  const d1DirPath = path.join(stateDirPath, 'v3/d1/miniflare-D1DatabaseObject');
+  const fileNames = await fs.readdir(d1DirPath);
+  const databaseFileName = fileNames.find((fileName) => fileName.endsWith('.sqlite') && fileName !== 'metadata.sqlite');
+  const database = new Database(path.join(d1DirPath, databaseFileName ?? ''), { readonly: true });
+  try {
+    expect(
+      database
+        .query(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT GLOB 'sqlite_*' AND name NOT GLOB '_cf_*' ORDER BY name"
+        )
+        .all()
+    ).toEqual([{ name: 'example' }, { name: 'migration_history' }]);
+  } finally {
+    database.close();
+  }
+  expect(await fs.exists(path.join(dirPath, '.cloudflare/state-test'))).toBe(false);
 }, 120_000);
 
 it('generates the Worker types from the config and removes the ones wrangler generated', async () => {
@@ -208,11 +277,43 @@ esac
   );
 }
 
+function startWb(args: string[], env: Record<string, string | undefined>): ChildProcess {
+  return spawn('node', [cliPath, ...args], {
+    cwd: dirPath,
+    detached: true,
+    env: { ...workerEnv, MISE_ENV: undefined, ...env },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+function stopWb(server: ChildProcess): void {
+  try {
+    if (server.pid) process.kill(-server.pid, 'SIGTERM');
+  } catch {
+    // The group already exited: keep the startup error instead of this one.
+  }
+}
+
+const allocatedPorts = new Set<number>();
+
+async function findFreePort(): Promise<number> {
+  for (;;) {
+    const server = createServer();
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    await new Promise((resolve) => server.close(resolve));
+    if (!allocatedPorts.has(port)) {
+      allocatedPorts.add(port);
+      return port;
+    }
+  }
+}
+
 /**
- * Resolves with the URL of the port wb chose (printed in the command it starts) once it responds,
- * and rejects with wb's output when wb exits first.
+ * Resolves with the URL of the given port, or of the one wb chose (printed in the command it
+ * starts), once it responds, and rejects with wb's output when wb exits first.
  */
-async function waitForServerUrl(server: ChildProcess): Promise<string> {
+async function waitForServerUrl(server: ChildProcess, knownPort?: number): Promise<string> {
   let output = '';
   let exitCode: number | null | undefined;
   const onData = (chunk: Buffer): void => {
@@ -225,7 +326,7 @@ async function waitForServerUrl(server: ChildProcess): Promise<string> {
   });
   for (;;) {
     if (exitCode !== undefined) throw new Error(`wb start exited with ${exitCode} before serving:\n${output}`);
-    const port = /cf dev .*--port (\d+)/u.exec(output)?.[1];
+    const port = knownPort ?? /cf dev .*--port (\d+)/u.exec(output)?.[1];
     if (port) {
       const url = `http://127.0.0.1:${port}/`;
       try {

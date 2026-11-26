@@ -8,15 +8,15 @@ import type { Project } from '../../project.js';
 import {
   buildCfCommand,
   buildGenDevVarsCommand,
-  buildLocalD1MigrationsApplyCommands,
   getAbsoluteLocalStateDir,
+  getChosenLocalStateDir,
   getLocalStateDir,
 } from '../../utils/cloudflare.js';
 import { resolveCloudflareMode } from '../../utils/cloudflareConfig.js';
 import { getEnsuredPort } from '../../utils/port.js';
 import { buildShellEnvironmentAssignment, shellEscapeArgument } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
-import { usesDrizzleKitForD1 } from '../drizzleScripts.js';
+import { buildLocalD1MigrationCommands } from '../localD1Scripts.js';
 
 const VITE_PLUGIN_PACKAGE_NAME = '@cloudflare/vite-plugin';
 
@@ -47,12 +47,10 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
   const usesVite = usesViteBundler(project);
   const serverArgs = usesVite
     ? `--port ${port}`
-    : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(mode)}"`;
+    : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(project, mode)}"`;
   return [
-    // A locally served Worker reads the values of its declared secrets only from this file.
-    buildGenDevVarsCommand(argv),
-    // The local D1 starts empty and no dev server applies migrations itself.
-    ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
+    ...buildGenDevVarsCommands(project, argv),
+    ...buildLocalD1MigrationCommands(project, mode, !!argv.seedsLocalD1),
     usesVite
       ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(project, mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
       : buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim()),
@@ -64,7 +62,7 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
  * Wrangler's dev server bundles the Worker itself.
  */
 export function buildCloudflareBuiltStartCommands(project: Project, argv: ScriptArgv): string[] {
-  if (!usesViteBundler(project)) return buildCloudflareDevCommands(project, argv);
+  if (!usesViteBundler(project)) return buildCloudflareDevCommands(project, { ...argv, seedsLocalD1: true });
   const mode = resolveCloudflareMode(project);
   const stateDirPrefix = buildViteStateDirPrefix(project, mode);
   return [
@@ -72,10 +70,19 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
     // local D1 migrated below is the one whose ID that config declares.
     ...(project.packageJson.scripts?.['gen-code'] ? ['YARN run gen-code'] : []),
     `${stateDirPrefix}${buildViteCommand(project, mode, 'build')}`,
-    buildGenDevVarsCommand(argv),
-    ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
+    ...buildGenDevVarsCommands(project, argv),
+    ...buildLocalD1MigrationCommands(project, mode, true),
     `${stateDirPrefix}YARN ${getViteExecutable(project)} preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
+}
+
+/**
+ * A locally served Worker reads the values of its declared secrets from `.dev.vars.<mode>` when it
+ * exists, else from `.dev.vars`, else from its process environment. A regular start regenerates that file; an instance
+ * on a caller-chosen state directory leaves it to them, so concurrent instances never write it.
+ */
+function buildGenDevVarsCommands(project: Project, argv: ScriptArgv): string[] {
+  return getChosenLocalStateDir(project) ? [] : [buildGenDevVarsCommand(argv)];
 }
 
 /**

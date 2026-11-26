@@ -14,14 +14,24 @@ import {
   getAbsoluteFileDatabaseUrlPath,
   isProjectEnvironment,
 } from '../project.js';
-import { buildDrizzleKitCommand, drizzleScripts } from '../scripts/drizzleScripts.js';
+import {
+  buildDrizzleKitCommand,
+  drizzleScripts,
+  findDrizzleConfig,
+  usesDrizzleKitForD1,
+} from '../scripts/drizzleScripts.js';
+import { buildCfNativeD1DatabaseCommands, selectLocalD1Migrations } from '../scripts/localD1Scripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { isTursoDatabaseUrl, restoreTursoDatabase } from '../scripts/tursoRestore.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isDockerEnabled } from '../utils/ci.js';
-import { wrapWithLocalD1DatabaseUrl } from '../utils/cloudflare.js';
-import { resolveCloudflareMode } from '../utils/cloudflareConfig.js';
+import {
+  assertSingleProjectForChosenStateDir,
+  getChosenLocalStateDir,
+  wrapWithLocalD1DatabaseUrl,
+} from '../utils/cloudflare.js';
+import { findCloudflareConfigPath, resolveCloudflareMode } from '../utils/cloudflareConfig.js';
 import { collectPlaintextFnoxValues } from '../utils/fnoxToml.js';
 import { buildShellCommand } from '../utils/shell.js';
 import { prepareForRunningCommand } from './commandUtils.js';
@@ -33,7 +43,7 @@ export const prismaCommand: CommandModule = {
   command: 'prisma',
   aliases: ['db'],
   describe:
-    "Run database commands. Use '--' to stop wb option parsing and forward the remaining arguments to Prisma. Drizzle projects use drizzle-kit. Example: wb prisma migrate-dev -- --name init",
+    "Run database commands. Use '--' to stop wb option parsing and forward the remaining arguments to Prisma. Drizzle projects use drizzle-kit, and deploy/migrate/reset apply cf-native D1 migrations with cf. Example: wb prisma migrate-dev -- --name init",
   builder: (yargs) => {
     return yargs
       .parserConfiguration({ 'populate--': true })
@@ -139,12 +149,12 @@ const deployCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>>
   describe: 'Apply migration to DB without initializing it',
   builder,
   async handler(argv) {
-    const allProjects = await findDatabaseOrmProjects(argv);
+    const allProjects = await findDatabaseProjects(argv, true);
     const unknownOptions = extractUnknownOptions(argv);
-    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db deploy', allProjects)) {
+    for (const databaseProject of prepareForRunningDatabaseOrmCommand('db deploy', allProjects)) {
       await runWithSpawn(
-        withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).deploy(project, unknownOptions)),
-        project,
+        buildMigrationScript('deploy', databaseProject, unknownOptions),
+        databaseProject.project,
         argv
       );
     }
@@ -209,20 +219,16 @@ const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof migrateB
   describe: 'Apply migration to DB with initializing it',
   builder: migrateBuilder,
   async handler(argv) {
-    const allProjects = await findDatabaseOrmProjects(argv);
+    const allProjects = await findDatabaseProjects(argv, true);
     const unknownOptions = extractUnknownOptions(argv, ['check-idempotency']);
-    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db migrate', allProjects)) {
-      const ormScripts = getDatabaseOrmScripts(orm);
-      await runWithSpawn(withLocalD1IfNeeded(orm, project, ormScripts.migrate(project, unknownOptions)), project, argv);
+    for (const databaseProject of prepareForRunningDatabaseOrmCommand('db migrate', allProjects)) {
+      const { project } = databaseProject;
+      await runWithSpawn(buildMigrationScript('migrate', databaseProject, unknownOptions), project, argv);
       if (shouldCheckIdempotency(project, argv.checkIdempotency)) {
         if (isProductionEnvironment(project)) {
           console.info(chalk.yellow(`Skipping idempotency check for ${project.name} in production environment.`));
         } else {
-          await runWithSpawn(
-            withLocalD1IfNeeded(orm, project, ormScripts.deploy(project, unknownOptions)),
-            project,
-            argv
-          );
+          await runWithSpawn(buildMigrationScript('deploy', databaseProject, unknownOptions), project, argv);
         }
       }
     }
@@ -255,24 +261,21 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
   describe: 'Reset DB',
   builder,
   async handler(argv) {
-    const allProjects = await findDatabaseOrmProjects(argv);
+    const allProjects = await findDatabaseProjects(argv, true);
     const unknownOptions = extractUnknownOptions(argv);
-    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db reset', allProjects)) {
-      await runWithSpawn(
-        withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).reset(project, unknownOptions)),
-        project,
-        argv
-      );
+    for (const databaseProject of prepareForRunningDatabaseOrmCommand('db reset', allProjects)) {
+      await runWithSpawn(buildMigrationScript('reset', databaseProject, unknownOptions), databaseProject.project, argv);
     }
-    if (process.env.WB_ENV !== 'test') {
+    // A chosen state directory holds the only local state the caller asked to reset.
+    if (process.env.WB_ENV !== 'test' && !allProjects.some(({ project }) => getChosenLocalStateDir(project))) {
       process.env.WB_ENV = 'test';
-      for (const { orm, project } of prepareForRunningDatabaseOrmCommand(
+      for (const databaseProject of prepareForRunningDatabaseOrmCommand(
         'WB_ENV=test db reset',
-        await findDatabaseOrmProjects(argv)
+        await findDatabaseProjects(argv, true)
       )) {
         await runWithSpawn(
-          withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).reset(project, unknownOptions)),
-          project,
+          buildMigrationScript('reset', databaseProject, unknownOptions),
+          databaseProject.project,
           argv
         );
       }
@@ -395,6 +398,34 @@ const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultC
     }
   },
 };
+
+/**
+ * The command of `wb db deploy|migrate|reset`, which migrates the package's local D1 bindings
+ * with the mechanism wb selects for them, as `wb start` does: the ORM's own command runs first
+ * (a Drizzle reset may remove the local D1), drizzle-kit is skipped when the D1 its config
+ * targets is migrated cf-natively, and it gets the local D1 URL only when its config targets D1.
+ */
+function buildMigrationScript(
+  kind: 'deploy' | 'migrate' | 'reset',
+  { orm, project }: DatabaseProject,
+  unknownOptions: string
+): string {
+  const cfNativeD1Commands = buildCfNativeD1DatabaseCommands(project, resolveCloudflareMode(project), kind) ?? [];
+  const drizzleTargetsD1 = orm === 'drizzle' && usesDrizzleKitForD1(project);
+  // Beside cf-native D1 migrations, Drizzle has a migration of its own only for a config targeting another database.
+  const runsOrm =
+    orm === 'prisma' ||
+    (orm === 'drizzle' &&
+      (cfNativeD1Commands.length === 0 || (!drizzleTargetsD1 && findDrizzleConfig(project) !== undefined)));
+  if (!runsOrm && unknownOptions) {
+    throw new Error(`wb db ${kind} forwards options only to an ORM, which does not migrate the D1 of ${project.name}.`);
+  }
+  const ormCommand = orm && runsOrm ? getDatabaseOrmScripts(orm)[kind](project, unknownOptions) : undefined;
+  return [
+    ...(ormCommand ? [drizzleTargetsD1 ? withLocalD1IfNeeded('drizzle', project, ormCommand) : ormCommand] : []),
+    ...cfNativeD1Commands,
+  ].join(' && ');
+}
 
 /**
  * Make Drizzle commands work on Cloudflare D1 projects by pointing DATABASE_URL
@@ -534,7 +565,18 @@ interface DatabaseOrmProject {
   orm: DatabaseOrm;
 }
 
-async function findDatabaseOrmProjects(argv: EnvReaderOptions, orm?: DatabaseOrm): Promise<DatabaseOrmProject[]> {
+/** A package `wb db deploy|migrate|reset` migrates: one with an ORM or with cf-native D1 migrations. */
+interface DatabaseProject {
+  project: Project;
+  orm?: DatabaseOrm;
+}
+
+async function findDatabaseOrmProjects(argv: EnvReaderOptions): Promise<DatabaseOrmProject[]> {
+  const projects = await findDatabaseProjects(argv, false);
+  return projects.flatMap(({ orm, project }) => (orm ? [{ orm, project }] : []));
+}
+
+async function findDatabaseProjects(argv: EnvReaderOptions, includesCfNativeD1: boolean): Promise<DatabaseProject[]> {
   const projects = await findDescendantProjects(argv);
   if (!projects) {
     console.error(chalk.red('No project found.'));
@@ -542,11 +584,22 @@ async function findDatabaseOrmProjects(argv: EnvReaderOptions, orm?: DatabaseOrm
   }
 
   const filtered = projects.descendants
-    .map((project) => (project.databaseOrm ? { project, orm: project.databaseOrm } : undefined))
-    .filter((project): project is DatabaseOrmProject => !!project && (!orm || project.orm === orm));
+    .filter(
+      (project) =>
+        project.databaseOrm ||
+        (includesCfNativeD1 &&
+          findCloudflareConfigPath(project) &&
+          selectLocalD1Migrations(project, resolveCloudflareMode(project)).cfNativeD1Migrations.length > 0)
+    )
+    .map((project) => ({ project, orm: project.databaseOrm }));
   if (filtered.length === 0) {
-    console.error(chalk.red(orm ? `No ${orm} project found.` : 'No supported database ORM project found.'));
+    console.error(chalk.red('No supported database ORM project found.'));
     process.exit(1);
+  }
+  if (includesCfNativeD1) {
+    assertSingleProjectForChosenStateDir(
+      filtered.map(({ project }) => project).filter((project) => findCloudflareConfigPath(project))
+    );
   }
   return filtered;
 }
@@ -555,10 +608,10 @@ function getDatabaseOrmScripts(orm: DatabaseOrm): typeof prismaScripts | typeof 
   return orm === 'prisma' ? prismaScripts : drizzleScripts;
 }
 
-function* prepareForRunningDatabaseOrmCommand(
+function* prepareForRunningDatabaseOrmCommand<T extends DatabaseProject>(
   commandName: string,
-  projects: DatabaseOrmProject[]
-): Generator<DatabaseOrmProject, void, unknown> {
+  projects: T[]
+): Generator<T, void, unknown> {
   const ormProjectByProject = new Map(projects.map((project) => [project.project, project]));
   for (const project of prepareForRunningCommand(
     commandName,

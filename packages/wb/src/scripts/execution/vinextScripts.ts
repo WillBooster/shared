@@ -17,7 +17,6 @@ class VinextScripts extends BaseScripts {
   }
 
   protected override buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {
-    // drizzle/prisma migrations are handled by buildProductionCommand.
     return buildCloudflareBuiltStartCommands(project, argv);
   }
 }
