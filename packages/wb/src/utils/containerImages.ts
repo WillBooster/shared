@@ -81,7 +81,7 @@ export async function planContainerImages(
  * `gradual`/`immediate` rollout, each is the digest-pinned reference of the image built from the
  * committed build context: published by an earlier deploy, or built and pushed now. Otherwise the
  * deploy keeps the deployed Containers (`none`), so each is a placeholder that the build records but
- * the upload never sends. Either way the build needs no Docker: wb verifies that the config takes
+ * the upload never sends. Either way the build builds no image: wb verifies that the config takes
  * the placeholders before any image work, and the published references again before the build.
  */
 async function resolveImageEnv(
