@@ -375,13 +375,12 @@ function ensureWranglerAssetsDirectory(
   envName: string,
   buildEnv: Record<string, string | undefined>
 ): void {
-  let assetsDirPath: string | undefined;
   try {
-    assetsDirPath = resolveWranglerAssetsDirectory(project, envName, buildEnv);
+    const assetsDirPath = resolveWranglerAssetsDirectory(project, envName, buildEnv);
+    if (assetsDirPath) fs.mkdirSync(assetsDirPath, { recursive: true });
   } catch (error) {
     exitWithError(getErrorMessage(error));
   }
-  if (assetsDirPath) fs.mkdirSync(assetsDirPath, { recursive: true });
 }
 
 /**
