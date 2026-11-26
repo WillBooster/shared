@@ -30,13 +30,17 @@ function createFakeProject(env: Record<string, string | undefined> = {}): Projec
   } as unknown as Project;
 }
 
-async function occupyPort(port: number): Promise<Server> {
+/** A listener on the port, or undefined where the host lacks the address (e.g. no IPv6 loopback). */
+async function occupyPort(port: number, host = '127.0.0.1'): Promise<Server | undefined> {
   const server = createServer();
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(port, '127.0.0.1', resolve);
+  const listening = await new Promise<boolean>((resolve, reject) => {
+    server.once('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EAFNOSUPPORT' || error.code === 'EADDRNOTAVAIL') resolve(false);
+      else reject(error);
+    });
+    server.listen(port, host, () => resolve(true));
   });
-  return server;
+  return listening ? server : undefined;
 }
 
 describe('ensurePort', () => {
@@ -81,16 +85,34 @@ describe('ensurePort', () => {
     expect(project.env.NEXT_PUBLIC_BASE_URL).toBe('https://example.willbooster.com');
   });
 
-  it('searches another in-range port when the preferred port is occupied', async () => {
-    const preferredPort = await ensurePort(createFakeProject());
-    const server = await occupyPort(preferredPort);
+  // On macOS a probe of one address misses a listener on another, so each loopback-reachable one counts.
+  it.each(['127.0.0.1', '0.0.0.0', '::', '::1'])(
+    'searches another in-range port when the preferred port is occupied on %s',
+    async (host) => {
+      const preferredPort = await ensurePort(createFakeProject());
+      const server = await occupyPort(preferredPort, host);
+      // Vacuous where the host lacks the address; any other bind failure rejects above.
+      if (!server) return;
+      try {
+        const fallbackPort = await ensurePort(createFakeProject());
+        expect(fallbackPort).not.toBe(preferredPort);
+        expect(fallbackPort).toBeGreaterThanOrEqual(AUTO_PORT_RANGE_START);
+        expect(fallbackPort).toBeLessThan(AUTO_PORT_RANGE_END_EXCLUSIVE);
+      } finally {
+        server.close();
+      }
+    }
+  );
+
+  it('refuses, without reclaiming it, a selected port another process took before a later phase', async () => {
+    const project = createFakeProject();
+    const port = await ensurePort(project);
+    const server = await occupyPort(port);
     try {
-      const fallbackPort = await ensurePort(createFakeProject());
-      expect(fallbackPort).not.toBe(preferredPort);
-      expect(fallbackPort).toBeGreaterThanOrEqual(AUTO_PORT_RANGE_START);
-      expect(fallbackPort).toBeLessThan(AUTO_PORT_RANGE_END_EXCLUSIVE);
+      await expect(ensurePort(project)).rejects.toThrow(`PORT ${port}, which wb selected, is now in use`);
+      expect(processUtils.killPortProcessImmediatelyAndOnExit).not.toHaveBeenCalledWith(port, project);
     } finally {
-      server.close();
+      server?.close();
     }
   });
 
@@ -104,7 +126,7 @@ describe('ensurePort', () => {
       expect(fallbackPort).toBeGreaterThanOrEqual(AUTO_PORT_RANGE_START);
       expect(fallbackPort).toBeLessThan(AUTO_PORT_RANGE_END_EXCLUSIVE);
     } finally {
-      server.close();
+      server?.close();
     }
   });
 
