@@ -37,7 +37,7 @@ export function usesViteBundler(project: Project): boolean {
 /** Commands serving the Worker from source. */
 export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): string[] {
   const mode = resolveCloudflareMode(project);
-  prepareLocalServerEnv(project, mode);
+  assertNoDevVarsFile(project, mode);
   const port = getEnsuredPort(project);
   const usesVite = usesViteBundler(project);
   const serverArgs = usesVite
@@ -45,9 +45,11 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
     : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(project, mode)}"`;
   return [
     ...buildLocalD1MigrationCommands(project, mode),
-    usesVite
-      ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(project, mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
-      : buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim()),
+    `${buildServerEnvPrefix(project, mode)}${
+      usesVite
+        ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(project, mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
+        : buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())
+    }`,
   ];
 }
 
@@ -58,7 +60,7 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
 export function buildCloudflareBuiltStartCommands(project: Project, argv: ScriptArgv): string[] {
   if (!usesViteBundler(project)) return buildCloudflareDevCommands(project, argv);
   const mode = resolveCloudflareMode(project);
-  prepareLocalServerEnv(project, mode);
+  assertNoDevVarsFile(project, mode);
   const stateDirPrefix = buildViteStateDirPrefix(project, mode);
   return [
     // The same build `wb deploy` runs, so the served Worker has the config of wb's mode: the
@@ -66,24 +68,28 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
     ...(project.packageJson.scripts?.['gen-code'] ? ['YARN run gen-code'] : []),
     `${stateDirPrefix}${buildViteCommand(project, mode, 'build')}`,
     ...buildLocalD1MigrationCommands(project, mode),
-    `${stateDirPrefix}YARN ${getViteExecutable(project)} preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
+    `${buildServerEnvPrefix(project, mode)}${stateDirPrefix}YARN ${getViteExecutable(project)} preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
 }
 
 /**
- * A local server reads the values of the declared secrets from its process environment, which wb
- * runs it in. The runtime also lets that environment override the config's other values, so those
- * keys get the config's own values there (a JSON value cannot come from it, so its key is removed).
+ * A local server reads the values of the declared secrets from its process environment, and the
+ * runtime also lets that environment override the config's other values; so the server alone gets
+ * the config's own text values for exported keys of those (a JSON value cannot come from the
+ * environment, so its key is removed), while wb keeps its environment (e.g. PORT) for itself.
  */
-function prepareLocalServerEnv(project: Project, mode: string): void {
-  assertNoDevVarsFile(project, mode);
-  for (const [key, value] of Object.entries(resolveLocalCloudflareConfig(project, mode)?.vars ?? {})) {
-    if (typeof value === 'string') {
-      project.env[key] = value;
-    } else {
-      delete project.env[key];
-    }
-  }
+function buildServerEnvPrefix(project: Project, mode: string): string {
+  const overriddenVars = Object.entries(resolveLocalCloudflareConfig(project, mode)?.vars ?? {}).filter(
+    ([key, value]) => project.env[key] !== undefined && project.env[key] !== value
+  );
+  // env takes every -u option before the first assignment.
+  const envArgs = [
+    ...overriddenVars.filter(([, value]) => typeof value !== 'string').map(([key]) => `-u ${shellEscapeArgument(key)}`),
+    ...overriddenVars.flatMap(([key, value]) =>
+      typeof value === 'string' ? [buildShellEnvironmentAssignment(key, value)] : []
+    ),
+  ];
+  return envArgs.length > 0 ? `env ${envArgs.join(' ')} ` : '';
 }
 
 /**
