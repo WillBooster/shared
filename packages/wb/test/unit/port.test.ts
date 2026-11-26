@@ -30,11 +30,11 @@ function createFakeProject(env: Record<string, string | undefined> = {}): Projec
   } as unknown as Project;
 }
 
-async function occupyPort(port: number): Promise<Server> {
+async function occupyPort(port: number, host = '127.0.0.1'): Promise<Server> {
   const server = createServer();
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(port, '127.0.0.1', resolve);
+    server.listen(port, host, resolve);
   });
   return server;
 }
@@ -81,18 +81,22 @@ describe('ensurePort', () => {
     expect(project.env.NEXT_PUBLIC_BASE_URL).toBe('https://example.willbooster.com');
   });
 
-  it('searches another in-range port when the preferred port is occupied', async () => {
-    const preferredPort = await ensurePort(createFakeProject());
-    const server = await occupyPort(preferredPort);
-    try {
-      const fallbackPort = await ensurePort(createFakeProject());
-      expect(fallbackPort).not.toBe(preferredPort);
-      expect(fallbackPort).toBeGreaterThanOrEqual(AUTO_PORT_RANGE_START);
-      expect(fallbackPort).toBeLessThan(AUTO_PORT_RANGE_END_EXCLUSIVE);
-    } finally {
-      server.close();
+  // A listener on ::1 alone goes unnoticed by the wildcard probes on macOS.
+  it.each(['127.0.0.1', '::1'])(
+    'searches another in-range port when the preferred port is occupied on %s',
+    async (host) => {
+      const preferredPort = await ensurePort(createFakeProject());
+      const server = await occupyPort(preferredPort, host);
+      try {
+        const fallbackPort = await ensurePort(createFakeProject());
+        expect(fallbackPort).not.toBe(preferredPort);
+        expect(fallbackPort).toBeGreaterThanOrEqual(AUTO_PORT_RANGE_START);
+        expect(fallbackPort).toBeLessThan(AUTO_PORT_RANGE_END_EXCLUSIVE);
+      } finally {
+        server.close();
+      }
     }
-  });
+  );
 
   it('keeps wrapped fallback probes inside the range at the top edge', async () => {
     // `pkg-3620` in the test environment hashes to the range's last port, 32767.

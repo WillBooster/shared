@@ -25,9 +25,11 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
  * it keep working without fnox definitions. The resolved URL is also published (see
  * publishLocalServerUrl) so consuming commands can reach it while this server is alive and serving.
  *
- * Callers may run this more than once per command; repeating checkAndKillPortProcess is
- * deliberate, not redundancy to cache away: it reclaims a port still held by a previous phase's
- * server (e.g. `wb test-on-ci` between the startup check and e2e), and its probe is cheap.
+ * The call that selects a port kills nothing there: the search found no listener on it, so a
+ * process holding it now did not come from wb. Callers may run this more than once per command; a
+ * later call finds PORT set and repeats checkAndKillPortProcess deliberately, not as redundancy to
+ * cache away: it reclaims a port still held by a previous phase's server (e.g. `wb test-on-ci`
+ * between the startup check and e2e), and its probe is cheap.
  *
  * An instance on a caller-chosen state directory is resolved by claimIsolatedInstancePort instead
  * and is never published: its caller manages and addresses it, and publishing it would replace the
@@ -35,11 +37,14 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
  */
 export async function ensurePort(project: Project): Promise<number> {
   if (getChosenLocalStateDir(project)) return claimIsolatedInstancePort(project);
-  if (!project.env.PORT) {
+  let port: number;
+  if (project.env.PORT) {
+    port = await checkAndKillPortProcess(project.env.PORT, project);
+  } else {
     assertNoPinnedPortInBaseUrl(project.env.NEXT_PUBLIC_BASE_URL);
-    project.env.PORT = String(await findFreePort(computePreferredPort(project)));
+    port = await findFreePort(computePreferredPort(project));
+    project.env.PORT = String(port);
   }
-  const port = await checkAndKillPortProcess(project.env.PORT, project);
   project.env.NEXT_PUBLIC_BASE_URL ||= `http://localhost:${port}`;
   publishLocalServerUrl(project, project.env.NEXT_PUBLIC_BASE_URL);
   return port;
@@ -145,8 +150,9 @@ async function checkAndKillPortProcess(rawPort: unknown, project: Project): Prom
  * @returns A promise that resolves to true if the port is available, false otherwise
  */
 export async function isPortAvailable(port: number): Promise<boolean> {
-  // Check both stacks to catch processes bound only on IPv6 or IPv4.
-  for (const host of ['127.0.0.1', '::']) {
+  // A wildcard bind succeeds on macOS while another process holds only a loopback address, so
+  // probe the loopback addresses too.
+  for (const host of ['127.0.0.1', '::', '::1']) {
     const available = await probePort(host, port);
     if (!available) return false;
   }
