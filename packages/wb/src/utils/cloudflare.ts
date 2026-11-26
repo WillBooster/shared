@@ -133,15 +133,21 @@ export function getAbsoluteLocalStateDir(project: Pick<Project, 'dirPath' | 'env
   return path.resolve(project.dirPath, getLocalStateDir(project, mode));
 }
 
+const PLAIN_PATH_PATTERN = /^[\w./@+-]+$/u;
+
 /**
  * The state directory the caller chose by exporting `WB_CLOUDFLARE_STATE_DIR`, or undefined.
- * It must be absolute: wb and the commands it runs resolve paths from different directories.
+ * It must be absolute, because wb and the commands it runs resolve paths from different
+ * directories, and plain, because wb embeds it in shell scripts whose quoting and normalization
+ * (see normalizeScript) would otherwise turn it into another directory, which a reset deletes.
  */
 export function getChosenLocalStateDir(project: Pick<Project, 'env'>): string | undefined {
   const stateDir = project.env.WB_CLOUDFLARE_STATE_DIR;
   if (!stateDir) return;
-  if (!path.isAbsolute(stateDir)) {
-    throw new Error(`WB_CLOUDFLARE_STATE_DIR must be an absolute path: ${stateDir}`);
+  if (!path.isAbsolute(stateDir) || !PLAIN_PATH_PATTERN.test(stateDir)) {
+    throw new Error(
+      `WB_CLOUDFLARE_STATE_DIR must be an absolute path of letters, digits, and "_.@+-/" only: ${stateDir}`
+    );
   }
   return stateDir;
 }
