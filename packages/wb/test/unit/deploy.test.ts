@@ -47,6 +47,7 @@ describe('resolving cloudflare.config.ts', () => {
 
     expect(resolveLocalCloudflareConfig({ dirPath, env: process.env }, 'production')).toEqual({
       workerName: 'my-app',
+      hasEntrypoint: false,
       accountId: 'acc-1',
       vars: { WB_ENV: 'production', LIMITS: { max: 3 }, BUILD_MARKER: 'absent' },
       secretNames: ['AUTH_SECRET'],

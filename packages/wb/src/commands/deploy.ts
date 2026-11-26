@@ -35,6 +35,8 @@ import { createSecretFreeBuildEnv } from '../utils/secretFreeEnv.js';
 import { resolveDeclaredSecrets } from '../utils/workerSecrets.js';
 import { deployRailway, RAILWAY_IAC_FILE_PATH } from './deployRailway.js';
 
+const CLOUDFLARE_ENV_FILE_NAME = '.env.cloudflare';
+
 /**
  * fnox keys that drive the deploy itself, so their absence from `cloudflare.config.ts` is not
  * worth reporting.
@@ -274,7 +276,7 @@ function selectSecretsOrExit({ argv, project, envName, resolvedConfig }: WorkerD
       : 'fnox or mise (each with the profile or environment it selects itself, e.g. from FNOX_PROFILE or MISE_ENV)';
     exitWithError(
       `Secrets that cloudflare.config.ts declares with bindings.secret() for ${envName} are not provided: ${missingSecretNames.join(', ')}. ` +
-        `Set each (an explicitly empty value counts) in ${profileSources}, an exported environment variable, or a .env.cloudflare file beside cloudflare.config.ts or at the repository root, or stop declaring it for this mode.`
+        `Set each (an explicitly empty value counts) in ${profileSources}, an exported environment variable, or ${formatCloudflareEnvFilePaths(project)}, or stop declaring it for this mode.`
     );
   }
   // The deployed Worker must be able to report its version even when the config declares no
@@ -356,11 +358,13 @@ async function runGenCode({ argv, project, envName }: WorkerDeployContext): Prom
 }
 
 async function buildWorker(
-  { argv, project, envName, buildEnv }: WorkerDeployContext,
+  { argv, project, envName, buildEnv, resolvedConfig }: WorkerDeployContext,
   imageEnv: Record<string, string>
 ): Promise<void> {
   const usesVite = usesViteBundler(project);
-  if (!usesVite && !argv.dryRun) ensureWranglerAssetsDirectory(project, envName, buildEnv);
+  if (!usesVite && resolvedConfig.hasEntrypoint && !argv.dryRun) {
+    ensureWranglerAssetsDirectory(project, envName, buildEnv);
+  }
   // Building before migrating keeps a build failure from leaving a migrated schema behind
   // the old Worker. The bundler runs directly, not through the package's `build` script.
   await runWithSpawn(
@@ -375,6 +379,7 @@ async function buildWorker(
  * `cf build` (unlike `cf dev`) checks that the assets directory exists before it runs the build
  * command of `wrangler.config.ts`, which may be the one creating it, so the command still runs
  * exactly once. Without such a command the check stays: the directory must come from elsewhere.
+ * So it does for an assets-only Worker, whose build never runs the command.
  */
 function ensureWranglerAssetsDirectory(
   project: Project,
@@ -629,6 +634,12 @@ async function runPostDeployHook({ argv, project, resolvedConfig, authEnv }: Wor
   });
 }
 
+function formatCloudflareEnvFilePaths(project: Project): string {
+  return listCloudflareEnvFileDirPaths(project.dirPath, project.rootDirPath)
+    .map((dirPath) => path.join(dirPath, CLOUDFLARE_ENV_FILE_NAME))
+    .join(' or ');
+}
+
 /**
  * Read the Cloudflare API token that CI drops in a `.env.cloudflare` file (e.g. the reusable
  * deploy workflow's `file_path_1`), looking beside the Worker's config and at the monorepo
@@ -637,8 +648,8 @@ async function runPostDeployHook({ argv, project, resolvedConfig, authEnv }: Wor
  */
 export function readCloudflareEnvFiles(dirPath: string, rootDirPath: string | undefined): Record<string, string> {
   const envVars: Record<string, string> = {};
-  for (const currentDirPath of new Set(rootDirPath ? [dirPath, rootDirPath] : [dirPath])) {
-    const cloudflareEnvPath = path.join(currentDirPath, '.env.cloudflare');
+  for (const currentDirPath of listCloudflareEnvFileDirPaths(dirPath, rootDirPath)) {
+    const cloudflareEnvPath = path.join(currentDirPath, CLOUDFLARE_ENV_FILE_NAME);
     if (!fs.existsSync(cloudflareEnvPath)) continue;
     const parsed = config({ path: cloudflareEnvPath, processEnv: {}, quiet: true }).parsed ?? {};
     for (const [key, value] of Object.entries(parsed)) {
@@ -646,6 +657,10 @@ export function readCloudflareEnvFiles(dirPath: string, rootDirPath: string | un
     }
   }
   return envVars;
+}
+
+function listCloudflareEnvFileDirPaths(dirPath: string, rootDirPath: string | undefined): string[] {
+  return [...new Set(rootDirPath ? [dirPath, rootDirPath] : [dirPath])];
 }
 
 /**

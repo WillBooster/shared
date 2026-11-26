@@ -61,6 +61,7 @@ const parsedConfigSchema = z.looseObject({
   accountId: z.string().optional(),
   worker: z.looseObject({
     name: z.string(),
+    entrypoint: z.string().optional(),
     env: z.record(z.string(), z.unknown()).optional(),
   }),
   containers: z
@@ -115,6 +116,8 @@ export interface D1Migrations {
 
 export interface ResolvedCloudflareConfig {
   workerName: string;
+  /** False for an assets-only Worker, whose build Wrangler runs without its build command. */
+  hasEntrypoint: boolean;
   accountId?: string;
   /** Values of the `bindings.text()` / `bindings.json()` entries (they count against Cloudflare's limits). */
   vars: Record<string, unknown>;
@@ -278,6 +281,7 @@ function toResolvedConfig(rawConfig: unknown): ResolvedCloudflareConfig {
   const config = parsedConfigSchema.parse(rawConfig);
   const resolvedConfig: ResolvedCloudflareConfig = {
     workerName: config.worker.name,
+    hasEntrypoint: config.worker.entrypoint !== undefined,
     accountId: config.accountId,
     vars: {},
     secretNames: [],
