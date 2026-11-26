@@ -1,6 +1,7 @@
 import type { Project } from '../project.js';
 import {
   buildLocalD1MigrationsApplyCommands,
+  getAbsoluteLocalStateDir,
   getChosenLocalStateDir,
   getLocalStateDir,
   wrapWithLocalD1DatabaseUrl,
@@ -48,7 +49,7 @@ export function buildCfNativeD1DatabaseCommands(
   // A reset removes every local D1 of the state directory, including ones wb could not rebuild.
   if (kind === 'reset' && unmanagedD1Databases.length > 0) {
     throw new Error(
-      `wb db reset would delete the local data of ${formatD1DatabaseNames(unmanagedD1Databases)}, which wb does not migrate; give each of them migration settings first, or delete the state directory's v3/d1 yourself.`
+      `wb db reset would delete the local data of ${formatD1DatabaseNames(unmanagedD1Databases)}, which wb does not migrate; give each of them migration settings first, or delete ${getAbsoluteLocalStateDir(project, mode)}/v3/d1 yourself.`
     );
   }
 
