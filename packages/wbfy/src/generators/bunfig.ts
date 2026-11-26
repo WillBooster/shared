@@ -15,6 +15,7 @@ interface BunfigToml {
     exact?: boolean;
     globalStore?: boolean;
     linker?: string;
+    minimumReleaseAge?: number;
     minimumReleaseAgeExcludes?: string[];
   };
 }
@@ -71,13 +72,17 @@ export function updateBunReleaseAgeExcludes(rootDirPath: string): void {
   const newContent = excludesPattern.test(content)
     ? content.replace(excludesPattern, excludesBlock)
     : content.replace(/^[ \t]*minimumReleaseAge\s*=.*$/mu, (gateLine) => `${gateLine}\n${excludesBlock}`);
-  if (newContent === content) return;
+  const install = parseBunfigToml(content)?.install;
+  const sharedExcludes = bunMinimumReleaseAgeExcludes.join('\n');
+  // Nothing to lift, or already the shared list.
+  if (install?.minimumReleaseAge === undefined || install.minimumReleaseAgeExcludes?.join('\n') === sharedExcludes) {
+    return;
+  }
   // A text edit of a file wbfy did not just generate: write it only when the result is the
   // intended TOML (e.g. a quoted key would otherwise be defined twice).
-  const excludes = parseBunfigToml(newContent)?.install?.minimumReleaseAgeExcludes;
-  if (excludes?.join('\n') !== bunMinimumReleaseAgeExcludes.join('\n')) {
+  if (parseBunfigToml(newContent)?.install?.minimumReleaseAgeExcludes?.join('\n') !== sharedExcludes) {
     throw new Error(
-      `Could not update minimumReleaseAgeExcludes in ${filePath}: write it in wbfy's layout (an unquoted key under [install]) and rerun.`
+      `Could not update the release-age excludes in ${filePath}: write minimumReleaseAge and minimumReleaseAgeExcludes as unquoted assignments under [install], the latter as an array without comments, and rerun.`
     );
   }
   fs.writeFileSync(filePath, newContent);
