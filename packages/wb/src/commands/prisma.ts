@@ -596,7 +596,11 @@ async function findDatabaseProjects(argv: EnvReaderOptions, includesCfNativeD1: 
     console.error(chalk.red('No supported database ORM project found.'));
     process.exit(1);
   }
-  assertSingleProjectForChosenStateDir(filtered.map(({ project }) => project));
+  if (includesCfNativeD1) {
+    assertSingleProjectForChosenStateDir(
+      filtered.map(({ project }) => project).filter((project) => findCloudflareConfigPath(project))
+    );
+  }
   return filtered;
 }
 
