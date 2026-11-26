@@ -57,6 +57,25 @@ export function hasCurrentBunReleaseAgeExcludes(rootDirPath: string): boolean {
   return excludes?.join('\n') === bunMinimumReleaseAgeExcludes.join('\n');
 }
 
+/**
+ * Rewrites only the release-age excludes of an existing bunfig.toml, leaving every other setting
+ * as it is: the files that depend on those settings are not regenerated in the same run.
+ */
+export function updateBunReleaseAgeExcludes(rootDirPath: string): void {
+  const filePath = path.resolve(rootDirPath, 'bunfig.toml');
+  // Without a bunfig.toml the repository has no gate of its own to lift.
+  if (!fs.existsSync(filePath)) return;
+  const content = fs.readFileSync(filePath, 'utf8');
+  const excludesBlock = `minimumReleaseAgeExcludes = [\n${bunMinimumReleaseAgeExcludes.map((packageName) => `  "${packageName}",`).join('\n')}\n]`;
+  const excludesPattern = /^minimumReleaseAgeExcludes\s*=\s*\[[^\]]*\]/mu;
+  const newContent = excludesPattern.test(content)
+    ? content.replace(excludesPattern, excludesBlock)
+    : content.replace(/^minimumReleaseAge\s*=.*$/mu, (gateLine) => `${gateLine}\n${excludesBlock}`);
+  if (newContent === content) return;
+  fs.writeFileSync(filePath, newContent);
+  console.info(`Updated the release-age excludes in ${filePath}`);
+}
+
 export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
   const filePath = path.resolve(rootDirPath, 'bunfig.toml');
   if (!fs.existsSync(filePath)) return undefined;
