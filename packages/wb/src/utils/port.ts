@@ -12,9 +12,6 @@ const AUTO_PORT_RANGE_START = 20_000;
 const AUTO_PORT_RANGE_SIZE = 12_768;
 const AUTO_PORT_MAX_PROBE_COUNT = 100;
 
-/** The port each project's ensurePort selected, which it never reclaims by killing. */
-const selectedPorts = new WeakMap<Project, string>();
-
 /**
  * Resolves the port for launching the project's app, storing it in `project.env.PORT`.
  *
@@ -31,10 +28,12 @@ const selectedPorts = new WeakMap<Project, string>();
  * Callers may run this more than once per command; repeating checkAndKillPortProcess for a
  * configured PORT is deliberate, not redundancy to cache away: it reclaims a port still held by a
  * previous phase's server (e.g. `wb test-on-ci` between the startup check and e2e), and its probe
- * is cheap. A port the call selected for the project is never reclaimed that way, in any call: the search
- * found nothing listening there, so a process holding it later did not necessarily come from wb
- * (a previous phase's server is stopped by its own phase, and a container by its name). Only the
- * exit-time cleanup of wb's own server is registered for it.
+ * is cheap. A port selected for the project is never reclaimed that way, in any call or in a wb
+ * process it starts (e.g. the `wb start` a Playwright `webServer` runs), which learns of the
+ * selection from WB_SELECTED_PORT in the environment it inherits: the search found nothing
+ * listening there, so a process holding it later did not necessarily come from wb (a previous
+ * phase's server is stopped by its own phase, and a container by its name). Only the exit-time
+ * cleanup of wb's own server is registered for it.
  *
  * An instance on a caller-chosen state directory is resolved by claimIsolatedInstancePort instead
  * and is never published: its caller manages and addresses it, and publishing it would replace the
@@ -47,9 +46,9 @@ export async function ensurePort(project: Project): Promise<number> {
     assertNoPinnedPortInBaseUrl(project.env.NEXT_PUBLIC_BASE_URL);
     port = await findFreePort(computePreferredPort(project));
     project.env.PORT = String(port);
-    selectedPorts.set(project, project.env.PORT);
+    project.env.WB_SELECTED_PORT = project.env.PORT;
     killPortProcessOnExit(port, project);
-  } else if (selectedPorts.get(project) === project.env.PORT) {
+  } else if (project.env.WB_SELECTED_PORT === project.env.PORT) {
     port = Number(project.env.PORT);
   } else {
     port = await checkAndKillPortProcess(project.env.PORT, project);
