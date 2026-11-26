@@ -365,7 +365,7 @@ function buildHttpReadinessCommand(port: string | number, readinessPath: string)
  */
 function buildCustomWorkerStartD1MigrationCommands(project: Project): string[] {
   return findCloudflareConfigPath(project)
-    ? buildLocalD1MigrationCommands(project, resolveCloudflareMode(project))
+    ? buildLocalD1MigrationCommands(project, resolveCloudflareMode(project), true)
     : [];
 }
 

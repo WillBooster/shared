@@ -11,13 +11,22 @@ import { drizzleScripts, usesDrizzleKitForD1 } from './drizzleScripts.js';
 /**
  * Commands migrating the mode's local D1 databases with the mechanism `selectD1Migrations`
  * selects, which every local launch of the Worker runs: the local D1 starts empty and no dev
- * server applies migrations itself. The drizzle-kit migration also runs the package's seed.
+ * server applies migrations itself. With `seeds`, the drizzle-kit migration also runs the
+ * package's seed, which may rewrite data and so runs only where the launch prepares its data.
  */
-export function buildLocalD1MigrationCommands(project: Project, mode: string): string[] {
+export function buildLocalD1MigrationCommands(project: Project, mode: string, seeds: boolean): string[] {
   const { cfNativeD1Migrations, drizzleD1Database } = selectLocalD1Migrations(project, mode);
   return [
     ...buildLocalD1MigrationsApplyCommands(project, mode, cfNativeD1Migrations),
-    ...(drizzleD1Database ? [wrapWithLocalD1DatabaseUrl(project, mode, drizzleScripts.migrate(project))] : []),
+    ...(drizzleD1Database
+      ? [
+          wrapWithLocalD1DatabaseUrl(
+            project,
+            mode,
+            seeds ? drizzleScripts.migrate(project) : drizzleScripts.deploy(project)
+          ),
+        ]
+      : []),
   ];
 }
 

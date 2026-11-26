@@ -34,8 +34,11 @@ export function usesViteBundler(project: Project): boolean {
   return false;
 }
 
-/** Commands serving the Worker from source. */
-export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): string[] {
+/**
+ * Commands serving the Worker from source. A production-style start passes `seeds` to run the
+ * package's seed after migrating; a development start leaves the existing data alone.
+ */
+export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv, seeds = false): string[] {
   const mode = resolveCloudflareMode(project);
   assertNoDevVarsFile(project, mode);
   const port = getEnsuredPort(project);
@@ -44,7 +47,7 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
     ? `--port ${port}`
     : `--ip 127.0.0.1 --port ${port} --persist-to "${getLocalStateDir(project, mode)}"`;
   return [
-    ...buildLocalD1MigrationCommands(project, mode),
+    ...buildLocalD1MigrationCommands(project, mode, seeds),
     usesVite
       ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(project, mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
       : `${buildWranglerServerEnvPrefix(project, mode)}${buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
@@ -56,7 +59,7 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
  * Wrangler's dev server bundles the Worker itself.
  */
 export function buildCloudflareBuiltStartCommands(project: Project, argv: ScriptArgv): string[] {
-  if (!usesViteBundler(project)) return buildCloudflareDevCommands(project, argv);
+  if (!usesViteBundler(project)) return buildCloudflareDevCommands(project, argv, true);
   const mode = resolveCloudflareMode(project);
   assertNoDevVarsFile(project, mode);
   const stateDirPrefix = buildViteStateDirPrefix(project, mode);
@@ -65,7 +68,7 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
     // local D1 migrated below is the one whose ID that config declares.
     ...(project.packageJson.scripts?.['gen-code'] ? ['YARN run gen-code'] : []),
     `${stateDirPrefix}${buildViteCommand(project, mode, 'build')}`,
-    ...buildLocalD1MigrationCommands(project, mode),
+    ...buildLocalD1MigrationCommands(project, mode, true),
     `${stateDirPrefix}YARN ${getViteExecutable(project)} preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
 }
