@@ -62,7 +62,7 @@ export async function ensurePort(project: Project): Promise<number> {
     }
     if (!(await isPortAvailable(port))) {
       throw new Error(
-        `PORT ${port}, selected as free (WB_SELECTED_PORT), is now in use by another process; wb does not stop it. Run the command again so that a free port is selected.`
+        `PORT ${port}, selected as free (WB_SELECTED_PORT), is now in use by another process; wb does not stop it. Run the command again with another free port, or with PORT unset so that wb selects one.`
       );
     }
   } else {
