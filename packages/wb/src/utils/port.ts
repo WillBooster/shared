@@ -3,7 +3,7 @@ import { createServer } from 'node:net';
 import type { Project } from '../project.js';
 import { applyIsolatedInstancePort, getChosenLocalStateDir } from './cloudflare.js';
 import { publishLocalServerUrl } from './localServerUrl.js';
-import { killPortProcessImmediatelyAndOnExit, killPortProcessOnExit } from './process.js';
+import { cancelPortProcessKillOnExit, killPortProcessImmediatelyAndOnExit, killPortProcessOnExit } from './process.js';
 
 // The auto-selected range must stay below every default ephemeral-port range (32768+ on Linux,
 // 49152+ on macOS) so OS-assigned outgoing connections rarely occupy a preferred port, and above
@@ -51,6 +51,7 @@ export async function ensurePort(project: Project): Promise<number> {
   } else if (project.env.WB_SELECTED_PORT === project.env.PORT) {
     port = Number(project.env.PORT);
     if (!(await isPortAvailable(port))) {
+      cancelPortProcessKillOnExit(port);
       throw new Error(
         `PORT ${port}, which wb selected, is now in use by another process; wb does not stop it. Run the command again to select another port.`
       );

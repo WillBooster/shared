@@ -21,7 +21,7 @@ export async function killPortProcessImmediatelyAndOnExit(port: number, project:
   killPortProcessOnExit(port, project);
 }
 
-/** Stops what listens on the port when wb exits: the server wb started there. */
+/** Stops whatever listens on the port when wb exits, meant for the server wb started there. */
 export function killPortProcessOnExit(port: number, project: Project): void {
   const killFunc = async (): Promise<void> => {
     if (killed.has(port)) return;
@@ -32,6 +32,11 @@ export function killPortProcessOnExit(port: number, project: Project): void {
   for (const signal of ['beforeExit', 'SIGINT', 'SIGTERM', 'SIGQUIT']) {
     process.on(signal, killFunc);
   }
+}
+
+/** Disarms the exit-time cleanup of the port, e.g. once another process holds it. */
+export function cancelPortProcessKillOnExit(port: number): void {
+  killed.add(port);
 }
 
 export async function killPortContainerAndProcess(port: number, project: Project): Promise<void> {
