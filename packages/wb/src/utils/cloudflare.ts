@@ -68,7 +68,7 @@ export function wrapWithLocalD1DatabaseUrl(
   // and the preceding materialization command guarantees the SQLite file exists.
   // Projects with multiple D1 databases are not supported: the hash-named files cannot be
   // distinguished cheaply (materialization does not even update the target file's mtime).
-  const exportCommand = `export DATABASE_URL="file:$(ls "${getAbsoluteLocalStateDir(project, mode)}"/v3/d1/miniflare-D1DatabaseObject/*.sqlite | grep -v metadata | head -1)"`;
+  const exportCommand = `export DATABASE_URL="file:$(ls "${getAbsoluteLocalStateDir(project, mode)}"/v3/d1/miniflare-D1DatabaseObject/*.sqlite | grep -v '/metadata[.]sqlite$' | head -1)"`;
   return `${buildMaterializeLocalD1Command(project, mode, database)} && ${exportCommand} && ${script}`;
 }
 
