@@ -77,7 +77,7 @@ export interface ResolvedCloudflareConfig {
   accountId?: string;
   /** Values of the `bindings.text()` / `bindings.json()` entries (they count against Cloudflare's limits). */
   vars: Record<string, unknown>;
-  /** Names declared with `bindings.secret()`: the only keys a deploy's secrets file may supply. */
+  /** Names declared with `bindings.secret()`: the only keys a secrets file or `.dev.vars` may supply. */
   secretNames: string[];
   /** Every key of `worker.env`, whatever its kind. */
   envKeys: string[];

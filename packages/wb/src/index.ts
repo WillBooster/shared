@@ -16,6 +16,7 @@ import { deployCommand } from './commands/deploy.js';
 import { dotenvCommand } from './commands/dotenv.js';
 import { gcCommand } from './commands/gc.js';
 import { genCodeCommand } from './commands/genCode.js';
+import { genDevVarsCommand } from './commands/genDevVars.js';
 import { genDockerEnvCommand } from './commands/genDockerEnv.js';
 import { killPortCommand } from './commands/killPort.js';
 import { killPortIfNonCiCommand } from './commands/killPortIfNonCi.js';
@@ -79,6 +80,7 @@ await yargs(hideBin(process.argv))
   .command(dotenvCommand)
   .command(gcCommand)
   .command(genCodeCommand)
+  .command(genDevVarsCommand)
   .command(genDockerEnvCommand)
   .command(killPortCommand)
   .command(killPortIfNonCiCommand)

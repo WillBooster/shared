@@ -3,7 +3,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { parse as parseDotenv } from 'dotenv';
+
 import { readCloudflareEnvFiles, selectInheritedRemoteSecretNames } from '../../src/commands/deploy.js';
+import { quoteDotenvValue } from '../../src/commands/genDevVars.js';
 import { resolveDeployCloudflareConfig, resolveLocalCloudflareConfig } from '../../src/utils/cloudflareConfig.js';
 import { selectDeclaredSecrets } from '../../src/utils/workerSecrets.js';
 import { createCloudflareProjectDir } from '../helpers/cloudflareProject.js';
@@ -151,3 +154,28 @@ describe('selectInheritedRemoteSecretNames', () => {
     ]);
   });
 });
+
+describe('quoteDotenvValue', () => {
+  it('produces representations that round-trip under the dotenv parser', () => {
+    // No apostrophe: single quotes preserve #, newlines, double quotes, and literal \n.
+    for (const value of [
+      String.raw`plain\n #hash "double"` + '\nline2',
+      "a'b#c", // apostrophe closes a single-quoted span early -> backticks
+      "tick`'\nline2", // apostrophe + backtick -> double quotes with escaped newlines
+      'tick`\'"\nline2', // embedded double quote in the double-quoted branch
+      'a\r\nb', // CR survives only as a double-quoted escape
+    ]) {
+      expect(roundTripDotenvValue(value)).toBe(value);
+    }
+    // The parse-verified candidates even cover apostrophe + backtick + literal \n via
+    // dotenv's unquoted-line fallback.
+    expect(roundTripDotenvValue("a'b`" + String.raw`\n`)).toBe("a'b`" + String.raw`\n`);
+    // A # after an embedded double quote starts a comment and dotenv does not unescape
+    // inner \", so this combination is genuinely unrepresentable.
+    expect(() => quoteDotenvValue('K', 'a\r"#b')).toThrow('losslessly');
+  });
+});
+
+function roundTripDotenvValue(value: string): string | undefined {
+  return parseDotenv(`K=${quoteDotenvValue('K', value)}`).K;
+}

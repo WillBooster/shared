@@ -137,7 +137,7 @@ export function resolveRailwayVariables(argv: EnvReaderOptions, project: Project
   for (const key of Object.keys(envVars)) {
     if (!fnoxKeys.has(key)) delete envVars[key];
   }
-  // Exported environment variables win over configured values (matches wb deploy).
+  // Exported environment variables win over configured values (matches wb deploy / gen-dev-vars).
   for (const key of Object.keys(envVars)) {
     const effectiveValue = project.env[key];
     if (effectiveValue !== undefined) envVars[key] = effectiveValue;

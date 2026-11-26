@@ -41,6 +41,9 @@ it('serves a Worker that sees its declared secrets and the D1 schema of its migr
       tables: ['example', 'migration_history'],
       undeclared: false,
     });
+    expect(await fs.readFile(path.join(dirPath, '.dev.vars.development'), 'utf8')).toBe(
+      "AUTH_SECRET='s3cret'\nEMPTY_SECRET=''\n"
+    );
   } finally {
     stopWb(server);
   }
