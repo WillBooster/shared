@@ -169,18 +169,23 @@ export abstract class BaseScripts {
     await ensurePort(project);
     return this.testE2EProtected(project, argv, dockerScripts.stopAndStart(project), options, true);
   }
+  /**
+   * Passes once the dev server answers HTTP requests as the e2e phase requires; the server exiting
+   * before that fails, whatever its exit code. A TCP check alone would pass while a local Worker
+   * server is still starting, and stopping it then hides a crash of its start.
+   */
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
-    await ensurePort(project);
+    const port = await ensurePort(project);
     // In the test environment the dev server runs against fresh, disposable state (e.g. an empty
-    // local D1), so the schema must be migrated first — an app whose pages query the database
-    // would otherwise answer 500 and the startup check would never see a 2xx.
+    // local D1), so the schema must be migrated first: an app whose pages query the database
+    // would otherwise answer 500 to the startup check.
     const preparesData = isProjectEnvironment(project, 'test');
     const migrationCommands = preparesData ? this.buildMigrationCommands(project) : [];
     // Use empty NODE_ENV to avoid "production" mode in some frameworks.
-    const startupCheckCommand = `${buildShellEnvironmentAssignment('NODE_ENV', '')} ${buildConcurrentlyCommand(
+    const startupCheckCommand = `${buildShellEnvironmentAssignment('NODE_ENV', '')} ${buildServerCheckCommand(
       argv,
-      untilFirstSuccess,
-      [this.startDevProtected(project, { ...argv, seedsLocalD1: preparesData }), this.waitApp(project)]
+      this.startDevProtected(project, { ...argv, seedsLocalD1: preparesData }),
+      buildE2EReadinessCommand(port, false, project.playwrightWebServerUrlPath)
     )}`;
     return [...migrationCommands, startupCheckCommand].join(' && ');
   }
@@ -300,8 +305,6 @@ export abstract class BaseScripts {
   }
 }
 
-const untilFirstSuccess = ['--kill-others', '--success', 'first'];
-
 /** Runs the tests once the server is ready and ends with their result; the server exiting first is a failure. */
 export function buildE2ECommand(
   argv: EnvReaderOptions,
@@ -311,10 +314,23 @@ export function buildE2ECommand(
   testCommand: string,
   readinessPath = ''
 ): string {
-  return buildConcurrentlyCommand(argv, untilFirstSuccess, [
-    `${startCommand} && exit 1`,
-    `${buildE2EReadinessCommand(port, isDocker, readinessPath)} && ${testCommand}`,
-  ]);
+  return buildServerCheckCommand(
+    argv,
+    startCommand,
+    `${buildE2EReadinessCommand(port, isDocker, readinessPath)} && ${testCommand}`
+  );
+}
+
+/**
+ * Runs the check beside the server and ends with the check's result, stopping the server; the
+ * server exiting first is a failure even with code 0.
+ */
+function buildServerCheckCommand(argv: EnvReaderOptions, startCommand: string, checkCommand: string): string {
+  return buildConcurrentlyCommand(
+    argv,
+    ['--kill-others', '--success', 'first'],
+    [`${startCommand} && exit 1`, checkCommand]
+  );
 }
 
 function buildConcurrentlyCommand(argv: EnvReaderOptions, flags: string[], commands: string[]): string {

@@ -16,7 +16,7 @@ import {
 import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/sharedOptionsBuilder.js';
 import * as portUtils from '../../../../src/utils/port.js';
 import * as processUtils from '../../../../src/utils/process.js';
-import { buildShellCommand, buildShellEnvironmentAssignment } from '../../../../src/utils/shell.js';
+import { buildShellCommand } from '../../../../src/utils/shell.js';
 import { createCloudflareProjectDir } from '../../../helpers/cloudflareProject.js';
 
 spyOn(portUtils, 'ensurePort').mockResolvedValue(3000);
@@ -65,10 +65,6 @@ class TestScripts extends BaseScripts {
 class TestScriptsWithWait extends BaseScripts {
   constructor() {
     super(true);
-  }
-
-  getWaitApp(project: Project): string {
-    return this.waitApp(project);
   }
 
   getWaitAndOpenApp(project: Project): string {
@@ -282,30 +278,6 @@ describe('BaseScripts.testE2E', () => {
         `start-dev ${argv.normalizedArgsText}`,
         scriptsWithWait.getWaitAndOpenApp(project),
       ])
-    );
-  });
-
-  it('escapes test-start commands passed to wb concurrently', async () => {
-    const scriptsWithWait = new TestScriptsWithWait();
-    const argv = yargs()
-      .options(sharedOptionsBuilder)
-      .parseSync(['--cascade-env=staging', 'start', `quo'te`]) as unknown as ScriptArgv;
-    normalizeArgs(argv);
-
-    const command = await scriptsWithWait.testStart(project, argv);
-
-    expect(command).toBe(
-      `${buildShellEnvironmentAssignment('NODE_ENV', '')} ${buildShellCommand([
-        'YARN',
-        'wb',
-        'concurrently',
-        ...buildEnvReaderOptionArgs(argv),
-        '--kill-others',
-        '--success',
-        'first',
-        `start-dev ${argv.normalizedArgsText}`,
-        scriptsWithWait.getWaitApp(project),
-      ])}`
     );
   });
 

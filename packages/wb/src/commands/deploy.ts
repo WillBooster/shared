@@ -25,6 +25,7 @@ import {
   formatD1DatabaseNames,
   readBuiltCloudflareConfig,
   resolveDeployCloudflareConfig,
+  resolveWranglerAssetsDirectory,
   selectD1Migrations,
 } from '../utils/cloudflareConfig.js';
 import type { ContainersRollout } from '../utils/containerImages.js';
@@ -267,7 +268,7 @@ function selectSecretsOrExit({ argv, project, envName, resolvedConfig }: WorkerD
   if (missingSecretNames.length > 0) {
     exitWithError(
       `Secrets that cloudflare.config.ts declares with bindings.secret() for ${envName} are not provided: ${missingSecretNames.join(', ')}. ` +
-        'Set each in fnox (an explicitly empty value counts) or stop declaring it for this mode.'
+        `Set each (an explicitly empty value counts) in fnox (base secrets or the ${envName} profile), the mise environment ${envName}, an exported environment variable, or a .env.cloudflare file beside cloudflare.config.ts or at the repository root, or stop declaring it for this mode.`
     );
   }
   // The deployed Worker must be able to report its version even when the config declares no
@@ -352,14 +353,35 @@ async function buildWorker(
   { argv, project, envName, buildEnv }: WorkerDeployContext,
   imageEnv: Record<string, string>
 ): Promise<void> {
+  const usesVite = usesViteBundler(project);
+  if (!usesVite && !argv.dryRun) ensureWranglerAssetsDirectory(project, envName, buildEnv);
   // Building before migrating keeps a build failure from leaving a migrated schema behind
   // the old Worker. The bundler runs directly, not through the package's `build` script.
   await runWithSpawn(
-    usesViteBundler(project) ? buildViteCommand(project, envName, 'build') : buildCfCommand(envName, 'build'),
+    usesVite ? buildViteCommand(project, envName, 'build') : buildCfCommand(envName, 'build'),
     project,
     argv,
     { env: { ...buildEnv, ...imageEnv } }
   );
+}
+
+/**
+ * `cf build` (unlike `cf dev`) checks that the assets directory exists before it runs the build
+ * command of `wrangler.config.ts`, which may be the one creating it, so the command still runs
+ * exactly once.
+ */
+function ensureWranglerAssetsDirectory(
+  project: Project,
+  envName: string,
+  buildEnv: Record<string, string | undefined>
+): void {
+  let assetsDirPath: string | undefined;
+  try {
+    assetsDirPath = resolveWranglerAssetsDirectory(project, envName, buildEnv);
+  } catch (error) {
+    exitWithError(getErrorMessage(error));
+  }
+  if (assetsDirPath) fs.mkdirSync(assetsDirPath, { recursive: true });
 }
 
 /**
