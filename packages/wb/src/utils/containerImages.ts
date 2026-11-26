@@ -298,7 +298,8 @@ async function buildAndPushImage(
     await runStoppingWithWb('tar', ['-xf', archive, '-C', contextDir], project, project.env, removeDirectory);
     console.info(chalk.cyan(`Building the container image ${image} from ${source.treeish}.`));
     await runStoppingWithWb(
-      'docker',
+      // The Docker executable cf and Wrangler run, so that the build and cf's push use the same one.
+      project.env.WRANGLER_DOCKER_BIN || 'docker',
       [
         'build',
         '--load',
