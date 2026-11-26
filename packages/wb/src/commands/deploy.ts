@@ -157,7 +157,12 @@ async function deployBuiltWorker(
   assertBuildMatchesPreflight(context);
   await validateWorkerBuild(context, rollout);
   if (context.argv.buildOnly) {
-    console.info(chalk.green(`Built ${context.resolvedConfig.workerName} (${context.envName}) without deploying it.`));
+    // With --dry-run, the build above was only printed.
+    if (!context.argv.dryRun) {
+      console.info(
+        chalk.green(`Built ${context.resolvedConfig.workerName} (${context.envName}) without deploying it.`)
+      );
+    }
     return;
   }
   await applyD1Migrations(context, d1Migrations);
