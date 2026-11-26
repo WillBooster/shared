@@ -14,7 +14,12 @@ import {
   getAbsoluteFileDatabaseUrlPath,
   isProjectEnvironment,
 } from '../project.js';
-import { buildDrizzleKitCommand, drizzleScripts, usesDrizzleKitForD1 } from '../scripts/drizzleScripts.js';
+import {
+  buildDrizzleKitCommand,
+  drizzleScripts,
+  findDrizzleConfig,
+  usesDrizzleKitForD1,
+} from '../scripts/drizzleScripts.js';
 import { buildCfNativeD1DatabaseCommands, selectLocalD1Migrations } from '../scripts/localD1Scripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
@@ -403,7 +408,11 @@ function buildMigrationScript(
 ): string {
   const cfNativeD1Commands = buildCfNativeD1DatabaseCommands(project, resolveCloudflareMode(project), kind) ?? [];
   const drizzleTargetsD1 = orm === 'drizzle' && usesDrizzleKitForD1(project);
-  const runsOrm = orm === 'prisma' || (orm === 'drizzle' && !(drizzleTargetsD1 && cfNativeD1Commands.length > 0));
+  // Beside cf-native D1 migrations, Drizzle has a migration of its own only for a config targeting another database.
+  const runsOrm =
+    orm === 'prisma' ||
+    (orm === 'drizzle' &&
+      (cfNativeD1Commands.length === 0 || (!drizzleTargetsD1 && findDrizzleConfig(project) !== undefined)));
   if (!runsOrm && unknownOptions) {
     throw new Error(`wb db ${kind} forwards options only to an ORM, which does not migrate the D1 of ${project.name}.`);
   }
