@@ -146,9 +146,8 @@ async function deployBuiltWorker(
   secrets: Record<string, string>
 ): Promise<void> {
   await runGenCode(context);
-  const generatedConfig = resolveGeneratedConfigOrExit(context);
-  const { rollout, env: imageEnv } = await planContainerImagesOrExit(context, generatedConfig);
-  await buildWorker(context, generatedConfig, imageEnv);
+  const { rollout, env: imageEnv } = await planContainerImagesOrExit(context);
+  await buildWorker(context, imageEnv);
   assertBuildMatchesPreflight(context);
   await validateWorkerBuild(context, rollout);
   await applyD1Migrations(context, d1Migrations);
@@ -165,22 +164,13 @@ function createBuildEnv(project: Project, envName: string): Record<string, strin
   return buildEnv;
 }
 
-/** gen-code may have changed what the config reads, and the build and its images are for this Worker. */
-function resolveGeneratedConfigOrExit({
-  project,
-  envName,
-  buildEnv,
-  resolvedConfig,
-}: WorkerDeployContext): ResolvedCloudflareConfig {
+async function planContainerImagesOrExit(
+  context: WorkerDeployContext
+): Promise<Awaited<ReturnType<typeof planContainerImages>>> {
+  const { project, envName, buildEnv, resolvedConfig } = context;
+  // gen-code may have changed what the config reads, and images are published for this Worker.
   const generatedConfig = resolveCloudflareConfigOrExit(project, envName, buildEnv);
   assertSameDeployTarget(generatedConfig, resolvedConfig, 'cloudflare.config.ts after gen-code describes');
-  return generatedConfig;
-}
-
-async function planContainerImagesOrExit(
-  context: WorkerDeployContext,
-  generatedConfig: ResolvedCloudflareConfig
-): Promise<Awaited<ReturnType<typeof planContainerImages>>> {
   try {
     return await planContainerImages(
       {
@@ -369,15 +359,12 @@ async function runGenCode({ argv, project, envName }: WorkerDeployContext): Prom
 
 async function buildWorker(
   { argv, project, envName, buildEnv }: WorkerDeployContext,
-  generatedConfig: ResolvedCloudflareConfig,
   imageEnv: Record<string, string>
 ): Promise<void> {
   const usesVite = usesViteBundler(project);
   const env = { ...buildEnv, ...imageEnv };
   const createdAssetsDirPath =
-    !usesVite && generatedConfig.hasEntrypoint && !argv.dryRun
-      ? createWranglerAssetsDirectory(project, envName, env)
-      : undefined;
+    !usesVite && !argv.dryRun ? createWranglerAssetsDirectory(project, envName, env) : undefined;
   // Building before migrating keeps a build failure from leaving a migrated schema behind
   // the old Worker. The bundler runs directly, not through the package's `build` script.
   await runWithSpawn(
@@ -396,8 +383,9 @@ async function buildWorker(
  * `cf build` (unlike `cf dev`) checks that the assets directory exists before it runs the build
  * command of `wrangler.config.ts`, which may be the one creating it, so the command still runs
  * exactly once. Without such a command the check stays: the directory must come from elsewhere.
- * So it does for an assets-only Worker, whose build never runs the command.
- * Returns the directory when this call created it.
+ * So it does for an assets-only Worker, whose build never runs the command. Both configs are
+ * evaluated under the build's own environment, which may decide either. Returns the directory
+ * when this call created it.
  */
 function createWranglerAssetsDirectory(
   project: Project,
@@ -407,6 +395,7 @@ function createWranglerAssetsDirectory(
   try {
     const assetsDirPath = resolveWranglerBuildHookAssetsDirectory(project, envName, buildEnv);
     if (!assetsDirPath || fs.existsSync(assetsDirPath)) return;
+    if (!resolveCloudflareConfigOrExit(project, envName, buildEnv).hasEntrypoint) return;
     fs.mkdirSync(assetsDirPath, { recursive: true });
     return assetsDirPath;
   } catch (error) {
