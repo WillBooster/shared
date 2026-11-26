@@ -279,7 +279,14 @@ it('builds and checks a deploy mode without contacting Cloudflare when only buil
   // On CI, a real deploy would stop without a token.
   const result = await spawnAsync('node', [cliPath, 'deploy', '--build-only'], {
     cwd: dirPath,
-    env: { ...workerEnv, CI: '1', CLOUDFLARE_API_TOKEN: undefined, WB_ENV: 'production', WB_TEST_CF_LOG: logDirPath },
+    env: {
+      ...workerEnv,
+      CI: '1',
+      CF_API_TOKEN: undefined,
+      CLOUDFLARE_API_TOKEN: undefined,
+      WB_ENV: 'production',
+      WB_TEST_CF_LOG: logDirPath,
+    },
     timeout: 100_000,
   });
 
