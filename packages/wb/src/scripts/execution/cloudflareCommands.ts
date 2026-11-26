@@ -56,9 +56,7 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv, s
     ...buildLocalD1MigrationCommands(project, mode, seeds),
     usesVite
       ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(project, mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
-      : // Wrangler lets the environment override a config value of the same name, so the server's
-        // WB_ENV is the mode wb resolved (test wins a disagreement between WB_ENV and MISE_ENV).
-        `${buildShellEnvironmentAssignment('WB_ENV', mode)} ${buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`,
+      : buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim()),
   ];
 }
 
