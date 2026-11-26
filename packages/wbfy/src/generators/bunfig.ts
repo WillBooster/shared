@@ -95,7 +95,9 @@ export function updateBunReleaseAgeExcludes(rootDirPath: string): void {
   // The rename would replace a read-only file and its permissions.
   fs.accessSync(filePath, fs.constants.W_OK);
   try {
-    fs.writeFileSync(stagedFilePath, newContent, { mode: fs.statSync(filePath).mode });
+    fs.writeFileSync(stagedFilePath, newContent);
+    // Not the creation mode, which the umask would narrow.
+    fs.chmodSync(stagedFilePath, fs.statSync(filePath).mode);
     fs.renameSync(stagedFilePath, filePath);
   } finally {
     fs.rmSync(stagedFilePath, { force: true });
