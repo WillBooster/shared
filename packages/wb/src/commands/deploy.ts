@@ -374,9 +374,10 @@ async function buildWorker(
 ): Promise<void> {
   const usesVite = usesViteBundler(project);
   const env = { ...buildEnv, ...imageEnv };
-  if (!usesVite && generatedConfig.hasEntrypoint && !argv.dryRun) {
-    ensureWranglerAssetsDirectory(project, envName, env);
-  }
+  const createdAssetsDirPath =
+    !usesVite && generatedConfig.hasEntrypoint && !argv.dryRun
+      ? createWranglerAssetsDirectory(project, envName, env)
+      : undefined;
   // Building before migrating keeps a build failure from leaving a migrated schema behind
   // the old Worker. The bundler runs directly, not through the package's `build` script.
   await runWithSpawn(
@@ -385,6 +386,10 @@ async function buildWorker(
     argv,
     { env }
   );
+  // Wrangler would have refused a missing directory; it uploads an empty one.
+  if (createdAssetsDirPath && fs.readdirSync(createdAssetsDirPath).length === 0) {
+    exitWithError(`The build command of wrangler.config.ts left its assetsDirectory empty: ${createdAssetsDirPath}`);
+  }
 }
 
 /**
@@ -392,15 +397,18 @@ async function buildWorker(
  * command of `wrangler.config.ts`, which may be the one creating it, so the command still runs
  * exactly once. Without such a command the check stays: the directory must come from elsewhere.
  * So it does for an assets-only Worker, whose build never runs the command.
+ * Returns the directory when this call created it.
  */
-function ensureWranglerAssetsDirectory(
+function createWranglerAssetsDirectory(
   project: Project,
   envName: string,
   buildEnv: Record<string, string | undefined>
-): void {
+): string | undefined {
   try {
     const assetsDirPath = resolveWranglerBuildHookAssetsDirectory(project, envName, buildEnv);
-    if (assetsDirPath) fs.mkdirSync(assetsDirPath, { recursive: true });
+    if (!assetsDirPath || fs.existsSync(assetsDirPath)) return;
+    fs.mkdirSync(assetsDirPath, { recursive: true });
+    return assetsDirPath;
   } catch (error) {
     exitWithError(getErrorMessage(error));
   }
