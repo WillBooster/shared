@@ -20,7 +20,7 @@ import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 import { drizzleScripts, findDrizzleConfig, usesDrizzleKitForD1 } from '../drizzleScripts.js';
-import { selectLocalD1Migrations } from '../localD1Scripts.js';
+import { buildLocalD1MigrationCommands, selectLocalD1Migrations } from '../localD1Scripts.js';
 import { prismaScripts } from '../prismaScripts.js';
 
 export interface TestE2EOptions {
@@ -85,6 +85,7 @@ export abstract class BaseScripts {
       // the root, like Docker's WORKDIR, so its cwd must be the directory containing scripts/.
       const scriptRootDirPath = path.dirname(path.dirname(customStartScriptPath));
       return this.buildProductionCommand(project, argv, [
+        ...buildCustomWorkerStartD1MigrationCommands(project),
         project.buildCommand,
         scriptRootDirPath === project.dirPath
           ? startCommand
@@ -94,7 +95,11 @@ export abstract class BaseScripts {
 
     const ecosystemConfigPath = findEcosystemConfigPath(project);
     const commands = ecosystemConfigPath
-      ? [project.buildCommand, `pm2-runtime start --no-autorestart ${ecosystemConfigPath}`]
+      ? [
+          ...buildCustomWorkerStartD1MigrationCommands(project),
+          project.buildCommand,
+          `pm2-runtime start --no-autorestart ${ecosystemConfigPath}`,
+        ]
       : this.buildDefaultProductionStartCommands(project, argv);
 
     return this.buildProductionCommand(project, argv, commands);
@@ -352,6 +357,16 @@ export function buildWaitOnLoopbackCommand(port: string | number | undefined, wa
  */
 function buildHttpReadinessCommand(port: string | number, readinessPath: string): string {
   return `curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:${port}${readinessPath}`;
+}
+
+/**
+ * A custom start of a Worker bypasses the Worker's start commands, which migrate its local D1, so
+ * the migration runs before it.
+ */
+function buildCustomWorkerStartD1MigrationCommands(project: Project): string[] {
+  return findCloudflareConfigPath(project)
+    ? buildLocalD1MigrationCommands(project, resolveCloudflareMode(project))
+    : [];
 }
 
 function findCustomProductionStartScriptPath(project: Project): string | undefined {
