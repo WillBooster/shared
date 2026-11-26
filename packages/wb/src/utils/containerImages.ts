@@ -134,7 +134,8 @@ function resolveCommittedImageSource(
   const repository = runGit(['rev-parse', '--show-toplevel'], buildContext);
   const contextPath = path.relative(repository, buildContext);
   const revision = runGit(['rev-parse', 'HEAD'], repository);
-  if (runGit(['diff', revision, '--', contextPath || '.'], repository)) {
+  // Staged and unstaged changes both count, even when they cancel out in the working tree.
+  if (runGit(['status', '--porcelain', '--untracked-files=no', '--', contextPath || '.'], repository)) {
     throw new Error(`Commit the changes to the build context of the container image ${image.name}: ${buildContext}`);
   }
   const treeish = `${revision}:${contextPath}`;
