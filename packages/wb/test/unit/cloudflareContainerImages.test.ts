@@ -158,16 +158,19 @@ it('deploys without Docker or the registry, keeping the deployed containers, unl
   expect(await readDeployRollouts()).toEqual(['none', 'none', 'none', 'none']);
 }, 120_000);
 
-it('stops before the build when the config does not take the image reference wb sets', async () => {
+it('stops before any image work when the config does not take the image reference wb sets', async () => {
   const configPath = path.join(dirPath, 'cloudflare.config.ts');
   const config = await fs.readFile(configPath, 'utf8');
   await fs.writeFile(configPath, config.replace('process.env.WB_CONTAINER_IMAGE_RUNNER_APP', 'undefined'));
 
-  const result = await deploy([]);
+  for (const args of [[], ['--containers-rollout=gradual']]) {
+    const result = await deploy(args);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr + result.stdout).toContain('runner-app (WB_CONTAINER_IMAGE_RUNNER_APP)');
+  }
 
-  expect(result.status).not.toBe(0);
-  expect(result.stderr + result.stdout).toContain('runner-app (WB_CONTAINER_IMAGE_RUNNER_APP)');
   expect(await readDockerBuilds()).toEqual([]);
+  expect(apiRequests).toEqual([]);
   expect(await fs.exists(path.join(dirPath, '.cloudflare/output'))).toBe(false);
 }, 120_000);
 

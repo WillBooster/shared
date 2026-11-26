@@ -59,31 +59,36 @@ interface CommittedImageSource {
  * reference of the image built from the committed build context: published by an earlier deploy,
  * or built and pushed now. Otherwise the deploy keeps the deployed Containers (`none`), so each is
  * a placeholder that the build records but the upload never sends. Either way the build needs no
- * Docker, and wb verifies that the config takes every reference before the build starts.
+ * Docker: wb verifies that the config takes the placeholders before any image work, and the
+ * published references again before the build.
  */
 export async function resolveContainerImageEnv(deployment: ContainerImageDeployment): Promise<Record<string, string>> {
   const images = selectDockerfileImages(deployment.resolvedConfig.containerImages);
   if (images.length === 0) return {};
   const registryHost = deployment.project.env.CLOUDFLARE_CONTAINER_REGISTRY || 'registry.cloudflare.com';
-  const env: Record<string, string> = {};
-  if (deployment.rollout === 'gradual' || deployment.rollout === 'immediate') {
-    // Every context must be clean before the first image is built.
-    const sources = images.map((image) => resolveCommittedImageSource(image, deployment));
-    for (const source of sources) {
-      env[source.image.variableName] = deployment.dryRun
-        ? createPlaceholderReference(registryHost, source.image)
-        : await publishImage(source, registryHost, deployment);
-      if (deployment.dryRun) {
-        console.info(
-          `Would reuse the published container image ${source.repositoryName}:${source.tag}, or build it from ${source.treeish} and push it.`
-        );
-      }
-    }
-  } else {
+  const placeholderEnv = Object.fromEntries(
+    images.map((image) => [image.variableName, createPlaceholderReference(registryHost, image)])
+  );
+  assertConfigUsesImageReferences(deployment, images, placeholderEnv);
+  if (deployment.rollout !== 'gradual' && deployment.rollout !== 'immediate') {
     console.info(
       `Not building container images (${images.map(({ name }) => name).join(', ')}): the deploy keeps the deployed Containers.`
     );
-    for (const image of images) env[image.variableName] = createPlaceholderReference(registryHost, image);
+    return placeholderEnv;
+  }
+  // Every context must be clean before the first image is built.
+  const sources = images.map((image) => resolveCommittedImageSource(image, deployment));
+  if (deployment.dryRun) {
+    for (const source of sources) {
+      console.info(
+        `Would reuse the published container image ${source.repositoryName}:${source.tag}, or build it from ${source.treeish} and push it.`
+      );
+    }
+    return placeholderEnv;
+  }
+  const env: Record<string, string> = {};
+  for (const source of sources) {
+    env[source.image.variableName] = await publishImage(source, registryHost, deployment);
   }
   assertConfigUsesImageReferences(deployment, images, env);
   return env;
