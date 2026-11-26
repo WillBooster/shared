@@ -315,7 +315,7 @@ async function buildWorker({ argv, project, envName, buildEnv }: WorkerDeployCon
     await runWithSpawn('YARN run gen-code', project, argv, { env: { ...project.env, MISE_ENV: envName } });
   }
   await runWithSpawn(
-    usesViteBundler(project) ? buildViteCommand(envName, 'build') : buildCfCommand(envName, 'build'),
+    usesViteBundler(project) ? buildViteCommand(project, envName, 'build') : buildCfCommand(envName, 'build'),
     project,
     argv,
     { env: buildEnv }

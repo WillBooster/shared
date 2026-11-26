@@ -51,7 +51,7 @@ export function buildCloudflareDevCommands(project: Project, argv: ScriptArgv): 
     // The local D1 starts empty and no dev server applies migrations itself.
     ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
     usesVite
-      ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
+      ? `${buildViteStateDirPrefix(project, mode)}${buildViteCommand(project, mode, 'dev', `${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim())}`
       : buildCfCommand(mode, 'dev', `-- ${serverArgs} ${argv.normalizedArgsText ?? ''}`.trim()),
   ];
 }
@@ -68,10 +68,10 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
     // The same build `wb deploy` runs, so the served Worker has the config of wb's mode: the
     // local D1 migrated below is the one whose ID that config declares.
     ...(project.packageJson.scripts?.['gen-code'] ? ['YARN run gen-code'] : []),
-    `${stateDirPrefix}${buildViteCommand(mode, 'build')}`,
+    `${stateDirPrefix}${buildViteCommand(project, mode, 'build')}`,
     buildGenDevVarsCommand(argv),
     ...buildLocalD1MigrationsApplyCommands(project, mode, usesDrizzleKitForD1(project)),
-    `${stateDirPrefix}YARN vite preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
+    `${stateDirPrefix}YARN ${getViteExecutable(project)} preview --mode ${shellEscapeArgument(mode)} --host 127.0.0.1 --port ${getEnsuredPort(project)} --strictPort ${argv.normalizedArgsText ?? ''}`.trim(),
   ];
 }
 
@@ -81,8 +81,13 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
  * finds more than two (e.g. a vinext app that also depends on hono), although the answer would
  * not change the command. The variable is the one cf sets to make the plugin write Build Output.
  */
-export function buildViteCommand(mode: string, command: 'dev' | 'build', args = ''): string {
-  return `CLOUDFLARE_VITE_FORCE_BUILD_OUTPUT=true YARN vite ${command} --mode ${shellEscapeArgument(mode)} ${args}`.trim();
+export function buildViteCommand(project: Project, mode: string, command: 'dev' | 'build', args = ''): string {
+  return `CLOUDFLARE_VITE_FORCE_BUILD_OUTPUT=true YARN ${getViteExecutable(project)} ${command} --mode ${shellEscapeArgument(mode)} ${args}`.trim();
+}
+
+/** Vite+ (`vp`) when the package declares it, as cf chooses: such a package has no `vite` executable. */
+function getViteExecutable(project: Project): string {
+  return project.hasOwnDependency('vite-plus') ? 'vp' : 'vite';
 }
 
 /**
