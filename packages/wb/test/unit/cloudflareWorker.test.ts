@@ -2,7 +2,6 @@ import { Database } from 'bun:sqlite';
 import { afterEach, beforeAll, beforeEach, expect, it } from 'bun:test';
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
-import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { createServer } from 'node:net';
@@ -327,17 +326,22 @@ NEXT_PUBLIC_BASE_URL = { default = "http://localhost:${port}" }
  * process so that wb killing it fails the test instead of terminating the test runner.
  */
 async function startPlainServer(): Promise<{ port: number }> {
+  const port = await findFreePort();
   const server = spawn(
     'node',
-    [
-      '-e',
-      "const s = require('node:http').createServer((_, r) => r.end('primary')); s.listen(0, '127.0.0.1', () => console.log(s.address().port));",
-    ],
-    { stdio: ['ignore', 'pipe', 'inherit'] }
+    ['-e', `require('node:http').createServer((_, r) => r.end('primary')).listen(${port}, '127.0.0.1');`],
+    { stdio: 'inherit' }
   );
   plainServers.push(server);
-  const [chunk] = (await once(server.stdout, 'data')) as [Buffer];
-  return { port: Number(chunk.toString()) };
+  for (;;) {
+    if (server.exitCode !== null) throw new Error(`The plain server exited with ${server.exitCode}.`);
+    try {
+      if ((await fetchText(port)) === 'primary') return { port };
+    } catch {
+      // Not listening yet: the test's timeout bounds the wait.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }
 
 async function fetchText(port: number): Promise<string> {
