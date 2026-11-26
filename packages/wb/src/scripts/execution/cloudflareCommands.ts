@@ -78,7 +78,7 @@ export function buildCloudflareBuiltStartCommands(project: Project, argv: Script
 
 /**
  * A locally served Worker reads the values of its declared secrets from `.dev.vars.<mode>` when it
- * exists, else from its process environment. A regular start regenerates that file; an instance
+ * exists, else from `.dev.vars`, else from its process environment. A regular start regenerates that file; an instance
  * on a caller-chosen state directory leaves it to them, so concurrent instances never write it.
  */
 function buildGenDevVarsCommands(project: Project, argv: ScriptArgv): string[] {
