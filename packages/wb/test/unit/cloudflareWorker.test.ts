@@ -294,12 +294,19 @@ function stopWb(server: ChildProcess): void {
   }
 }
 
+const allocatedPorts = new Set<number>();
+
 async function findFreePort(): Promise<number> {
-  const server = createServer();
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address() as AddressInfo;
-  await new Promise((resolve) => server.close(resolve));
-  return port;
+  for (;;) {
+    const server = createServer();
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    await new Promise((resolve) => server.close(resolve));
+    if (!allocatedPorts.has(port)) {
+      allocatedPorts.add(port);
+      return port;
+    }
+  }
 }
 
 /**
