@@ -67,11 +67,19 @@ export function updateBunReleaseAgeExcludes(rootDirPath: string): void {
   if (!fs.existsSync(filePath)) return;
   const content = fs.readFileSync(filePath, 'utf8');
   const excludesBlock = `minimumReleaseAgeExcludes = [\n${bunMinimumReleaseAgeExcludes.map((packageName) => `  "${packageName}",`).join('\n')}\n]`;
-  const excludesPattern = /^minimumReleaseAgeExcludes\s*=\s*\[[^\]]*\]/mu;
+  const excludesPattern = /^[ \t]*minimumReleaseAgeExcludes\s*=\s*\[[^\]]*\]/mu;
   const newContent = excludesPattern.test(content)
     ? content.replace(excludesPattern, excludesBlock)
-    : content.replace(/^minimumReleaseAge\s*=.*$/mu, (gateLine) => `${gateLine}\n${excludesBlock}`);
+    : content.replace(/^[ \t]*minimumReleaseAge\s*=.*$/mu, (gateLine) => `${gateLine}\n${excludesBlock}`);
   if (newContent === content) return;
+  // A text edit of a file wbfy did not just generate: write it only when the result is the
+  // intended TOML (e.g. a quoted key would otherwise be defined twice).
+  const excludes = parseBunfigToml(newContent)?.install?.minimumReleaseAgeExcludes;
+  if (excludes?.join('\n') !== bunMinimumReleaseAgeExcludes.join('\n')) {
+    throw new Error(
+      `Could not update minimumReleaseAgeExcludes in ${filePath}: write it in wbfy's layout (an unquoted key under [install]) and rerun.`
+    );
+  }
   fs.writeFileSync(filePath, newContent);
   console.info(`Updated the release-age excludes in ${filePath}`);
 }
