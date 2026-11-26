@@ -56,7 +56,7 @@ const builder = {
     type: 'string',
     choices: ['none', 'gradual', 'immediate'],
     description:
-      'Roll out containers: gradual/immediate deploy images built from committed contexts (reusing published ones); none (the default) keeps the deployed containers.',
+      'Roll out containers: gradual/immediate deploy their images, built from committed contexts (reusing published ones); none, the default for a config with container images, keeps the deployed containers.',
   },
 } as const;
 
@@ -77,7 +77,7 @@ interface WorkerDeployContext {
    */
   authEnv: Readonly<Record<string, string | undefined>>;
   accountId: string | undefined;
-  /** The strategy passed to `cf deploy`: `none` when the flag is omitted and the config builds an image from a Dockerfile. */
+  /** The strategy passed to `cf deploy`: `none` when the flag is omitted and the config has a container image. */
   containersRollout: ContainersRollout | undefined;
 }
 
@@ -181,13 +181,16 @@ function createBuildEnv(project: Project, envName: string): Record<string, strin
   return buildEnv;
 }
 
-/** Without the flag, a Dockerfile image gets no image to roll out, so the deploy keeps the deployed Containers. */
+/**
+ * Without the flag, a Dockerfile image gets no image to roll out, and cf takes one strategy for all
+ * Containers, so the deploy keeps every deployed Container.
+ */
 function selectContainersRollout(
   argv: DeployCommandArgv,
   resolvedConfig: ResolvedCloudflareConfig
 ): ContainersRollout | undefined {
   if (argv.containersRollout) return argv.containersRollout as ContainersRollout;
-  return resolvedConfig.containerImages.some(({ source }) => 'dockerfile' in source) ? 'none' : undefined;
+  return resolvedConfig.containerImages.length > 0 ? 'none' : undefined;
 }
 
 function exportCloudflareEnvFiles(project: Project): void {
