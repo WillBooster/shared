@@ -48,7 +48,7 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
 
     const content = lines.join('\n') + '\n';
     if (getChosenLocalStateDir(project)) {
-      publishOwnDevVars(outputPath, content);
+      publishOwnDevVars(outputPath, content, mode);
     } else if (!fs.existsSync(outputPath) || fs.readFileSync(outputPath, 'utf8') !== content) {
       // A starting server must never read the file half-written.
       writeFileAtomicSync(outputPath, content);
@@ -62,7 +62,7 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
  * only creates it, never replaces it: a hard link publishes the complete file and fails when another
  * instance published first, whose values must then equal this instance's.
  */
-function publishOwnDevVars(outputPath: string, content: string): void {
+function publishOwnDevVars(outputPath: string, content: string, mode: string): void {
   const tempPath = `${outputPath}.${process.pid}.${randomUUID()}.tmp`;
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(tempPath, content);
@@ -72,7 +72,7 @@ function publishOwnDevVars(outputPath: string, content: string): void {
     if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     if (fs.readFileSync(outputPath, 'utf8') !== content) {
       throw new Error(
-        `${outputPath} holds other values than this instance's, and instances on a chosen WB_CLOUDFLARE_STATE_DIR share it: give every instance of the mode the same values of the declared secrets, or regenerate the file with \`wb gen-dev-vars\` without WB_CLOUDFLARE_STATE_DIR.`,
+        `${outputPath} holds other values than this instance's, and instances on a chosen WB_CLOUDFLARE_STATE_DIR share it: give every instance of the mode the same values of the declared secrets, or regenerate the file with \`WB_ENV=${mode} wb gen-dev-vars\` without WB_CLOUDFLARE_STATE_DIR.`,
         { cause: error }
       );
     }
