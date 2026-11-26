@@ -187,6 +187,28 @@ it("deploys the build with the declared secrets and the version to the config's 
   });
 }, 120_000);
 
+it('builds and checks a deploy mode without contacting Cloudflare when only building', async () => {
+  const logDirPath = path.join(dirPath, 'cf-log');
+  await fs.mkdir(logDirPath);
+  await recordAuthenticatedCfCalls();
+
+  // On CI, a real deploy would stop without a token.
+  const result = await spawnAsync('node', [cliPath, 'deploy', '--build-only'], {
+    cwd: dirPath,
+    env: { ...workerEnv, CI: '1', CLOUDFLARE_API_TOKEN: undefined, WB_ENV: 'production', WB_TEST_CF_LOG: logDirPath },
+    timeout: 100_000,
+  });
+
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  const calls = await fs.readFile(path.join(logDirPath, 'calls'), 'utf8');
+  expect(calls).toBe('config-account: deploy --mode production --prebuilt --dry-run\n');
+  const builtWorker = await fs.readFile(
+    path.join(dirPath, '.cloudflare/output/v1/workers/default/worker.config.json'),
+    'utf8'
+  );
+  expect(JSON.parse(builtWorker)).toMatchObject({ name: 'fixture-production' });
+}, 120_000);
+
 /**
  * A Wrangler-bundled Worker whose toolchain is this package's own: cf requires the bundler in
  * the project's own node_modules, so both are linked instead of installed.

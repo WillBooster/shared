@@ -52,6 +52,11 @@ const DEPLOY_CONTROL_KEYS = new Set([
 ]);
 
 const builder = {
+  'build-only': {
+    type: 'boolean',
+    description:
+      "For a Worker: run every step up to the build, its comparison with the validated config, and cf's offline check of it, then stop before anything that contacts Cloudflare (no remote secret listing, image push, D1 migration, upload, or deploy/post).",
+  },
   'containers-rollout': {
     type: 'string',
     choices: ['none', 'gradual', 'immediate'],
@@ -82,11 +87,12 @@ interface WorkerDeployContext {
 export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
   command: 'deploy',
   describe:
-    'Deploy to the WB_ENV environment. A Cloudflare Workers app (cloudflare.config.ts): validate secrets, build for the mode <WB_ENV>, apply remote D1 migrations, then deploy the build and its secrets atomically. A Railway service (.railway/railway.ts): check the IaC plan, sync fnox variables, apply the plan, then railway up and wait until the created deployment succeeds; --dry-run only checks the plan of every environment.',
+    'Deploy to the WB_ENV environment. A Cloudflare Workers app (cloudflare.config.ts): validate secrets, build for the mode <WB_ENV>, apply remote D1 migrations, then deploy the build and its secrets atomically; --build-only stops after the build. A Railway service (.railway/railway.ts): check the IaC plan, sync fnox variables, apply the plan, then railway up and wait until the created deployment succeeds; --dry-run only checks the plan of every environment.',
   builder: (yargs) => yargs.options(builder) as unknown as Argv<DeployCommandOptions>,
   async handler(argv: DeployCommandArgv) {
     const project = findSelfProjectOrExit(argv);
     if (fs.existsSync(path.join(project.dirPath, RAILWAY_IAC_FILE_PATH))) {
+      if (argv.buildOnly) exitWithError('--build-only applies only to Cloudflare Workers apps.');
       await deployRailway(argv, project);
       return;
     }
@@ -115,8 +121,9 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     const authEnv = { ...project.env, ...(accountId && { CLOUDFLARE_ACCOUNT_ID: accountId }) };
     const context: WorkerDeployContext = { argv, project, envName, resolvedConfig, buildEnv, authEnv, accountId };
     const d1Migrations = selectD1MigrationsOrExit(context);
-    // Dry runs execute nothing authenticated, so they skip the credential preflight entirely.
-    if (!argv.dryRun) assertDeployCredentials(project, d1Migrations.drizzleD1Database);
+    // Dry runs and build-only runs execute nothing authenticated, so they skip the credential
+    // preflight entirely.
+    if (!argv.dryRun && !argv.buildOnly) assertDeployCredentials(project, d1Migrations.drizzleD1Database);
 
     // App-specific validation hook (e.g. secret pairs that must be both-set-or-both-empty).
     // The reusable deploy.yml already runs it on CI; run it here for local deploys.
@@ -129,7 +136,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     await assertWithinCloudflareLimits(context, secrets, secretKeys);
     console.info(
       chalk.cyan(
-        `Deploying ${resolvedConfig.workerName} (${envName}) with ${secretKeys.length} secrets: ${secretKeys.join(', ')}`
+        `${argv.buildOnly ? 'Building' : 'Deploying'} ${resolvedConfig.workerName} (${envName}) with ${secretKeys.length} secrets: ${secretKeys.join(', ')}`
       )
     );
 
@@ -147,6 +154,10 @@ async function deployBuiltWorker(
   await buildWorker(context, imageEnv);
   assertBuildMatchesPreflight(context);
   await validateWorkerBuild(context, rollout);
+  if (context.argv.buildOnly) {
+    console.info(chalk.green(`Built ${context.resolvedConfig.workerName} (${context.envName}) without deploying it.`));
+    return;
+  }
   await applyD1Migrations(context, d1Migrations);
   if (!(await deployCodeAndSecrets(context, secrets, rollout))) return;
   await runPostDeployHook(context);
@@ -173,7 +184,8 @@ async function planContainerImagesOrExit(
       {
         ...context,
         rollout: context.argv.containersRollout as ContainersRollout | undefined,
-        dryRun: context.argv.dryRun,
+        // A build-only run publishes no image either: the build gets the same placeholders.
+        dryRun: context.argv.dryRun || context.argv.buildOnly,
       },
       generatedConfig.containerImages
     );
@@ -313,10 +325,11 @@ async function assertWithinCloudflareLimits(
   }
   // Remote secrets absent from the payload may stay attached to the new version, so they
   // count against the combined limit too. Listing them needs an authenticated remote
-  // round-trip, which dry runs skip; when the listing fails for any reason other than a
+  // round-trip, which dry runs and build-only runs skip; when the listing fails for any reason other than a
   // not-yet-created Worker, degrade to the local-only count instead of blocking a deploy that
   // cf itself might accept.
-  const remoteSecretNames = context.argv.dryRun ? [] : await listRemoteWorkerSecretNames(context);
+  const remoteSecretNames =
+    context.argv.dryRun || context.argv.buildOnly ? [] : await listRemoteWorkerSecretNames(context);
   const inheritedSecretNames = selectInheritedRemoteSecretNames(
     remoteSecretNames ?? [],
     secrets,

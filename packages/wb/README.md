@@ -35,13 +35,14 @@ Commands:
   wb deploy                      Deploy to the WB_ENV environment. A Cloudflare
                                  Workers app (cloudflare.config.ts): validate
                                  secrets, build for the mode <WB_ENV>, apply
-                                 remote D1 migrations, then deploy the build
-                                 and its secrets atomically. A
-                                 Railway service (.railway/railway.ts): check
-                                 the IaC plan, sync fnox variables, apply the
-                                 plan, then railway up and wait until the
-                                 created deployment succeeds; --dry-run only
-                                 checks the plan of every environment.
+                                 remote D1 migrations, then deploy the build and
+                                 its secrets atomically; --build-only stops
+                                 after the build. A Railway service
+                                 (.railway/railway.ts): check the IaC plan, sync
+                                 fnox variables, apply the plan, then railway up
+                                 and wait until the created deployment succeeds;
+                                 --dry-run only checks the plan of every
+                                 environment.
   wb dotenv [args..]             Load environment variables from fnox and run a
                                  command.
   wb gc                          Remove stale temporary files, worktrees, and
@@ -166,6 +167,7 @@ Options:
 `wb` drives a Worker through the `cf` CLI and its `cloudflare.config.ts`, passing `WB_ENV` as `--mode` to every cf command. A Vite-bundled Worker is served and built by running Vite itself with that mode (the commands `cf dev` and `cf build` delegate to), since cf's framework detection stops on some dependency combinations. What a repository must provide for this (dependencies, `vite.config`, D1 migration settings, containers) is in [the expected repository rules](https://github.com/WillBooster/shared/blob/main/docs/expected-repository-rules.md).
 
 - The secrets the config declares with `bindings.secret()` are the only ones wb supplies: `wb start`/`wb test` write them to `.dev.vars.<mode>` and `wb deploy` uploads them, both with values from fnox or the environment; `wb deploy` also pushes `WB_VERSION` when it is set and the config has no `WB_VERSION` entry. Cloudflare keeps the secrets of the previous version that an upload does not name, so delete an obsolete one with `cf workers secrets delete <name> --mode <WB_ENV>` (a bare cf command evaluates the config without a mode). A declared secret without a value (an explicitly empty one counts) aborts the deploy.
+- `wb deploy --build-only` runs a deploy up to its build: the checks of the config, D1 migration settings, and secrets, the package's `deploy/ci-setup` (outside CI) and `gen-code`, the build in the deploy's restricted environment, its comparison with the validated config, and cf's offline check of the Build Output (`cf deploy --prebuilt --dry-run`). It needs no Cloudflare credentials and contacts Cloudflare for nothing: it lists no remote secrets, publishes no container image (like `--dry-run`, it prints the image each build context would use and builds with placeholders), and applies no migration, upload, or `deploy/post`. Use it to try the build of a mode, such as `production`, without deploying it.
 - Local state lives in `.cloudflare/state` for `development` and `.cloudflare/state-<mode>` otherwise; wb migrates and resets that directory and exports it to Vite commands as `WB_CLOUDFLARE_STATE_DIR`. A start that migrates before serving (`wb start --mode test|staging`, and the servers `wb test` starts except in the `*-dev` e2e modes) wipes `.cloudflare/state-test` first when the Worker's mode resolves to `test` (`WB_ENV` or `MISE_ENV` is `test`), unless a state directory is chosen (below).
 - A D1 binding migrates through `cf d1 migrations apply` when `package.json` sets `"wb": { "d1Migrations": { "<binding>": { "dir": "...", "pattern": "...", "table": "..." } } }` for it or `migrations/` holds flat `*.sql` files; otherwise through drizzle-kit when the drizzle config targets D1. Every local launch (`wb start` in any mode, and the servers `wb test` starts) and `wb db deploy|migrate|reset` apply the selected mechanism; `wb db migrate|reset` also run the seed of a Drizzle package whose config targets that D1, which must then be its only D1 binding.
 - To run an isolated local instance, export an absolute `WB_CLOUDFLARE_STATE_DIR` of letters, digits, and `_.@+-/` (and a `PORT`): wb then uses that directory instead of the mode's, never wipes or seeds it on start (`wb db migrate` does both migrating and seeding), and does not publish the server's URL for `wb run`; `wb db` stops when such a directory would serve several packages. Arguments after `--` reach `cf dev` (or Vite, which takes neither of the `cf dev` options below). Such an instance does not write `.dev.vars.<mode>`: its server reads the declared secrets from that file when a regular start of the mode generated it (or from a leftover `.dev.vars`, which the runtime reads next, so delete one), else from its own environment, where Wrangler also lets an exported variable replace a text or JSON binding of the same name. For example, a test can start several Wrangler-bundled Workers at once, each on fresh state, and read that state with `cf d1 raw <D1 id> --mode test --local --persist-to <dir> --sql '<query>'`:
@@ -188,7 +190,7 @@ Options:
   // A Container with one image: `image: process.env.WB_CONTAINER_IMAGE_<NAME> ? { reference: ... } : { dockerfile: ... }`, <NAME> from its `name`.
   ```
 
-  `wb deploy --containers-rollout=gradual|immediate` sets each variable to the digest-pinned reference of the image built from the build context's committed Git tree: it reuses the image an earlier deploy published to Cloudflare's managed registry for the same tree, Worker name, Dockerfile path, `buildVars`, and platform, and otherwise builds it from `git archive` with Docker and pushes it with `cf containers push`; uncommitted changes to tracked files in a build context stop the deploy before any build. `--containers-rollout=none` sets placeholders instead, keeping the deployed Containers without building an image or accessing the registry; an omitted flag does the same for any config with a container image, so an image declared only by `{ reference }` also rolls out only with `gradual` or `immediate`. `--dry-run` prints the image tag each context would use.
+  `wb deploy --containers-rollout=gradual|immediate` sets each variable to the digest-pinned reference of the image built from the build context's committed Git tree: it reuses the image an earlier deploy published to Cloudflare's managed registry for the same tree, Worker name, Dockerfile path, `buildVars`, and platform, and otherwise builds it from `git archive` with Docker and pushes it with `cf containers push`; uncommitted changes to tracked files in a build context stop the deploy before any build. `--containers-rollout=none` sets placeholders instead, keeping the deployed Containers without building an image or accessing the registry; an omitted flag does the same for any config with a container image, so an image declared only by `{ reference }` also rolls out only with `gradual` or `immediate`. `--dry-run` and `--build-only` print the image tag each context would use.
 
 ## Disk cleanup
 
