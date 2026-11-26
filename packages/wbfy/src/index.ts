@@ -232,11 +232,16 @@ async function willboosterifyRepository(rootDirPath: string, skipDeps: boolean):
   if (unconvertedWorkerError) {
     // The conversion has to install the cf toolchain first, which the release-age gate blocks
     // until bunfig.toml carries the shared temporary excludes.
-    await generateBunfigToml(
-      rootConfig,
-      resolveBunGlobalStore(allPackageConfigs, readBunGlobalStore(rootDirPath), skipDeps),
-      allPackageConfigs
-    );
+    try {
+      await generateBunfigToml(
+        rootConfig,
+        resolveBunGlobalStore(allPackageConfigs, readBunGlobalStore(rootDirPath), skipDeps),
+        allPackageConfigs
+      );
+    } catch (error) {
+      // The conversion guidance below matters more than this convenience.
+      console.error(error);
+    }
     console.error(unconvertedWorkerError);
     return false;
   }
