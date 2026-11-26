@@ -16,7 +16,7 @@ class DrizzleScripts {
 
   reset(project: Project, additionalOptions = ''): string {
     const mode = resolveCloudflareMode(project);
-    const d1Database = findLocalD1Database(project, mode);
+    const d1Database = usesDrizzleKitForD1(project) ? findLocalD1Database(project, mode) : undefined;
     if (d1Database) {
       // Remove only the D1 subtree so that other locally-persisted bindings (KV, R2, Durable Objects) survive,
       // then re-materialize the D1 SQLite file. Its path is deterministic, so a DATABASE_URL exported

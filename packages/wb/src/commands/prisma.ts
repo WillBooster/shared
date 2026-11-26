@@ -393,8 +393,8 @@ const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultC
 /**
  * The command of `wb db deploy|migrate|reset`, which migrates the package's local D1 bindings
  * with the mechanism wb selects for them, as `wb start` does: the ORM's own command runs first
- * (it may reset the local D1), and drizzle-kit is skipped when the D1 its config targets is
- * migrated cf-natively.
+ * (a Drizzle reset may remove the local D1), drizzle-kit is skipped when the D1 its config
+ * targets is migrated cf-natively, and it gets the local D1 URL only when its config targets D1.
  */
 function buildMigrationScript(
   kind: 'deploy' | 'migrate' | 'reset',
@@ -402,15 +402,14 @@ function buildMigrationScript(
   unknownOptions: string
 ): string {
   const cfNativeD1Commands = buildCfNativeD1DatabaseCommands(project, resolveCloudflareMode(project), kind) ?? [];
-  const runsOrm =
-    orm === 'prisma' || (orm === 'drizzle' && !(cfNativeD1Commands.length > 0 && usesDrizzleKitForD1(project)));
+  const drizzleTargetsD1 = orm === 'drizzle' && usesDrizzleKitForD1(project);
+  const runsOrm = orm === 'prisma' || (orm === 'drizzle' && !(drizzleTargetsD1 && cfNativeD1Commands.length > 0));
   if (!runsOrm && unknownOptions) {
     throw new Error(`wb db ${kind} forwards options only to an ORM, which does not migrate the D1 of ${project.name}.`);
   }
+  const ormCommand = orm && runsOrm ? getDatabaseOrmScripts(orm)[kind](project, unknownOptions) : undefined;
   return [
-    ...(orm && runsOrm
-      ? [withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm)[kind](project, unknownOptions))]
-      : []),
+    ...(ormCommand ? [drizzleTargetsD1 ? withLocalD1IfNeeded('drizzle', project, ormCommand) : ormCommand] : []),
     ...cfNativeD1Commands,
   ].join(' && ');
 }
