@@ -27,6 +27,8 @@ import {
   resolveDeployCloudflareConfig,
   selectD1Migrations,
 } from '../utils/cloudflareConfig.js';
+import type { ContainersRollout } from '../utils/containerImages.js';
+import { CONTAINER_IMAGE_ENV_PREFIX, planContainerImages } from '../utils/containerImages.js';
 import { exitWithError } from '../utils/exit.js';
 import { createSecretFreeBuildEnv } from '../utils/secretFreeEnv.js';
 import { resolveDeclaredSecrets } from '../utils/workerSecrets.js';
@@ -53,7 +55,8 @@ const builder = {
   'containers-rollout': {
     type: 'string',
     choices: ['none', 'gradual', 'immediate'],
-    description: 'Select the Cloudflare container rollout strategy (forwarded to `cf deploy`).',
+    description:
+      'Roll out containers: gradual/immediate deploy their images, built from committed contexts (reusing published ones); none, the default for a config with container images, keeps the deployed containers.',
   },
 } as const;
 
@@ -106,7 +109,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     prepareLocalBinPath(project);
     // The preflight must see the config the build will produce, so both evaluate it under the
     // same environment.
-    const buildEnv = usesViteBundler(project) ? createViteBuildEnv(project, envName) : { ...project.env };
+    const buildEnv = createBuildEnv(project, envName);
     const resolvedConfig = resolveCloudflareConfigOrExit(project, envName, buildEnv);
     const accountId = resolvedConfig.accountId ?? project.env.CLOUDFLARE_ACCOUNT_ID;
     const authEnv = { ...project.env, ...(accountId && { CLOUDFLARE_ACCOUNT_ID: accountId }) };
@@ -139,12 +142,44 @@ async function deployBuiltWorker(
   d1Migrations: D1Migrations,
   secrets: Record<string, string>
 ): Promise<void> {
-  await buildWorker(context);
+  await runGenCode(context);
+  const { rollout, env: imageEnv } = await planContainerImagesOrExit(context);
+  await buildWorker(context, imageEnv);
   assertBuildMatchesPreflight(context);
-  await validateWorkerBuild(context);
+  await validateWorkerBuild(context, rollout);
   await applyD1Migrations(context, d1Migrations);
-  if (!(await deployCodeAndSecrets(context, secrets))) return;
+  if (!(await deployCodeAndSecrets(context, secrets, rollout))) return;
   await runPostDeployHook(context);
+}
+
+function createBuildEnv(project: Project, envName: string): Record<string, string | undefined> {
+  const buildEnv = usesViteBundler(project) ? createViteBuildEnv(project, envName) : { ...project.env };
+  // Only wb sets the image references, so that an exported one never replaces a Dockerfile image.
+  for (const key of Object.keys(buildEnv)) {
+    if (key.startsWith(CONTAINER_IMAGE_ENV_PREFIX)) delete buildEnv[key];
+  }
+  return buildEnv;
+}
+
+async function planContainerImagesOrExit(
+  context: WorkerDeployContext
+): Promise<Awaited<ReturnType<typeof planContainerImages>>> {
+  const { project, envName, buildEnv, resolvedConfig } = context;
+  // gen-code may have changed what the config reads, and images are published for this Worker.
+  const generatedConfig = resolveCloudflareConfigOrExit(project, envName, buildEnv);
+  assertSameDeployTarget(generatedConfig, resolvedConfig, 'cloudflare.config.ts after gen-code describes');
+  try {
+    return await planContainerImages(
+      {
+        ...context,
+        rollout: context.argv.containersRollout as ContainersRollout | undefined,
+        dryRun: context.argv.dryRun,
+      },
+      generatedConfig.containerImages
+    );
+  } catch (error) {
+    exitWithError(getErrorMessage(error));
+  }
 }
 
 function exportCloudflareEnvFiles(project: Project): void {
@@ -304,21 +339,26 @@ async function assertWithinCloudflareLimits(
   }
 }
 
-async function buildWorker({ argv, project, envName, buildEnv }: WorkerDeployContext): Promise<void> {
-  // Building before migrating keeps a build failure from leaving a migrated schema behind
-  // the old Worker. The bundler runs directly, not through the package's `build` script.
+async function runGenCode({ argv, project, envName }: WorkerDeployContext): Promise<void> {
   // gen-code keeps project.env: it may need a secret to fetch private inputs (e.g. prompt-study
   // clones a private repository), and it emits sources that the restricted build compiles.
-  if (project.packageJson.scripts?.['gen-code']) {
-    // MISE_ENV follows the deploy's WB_ENV so that the script's wb commands resolve the deploy
-    // mode even inside a shell whose mise environment is another one (e.g. test).
-    await runWithSpawn('YARN run gen-code', project, argv, { env: { ...project.env, MISE_ENV: envName } });
-  }
+  if (!project.packageJson.scripts?.['gen-code']) return;
+  // MISE_ENV follows the deploy's WB_ENV so that the script's wb commands resolve the deploy
+  // mode even inside a shell whose mise environment is another one (e.g. test).
+  await runWithSpawn('YARN run gen-code', project, argv, { env: { ...project.env, MISE_ENV: envName } });
+}
+
+async function buildWorker(
+  { argv, project, envName, buildEnv }: WorkerDeployContext,
+  imageEnv: Record<string, string>
+): Promise<void> {
+  // Building before migrating keeps a build failure from leaving a migrated schema behind
+  // the old Worker. The bundler runs directly, not through the package's `build` script.
   await runWithSpawn(
     usesViteBundler(project) ? buildViteCommand(project, envName, 'build') : buildCfCommand(envName, 'build'),
     project,
     argv,
-    { env: buildEnv }
+    { env: { ...buildEnv, ...imageEnv } }
   );
 }
 
@@ -336,9 +376,17 @@ function assertBuildMatchesPreflight({ argv, project, resolvedConfig }: WorkerDe
   if (!builtConfig) {
     exitWithError('The build produced no default Worker under .cloudflare/output/v1.');
   }
-  if (describeDeployTarget(builtConfig) !== describeDeployTarget(resolvedConfig)) {
+  assertSameDeployTarget(builtConfig, resolvedConfig, 'The build produced');
+}
+
+function assertSameDeployTarget(
+  config: ResolvedCloudflareConfig,
+  resolvedConfig: ResolvedCloudflareConfig,
+  source: string
+): void {
+  if (describeDeployTarget(config) !== describeDeployTarget(resolvedConfig)) {
     exitWithError(
-      'The built Worker differs from the one wb validated before building (name, account, binding names, text/JSON values, secret names, or D1 ids): make cloudflare.config.ts return the same configuration for the same mode and environment.'
+      `${source} a Worker that differs from the one wb validated before building (name, account, binding names, text/JSON values, secret names, or D1 ids): make cloudflare.config.ts return the same configuration for the same mode and environment.`
     );
   }
 }
@@ -354,17 +402,20 @@ function describeDeployTarget(config: ResolvedCloudflareConfig): string {
   ]);
 }
 
-async function validateWorkerBuild({ argv, project, envName, authEnv }: WorkerDeployContext): Promise<void> {
+async function validateWorkerBuild(
+  { argv, project, envName, authEnv }: WorkerDeployContext,
+  containersRollout: ContainersRollout | undefined
+): Promise<void> {
   await runWithSpawn(
-    buildCfCommand(envName, 'deploy', `--prebuilt --dry-run${buildRolloutOption(argv)}`),
+    buildCfCommand(
+      envName,
+      'deploy',
+      `--prebuilt --dry-run${containersRollout ? ` --containers-rollout=${containersRollout}` : ''}`
+    ),
     project,
     argv,
     { env: authEnv }
   );
-}
-
-function buildRolloutOption(argv: DeployCommandArgv): string {
-  return argv.containersRollout ? ` --containers-rollout=${argv.containersRollout}` : '';
 }
 
 /**
@@ -436,7 +487,8 @@ function getD1DatabaseIdOrExit(database: CloudflareD1Database): string {
 /** Resolves to false when a shutdown signal interrupted the deploy. */
 async function deployCodeAndSecrets(
   { argv, project, envName, authEnv }: WorkerDeployContext,
-  secrets: Record<string, string>
+  secrets: Record<string, string>,
+  containersRollout: ContainersRollout | undefined
 ): Promise<boolean> {
   // Deploy the validated build and its secrets atomically (no post-deploy secret push that
   // could leave the new version running without — or with stale — secrets). The secrets JSON
@@ -448,7 +500,7 @@ async function deployCodeAndSecrets(
     '--prebuilt',
     '--mode',
     envName,
-    ...(argv.containersRollout ? [`--containers-rollout=${argv.containersRollout}`] : []),
+    ...(containersRollout ? [`--containers-rollout=${containersRollout}`] : []),
     '--secrets-file',
   ];
   console.info(chalk.cyan(`Running: cf ${deployArgs.join(' ')} <temporary secrets file>`));
