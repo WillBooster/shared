@@ -13,7 +13,12 @@ import { buildWb } from '../helpers/build.js';
 import { createCloudflareProjectDir } from '../helpers/cloudflareProject.js';
 
 const cliPath = path.resolve('bin/index.js');
-const { BUN_TEST_WORKER_ID: _bunWorkerId, JEST_WORKER_ID: _jestWorkerId, ...baseEnv } = process.env;
+const {
+  BUN_TEST_WORKER_ID: _bunWorkerId,
+  JEST_WORKER_ID: _jestWorkerId,
+  WB_CLOUDFLARE_STATE_DIR: _stateDir,
+  ...baseEnv
+} = process.env;
 const workerEnv = {
   ...baseEnv,
   AUTH_SECRET: 's3cret',
