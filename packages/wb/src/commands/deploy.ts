@@ -363,7 +363,7 @@ async function buildWorker(
 ): Promise<void> {
   const usesVite = usesViteBundler(project);
   const env = { ...buildEnv, ...imageEnv };
-  const createdAssetsDirPath =
+  const hookAssetsDirPath =
     !usesVite && !argv.dryRun ? createWranglerAssetsDirectory(project, envName, env) : undefined;
   // Building before migrating keeps a build failure from leaving a migrated schema behind
   // the old Worker. The bundler runs directly, not through the package's `build` script.
@@ -374,8 +374,8 @@ async function buildWorker(
     { env }
   );
   // Wrangler would have refused a missing directory; it uploads an empty one.
-  if (createdAssetsDirPath && fs.readdirSync(createdAssetsDirPath).length === 0) {
-    exitWithError(`The build command of wrangler.config.ts left its assetsDirectory empty: ${createdAssetsDirPath}`);
+  if (hookAssetsDirPath && fs.readdirSync(hookAssetsDirPath).length === 0) {
+    exitWithError(`The build command of wrangler.config.ts left its assetsDirectory empty: ${hookAssetsDirPath}`);
   }
 }
 
@@ -385,7 +385,7 @@ async function buildWorker(
  * exactly once. Without such a command the check stays: the directory must come from elsewhere.
  * So it does for an assets-only Worker, whose build never runs the command. Both configs are
  * evaluated under the build's own environment, which may decide either. Returns the directory
- * when this call created it.
+ * when the build command must fill it.
  */
 function createWranglerAssetsDirectory(
   project: Project,
@@ -394,7 +394,8 @@ function createWranglerAssetsDirectory(
 ): string | undefined {
   try {
     const assetsDirPath = resolveWranglerBuildHookAssetsDirectory(project, envName, buildEnv);
-    if (!assetsDirPath || fs.existsSync(assetsDirPath)) return;
+    // An empty directory counts as missing: a failed earlier deploy may have left it.
+    if (!assetsDirPath || (fs.existsSync(assetsDirPath) && fs.readdirSync(assetsDirPath).length > 0)) return;
     if (!resolveCloudflareConfigOrExit(project, envName, buildEnv).hasEntrypoint) return;
     fs.mkdirSync(assetsDirPath, { recursive: true });
     return assetsDirPath;
