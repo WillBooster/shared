@@ -5,6 +5,7 @@
     "@exercode/problem-utils-browser",
     "@exercode/problem-utils-llm",
     "@openai/codex",
+    "@reviewfixloop/manifests",
     "@willbooster-private/agentic-workflows",
     "@willbooster-private/ai-ocr",
     "@willbooster-private/code-analyzer",
