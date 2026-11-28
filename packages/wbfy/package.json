@@ -68,7 +68,7 @@
     "build-ts": "21.0.38",
     "lefthook": "2.2.2",
     "oxlint": "1.94.0",
-    "oxlint-tsgolint": "7.0.2007",
+    "oxlint-tsgolint": "7.0.2008",
     "type-fest": "5.10.0"
   },
   "engines": {

@@ -74,7 +74,7 @@
     "build-ts": "21.0.38",
     "cf": "1.0.0-rc.5",
     "oxlint": "1.94.0",
-    "oxlint-tsgolint": "7.0.2007",
+    "oxlint-tsgolint": "7.0.2008",
     "semantic-release": "26.0.1",
     "textlint-rule-no-hankaku-kana": "2.0.1",
     "type-fest": "5.10.0",
