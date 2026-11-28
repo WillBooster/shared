@@ -148,7 +148,7 @@
         "smol-toml": "1.9.1",
         "textlint-filter-rule-node-types": "1.1.0",
         "textlint-rule-ja-space-between-half-and-full-width": "3.0.4",
-        "textlint-rule-no-zero-width-spaces": "1.0.1",
+        "textlint-rule-no-zero-width-spaces": "1.0.2",
         "yaml": "2.9.1",
         "yargs": "18.2.0",
         "zod": "4.6.7",
@@ -2642,7 +2642,7 @@
 
     "textlint-rule-no-hankaku-kana": ["textlint-rule-no-hankaku-kana@2.0.1", "", { "dependencies": { "textlint-rule-helper": "^2.3.0", "textlint-tester": "^13.3.1" } }, "sha512-39s94HK6V1xnII1haYiYQnWy1YQAKK7Zj0mcpUMFHHC4M5JdsRnhGs6DQPVEff0gQIFV0iuDNlofXt15kjMtEA=="],
 
-    "textlint-rule-no-zero-width-spaces": ["textlint-rule-no-zero-width-spaces@1.0.1", "", {}, "sha512-AkxpzBILGB4YsXddzHx2xqpXmqMv5Yd+PQm4anUV+ADSJuwLP1Jd6yHf/LOtu9j3ps8K3XM9vQrXRK73z0bU3A=="],
+    "textlint-rule-no-zero-width-spaces": ["textlint-rule-no-zero-width-spaces@1.0.2", "", {}, "sha512-COHfv3SP9DfsjdNrbHQxqzalB5viq5C7KwovGJ7c7kUFw2FMCOh2ajxn37Sgr45X239ebax4sEi2AC5vFR2uhw=="],
 
     "textlint-tester": ["textlint-tester@13.4.1", "", { "dependencies": { "@textlint/feature-flag": "^13.4.1", "@textlint/kernel": "^13.4.1", "@textlint/textlint-plugin-markdown": "^13.4.1", "@textlint/textlint-plugin-text": "^13.4.1" } }, "sha512-Ubm9kUZ/NyY0Ggo1RkW2o5QSx6EJ/ogMT1kD5b5pk4cdFTWpUSs8StDMROgcz29wPhvS6sY/35qYALzqyZh8ew=="],
 
