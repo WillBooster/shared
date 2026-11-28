@@ -69,7 +69,7 @@
     "lefthook": "2.2.2",
     "oxlint": "1.94.0",
     "oxlint-tsgolint": "7.0.2007",
-    "type-fest": "6.0.3"
+    "type-fest": "5.10.0"
   },
   "engines": {
     "bun": ">=1.4.4",
