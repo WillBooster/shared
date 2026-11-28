@@ -55,7 +55,7 @@
     "semver": "7.8.6",
     "smol-toml": "1.9.1",
     "textlint-filter-rule-node-types": "1.1.0",
-    "textlint-rule-ja-space-between-half-and-full-width": "3.0.4",
+    "textlint-rule-ja-space-between-half-and-full-width": "3.1.0",
     "textlint-rule-no-zero-width-spaces": "1.0.2",
     "yaml": "2.9.1",
     "yargs": "18.2.0",
