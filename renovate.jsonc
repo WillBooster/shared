@@ -31,5 +31,10 @@
       "matchPackageNames": ["@willbooster/web-tree-sitter"],
       "allowedVersions": "!/^23\\.0\\.4$/",
     },
+    // 6.0.3: Version 6 requires exactOptionalPropertyTypes: true, but the wb and wbfy TypeScript configurations do not enable it; using this version requires a configuration change (https://github.com/sindresorhus/type-fest/releases/tag/v6.0.0).
+    {
+      "matchPackageNames": ["type-fest"],
+      "allowedVersions": "!/^6\\.0\\.3$/",
+    },
   ],
 }
