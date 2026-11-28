@@ -56,7 +56,7 @@
     "@willbooster/wb": "workspace:*",
     "build-ts": "21.0.38",
     "oxlint": "1.94.0",
-    "oxlint-tsgolint": "7.0.2007",
+    "oxlint-tsgolint": "7.0.2008",
     "yaml": "2.9.1"
   }
 }
